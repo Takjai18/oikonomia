@@ -408,6 +408,11 @@ def get_all_teams_with_stats():
     return query_teams_list()
 
 # ==================== Routes ====================
+@app.before_request
+def refresh_player_session():
+    if "squad_id" in session:
+        session.permanent = True
+
 @app.route("/")
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -1367,8 +1372,14 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
+        <!-- 恢復登入中 -->
+        <div id="session-loading" class="max-w-md mx-auto px-6 py-24 text-center">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-amber-400 mb-4"></i>
+            <p class="text-zinc-400">正在恢復登入狀態...</p>
+        </div>
+
         <!-- Login -->
-        <div id="login-screen" class="max-w-md mx-auto px-6 py-16">
+        <div id="login-screen" class="hidden max-w-md mx-auto px-6 py-16">
             <div class="text-center mb-8">
                 <i class="fa-solid fa-user-secret text-6xl text-amber-400 mb-4"></i>
                 <h1 class="text-3xl font-bold">你已從臍帶中斷裂</h1>
@@ -2056,15 +2067,30 @@ HTML_TEMPLATE = """
         }
 
         async function restoreSession() {
-            try {
-                const res = await fetch('/status', { credentials: 'same-origin' });
-                if (!res.ok) return;
-                const squad = await res.json();
-                if (!squad || squad.error || !squad.squad_id) return;
-                await completeLogin({ squad, require_set_pin: false, skip_team_prompt: true });
-            } catch (e) {
-                console.log('no saved session');
+            const loading = document.getElementById('session-loading');
+            const loginScreen = document.getElementById('login-screen');
+
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const res = await fetch('/status', { credentials: 'same-origin' });
+                    if (res.ok) {
+                        const squad = await res.json();
+                        if (squad && squad.squad_id && !squad.error) {
+                            if (loading) setVisible(loading, false);
+                            await completeLogin({ squad, require_set_pin: false, skip_team_prompt: true });
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.log('session restore attempt failed', attempt + 1);
+                }
+                if (attempt < 2) {
+                    await new Promise(r => setTimeout(r, 1200));
+                }
             }
+
+            if (loading) setVisible(loading, false);
+            if (loginScreen) setVisible(loginScreen, true);
         }
 
         async function completeLogin(data) {
@@ -2562,9 +2588,6 @@ HTML_TEMPLATE = """
             }
         }, 12000);
 
-        // 頁面載入時還原登入狀態
-        restoreSession();
-
         let currentAvatar = null;
 
         function avatarSrc(filename) {
@@ -2651,6 +2674,9 @@ HTML_TEMPLATE = """
                 if (img) img.src = avatarSrc(filename);
             });
         }
+
+        // 頁面載入時還原登入狀態（Render 冷啟動會重試）
+        restoreSession();
     </script>
 
     <!-- 選擇頭像 Modal -->
