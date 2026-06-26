@@ -1238,6 +1238,15 @@ HTML_TEMPLATE = """
         }
         .status-bar { transition: width 0.4s ease; }
         .nav-active { background-color: rgba(245, 158, 11, 0.15); color: #f59e0b; border-radius: 9999px; }
+        .nav-btn {
+            color: #a1a1aa;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            color: #f4f4f5;
+            background-color: rgba(63, 63, 70, 0.3);
+            border-radius: 9999px;
+        }
         .cartoon-box {
             border: 3px solid #2C3E50;
             border-radius: 12px;
@@ -1276,7 +1285,7 @@ HTML_TEMPLATE = """
 </head>
 <body class="game-bg text-zinc-200">
     <div class="max-w-4xl mx-auto">
-        <!-- Header -->
+        <!-- ==================== Header ==================== -->
         <div class="flex items-center justify-between px-6 py-5 border-b border-zinc-800">
             <div class="flex items-center gap-x-3">
                 <div class="w-9 h-9 bg-amber-500 rounded-2xl flex items-center justify-center">
@@ -1285,6 +1294,7 @@ HTML_TEMPLATE = """
                 <span class="title-font text-3xl font-bold">Oikonomia</span>
             </div>
 
+            <!-- 桌面版導航（重要！） -->
             <div id="nav-desktop" class="hidden md:flex items-center gap-x-1 text-sm">
                 <button onclick="showSection('dashboard')" class="px-5 py-2 nav-btn">Dashboard</button>
                 <button onclick="showSection('explore')" class="px-5 py-2 nav-btn">探索</button>
@@ -1292,19 +1302,21 @@ HTML_TEMPLATE = """
                 <button onclick="showSection('log')" class="px-5 py-2 nav-btn">日誌</button>
             </div>
 
-            <button id="mobile-menu-btn" onclick="toggleMobileMenu()"
-                    class="hidden md:hidden text-2xl text-zinc-300 hover:text-white"
-                    style="display:none">
+            <!-- 手機版漢堡按鈕 -->
+            <button onclick="toggleMobileMenu()"
+                    class="md:hidden text-2xl text-zinc-300 hover:text-white px-2">
                 <i class="fa-solid fa-bars"></i>
             </button>
         </div>
 
-        <div id="mobile-menu" class="hidden md:hidden fixed inset-0 bg-black/90 z-50 pt-20 px-6">
-            <div class="flex flex-col gap-y-2 text-lg">
-                <button onclick="showSection('dashboard'); toggleMobileMenu()" class="py-3 text-left">Dashboard</button>
-                <button onclick="showSection('explore'); toggleMobileMenu()" class="py-3 text-left">探索</button>
-                <button onclick="showSection('team'); toggleMobileMenu()" class="py-3 text-left">Team</button>
-                <button onclick="showSection('log'); toggleMobileMenu()" class="py-3 text-left">日誌</button>
+        <!-- 手機版彈出選單 -->
+        <div id="mobile-menu" onclick="toggleMobileMenu()"
+             class="hidden md:hidden fixed inset-0 bg-black/90 z-[60] pt-20 px-6">
+            <div class="flex flex-col text-lg" onclick="event.stopImmediatePropagation()">
+                <button onclick="showSection('dashboard'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Dashboard</button>
+                <button onclick="showSection('explore'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">探索</button>
+                <button onclick="showSection('team'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Team</button>
+                <button onclick="showSection('log'); toggleMobileMenu()" class="py-4 text-left">日誌</button>
             </div>
         </div>
 
@@ -1558,17 +1570,15 @@ HTML_TEMPLATE = """
 
         function toggleMobileMenu() {
             const menu = document.getElementById('mobile-menu');
-            if (menu) menu.classList.toggle('hidden');
-        }
-
-        document.addEventListener('click', function(e) {
-            const menu = document.getElementById('mobile-menu');
-            const btn = document.getElementById('mobile-menu-btn');
-            if (!menu || !btn || menu.classList.contains('hidden')) return;
-            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+            if (!menu) return;
+            if (menu.classList.contains('hidden')) {
+                menu.classList.remove('hidden');
+                menu.classList.add('flex');
+            } else {
+                menu.classList.remove('flex');
                 menu.classList.add('hidden');
             }
-        });
+        }
 
         function showSection(id) {
             document.querySelectorAll('.section').forEach(s => setVisible(s, false));
@@ -1956,11 +1966,10 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById('login-screen'), false);
             setVisible(document.getElementById('game-content'), true);
             const navDesktop = document.getElementById('nav-desktop');
-            if (navDesktop) navDesktop.className = 'hidden md:flex items-center gap-x-1 text-sm';
-            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-            if (mobileMenuBtn) {
-                mobileMenuBtn.classList.remove('hidden');
-                mobileMenuBtn.style.display = '';
+            if (navDesktop) {
+                navDesktop.classList.remove('hidden');
+                navDesktop.classList.add('flex', 'max-md:hidden');
+                navDesktop.style.display = '';
             }
 
             document.getElementById('squad-name').textContent =
