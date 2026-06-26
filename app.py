@@ -673,36 +673,46 @@ def team_task_logs():
     conn.row_factory = sqlite3.Row
     if team_id:
         rows = conn.execute("""
-            SELECT s.task_id, s.content, s.photo_path, s.timestamp, s.squad_id,
-                   sq.display_name
+            SELECT
+                s.id,
+                s.task_id AS task_name,
+                s.content AS description,
+                s.photo_path,
+                s.timestamp,
+                sq.display_name,
+                sq.squad_id
             FROM submissions s
             JOIN squads sq ON s.squad_id = sq.squad_id
             WHERE sq.team_id = ?
             ORDER BY s.timestamp DESC
         """, (team_id,)).fetchall()
+        has_team = True
     else:
         rows = conn.execute("""
-            SELECT s.task_id, s.content, s.photo_path, s.timestamp, s.squad_id,
-                   sq.display_name
+            SELECT
+                s.id,
+                s.task_id AS task_name,
+                s.content AS description,
+                s.photo_path,
+                s.timestamp,
+                sq.display_name,
+                sq.squad_id
             FROM submissions s
             JOIN squads sq ON s.squad_id = sq.squad_id
             WHERE s.squad_id = ?
             ORDER BY s.timestamp DESC
         """, (session["squad_id"],)).fetchall()
+        has_team = False
     conn.close()
 
-    logs = [
-        {
-            "task_id": row["task_id"],
-            "content": row["content"],
-            "photo_path": row["photo_path"],
-            "timestamp": row["timestamp"],
-            "squad_id": row["squad_id"],
-            "display_name": row["display_name"] or row["squad_id"],
-        }
-        for row in rows
-    ]
-    return jsonify({"success": True, "logs": logs, "has_team": bool(team_id)})
+    logs = []
+    for row in rows:
+        entry = dict(row)
+        entry["status"] = "已完成"
+        entry["display_name"] = entry.get("display_name") or entry.get("squad_id")
+        logs.append(entry)
+
+    return jsonify({"success": True, "logs": logs, "has_team": has_team})
 
 @app.route("/global_events")
 def get_global_events():
@@ -1779,14 +1789,14 @@ HTML_TEMPLATE = """
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="font-bold text-xl flex items-center gap-x-2">
                             <i class="fa-solid fa-tasks text-amber-400"></i>
-                            <span id="submission-list-title">任務記錄</span>
+                            <span id="team-task-logs-title">任務記錄</span>
                         </h3>
-                        <button onclick="loadTaskLogs()"
+                        <button onclick="loadTeamTaskLogs()"
                                 class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
                             刷新記錄
                         </button>
                     </div>
-                    <div id="submission-list" class="space-y-4"></div>
+                    <div id="team-task-logs" class="space-y-3"></div>
                 </div>
 
                 <!-- 全球事件記錄（日誌頁最底部） -->
@@ -1918,7 +1928,7 @@ HTML_TEMPLATE = """
             if (id === 'team') loadMyTeam();
             if (id === 'log') {
                 loadStoryLog();
-                loadTaskLogs();
+                loadTeamTaskLogs();
                 loadGlobalEvents();
             }
         }
@@ -1964,89 +1974,82 @@ HTML_TEMPLATE = """
             }
         }
 
-        function renderSubmissionEntries(container, entries, options = {}) {
+        function renderTeamTaskLogEntries(container, logs, options = {}) {
             const { showPlayer = false, emptyText = '暫無任務記錄' } = options;
 
-            if (!entries || entries.length === 0) {
+            if (!logs || logs.length === 0) {
                 container.innerHTML = `<div class="text-zinc-400 py-6 text-center">${emptyText}</div>`;
                 return;
             }
 
             container.innerHTML = '';
-            entries.forEach(sub => {
+            logs.forEach(log => {
+                const taskName = log.task_name || log.task_id || '未知任務';
+                const description = log.description || log.content || '';
+                const status = log.status || '已完成';
                 const el = document.createElement('div');
-                el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-5';
-                const playerLine = showPlayer && sub.display_name
-                    ? `<div class="text-sm text-zinc-300 mb-1"><i class="fa-solid fa-user text-xs mr-1"></i>${sub.display_name}</div>`
-                    : '';
+                el.className = 'log-item bg-zinc-800 border border-zinc-700 rounded-2xl p-4';
                 el.innerHTML = `
-                    <div class="flex justify-between items-start mb-3">
+                    <div class="flex justify-between items-start gap-x-3 mb-2">
                         <div>
-                            ${playerLine}
-                            <span class="font-mono text-amber-400">${sub.task_id}</span>
+                            ${showPlayer ? `<strong class="text-zinc-100">${log.display_name}</strong>` : ''}
+                            <span class="text-xs px-2 py-0.5 bg-emerald-900/50 text-emerald-400 rounded-full ml-1">${status}</span>
                         </div>
-                        <div class="text-xs text-zinc-400">${sub.timestamp}</div>
+                        <div class="text-xs text-zinc-500 whitespace-nowrap">${log.timestamp}</div>
                     </div>
-
-                    ${sub.content ? `<div class="text-zinc-300 mb-3">${sub.content}</div>` : ''}
-
-                    ${sub.photo_path ? `
+                    <div class="text-sm">
+                        <strong class="text-zinc-300">任務：</strong>
+                        <span class="font-mono text-amber-400">${taskName}</span>
+                    </div>
+                    ${description ? `<div class="text-zinc-400 text-sm mt-1">${description}</div>` : ''}
+                    ${log.photo_path ? `
                         <div class="mt-2">
-                            <img src="/${sub.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
+                            <img src="/${log.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
                         </div>
                     ` : ''}
-
-                    <div class="mt-3 text-xs text-emerald-400">
-                        <i class="fa-solid fa-check-circle mr-1"></i> 已提交（+6 Sanity / +1 Resource）
-                    </div>
                 `;
                 container.appendChild(el);
             });
         }
 
-        async function loadTaskLogs() {
-            const container = document.getElementById('submission-list');
-            const titleEl = document.getElementById('submission-list-title');
-            if (!container) return;
-            container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
-
-            try {
-                const res = await fetch('/team_task_logs', { credentials: 'same-origin' });
-                const data = await res.json();
-
-                if (titleEl) {
-                    titleEl.textContent = data.has_team ? '全隊任務日誌' : '個人任務日誌';
-                }
-
-                renderSubmissionEntries(container, data.logs, {
-                    showPlayer: !!data.has_team,
-                    emptyText: data.has_team ? '全隊尚未有任務記錄' : '你尚未提交任何任務',
-                });
-            } catch (e) {
-                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
-            }
-        }
-
         async function loadTeamTaskLogs() {
-            const container = document.getElementById('team-task-logs-list');
-            if (!container) return;
-            container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
+            const logPageContainer = document.getElementById('team-task-logs');
+            const teamPageContainer = document.getElementById('team-task-logs-list');
+            const titleEl = document.getElementById('team-task-logs-title');
+
+            if (!logPageContainer && !teamPageContainer) return;
+
+            if (logPageContainer) logPageContainer.innerHTML = '<div class="text-zinc-400">載入中...</div>';
+            if (teamPageContainer) teamPageContainer.innerHTML = '<div class="text-zinc-400">載入中...</div>';
 
             try {
                 const res = await fetch('/team_task_logs', { credentials: 'same-origin' });
                 const data = await res.json();
 
-                if (!data.has_team) {
-                    container.innerHTML = '<div class="text-zinc-400 py-4 text-center">你尚未加入 Team</div>';
-                    return;
+                if (logPageContainer) {
+                    if (titleEl) {
+                        titleEl.textContent = data.has_team ? '👥 全隊任務日誌' : '📋 個人任務日誌';
+                    }
+                    renderTeamTaskLogEntries(logPageContainer, data.logs, {
+                        showPlayer: !!data.has_team,
+                        emptyText: data.has_team ? '全隊尚未有任務記錄' : '暫無任務記錄',
+                    });
                 }
 
-                renderSubmissionEntries(container, data.logs, {
-                    showPlayer: true,
-                    emptyText: '全隊尚未有任務記錄',
-                });
+                if (teamPageContainer) {
+                    if (!data.has_team) {
+                        teamPageContainer.innerHTML = '<div class="text-zinc-400 py-4 text-center">你尚未加入 Team</div>';
+                    } else {
+                        renderTeamTaskLogEntries(teamPageContainer, data.logs, {
+                            showPlayer: true,
+                            emptyText: '全隊尚未有任務記錄',
+                        });
+                    }
+                }
             } catch (e) {
-                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+                console.error('載入任務日誌失敗', e);
+                if (logPageContainer) logPageContainer.innerHTML = '<div class="text-red-400">載入失敗</div>';
+                if (teamPageContainer) teamPageContainer.innerHTML = '<div class="text-red-400">載入失敗</div>';
             }
         }
 
