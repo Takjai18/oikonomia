@@ -79,8 +79,11 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS global_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT,
-        message TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        effect_type TEXT,
+        effect_value INTEGER DEFAULT 0,
+        created_by TEXT,
         timestamp TEXT
     )''')
 
@@ -145,23 +148,48 @@ def migrate_db():
     if not c.fetchone():
         c.execute('''CREATE TABLE global_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT,
-            message TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            effect_type TEXT,
+            effect_value INTEGER DEFAULT 0,
+            created_by TEXT,
             timestamp TEXT
         )''')
     else:
-        c.execute("PRAGMA table_info(teams)")
-        team_cols = {row[1] for row in c.fetchall()}
-        team_additions = {
-            "leader_squad_id": "TEXT",
-            "gm_notes": "TEXT DEFAULT ''",
-        }
-        for col, typedef in team_additions.items():
-            if col not in team_cols:
-                try:
-                    c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
-                except sqlite3.OperationalError:
-                    pass
+        c.execute("PRAGMA table_info(global_events)")
+        ge_cols = {row[1] for row in c.fetchall()}
+        if "title" not in ge_cols:
+            c.execute('''CREATE TABLE global_events_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                effect_type TEXT,
+                effect_value INTEGER DEFAULT 0,
+                created_by TEXT,
+                timestamp TEXT
+            )''')
+            if "message" in ge_cols:
+                c.execute("""
+                    INSERT INTO global_events_new
+                        (title, description, effect_type, effect_value, created_by, timestamp)
+                    SELECT message, message, event_type, 0, 'GM', timestamp
+                    FROM global_events
+                """)
+            c.execute("DROP TABLE global_events")
+            c.execute("ALTER TABLE global_events_new RENAME TO global_events")
+
+    c.execute("PRAGMA table_info(teams)")
+    team_cols = {row[1] for row in c.fetchall()}
+    team_additions = {
+        "leader_squad_id": "TEXT",
+        "gm_notes": "TEXT DEFAULT ''",
+    }
+    for col, typedef in team_additions.items():
+        if col not in team_cols:
+            try:
+                c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass
 
     conn.commit()
     conn.close()
@@ -281,11 +309,55 @@ def next_stage_threshold(current_stage):
 def hkt_timestamp():
     return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
 
-def log_global_event(event_type, message):
+def apply_global_effect(effect_type, effect_value=0):
+    if not effect_type or effect_type in ("announcement", "global_debuff"):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    if effect_type in ("adjust_sanity", "sanity_adjust"):
+        c.execute(
+            "UPDATE squads SET sanity = MAX(0, MIN(100, sanity + ?))",
+            (effect_value,),
+        )
+    elif effect_type == "sanity_down":
+        c.execute(
+            "UPDATE squads SET sanity = MAX(0, MIN(100, sanity - ?))",
+            (abs(effect_value),),
+        )
+    elif effect_type == "sanity_up":
+        c.execute(
+            "UPDATE squads SET sanity = MAX(0, MIN(100, sanity + ?))",
+            (abs(effect_value),),
+        )
+    elif effect_type == "power_up":
+        c.execute(
+            "UPDATE squads SET power = MAX(0, MIN(100, power + ?))",
+            (abs(effect_value),),
+        )
+    elif effect_type == "intellect_up":
+        c.execute(
+            "UPDATE squads SET intellect = MAX(0, MIN(100, intellect + ?))",
+            (abs(effect_value),),
+        )
+    elif effect_type == "resilience_up":
+        c.execute(
+            "UPDATE squads SET resilience = MAX(0, MIN(100, resilience + ?))",
+            (abs(effect_value),),
+        )
+    elif effect_type == "judas_strengthen":
+        c.execute("UPDATE squads SET sanity = MAX(0, sanity - 8)")
+    elif effect_type == "iggy_collapse":
+        c.execute("UPDATE squads SET sanity = MAX(0, sanity - 12)")
+    conn.commit()
+    conn.close()
+
+def create_global_event(title, description="", effect_type=None, effect_value=0, created_by="GM"):
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        "INSERT INTO global_events (event_type, message, timestamp) VALUES (?, ?, ?)",
-        (event_type, message, hkt_timestamp()),
+        """INSERT INTO global_events
+           (title, description, effect_type, effect_value, created_by, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (title, description, effect_type, effect_value, created_by, hkt_timestamp()),
     )
     conn.commit()
     conn.close()
@@ -637,7 +709,7 @@ def global_events():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
-        SELECT event_type, message, timestamp
+        SELECT id, title, description, effect_type, effect_value, created_by, timestamp
         FROM global_events
         ORDER BY id DESC
         LIMIT 20
@@ -647,8 +719,12 @@ def global_events():
         "success": True,
         "events": [
             {
-                "event_type": row["event_type"],
-                "message": row["message"],
+                "id": row["id"],
+                "title": row["title"],
+                "description": row["description"] or "",
+                "effect_type": row["effect_type"],
+                "effect_value": row["effect_value"],
+                "created_by": row["created_by"],
                 "timestamp": row["timestamp"],
             }
             for row in rows
@@ -1132,32 +1208,45 @@ def gm_global_event():
     event_type = request.form.get("event_type")
     value = int(request.form.get("value", 0))
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
     if event_type == "adjust_sanity":
-        # 全營 Sanity 調整
-        c.execute("UPDATE squads SET sanity = sanity + ?", (value,))
-        message = f"全營 Sanity {'+' if value > 0 else ''}{value}"
-
+        title = f"全營 Sanity {'+' if value > 0 else ''}{value}"
+        description = f"GM 調整全營 Sanity {'+' if value > 0 else ''}{value}"
+        effect_type = "adjust_sanity"
+        effect_value = value
     elif event_type == "judas_strengthen":
-        # Judas 加強事件（範例：全營 Sanity 下降 + 記錄事件）
-        c.execute("UPDATE squads SET sanity = sanity - 8")
-        message = "Judas 加強！全營 Sanity -8"
-
+        title = "Judas 加強"
+        description = "Judas 加強！全營 Sanity -8"
+        effect_type = "judas_strengthen"
+        effect_value = -8
     elif event_type == "iggy_collapse":
-        c.execute("UPDATE squads SET sanity = sanity - 12")
-        message = "Iggy 開始崩潰！全營 Sanity -12"
-
+        title = "Iggy 崩潰"
+        description = "Iggy 開始崩潰！全營 Sanity -12"
+        effect_type = "iggy_collapse"
+        effect_value = -12
     else:
-        conn.close()
         return jsonify({"success": False, "error": "未知事件類型"})
 
-    conn.commit()
-    conn.close()
+    apply_global_effect(effect_type, effect_value)
+    create_global_event(title, description, effect_type, effect_value, "GM")
+    return jsonify({"success": True, "message": description})
 
-    log_global_event(event_type, message)
-    return jsonify({"success": True, "message": message})
+@app.route("/gm/create_global_event", methods=["POST"])
+def gm_create_global_event():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"success": False, "error": "標題不能為空"})
+
+    description = (data.get("description") or "").strip()
+    effect_type = data.get("effect_type") or None
+    effect_value = int(data.get("effect_value", 0) or 0)
+
+    apply_global_effect(effect_type, effect_value)
+    create_global_event(title, description, effect_type, effect_value, "GM")
+    return jsonify({"success": True, "message": "全球事件已建立"})
 
 RESET_PASSWORD = "reset2026"  # 重置遊戲專用密碼
 
@@ -1211,7 +1300,7 @@ def gm_send_announcement():
         "message": message,
         "timestamp": timestamp
     })
-    log_global_event("announcement", message)
+    create_global_event("公告", message, "announcement", 0, "GM")
 
     return jsonify({"success": True, "message": "公告已發送"})
 
@@ -1971,6 +2060,28 @@ HTML_TEMPLATE = """
             }
         }
 
+        function formatGlobalEffect(ev) {
+            if (!ev.effect_type || ev.effect_type === 'announcement') return '';
+            const labels = {
+                adjust_sanity: 'Sanity 調整',
+                sanity_adjust: 'Sanity 調整',
+                sanity_down: 'Sanity 下降',
+                sanity_up: 'Sanity 上升',
+                power_up: 'Power 上升',
+                intellect_up: 'Intellect 上升',
+                resilience_up: 'Resilience 上升',
+                judas_strengthen: 'Judas 加強',
+                iggy_collapse: 'Iggy 崩潰',
+                global_debuff: '全球減益',
+            };
+            const label = labels[ev.effect_type] || ev.effect_type;
+            if (ev.effect_value) {
+                const sign = ev.effect_value > 0 ? '+' : '';
+                return `${label} ${sign}${ev.effect_value}`;
+            }
+            return label;
+        }
+
         async function loadGlobalEvents() {
             const container = document.getElementById('global-events-list');
             if (!container) return;
@@ -1978,9 +2089,16 @@ HTML_TEMPLATE = """
 
             const eventIcons = {
                 adjust_sanity: '🧠',
+                sanity_adjust: '🧠',
+                sanity_down: '🧠',
+                sanity_up: '🧠',
+                power_up: '⚡',
+                intellect_up: '📚',
+                resilience_up: '🛡️',
                 judas_strengthen: '⚔️',
                 iggy_collapse: '🔥',
                 announcement: '📢',
+                global_debuff: '💀',
             };
 
             try {
@@ -1994,16 +2112,22 @@ HTML_TEMPLATE = """
 
                 container.innerHTML = '';
                 data.events.forEach(ev => {
-                    const icon = eventIcons[ev.event_type] || '🌍';
+                    const icon = eventIcons[ev.effect_type] || '🌍';
+                    const effectText = formatGlobalEffect(ev);
                     const el = document.createElement('div');
                     el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-4';
                     el.innerHTML = `
                         <div class="flex justify-between items-start gap-x-3">
-                            <div class="flex gap-x-2">
-                                <span class="text-lg">${icon}</span>
-                                <div class="text-zinc-200 text-sm leading-relaxed">${ev.message}</div>
+                            <div class="flex gap-x-2 min-w-0">
+                                <span class="text-lg shrink-0">${icon}</span>
+                                <div class="min-w-0">
+                                    <div class="font-semibold text-zinc-100">${ev.title}</div>
+                                    ${ev.description ? `<div class="text-zinc-300 text-sm mt-1 leading-relaxed">${ev.description}</div>` : ''}
+                                    ${effectText ? `<div class="text-xs text-amber-400 mt-2">${effectText}</div>` : ''}
+                                    ${ev.created_by ? `<div class="text-xs text-zinc-500 mt-1">由 ${ev.created_by} 觸發</div>` : ''}
+                                </div>
                             </div>
-                            <div class="text-xs text-zinc-500 whitespace-nowrap">${ev.timestamp}</div>
+                            <div class="text-xs text-zinc-500 whitespace-nowrap shrink-0">${ev.timestamp}</div>
                         </div>
                     `;
                     container.appendChild(el);
@@ -3238,6 +3362,36 @@ GM_DASHBOARD_HTML = """
                     </div>
                 </div>
 
+                <!-- 自訂全球事件 -->
+                <div class="bg-zinc-800 rounded-2xl p-5 md:col-span-2">
+                    <div class="font-medium mb-3">自訂全球事件</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        <input type="text" id="custom-event-title" placeholder="事件標題（例如：裂縫擴大）"
+                               class="bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                        <select id="custom-event-effect-type"
+                                class="bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                            <option value="">只記錄，不套用效果</option>
+                            <option value="sanity_down">全營 Sanity 下降</option>
+                            <option value="sanity_up">全營 Sanity 上升</option>
+                            <option value="power_up">全營 Power 上升</option>
+                            <option value="intellect_up">全營 Intellect 上升</option>
+                            <option value="resilience_up">全營 Resilience 上升</option>
+                            <option value="global_debuff">全球減益（只記錄）</option>
+                        </select>
+                    </div>
+                    <textarea id="custom-event-description" rows="2" placeholder="事件描述（可選）"
+                              class="w-full bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm mb-3"></textarea>
+                    <div class="flex gap-x-3 items-center">
+                        <input type="number" id="custom-event-effect-value" value="5" placeholder="效果數值"
+                               class="w-32 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                        <button onclick="createCustomGlobalEvent()"
+                                class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-2xl text-sm">
+                            建立全球事件
+                        </button>
+                    </div>
+                    <div class="text-xs text-zinc-400 mt-2">事件會顯示喺玩家日誌頁最底部嘅「全球事件記錄」</div>
+                </div>
+
             </div>
         </div>
 
@@ -3352,6 +3506,35 @@ GM_DASHBOARD_HTML = """
                     alert('觸發失敗');
                 }
             });
+        }
+
+        async function createCustomGlobalEvent() {
+            const title = document.getElementById('custom-event-title').value.trim();
+            const description = document.getElementById('custom-event-description').value.trim();
+            const effect_type = document.getElementById('custom-event-effect-type').value;
+            const effect_value = parseInt(document.getElementById('custom-event-effect-value').value) || 0;
+
+            if (!title) {
+                alert('請輸入事件標題');
+                return;
+            }
+
+            const res = await fetch('/gm/create_global_event', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ title, description, effect_type: effect_type || null, effect_value })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                alert(data.message || '全球事件已建立');
+                document.getElementById('custom-event-title').value = '';
+                document.getElementById('custom-event-description').value = '';
+                document.getElementById('custom-event-effect-type').value = '';
+                document.getElementById('custom-event-effect-value').value = '5';
+            } else {
+                alert(data.error || '建立失敗');
+            }
         }
 
         // ==================== GM Team 管理加強版 ====================
