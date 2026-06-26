@@ -11,6 +11,7 @@ import json
 import os
 from datetime import datetime
 import math
+import time
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "oikonomia-2026-prototype")
@@ -312,34 +313,37 @@ def index():
 
 @app.route("/login", methods=["POST"])
 def login():
-    squad_id = request.form.get("squad_id", "").strip()
-
-    if not squad_id:
+    name = request.form.get("squad_id", "").strip()
+    if not name:
         return jsonify({"error": "請輸入名稱"}), 400
 
-    original_input = squad_id
-    if not squad_id.upper().startswith("FRAG-"):
-        squad_id = squad_id.upper().replace(" ", "_")[:15]
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT squad_id FROM squads WHERE display_name = ? COLLATE NOCASE",
+        (name,),
+    ).fetchone()
 
-    squad = get_squad(squad_id)
-    if not squad:
+    if row:
+        internal_id = row["squad_id"]
+        conn.close()
+        update_squad(internal_id, display_name=name)
+    else:
+        conn.close()
+        internal_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
+        while get_squad(internal_id):
+            internal_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO squads (squad_id) VALUES (?)", (squad_id,))
+        c.execute(
+            "INSERT INTO squads (squad_id, display_name) VALUES (?, ?)",
+            (internal_id, name),
+        )
         conn.commit()
         conn.close()
-        squad = get_squad(squad_id)
 
-    conn = sqlite3.connect(DB_PATH)
-    row = conn.execute(
-        "SELECT display_name FROM squads WHERE squad_id = ?", (squad_id,)
-    ).fetchone()
-    conn.close()
-    if row and row[0] is None:
-        update_squad(squad_id, display_name=original_input)
-
-    session["squad_id"] = squad_id
-    return jsonify({"success": True, "squad": get_squad(squad_id)})
+    session["squad_id"] = internal_id
+    return jsonify({"success": True, "squad": get_squad(internal_id)})
 
 @app.route("/status")
 def status():
@@ -990,9 +994,10 @@ HTML_TEMPLATE = """
             <div class="text-center mb-8">
                 <i class="fa-solid fa-user-secret text-6xl text-amber-400 mb-4"></i>
                 <h1 class="text-3xl font-bold">你已從臍帶中斷裂</h1>
+                <p class="text-zinc-400 mt-2">請輸入你想顯示嘅名稱</p>
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
-                <input type="text" id="squad_id" placeholder="輸入名稱（例如 Saka 或 FRAG-01）" 
+                <input type="text" id="squad_id" placeholder="輸入你的名稱" 
                        class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl">
                 <button type="submit" 
                         class="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold py-4 rounded-2xl">
@@ -1234,7 +1239,7 @@ HTML_TEMPLATE = """
         function updateDashboard(squad) {
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
-            document.getElementById('squad-name').textContent = squad.squad_id;
+            document.getElementById('squad-name').textContent = squad.display_name || squad.squad_id;
             updateDisplayNameUI(squad.display_name || squad.squad_id);
 
             const routePicker = document.getElementById('route-picker');
@@ -1840,7 +1845,7 @@ GM_DASHBOARD_HTML = """
         <div class="flex justify-between items-center mb-8">
             <div>
                 <h1 class="text-3xl font-bold">GM Dashboard</h1>
-                <p class="text-zinc-400 text-sm mt-1">即時監控所有小隊狀態</p>
+                <p class="text-zinc-400 text-sm mt-1">即時監控所有玩家狀態</p>
             </div>
             <div class="flex items-center gap-x-3">
                 <div class="text-xs px-3 py-1.5 bg-zinc-800 rounded-2xl text-zinc-400 flex items-center gap-x-2">
@@ -1859,7 +1864,7 @@ GM_DASHBOARD_HTML = """
         <!-- Tab 切換 -->
         <div class="flex gap-x-2 mb-6 px-1">
             <button onclick="switchGMTab('squads')" id="tab-squads"
-                    class="gm-tab active px-6 py-2 rounded-2xl text-sm font-medium">小隊狀態</button>
+                    class="gm-tab active px-6 py-2 rounded-2xl text-sm font-medium">玩家狀態</button>
             <button onclick="switchGMTab('teams')" id="tab-teams"
                     class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">Team 管理</button>
         </div>
@@ -1867,14 +1872,14 @@ GM_DASHBOARD_HTML = """
         <div id="gm-squads-tab">
         <div class="bg-zinc-900 rounded-3xl p-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">所有小隊即時狀態</h2>
+                <h2 class="text-xl font-semibold">所有玩家即時狀態</h2>
                 <div class="text-xs text-zinc-500">最後更新：{{ last_update }}</div>
             </div>
             
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-zinc-700 text-left text-sm text-zinc-400">
-                        <th class="py-3 pl-2">Squad ID</th>
+                        <th class="py-3 pl-2">Player ID</th>
                         <th class="py-3">路線</th>
                         <th class="py-3">HP</th>
                         <th class="py-3">Sanity</th>
@@ -1887,7 +1892,7 @@ GM_DASHBOARD_HTML = """
                     <tr class="hover:bg-zinc-800/60">
                         <td class="py-4 pl-2 font-mono font-semibold text-amber-400">
                             <a href="/gm/squad/{{ squad.squad_id }}" class="hover:underline">
-                                {{ squad.squad_id }}
+                                {{ squad.display_name or squad.squad_id }}
                             </a>
                         </td>
                         <td class="py-4 text-sm">{{ squad.route_label }}</td>
@@ -1910,6 +1915,13 @@ GM_DASHBOARD_HTML = """
                         <td class="py-4 font-mono text-xs">{{ squad.power }}/{{ squad.intellect }}/{{ squad.resilience }}</td>
                         <td class="py-4">
                             <span class="px-3 py-1 bg-zinc-700 rounded-full text-xs">{{ squad.submission_count }} 次</span>
+                            
+                            {% if squad.submission_count > 0 %}
+                            <a href="/gm/squad/{{ squad.squad_id }}" 
+                               class="ml-3 px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-full">
+                                查看詳情
+                            </a>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
