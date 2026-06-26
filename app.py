@@ -1249,15 +1249,29 @@ HTML_TEMPLATE = """
                 <div class="w-9 h-9 bg-amber-500 rounded-2xl flex items-center justify-center">
                     <i class="fa-solid fa-link text-zinc-950"></i>
                 </div>
-                <div>
-                    <span class="title-font text-3xl font-bold">Oikonomia</span>
-                </div>
+                <span class="title-font text-3xl font-bold">Oikonomia</span>
             </div>
-            <div id="nav" class="hidden items-center gap-x-1 text-sm">
+
+            <div id="nav-desktop" class="hidden md:flex items-center gap-x-1 text-sm">
                 <button onclick="showSection('dashboard')" class="px-5 py-2 nav-btn">Dashboard</button>
                 <button onclick="showSection('explore')" class="px-5 py-2 nav-btn">探索</button>
                 <button onclick="showSection('team')" class="px-5 py-2 nav-btn">Team</button>
                 <button onclick="showSection('log')" class="px-5 py-2 nav-btn">日誌</button>
+            </div>
+
+            <button id="mobile-menu-btn" onclick="toggleMobileMenu()"
+                    class="hidden md:hidden text-2xl text-zinc-300 hover:text-white"
+                    style="display:none">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+
+        <div id="mobile-menu" class="hidden md:hidden fixed inset-0 bg-black/90 z-50 pt-20 px-6">
+            <div class="flex flex-col gap-y-2 text-lg">
+                <button onclick="showSection('dashboard'); toggleMobileMenu()" class="py-3 text-left">Dashboard</button>
+                <button onclick="showSection('explore'); toggleMobileMenu()" class="py-3 text-left">探索</button>
+                <button onclick="showSection('team'); toggleMobileMenu()" class="py-3 text-left">Team</button>
+                <button onclick="showSection('log'); toggleMobileMenu()" class="py-3 text-left">日誌</button>
             </div>
         </div>
 
@@ -1495,6 +1509,20 @@ HTML_TEMPLATE = """
             el.classList.toggle('hidden', !visible);
             el.style.display = visible ? '' : 'none';
         }
+
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            if (menu) menu.classList.toggle('hidden');
+        }
+
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('mobile-menu');
+            const btn = document.getElementById('mobile-menu-btn');
+            if (!menu || !btn || menu.classList.contains('hidden')) return;
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
 
         function showSection(id) {
             document.querySelectorAll('.section').forEach(s => setVisible(s, false));
@@ -1874,9 +1902,13 @@ HTML_TEMPLATE = """
             currentSquad = data.squad;
             setVisible(document.getElementById('login-screen'), false);
             setVisible(document.getElementById('game-content'), true);
-            const nav = document.getElementById('nav');
-            setVisible(nav, true);
-            nav.classList.add('flex');
+            const navDesktop = document.getElementById('nav-desktop');
+            if (navDesktop) navDesktop.className = 'hidden md:flex items-center gap-x-1 text-sm';
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenuBtn) {
+                mobileMenuBtn.classList.remove('hidden');
+                mobileMenuBtn.style.display = '';
+            }
 
             document.getElementById('squad-name').textContent =
                 currentSquad.display_name || currentSquad.squad_id;
@@ -2140,27 +2172,81 @@ HTML_TEMPLATE = """
 
         async function verifyCurrentLocation(locId) {
             if (!navigator.geolocation) {
-                alert('你的手機唔支援定位');
+                showLocationError("你的手機唔支援定位功能");
                 return;
             }
 
-            navigator.geolocation.getCurrentPosition(async (position) => {
-                const res = await fetch('/verify_gps', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        loc_id: locId,
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    })
-                });
-                const data = await res.json();
-                alert(data.message || (data.error ? '錯誤：' + data.error : '驗證失敗'));
-                if (data.success) closeModal(document.querySelector('.modal-overlay'));
-            }, () => {
-                alert('無法取得定位，請檢查權限');
-            });
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const res = await fetch('/verify_gps', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            loc_id: locId,
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        })
+                    });
+                    const data = await res.json();
+                    alert(data.message || (data.error ? '錯誤：' + data.error : '驗證失敗'));
+                    if (data.success) closeModal(document.querySelector('.modal-overlay'));
+                },
+                (error) => {
+                    let message = "無法取得定位";
+                    if (error.code === error.PERMISSION_DENIED) {
+                        message = "你已拒絕定位權限";
+                        showLocationPermissionGuide();
+                    } else if (error.code === error.POSITION_UNAVAILABLE) {
+                        message = "暫時無法取得定位";
+                    } else if (error.code === error.TIMEOUT) {
+                        message = "定位超時";
+                    }
+                    showLocationError(message);
+                }
+            );
+        }
+
+        function showLocationError(msg) {
+            alert(msg);
+        }
+
+        function showLocationPermissionGuide() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[100] px-4';
+
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+            modal.innerHTML = `
+                <div class="bg-zinc-900 w-full max-w-md rounded-3xl p-6 border border-zinc-700">
+                    <div class="text-xl font-bold mb-4">需要開啟定位權限</div>
+
+                    <div class="text-zinc-300 mb-6 leading-relaxed">
+                        請到手機設定開啟定位權限，先至可以用到探索功能。
+                    </div>
+
+                    <div class="space-y-3">
+                        ${isIOS ? `
+                            <div class="bg-zinc-800 p-4 rounded-2xl text-sm">
+                                <strong>iPhone / iPad：</strong><br>
+                                設定 → Oikonomia → 位置 → 選擇「使用 App 期間」或「永遠」
+                            </div>
+                        ` : `
+                            <div class="bg-zinc-800 p-4 rounded-2xl text-sm">
+                                <strong>Android：</strong><br>
+                                設定 → 應用程式 → Oikonomia → 權限 → 位置 → 允許
+                            </div>
+                        `}
+
+                        <button onclick="this.closest('.fixed').remove()"
+                                class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl">
+                            我已開啟，重新嘗試
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
         }
 
         async function submitPhotoWithFile(locId, file, modal) {
