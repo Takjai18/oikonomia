@@ -355,25 +355,22 @@ def available_teams():
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-
-    # 統一用 team_id 排序，同 GM 列表一致
     rows = conn.execute("SELECT * FROM teams ORDER BY team_id").fetchall()
 
     teams = []
     for row in rows:
-        if row["team_id"] == current_team_id:
-            continue
-
         member_count = conn.execute(
             "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
         ).fetchone()[0]
+
+        is_joined = row["team_id"] == current_team_id
 
         teams.append({
             "team_id": row["team_id"],
             "team_name": row["team_name"],
             "route": row["route"],
             "member_count": member_count,
-            "created_at": row["created_at"],
+            "is_joined": is_joined,
         })
 
     conn.close()
@@ -1044,20 +1041,6 @@ HTML_TEMPLATE = """
                         <p class="text-zinc-400">請選擇一個 Team 加入，或建立新隊</p>
                     </div>
 
-                    <!-- 可加入嘅 Team 列表 -->
-                    <div class="mb-6">
-                        <div class="flex items-center justify-between mb-3 px-1">
-                            <div class="font-semibold text-sm">現有 Team</div>
-                            <button onclick="loadAvailableTeams()" 
-                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
-                                <i class="fa-solid fa-sync text-xs"></i>
-                                <span>刷新列表</span>
-                            </button>
-                        </div>
-                        <div id="available-teams-list" class="space-y-2 max-h-[280px] overflow-auto pr-1">
-                        </div>
-                    </div>
-
                     <!-- 建立新隊 -->
                     <div class="border-t border-zinc-700 pt-5">
                         <div class="text-sm text-zinc-400 mb-2 px-1">或者建立新隊</div>
@@ -1090,6 +1073,19 @@ HTML_TEMPLATE = """
                         <button onclick="loadMyTeam()" class="text-xs px-3 py-1 bg-zinc-700 rounded-xl">刷新</button>
                     </div>
                     <div id="team-members-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+
+                <!-- 所有 Team 列表（同 GM 一致，永遠顯示） -->
+                <div class="cartoon-box p-5 mt-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="font-semibold text-sm">所有 Team</div>
+                        <button onclick="loadAvailableTeams()" 
+                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
+                            <i class="fa-solid fa-sync text-xs"></i>
+                            <span>刷新列表</span>
+                        </button>
+                    </div>
+                    <div id="available-teams-list" class="space-y-2 max-h-[280px] overflow-auto pr-1"></div>
                 </div>
             </div>
         </div>
@@ -1205,12 +1201,15 @@ HTML_TEMPLATE = """
                 if (!data.has_team) {
                     setVisible(noBox, true);
                     setVisible(hasBox, false);
+                } else {
+                    setVisible(noBox, false);
+                    setVisible(hasBox, true);
+                }
+
+                if (!data.has_team) {
                     loadAvailableTeams();
                     return;
                 }
-
-                setVisible(noBox, false);
-                setVisible(hasBox, true);
 
                 const team = data.team;
                 document.getElementById('my-team-name').textContent = team.team_name;
@@ -1247,10 +1246,12 @@ HTML_TEMPLATE = """
                         </div>`;
                     list.appendChild(el);
                 });
+                loadAvailableTeams();
             } catch (e) {
                 console.error('loadMyTeam failed', e);
                 setVisible(noBox, true);
                 setVisible(hasBox, false);
+                loadAvailableTeams();
             }
         }
 
@@ -1264,14 +1265,16 @@ HTML_TEMPLATE = """
                 const data = await res.json();
 
                 if (!data.teams || data.teams.length === 0) {
-                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇其他 Team</div>';
+                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇 Team</div>';
                     return;
                 }
 
                 container.innerHTML = '';
                 data.teams.forEach(team => {
+                    const joined = !!team.is_joined;
                     const el = document.createElement('div');
-                    el.className = 'flex items-center justify-between bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-2xl px-4 py-3 cursor-pointer';
+                    el.className = 'flex items-center justify-between bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3' +
+                        (joined ? '' : ' hover:bg-zinc-700 cursor-pointer');
                     el.innerHTML = `
                         <div>
                             <div class="font-mono text-emerald-400 text-sm">${team.team_id}</div>
@@ -1279,13 +1282,22 @@ HTML_TEMPLATE = """
                         </div>
                         <div class="text-right">
                             <div class="text-xs text-zinc-400">${team.member_count} 人</div>
-                            <button class="mt-1 px-4 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 font-medium rounded-xl">加入</button>
+                            <button class="mt-1 px-4 py-1 text-xs font-medium rounded-xl ${
+                                joined
+                                    ? 'bg-zinc-600 text-zinc-400 cursor-default'
+                                    : 'bg-amber-500 hover:bg-amber-600 text-zinc-950'
+                            }">${joined ? '已加入' : '加入'}</button>
                         </div>
                     `;
-                    el.querySelector('button').onclick = (e) => {
-                        e.stopImmediatePropagation();
-                        joinTeamDirectly(team.team_id);
-                    };
+                    const btn = el.querySelector('button');
+                    if (!joined) {
+                        btn.onclick = (e) => {
+                            e.stopImmediatePropagation();
+                            joinTeamDirectly(team.team_id);
+                        };
+                    } else {
+                        btn.disabled = true;
+                    }
                     container.appendChild(el);
                 });
             } catch (e) {
