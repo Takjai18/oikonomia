@@ -394,6 +394,32 @@ def set_pin():
 
     return jsonify({"success": True, "message": "PIN 設定成功"})
 
+@app.route("/my_submissions")
+def my_submissions():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT task_id, content, photo_path, timestamp
+        FROM submissions
+        WHERE squad_id = ?
+        ORDER BY timestamp DESC
+    """, (session["squad_id"],)).fetchall()
+    conn.close()
+
+    submissions = []
+    for row in rows:
+        submissions.append({
+            "task_id": row["task_id"],
+            "content": row["content"],
+            "photo_path": row["photo_path"],
+            "timestamp": row["timestamp"],
+        })
+
+    return jsonify({"submissions": submissions})
+
 @app.route("/status")
 def status():
     if "squad_id" not in session:
@@ -1067,6 +1093,7 @@ HTML_TEMPLATE = """
                 <button onclick="showSection('dashboard')" class="px-5 py-2 nav-btn">Dashboard</button>
                 <button onclick="showSection('explore')" class="px-5 py-2 nav-btn">探索</button>
                 <button onclick="showSection('team')" class="px-5 py-2 nav-btn">Team</button>
+                <button onclick="showSection('log')" class="px-5 py-2 nav-btn">日誌</button>
             </div>
         </div>
 
@@ -1195,6 +1222,36 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
+            <!-- ==================== 日誌頁面 ==================== -->
+            <div id="log" class="section hidden">
+                <div class="mb-8">
+                    <div class="text-sm text-amber-400">LOG</div>
+                    <div class="text-3xl font-semibold">故事與任務記錄</div>
+                </div>
+
+                <div class="cartoon-box p-6 mb-8">
+                    <h3 class="font-bold text-xl mb-4 flex items-center gap-x-2">
+                        <i class="fa-solid fa-book text-amber-400"></i>
+                        <span>故事進度</span>
+                    </h3>
+                    <div id="story-log-content"></div>
+                </div>
+
+                <div class="cartoon-box p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2">
+                            <i class="fa-solid fa-tasks text-amber-400"></i>
+                            <span>任務記錄</span>
+                        </h3>
+                        <button onclick="loadMySubmissions()"
+                                class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                            刷新記錄
+                        </button>
+                    </div>
+                    <div id="submission-list" class="space-y-4"></div>
+                </div>
+            </div>
+
             <!-- Explore -->
             <div id="explore" class="section hidden">
                 <h2 class="text-2xl font-semibold mb-4">探索地點</h2>
@@ -1280,6 +1337,85 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
             if (id === 'team') loadMyTeam();
+            if (id === 'log') {
+                loadStoryLog();
+                loadMySubmissions();
+            }
+        }
+
+        function loadStoryLog() {
+            const container = document.getElementById('story-log-content');
+            const route = currentSquad?.route;
+
+            let html = '';
+
+            if (!route) {
+                html = `<div class="text-zinc-400">你尚未選擇路線，故事尚未展開。</div>`;
+            } else if (route === 'iggy') {
+                html = `
+                    <div class="text-red-300 font-medium mb-2">🔥 Iggy 路線 - 目前進度</div>
+                    <div class="text-zinc-300 leading-relaxed">
+                        你選擇了與 Iggy 一同面對內心嘅界線與痛楚。<br>
+                        目前你正處於「裂縫起點」，Iggy 嘅第一段記憶正喺度等待被找回。<br>
+                        <span class="text-xs text-red-400">（劇情會隨任務推進而更新）</span>
+                    </div>
+                `;
+            } else if (route === 'marah') {
+                html = `
+                    <div class="text-blue-300 font-medium mb-2">🌊 Marah 路線 - 目前進度</div>
+                    <div class="text-zinc-300 leading-relaxed">
+                        你選擇了 Marah 路線，透過智慧與韌性去面對界線。<br>
+                        目前你正處於探索階段，Judas 嘅低語正喺度等待被破解。<br>
+                        <span class="text-xs text-blue-400">（劇情會隨任務推進而更新）</span>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function loadMySubmissions() {
+            const container = document.getElementById('submission-list');
+            container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
+
+            try {
+                const res = await fetch('/my_submissions', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!data.submissions || data.submissions.length === 0) {
+                    container.innerHTML = `<div class="text-zinc-400 py-6 text-center">你尚未提交任何任務。</div>`;
+                    return;
+                }
+
+                container.innerHTML = '';
+                data.submissions.forEach(sub => {
+                    const el = document.createElement('div');
+                    el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-5';
+                    el.innerHTML = `
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="font-mono text-amber-400">${sub.task_id}</span>
+                            </div>
+                            <div class="text-xs text-zinc-400">${sub.timestamp}</div>
+                        </div>
+
+                        ${sub.content ? `<div class="text-zinc-300 mb-3">${sub.content}</div>` : ''}
+
+                        ${sub.photo_path ? `
+                            <div class="mt-2">
+                                <img src="/${sub.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
+                            </div>
+                        ` : ''}
+
+                        <div class="mt-3 text-xs text-emerald-400">
+                            <i class="fa-solid fa-check-circle mr-1"></i> 已提交（+6 Sanity / +1 Resource）
+                        </div>
+                    `;
+                    container.appendChild(el);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+            }
         }
 
         function closeModal(el) {
