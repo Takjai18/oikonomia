@@ -638,6 +638,33 @@ def create_player_team():
     update_squad(session["squad_id"], team_id=team_id, is_team_leader=1)
     return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
 
+@app.route("/team/update_name", methods=["POST"])
+def team_update_name():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    new_name = request.form.get("team_name", "").strip()
+    if not new_name:
+        return jsonify({"success": False, "error": "隊名不能為空"}), 400
+    if len(new_name) > 30:
+        return jsonify({"success": False, "error": "隊名最長 30 個字"}), 400
+
+    squad = get_squad(session["squad_id"])
+    if not squad or squad.get("is_team_leader") != 1:
+        return jsonify({"success": False, "error": "只有隊長可以改隊名"}), 403
+
+    team_id = squad.get("team_id")
+    if not team_id:
+        return jsonify({"success": False, "error": "你未有隊伍"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE teams SET team_name = ? WHERE team_id = ?", (new_name, team_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "team_name": new_name})
+
 @app.route("/set_team_route_by_leader", methods=["POST"])
 def set_team_route_by_leader():
     if "squad_id" not in session:
@@ -1709,6 +1736,27 @@ HTML_TEMPLATE = """
             }
         }
 
+        async function editTeamName(teamId, currentName) {
+            const newName = prompt('輸入新隊名（最多 30 字）', currentName);
+            if (!newName || newName.trim() === currentName) return;
+
+            const res = await fetch('/team/update_name', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({ team_name: newName.trim() })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                document.getElementById('my-team-name').textContent = data.team_name;
+                loadAvailableTeams();
+                alert('隊名已更新！');
+            } else {
+                alert(data.error || '更新失敗');
+            }
+        }
+
         function updateDashboard(squad) {
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
@@ -1806,8 +1854,36 @@ HTML_TEMPLATE = """
                 }
 
                 const team = data.team;
-                document.getElementById('my-team-name').textContent = team.team_name;
-                document.getElementById('my-team-id').textContent = team.team_id;
+                const isLeader = currentSquad && currentSquad.is_team_leader === 1;
+                const safeTeamName = (team.team_name || '').replace(/'/g, "\\'");
+
+                let teamNameHTML = `
+                    <div class="flex items-center gap-x-2">
+                        <div id="my-team-name" class="text-2xl font-bold">${team.team_name}</div>
+                `;
+
+                if (isLeader) {
+                    teamNameHTML += `
+                        <button onclick="editTeamName('${team.team_id}', '${safeTeamName}')"
+                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
+                            <i class="fa-solid fa-edit"></i>
+                            <span>改名</span>
+                        </button>
+                    `;
+                }
+
+                teamNameHTML += `</div>`;
+
+                document.querySelector('#has-team-box .cartoon-box').innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-xs text-emerald-400">TEAM NAME</div>
+                            ${teamNameHTML}
+                            <div id="my-team-id" class="font-mono text-xs text-zinc-500">${team.team_id}</div>
+                        </div>
+                        <div id="my-team-route-badge"></div>
+                    </div>
+                `;
 
                 const routeBadge = document.getElementById('my-team-route-badge');
                 if (team.route === 'iggy') {
