@@ -1490,4 +1490,6 @@ GM_SQUAD_DETAIL_HTML = """
 """
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    port = int(os.environ.get("PORT", 5001))
+    debug = os.environ.get("FLASK_DEBUG", "1").lower() in ("1", "true", "yes")
+    app.run(host="0.0.0.0", port=port, debug=debug)
