@@ -42,7 +42,14 @@ def init_db():
         intellect INTEGER DEFAULT 100,
         resilience INTEGER DEFAULT 100,
         route TEXT,
-        protagonist_stats TEXT
+        protagonist_stats TEXT,
+        team_id TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS teams (
+        team_id TEXT PRIMARY KEY,
+        team_name TEXT NOT NULL,
+        route TEXT,
+        created_at TEXT
     )''')
     c.execute('''CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,6 +74,7 @@ def migrate_db():
         "resilience": "INTEGER DEFAULT 100",
         "route": "TEXT",
         "protagonist_stats": "TEXT",
+        "team_id": "TEXT",
     }
     for col, typedef in additions.items():
         if col not in cols:
@@ -130,6 +138,7 @@ def row_to_squad(row):
         "resources": d.get("resources", 0),
         "zoo_skills": json.loads(d["zoo_skills"]) if d.get("zoo_skills") else [],
         "route": d.get("route"),
+        "team_id": d.get("team_id"),
         "protagonist": protagonist,
     }
 
@@ -148,7 +157,7 @@ def get_all_squads():
     return [row_to_squad(r) for r in rows]
 
 def update_squad(squad_id, **kwargs):
-    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats"}
+    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id"}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     updates = []
@@ -164,6 +173,55 @@ def update_squad(squad_id, **kwargs):
         c.execute(f"UPDATE squads SET {', '.join(updates)} WHERE squad_id = ?", params)
         conn.commit()
     conn.close()
+
+def get_next_team_id():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT team_id FROM teams ORDER BY team_id DESC LIMIT 1")
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return "TEAM-01"
+    num = int(row[0].split("-")[1]) + 1
+    return f"TEAM-{num:02d}"
+
+def get_team_by_id(team_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM teams WHERE team_id = ?", (team_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    member_count = conn.execute(
+        "SELECT COUNT(*) FROM squads WHERE team_id = ?", (team_id,)
+    ).fetchone()[0]
+    conn.close()
+    return {
+        "team_id": row["team_id"],
+        "team_name": row["team_name"],
+        "route": row["route"],
+        "created_at": row["created_at"],
+        "member_count": member_count,
+    }
+
+def get_all_teams_with_stats():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM teams ORDER BY team_id").fetchall()
+    teams = []
+    for row in rows:
+        member_count = conn.execute(
+            "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
+        ).fetchone()[0]
+        teams.append({
+            "team_id": row["team_id"],
+            "team_name": row["team_name"],
+            "route": row["route"],
+            "created_at": row["created_at"],
+            "member_count": member_count,
+        })
+    conn.close()
+    return teams
 
 # ==================== Routes ====================
 @app.route("/")
@@ -199,6 +257,18 @@ def get_team():
     if "squad_id" not in session:
         return jsonify({"error": "未登入"}), 401
     return jsonify({"members": get_all_squads()})
+
+@app.route("/my_team")
+def my_team():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+    squad = get_squad(session["squad_id"])
+    if not squad or not squad.get("team_id"):
+        return jsonify({"has_team": False})
+    team = get_team_by_id(squad["team_id"])
+    if not team:
+        return jsonify({"has_team": False})
+    return jsonify({"has_team": True, "team": team})
 
 @app.route("/set_route", methods=["POST"])
 def set_route():
@@ -431,7 +501,7 @@ def gm_reset_game():
     c.execute("""
         UPDATE squads 
         SET hp = 100, sanity = 50, power = 100, intellect = 100, resilience = 100,
-            resources = 0, zoo_skills = '[]', route = NULL, protagonist_stats = ?
+            resources = 0, zoo_skills = '[]', route = NULL, team_id = NULL, protagonist_stats = ?
     """, (json.dumps(DEFAULT_PROTAGONIST),))
 
     conn.commit()
@@ -469,6 +539,75 @@ def gm_send_announcement():
     })
 
     return jsonify({"success": True, "message": "公告已發送"})
+
+@app.route("/gm/teams")
+def gm_teams():
+    if not session.get("is_gm"):
+        return jsonify({"error": "未授權"}), 403
+    return jsonify({"teams": get_all_teams_with_stats()})
+
+@app.route("/gm/create_team", methods=["POST"])
+def gm_create_team():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    team_name = request.form.get("team_name", "").strip() or "新小隊"
+    team_id = get_next_team_id()
+    created_at = datetime.now().isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
+        (team_id, team_name, None, created_at),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
+
+@app.route("/gm/assign_squad", methods=["POST"])
+def gm_assign_squad():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    squad_id = request.form.get("squad_id", "").strip().upper()
+    team_id = request.form.get("team_id", "").strip().upper()
+
+    if not squad_id.startswith("FRAG-"):
+        return jsonify({"success": False, "error": "Squad ID 格式錯誤"}), 400
+    if not get_team_by_id(team_id):
+        return jsonify({"success": False, "error": "Team 不存在"}), 400
+
+    squad = get_squad(squad_id)
+    if not squad:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO squads (squad_id) VALUES (?)", (squad_id,))
+        conn.commit()
+        conn.close()
+
+    update_squad(squad_id, team_id=team_id)
+    return jsonify({"success": True})
+
+@app.route("/gm/set_team_route", methods=["POST"])
+def gm_set_team_route():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    team_id = request.form.get("team_id", "").strip().upper()
+    route = request.form.get("route", "").strip().lower()
+
+    if route not in ("iggy", "marah"):
+        return jsonify({"success": False, "error": "路線必須是 iggy 或 marah"}), 400
+    if not get_team_by_id(team_id):
+        return jsonify({"success": False, "error": "Team 不存在"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE teams SET route = ? WHERE team_id = ?", (route, team_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 @app.route("/announcements")
 def get_announcements():
@@ -795,6 +934,19 @@ HTML_TEMPLATE = """
             updateDashboard(currentSquad);
             showSection('dashboard');
             loadAnnouncements();
+
+            // Phase 2: 登入後自動檢查 Team 狀態
+            try {
+                const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
+                const teamData = await teamRes.json();
+                if (!teamData.has_team) {
+                    setTimeout(() => {
+                        if (confirm('你尚未加入任何 Team。\n是否立即建立或加入一個 Team？')) {
+                            showSection('team');
+                        }
+                    }, 1200);
+                }
+            } catch(e) {}
         }
 
         let showAllAnnouncements = false;
@@ -1223,6 +1375,34 @@ GM_DASHBOARD_HTML = """
             </div>
         </div>
 
+        <!-- Team 管理 (Phase 2 新增) -->
+        <div class="bg-zinc-900 rounded-3xl p-6 mt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold">Team 管理</h2>
+                <button onclick="loadGMTeams()" 
+                        class="px-4 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm flex items-center gap-x-2">
+                    <i class="fa-solid fa-sync"></i>
+                    <span>刷新</span>
+                </button>
+            </div>
+
+            <!-- Create Team -->
+            <div class="bg-zinc-800 rounded-2xl p-5 mb-4">
+                <div class="font-medium mb-3">建立新 Team</div>
+                <div class="flex gap-x-3">
+                    <input type="text" id="new-team-name" placeholder="Team 名稱（例如：界線守護者）" 
+                           class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                    <button onclick="gmCreateTeam()" 
+                            class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-2xl text-sm font-medium">
+                        建立
+                    </button>
+                </div>
+            </div>
+
+            <!-- Teams List -->
+            <div id="gm-teams-list" class="space-y-4"></div>
+        </div>
+
         <script>
         function sendAnnouncement() {
             const message = document.getElementById('announcement-input').value.trim();
@@ -1271,11 +1451,125 @@ GM_DASHBOARD_HTML = """
                 }
             });
         }
+
+        // ==================== Team 管理 JS (Phase 2) ====================
+        async function loadGMTeams() {
+            const container = document.getElementById('gm-teams-list');
+            container.innerHTML = '<div class="text-zinc-400 text-center py-4">載入中...</div>';
+            
+            const res = await fetch('/gm/teams');
+            const data = await res.json();
+            
+            if (!data.teams || data.teams.length === 0) {
+                container.innerHTML = '<div class="text-zinc-400 text-center py-8">尚未有任何 Team</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            data.teams.forEach(team => {
+                const div = document.createElement('div');
+                div.className = 'bg-zinc-800 rounded-2xl p-5 border border-zinc-700';
+                div.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <div class="font-mono font-bold text-emerald-400">${team.team_id}</div>
+                            <div class="text-lg font-semibold">${team.team_name}</div>
+                            <div class="text-xs text-zinc-400 mt-0.5">${team.member_count} 位成員</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs px-3 py-1 rounded-full ${team.route === 'iggy' ? 'bg-red-900/50 text-red-400' : team.route === 'marah' ? 'bg-blue-900/50 text-blue-400' : 'bg-zinc-700 text-zinc-400'}">
+                                ${team.route === 'iggy' ? '🔥 Iggy 線' : team.route === 'marah' ? '🌊 Marah 線' : '未設定路線'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        <button onclick="gmAssignSquadPrompt('${team.team_id}')" 
+                                class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 rounded-xl">分配成員</button>
+                        <button onclick="gmSetRoutePrompt('${team.team_id}', '${team.route}')" 
+                                class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 rounded-xl">設定路線</button>
+                        <button onclick="gmViewTeamMembers('${team.team_id}', '${team.team_name}')" 
+                                class="px-3 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-xl">查看成員</button>
+                    </div>
+                    
+                    <div class="text-xs text-zinc-500">建立於 ${team.created_at ? team.created_at.substring(0,16) : 'N/A'}</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function gmCreateTeam() {
+            const nameInput = document.getElementById('new-team-name');
+            const name = nameInput.value.trim() || '新小隊';
+            
+            const res = await fetch('/gm/create_team', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({team_name: name})
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                alert(`Team ${data.team_id} 已建立`);
+                nameInput.value = '';
+                loadGMTeams();
+            } else {
+                alert('建立失敗');
+            }
+        }
+
+        function gmAssignSquadPrompt(teamId) {
+            const squadId = prompt('請輸入要分配的 Squad ID (例如 FRAG-01)：');
+            if (!squadId) return;
+            
+            fetch('/gm/assign_squad', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({squad_id: squadId.toUpperCase(), team_id: teamId})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('分配成功');
+                    loadGMTeams();
+                } else {
+                    alert(data.error || '分配失敗');
+                }
+            });
+        }
+
+        function gmSetRoutePrompt(teamId, currentRoute) {
+            const route = prompt(`請輸入路線 (iggy 或 marah)\n目前：${currentRoute || '未設定'}`);
+            if (!route) return;
+            
+            fetch('/gm/set_team_route', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({team_id: teamId, route: route.toLowerCase()})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('路線已更新');
+                    loadGMTeams();
+                } else {
+                    alert(data.error || '設定失敗');
+                }
+            });
+        }
+
+        async function gmViewTeamMembers(teamId, teamName) {
+            alert(`${teamName} (${teamId})\n\n（完整成員列表將在下一版以 Modal 顯示）`);
+        }
+
+        // 自動載入 Team 列表
+        setTimeout(() => {
+            const teamsContainer = document.getElementById('gm-teams-list');
+            if (teamsContainer) {
+                loadGMTeams();
+            }
+        }, 800);
         </script>
-        
-        <div class="mt-4 text-xs text-zinc-500 px-1">
-            提示：之後會加入手動調整、查看提交記錄、Global Event 等功能。
-        </div>
 
         <!-- Danger Zone -->
         <div class="mt-8 border border-red-500/30 rounded-3xl p-6">
