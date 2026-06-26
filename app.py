@@ -244,16 +244,26 @@ def get_next_team_id():
     return f"TEAM-{num:02d}"
 
 def get_team_by_id(team_id):
+    if not team_id:
+        return None
+
+    clean_id = team_id.strip().upper()
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM teams WHERE team_id = ?", (team_id,)).fetchone()
+    row = conn.execute(
+        "SELECT * FROM teams WHERE team_id = ?", (clean_id,)
+    ).fetchone()
+
     if not row:
         conn.close()
         return None
+
     member_count = conn.execute(
-        "SELECT COUNT(*) FROM squads WHERE team_id = ?", (team_id,)
+        "SELECT COUNT(*) FROM squads WHERE team_id = ?", (clean_id,)
     ).fetchone()[0]
     conn.close()
+
     return {
         "team_id": row["team_id"],
         "team_name": row["team_name"],
@@ -340,18 +350,21 @@ def join_team():
     if "squad_id" not in session:
         return jsonify({"success": False, "error": "未登入"}), 401
 
-    team_id = request.form.get("team_id", "").strip().upper()
+    team_id = request.form.get("team_id", "").strip()
     if not team_id:
         return jsonify({"success": False, "error": "請輸入 Team Code"}), 400
-    if not get_team_by_id(team_id):
+
+    team = get_team_by_id(team_id)
+    if not team:
+        print(f"[DEBUG] Join failed - team_id input: '{team_id}' not found in DB")
         return jsonify({"success": False, "error": "Team 不存在"}), 400
 
     squad = get_squad(session["squad_id"])
     if squad.get("team_id"):
         return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
 
-    update_squad(session["squad_id"], team_id=team_id, is_team_leader=0)
-    return jsonify({"success": True, "team": get_team_by_id(team_id)})
+    update_squad(session["squad_id"], team_id=team["team_id"], is_team_leader=0)
+    return jsonify({"success": True, "team": team})
 
 @app.route("/team/create", methods=["POST"])
 def create_player_team():
