@@ -3687,4 +3687,14 @@ GM_SQUAD_DETAIL_HTML = """
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     debug = os.environ.get("FLASK_DEBUG", "1").lower() in ("1", "true", "yes")
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    print(f"\n  Oikonomia 本地伺服器")
+    print(f"  ➜  http://localhost:{port}")
+    print(f"  （注意：macOS 嘅 5000 port 通常被系統佔用，請用 {port}）\n")
+    try:
+        app.run(host="0.0.0.0", port=port, debug=debug)
+    except OSError as e:
+        if "Address already in use" in str(e):
+            print(f"\n  ❌ Port {port} 已被佔用。請執行：")
+            print(f"     lsof -ti:{port} | xargs kill -9")
+            print(f"  或者用其他 port：PORT=5002 python3 app.py\n")
+        raise
