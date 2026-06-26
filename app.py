@@ -172,8 +172,10 @@ def row_to_squad(row):
             protagonist = json.loads(d["protagonist_stats"])
         except (json.JSONDecodeError, TypeError):
             pass
+
     return {
         "squad_id": d["squad_id"],
+        "display_name": d.get("display_name") or d["squad_id"],
         "sanity": d.get("sanity", 50),
         "hp": d.get("hp", 100),
         "power": d.get("power", 100),
@@ -183,37 +185,37 @@ def row_to_squad(row):
         "zoo_skills": json.loads(d["zoo_skills"]) if d.get("zoo_skills") else [],
         "route": d.get("route"),
         "team_id": d.get("team_id"),
-        "display_name": d.get("display_name") or d["squad_id"],
-        "protagonist": protagonist,
         "is_team_leader": 1 if d.get("is_team_leader") else 0,
+        "protagonist": protagonist,
     }
-
-def enrich_squad(squad):
-    if not squad:
-        return squad
-    squad = dict(squad)
-    squad["is_team_leader"] = 0
-    team_id = squad.get("team_id")
-    if team_id:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (team_id,)
-        ).fetchone()
-        conn.close()
-        if row:
-            if row["route"]:
-                squad["route"] = row["route"]
-            if row["leader_squad_id"] == squad["squad_id"]:
-                squad["is_team_leader"] = 1
-    return squad
 
 def get_squad(squad_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
     conn.close()
-    return enrich_squad(row_to_squad(row)) if row else None
+
+    if not row:
+        return None
+
+    squad = row_to_squad(row)
+
+    if squad.get("team_id"):
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        team_row = conn.execute(
+            "SELECT route, leader_squad_id FROM teams WHERE team_id = ?",
+            (squad["team_id"],),
+        ).fetchone()
+        conn.close()
+
+        if team_row:
+            if team_row["route"]:
+                squad["route"] = team_row["route"]
+            if team_row["leader_squad_id"] == squad["squad_id"]:
+                squad["is_team_leader"] = 1
+
+    return squad
 
 def get_all_squads():
     conn = sqlite3.connect(DB_PATH)
