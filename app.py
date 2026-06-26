@@ -535,6 +535,22 @@ def submit_task():
     task_id = request.form.get("task_id", "unknown")
     content = request.form.get("content", "")
 
+    squad = get_squad(session["squad_id"])
+    team_id = squad.get("team_id")
+
+    if not team_id:
+        return jsonify({"error": "你未加入任何 Team，無法提交任務"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT id FROM submissions
+        WHERE task_id = ? AND squad_id IN (
+            SELECT squad_id FROM squads WHERE team_id = ?
+        )
+    """, (task_id, team_id))
+    already_submitted = c.fetchone()
+
     photo_path = None
     if "photo" in request.files:
         photo = request.files["photo"]
@@ -543,21 +559,26 @@ def submit_task():
             photo_path = os.path.join(UPLOAD_FOLDER, filename)
             photo.save(photo_path)
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     c.execute("""INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
                  VALUES (?, ?, ?, ?, ?)""",
               (session["squad_id"], task_id, content, photo_path, datetime.now().isoformat()))
     conn.commit()
-    conn.close()
 
-    # 簡單獎勵
-    squad = get_squad(session["squad_id"])
-    new_sanity = min(100, squad["sanity"] + 6)
-    new_resources = squad["resources"] + 1
-    update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
-
-    return jsonify({"success": True, "message": "任務提交成功！+6 Sanity +1 Resource"})
+    if not already_submitted:
+        new_sanity = min(100, squad["sanity"] + 6)
+        new_resources = squad["resources"] + 1
+        update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
+        conn.close()
+        return jsonify({
+            "success": True,
+            "message": "任務提交成功！+6 Sanity +1 Resource（第一次提交）"
+        })
+    else:
+        conn.close()
+        return jsonify({
+            "success": True,
+            "message": "提交已記錄，但呢個任務已經計過分（只計一次）"
+        })
 
 @app.route("/update_display_name", methods=["POST"])
 def update_display_name():
@@ -1864,7 +1885,11 @@ GM_DASHBOARD_HTML = """
                 <tbody class="divide-y divide-zinc-800">
                     {% for squad in squads %}
                     <tr class="hover:bg-zinc-800/60">
-                        <td class="py-4 pl-2 font-mono font-semibold text-amber-400">{{ squad.squad_id }}</td>
+                        <td class="py-4 pl-2 font-mono font-semibold text-amber-400">
+                            <a href="/gm/squad/{{ squad.squad_id }}" class="hover:underline">
+                                {{ squad.squad_id }}
+                            </a>
+                        </td>
                         <td class="py-4 text-sm">{{ squad.route_label }}</td>
                         <td class="py-4">
                             <div class="flex items-center gap-x-3">
@@ -1885,13 +1910,6 @@ GM_DASHBOARD_HTML = """
                         <td class="py-4 font-mono text-xs">{{ squad.power }}/{{ squad.intellect }}/{{ squad.resilience }}</td>
                         <td class="py-4">
                             <span class="px-3 py-1 bg-zinc-700 rounded-full text-xs">{{ squad.submission_count }} 次</span>
-                            
-                            {% if squad.submission_count > 0 %}
-                            <a href="/gm/squad/{{ squad.squad_id }}" 
-                               class="ml-3 px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-full">
-                                查看詳情
-                            </a>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -2379,8 +2397,9 @@ GM_SQUAD_DETAIL_HTML = """
         </div>
 
         <div class="bg-zinc-900 rounded-3xl p-6 mb-8">
-            <h2 class="text-lg font-semibold mb-4">小隊目前狀態</h2>
+            <h2 class="text-lg font-semibold mb-4">玩家目前狀態</h2>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>顯示名稱: <span class="font-mono text-amber-400">{{ squad.display_name or squad.squad_id }}</span></div>
                 <div>路線: <span class="font-mono text-amber-400">{{ squad.route_label }}</span></div>
                 <div>HP: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
                 <div>Sanity: <span class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
@@ -2388,7 +2407,7 @@ GM_SQUAD_DETAIL_HTML = """
                 <div>Intellect: <span class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
                 <div>Resilience: <span class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
                 <div>Resource: <span class="font-mono">{{ squad.resources }}</span></div>
-                <div>Zoo 能力: <span class="font-mono">{{ squad.zoo_count }} 個</span></div>
+                <div>所屬 Team: <span class="font-mono text-emerald-400">{{ squad.team_id or '未加入' }}</span></div>
             </div>
         </div>
 
