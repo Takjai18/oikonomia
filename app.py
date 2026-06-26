@@ -788,11 +788,15 @@ def gm_assign_squad():
     if not session.get("is_gm"):
         return jsonify({"success": False, "error": "未授權"}), 403
 
-    squad_id = request.form.get("squad_id", "").strip().upper()
+    squad_id = request.form.get("squad_id", "").strip()
     new_team_id = request.form.get("team_id", "").strip().upper()
 
-    if not squad_id.startswith("FRAG-"):
-        return jsonify({"success": False, "error": "Squad ID 格式錯誤"}), 400
+    if not squad_id:
+        return jsonify({"success": False, "error": "請輸入玩家 ID"}), 400
+    if not squad_id.upper().startswith("FRAG-"):
+        squad_id = squad_id.upper().replace(" ", "_")[:15]
+    else:
+        squad_id = squad_id.upper()
 
     new_team = get_team_by_id(new_team_id)
     if not new_team:
@@ -812,9 +816,10 @@ def gm_assign_squad():
     is_leader = 0
     update_squad(squad_id, team_id=new_team_id, is_team_leader=is_leader)
 
-    message = f"已將 {squad_id} 分配到 {new_team['team_name']}"
+    label = squad.get("display_name") or squad_id
+    message = f"已將 {label} 分配到 {new_team['team_name']}"
     if old_team_name:
-        message = f"已將 {squad_id} 從「{old_team_name}」轉到「{new_team['team_name']}」"
+        message = f"已將 {label} 從「{old_team_name}」轉到「{new_team['team_name']}」"
 
     return jsonify({
         "success": True,
@@ -1054,12 +1059,12 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <div class="cartoon-box p-5 mt-6">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="font-semibold">你的顯示名稱</div>
+                <div class="cartoon-box p-5 mt-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="font-semibold text-sm">你的顯示名稱</div>
                         <button onclick="editDisplayName()" class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">修改</button>
                     </div>
-                    <div id="display-name-display" class="text-xl font-bold text-amber-400"></div>
+                    <div id="display-name-display" class="text-2xl font-bold text-amber-400"></div>
                 </div>
 
                 <!-- Zoo Skills -->
@@ -1188,12 +1193,12 @@ HTML_TEMPLATE = """
         async function editDisplayName() {
             const current = currentSquad.display_name || currentSquad.squad_id;
             const newName = prompt('輸入新顯示名稱（最多 20 字）', current);
-            if (!newName || newName === current) return;
+            if (!newName || newName.trim() === current) return;
 
             const res = await fetch('/update_display_name', {
                 method: 'POST',
                 credentials: 'same-origin',
-                body: new URLSearchParams({display_name: newName})
+                body: new URLSearchParams({display_name: newName.trim()})
             });
             const data = await res.json();
             if (data.success) {
@@ -2060,6 +2065,9 @@ GM_DASHBOARD_HTML = """
             
             container.innerHTML = '';
             
+            // 統一排序（同玩家一樣）
+            data.teams.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            
             for (const team of data.teams) {
                 const div = document.createElement('div');
                 div.className = 'bg-zinc-800 rounded-2xl p-5 border border-zinc-700';
@@ -2086,7 +2094,7 @@ GM_DASHBOARD_HTML = """
                     <div class="flex flex-wrap gap-2 mb-3">
                         <button onclick="gmAssignSquadToTeam('${team.team_id}')" 
                                 class="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 rounded-xl flex items-center gap-x-1">
-                            <i class="fa-solid fa-right-left"></i>
+                            <i class="fa-solid fa-exchange-alt"></i>
                             <span>轉隊 / 分配</span>
                         </button>
                         <button onclick="gmSetRoutePrompt('${team.team_id}')" 
@@ -2188,29 +2196,26 @@ GM_DASHBOARD_HTML = """
         }
 
         function gmAssignSquadToTeam(teamId) {
-            const squadId = prompt('請輸入要分配/轉隊嘅玩家 ID（例如 FRAG-01）：');
+            const squadId = prompt('請輸入要分配/轉隊嘅玩家 ID（例如 FRAG-01 或 Saka）：');
             if (!squadId) return;
 
-            fetch('/gm/teams')
-                .then(() => {
-                    fetch('/gm/assign_squad', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: new URLSearchParams({
-                            squad_id: squadId.toUpperCase(),
-                            team_id: teamId
-                        })
-                    })
-                    .then(r => r.json())
-                    .then(d => {
-                        if (d.success) {
-                            alert(d.message || '操作成功');
-                            loadGMTeams();
-                        } else {
-                            alert(d.error || '操作失敗');
-                        }
-                    });
-                });
+            fetch('/gm/assign_squad', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({
+                    squad_id: squadId.trim(),
+                    team_id: teamId
+                })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    alert(d.message || '操作成功');
+                    loadGMTeams();
+                } else {
+                    alert(d.error || '操作失敗');
+                }
+            });
         }
 
         function gmSetRoutePrompt(teamId) {
