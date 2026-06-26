@@ -22,5 +22,18 @@ python3 app.py
 
 （macOS 預設 5000 port 常被系統佔用，所以本地用 5001）
 
-## 部署（之後）
-會部署到 Render.com，方便大家用網上連結玩。
+## 正式環境（PythonAnywhere）
+
+| 用途 | 網址 |
+|------|------|
+| 玩家端 | https://takjai.pythonanywhere.com |
+| GM 後台 | https://takjai.pythonanywhere.com/gm |
+| GM PIN | `gm2026` |
+
+每次 GitHub 有更新後，在 PythonAnywhere **Bash** 執行：
+
+```bash
+bash ~/oikonomia/deploy/pa-update.sh
+```
+
+然後到 **Web** tab 按 **Reload**。
