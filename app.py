@@ -1347,19 +1347,42 @@ HTML_TEMPLATE = """
                 } else {
                 members.forEach(m => {
                     const isYou = currentSquad && m.squad_id === currentSquad.squad_id;
-                    const displayName = m.display_name || m.squad_id;
                     const el = document.createElement('div');
                     el.className = 'cartoon-box p-4' + (isYou ? ' ring-2 ring-amber-500/50' : '');
+
+                    const displayName = m.display_name || m.squad_id;
+
                     el.innerHTML = `
-                        <div class="font-bold text-amber-400">${displayName}${isYou ? ' (你)' : ''}</div>
-                        <div class="font-mono text-xs text-zinc-500">${m.squad_id}</div>
-                        <div class="grid grid-cols-5 gap-1 mt-2 text-center text-xs">
-                            <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">HP</div></div>
-                            <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">San</div></div>
-                            <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">Pow</div></div>
-                            <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">Int</div></div>
-                            <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">Res</div></div>
-                        </div>`;
+                        <div class="flex items-center justify-between">
+                            <div class="font-semibold text-lg">
+                                ${displayName}
+                                ${isYou ? '<span class="text-xs text-amber-400 ml-1">(你)</span>' : ''}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-5 gap-1 mt-3 text-center text-xs">
+                            <div>
+                                <div class="text-red-400 font-mono">${m.hp}</div>
+                                <div class="text-zinc-500">HP</div>
+                            </div>
+                            <div>
+                                <div class="text-purple-400 font-mono">${m.sanity}</div>
+                                <div class="text-zinc-500">San</div>
+                            </div>
+                            <div>
+                                <div class="text-orange-400 font-mono">${m.power}</div>
+                                <div class="text-zinc-500">Pow</div>
+                            </div>
+                            <div>
+                                <div class="text-blue-400 font-mono">${m.intellect}</div>
+                                <div class="text-zinc-500">Int</div>
+                            </div>
+                            <div>
+                                <div class="text-emerald-400 font-mono">${m.resilience}</div>
+                                <div class="text-zinc-500">Res</div>
+                            </div>
+                        </div>
+                    `;
                     list.appendChild(el);
                 });
                 }
