@@ -561,6 +561,40 @@ def my_submissions():
 
     return jsonify({"submissions": submissions})
 
+@app.route("/team_task_logs")
+def team_task_logs():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad or not squad.get("team_id"):
+        return jsonify({"has_team": False, "logs": []})
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT s.task_id, s.content, s.photo_path, s.timestamp, s.squad_id,
+               sq.display_name
+        FROM submissions s
+        JOIN squads sq ON s.squad_id = sq.squad_id
+        WHERE sq.team_id = ?
+        ORDER BY s.timestamp DESC
+    """, (squad["team_id"],)).fetchall()
+    conn.close()
+
+    logs = [
+        {
+            "task_id": row["task_id"],
+            "content": row["content"],
+            "photo_path": row["photo_path"],
+            "timestamp": row["timestamp"],
+            "squad_id": row["squad_id"],
+            "display_name": row["display_name"] or row["squad_id"],
+        }
+        for row in rows
+    ]
+    return jsonify({"has_team": True, "logs": logs})
+
 @app.route("/story_progress")
 def story_progress():
     if "squad_id" not in session:
@@ -1606,7 +1640,7 @@ HTML_TEMPLATE = """
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="font-bold text-xl flex items-center gap-x-2">
                             <i class="fa-solid fa-tasks text-amber-400"></i>
-                            <span>任務記錄</span>
+                            <span id="submission-list-title">任務記錄</span>
                         </h3>
                         <button onclick="loadMySubmissions()"
                                 class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
@@ -1672,6 +1706,20 @@ HTML_TEMPLATE = """
                     <div id="team-protagonists-section" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
 
                     <div id="team-members-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+                    <div class="cartoon-box p-5 mt-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-bold flex items-center gap-x-2">
+                                <i class="fa-solid fa-clipboard-list text-amber-400"></i>
+                                <span>全隊任務日誌</span>
+                            </h3>
+                            <button onclick="loadTeamTaskLogs()"
+                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">
+                                刷新
+                            </button>
+                        </div>
+                        <div id="team-task-logs-list" class="space-y-3 max-h-[400px] overflow-auto pr-1"></div>
+                    </div>
                 </div>
 
                 <!-- 所有 Team 列表（同 GM 一致，永遠顯示） -->
@@ -1761,44 +1809,99 @@ HTML_TEMPLATE = """
             }
         }
 
-        async function loadMySubmissions() {
-            const container = document.getElementById('submission-list');
+        function renderSubmissionEntries(container, entries, options = {}) {
+            const { showPlayer = false, emptyText = '暫無任務記錄' } = options;
+
+            if (!entries || entries.length === 0) {
+                container.innerHTML = `<div class="text-zinc-400 py-6 text-center">${emptyText}</div>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            entries.forEach(sub => {
+                const el = document.createElement('div');
+                el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-5';
+                const playerLine = showPlayer && sub.display_name
+                    ? `<div class="text-sm text-zinc-300 mb-1"><i class="fa-solid fa-user text-xs mr-1"></i>${sub.display_name}</div>`
+                    : '';
+                el.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            ${playerLine}
+                            <span class="font-mono text-amber-400">${sub.task_id}</span>
+                        </div>
+                        <div class="text-xs text-zinc-400">${sub.timestamp}</div>
+                    </div>
+
+                    ${sub.content ? `<div class="text-zinc-300 mb-3">${sub.content}</div>` : ''}
+
+                    ${sub.photo_path ? `
+                        <div class="mt-2">
+                            <img src="/${sub.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
+                        </div>
+                    ` : ''}
+
+                    <div class="mt-3 text-xs text-emerald-400">
+                        <i class="fa-solid fa-check-circle mr-1"></i> 已提交（+6 Sanity / +1 Resource）
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        async function loadTeamTaskLogs() {
+            const container = document.getElementById('team-task-logs-list');
+            if (!container) return;
             container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
 
             try {
-                const res = await fetch('/my_submissions', { credentials: 'same-origin' });
+                const res = await fetch('/team_task_logs', { credentials: 'same-origin' });
                 const data = await res.json();
 
-                if (!data.submissions || data.submissions.length === 0) {
-                    container.innerHTML = `<div class="text-zinc-400 py-6 text-center">你尚未提交任何任務。</div>`;
+                if (!data.has_team) {
+                    container.innerHTML = '<div class="text-zinc-400 py-4 text-center">你尚未加入 Team</div>';
                     return;
                 }
 
-                container.innerHTML = '';
-                data.submissions.forEach(sub => {
-                    const el = document.createElement('div');
-                    el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-5';
-                    el.innerHTML = `
-                        <div class="flex justify-between items-start mb-3">
-                            <div>
-                                <span class="font-mono text-amber-400">${sub.task_id}</span>
-                            </div>
-                            <div class="text-xs text-zinc-400">${sub.timestamp}</div>
-                        </div>
+                renderSubmissionEntries(container, data.logs, {
+                    showPlayer: true,
+                    emptyText: '全隊尚未有任務記錄',
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+            }
+        }
 
-                        ${sub.content ? `<div class="text-zinc-300 mb-3">${sub.content}</div>` : ''}
+        async function loadMySubmissions() {
+            const container = document.getElementById('submission-list');
+            const titleEl = document.getElementById('submission-list-title');
+            container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
 
-                        ${sub.photo_path ? `
-                            <div class="mt-2">
-                                <img src="/${sub.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
-                            </div>
-                        ` : ''}
+            const inTeam = currentSquad && currentSquad.team_id;
+            if (titleEl) {
+                titleEl.textContent = inTeam ? '全隊任務記錄' : '任務記錄';
+            }
 
-                        <div class="mt-3 text-xs text-emerald-400">
-                            <i class="fa-solid fa-check-circle mr-1"></i> 已提交（+6 Sanity / +1 Resource）
-                        </div>
-                    `;
-                    container.appendChild(el);
+            try {
+                const endpoint = inTeam ? '/team_task_logs' : '/my_submissions';
+                const res = await fetch(endpoint, { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (inTeam) {
+                    if (!data.has_team) {
+                        container.innerHTML = '<div class="text-zinc-400 py-6 text-center">你尚未加入 Team</div>';
+                        return;
+                    }
+                    renderSubmissionEntries(container, data.logs, {
+                        showPlayer: true,
+                        emptyText: '全隊尚未有任務記錄',
+                    });
+                    return;
+                }
+
+                renderSubmissionEntries(container, data.submissions, {
+                    showPlayer: false,
+                    emptyText: '你尚未提交任何任務',
                 });
             } catch (e) {
                 container.innerHTML = '<div class="text-red-400">載入失敗</div>';
@@ -2101,6 +2204,7 @@ HTML_TEMPLATE = """
                     list.appendChild(el);
                 });
                 }
+                loadTeamTaskLogs();
                 loadAvailableTeams();
             } catch (e) {
                 console.error('loadMyTeam failed', e);
