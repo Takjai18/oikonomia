@@ -77,6 +77,13 @@ def init_db():
         gm_notes TEXT DEFAULT ''
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS global_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT,
+        message TEXT NOT NULL,
+        timestamp TEXT
+    )''')
+
     conn.commit()
     conn.close()
     migrate_db()
@@ -132,6 +139,15 @@ def migrate_db():
             created_at TEXT,
             leader_squad_id TEXT,
             gm_notes TEXT DEFAULT ''
+        )''')
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='global_events'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE global_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT,
+            message TEXT NOT NULL,
+            timestamp TEXT
         )''')
     else:
         c.execute("PRAGMA table_info(teams)")
@@ -261,6 +277,18 @@ def get_story_for_route(route, stage):
 def next_stage_threshold(current_stage):
     next_stage = current_stage + 1
     return STORY_STAGE_THRESHOLDS.get(next_stage)
+
+def hkt_timestamp():
+    return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
+
+def log_global_event(event_type, message):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO global_events (event_type, message, timestamp) VALUES (?, ?, ?)",
+        (event_type, message, hkt_timestamp()),
+    )
+    conn.commit()
+    conn.close()
 
 # ==================== 輔助函數 ====================
 def row_to_squad(row):
@@ -564,22 +592,31 @@ def my_submissions():
 @app.route("/team_task_logs")
 def team_task_logs():
     if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
+        return jsonify({"success": False, "error": "未登入"}), 401
 
     squad = get_squad(session["squad_id"])
-    if not squad or not squad.get("team_id"):
-        return jsonify({"has_team": False, "logs": []})
+    team_id = squad.get("team_id") if squad else None
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("""
-        SELECT s.task_id, s.content, s.photo_path, s.timestamp, s.squad_id,
-               sq.display_name
-        FROM submissions s
-        JOIN squads sq ON s.squad_id = sq.squad_id
-        WHERE sq.team_id = ?
-        ORDER BY s.timestamp DESC
-    """, (squad["team_id"],)).fetchall()
+    if team_id:
+        rows = conn.execute("""
+            SELECT s.task_id, s.content, s.photo_path, s.timestamp, s.squad_id,
+                   sq.display_name
+            FROM submissions s
+            JOIN squads sq ON s.squad_id = sq.squad_id
+            WHERE sq.team_id = ?
+            ORDER BY s.timestamp DESC
+        """, (team_id,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT s.task_id, s.content, s.photo_path, s.timestamp, s.squad_id,
+                   sq.display_name
+            FROM submissions s
+            JOIN squads sq ON s.squad_id = sq.squad_id
+            WHERE s.squad_id = ?
+            ORDER BY s.timestamp DESC
+        """, (session["squad_id"],)).fetchall()
     conn.close()
 
     logs = [
@@ -593,7 +630,30 @@ def team_task_logs():
         }
         for row in rows
     ]
-    return jsonify({"has_team": True, "logs": logs})
+    return jsonify({"success": True, "logs": logs, "has_team": bool(team_id)})
+
+@app.route("/global_events")
+def global_events():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT event_type, message, timestamp
+        FROM global_events
+        ORDER BY id DESC
+        LIMIT 20
+    """).fetchall()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "events": [
+            {
+                "event_type": row["event_type"],
+                "message": row["message"],
+                "timestamp": row["timestamp"],
+            }
+            for row in rows
+        ],
+    })
 
 @app.route("/story_progress")
 def story_progress():
@@ -1096,6 +1156,7 @@ def gm_global_event():
     conn.commit()
     conn.close()
 
+    log_global_event(event_type, message)
     return jsonify({"success": True, "message": message})
 
 RESET_PASSWORD = "reset2026"  # 重置遊戲專用密碼
@@ -1121,6 +1182,9 @@ def gm_reset_game():
     # 3. 刪除所有玩家記錄（Squad = 獨立玩家ID）
     c.execute("DELETE FROM squads")
 
+    # 4. 清空全球事件記錄
+    c.execute("DELETE FROM global_events")
+
     conn.commit()
     conn.close()
 
@@ -1141,16 +1205,13 @@ def gm_send_announcement():
     if not message:
         return jsonify({"success": False, "error": "訊息不能為空"})
 
-    from datetime import datetime, timedelta
-
-    # HKT 時間（UTC+8）
-    hkt_time = datetime.utcnow() + timedelta(hours=8)
-    timestamp = hkt_time.strftime("%Y-%m-%d %H:%M")
+    timestamp = hkt_timestamp()
 
     ANNOUNCEMENTS.append({
         "message": message,
         "timestamp": timestamp
     })
+    log_global_event("announcement", message)
 
     return jsonify({"success": True, "message": "公告已發送"})
 
@@ -1636,13 +1697,27 @@ HTML_TEMPLATE = """
                     <div id="story-log-content"></div>
                 </div>
 
+                <div class="cartoon-box p-6 mb-8">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2">
+                            <i class="fa-solid fa-globe text-amber-400"></i>
+                            <span>全球事件記錄</span>
+                        </h3>
+                        <button onclick="loadGlobalEvents()"
+                                class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                            刷新
+                        </button>
+                    </div>
+                    <div id="global-events-list" class="space-y-3"></div>
+                </div>
+
                 <div class="cartoon-box p-6">
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="font-bold text-xl flex items-center gap-x-2">
                             <i class="fa-solid fa-tasks text-amber-400"></i>
                             <span id="submission-list-title">任務記錄</span>
                         </h3>
-                        <button onclick="loadMySubmissions()"
+                        <button onclick="loadTaskLogs()"
                                 class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
                             刷新記錄
                         </button>
@@ -1764,7 +1839,8 @@ HTML_TEMPLATE = """
             if (id === 'team') loadMyTeam();
             if (id === 'log') {
                 loadStoryLog();
-                loadMySubmissions();
+                loadGlobalEvents();
+                loadTaskLogs();
             }
         }
 
@@ -1849,6 +1925,29 @@ HTML_TEMPLATE = """
             });
         }
 
+        async function loadTaskLogs() {
+            const container = document.getElementById('submission-list');
+            const titleEl = document.getElementById('submission-list-title');
+            if (!container) return;
+            container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
+
+            try {
+                const res = await fetch('/team_task_logs', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (titleEl) {
+                    titleEl.textContent = data.has_team ? '全隊任務日誌' : '個人任務日誌';
+                }
+
+                renderSubmissionEntries(container, data.logs, {
+                    showPlayer: !!data.has_team,
+                    emptyText: data.has_team ? '全隊尚未有任務記錄' : '你尚未提交任何任務',
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+            }
+        }
+
         async function loadTeamTaskLogs() {
             const container = document.getElementById('team-task-logs-list');
             if (!container) return;
@@ -1872,36 +1971,42 @@ HTML_TEMPLATE = """
             }
         }
 
-        async function loadMySubmissions() {
-            const container = document.getElementById('submission-list');
-            const titleEl = document.getElementById('submission-list-title');
+        async function loadGlobalEvents() {
+            const container = document.getElementById('global-events-list');
+            if (!container) return;
             container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
 
-            const inTeam = currentSquad && currentSquad.team_id;
-            if (titleEl) {
-                titleEl.textContent = inTeam ? '全隊任務記錄' : '任務記錄';
-            }
+            const eventIcons = {
+                adjust_sanity: '🧠',
+                judas_strengthen: '⚔️',
+                iggy_collapse: '🔥',
+                announcement: '📢',
+            };
 
             try {
-                const endpoint = inTeam ? '/team_task_logs' : '/my_submissions';
-                const res = await fetch(endpoint, { credentials: 'same-origin' });
+                const res = await fetch('/global_events', { credentials: 'same-origin' });
                 const data = await res.json();
 
-                if (inTeam) {
-                    if (!data.has_team) {
-                        container.innerHTML = '<div class="text-zinc-400 py-6 text-center">你尚未加入 Team</div>';
-                        return;
-                    }
-                    renderSubmissionEntries(container, data.logs, {
-                        showPlayer: true,
-                        emptyText: '全隊尚未有任務記錄',
-                    });
+                if (!data.events || data.events.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 py-4 text-center">暫無全球事件</div>';
                     return;
                 }
 
-                renderSubmissionEntries(container, data.submissions, {
-                    showPlayer: false,
-                    emptyText: '你尚未提交任何任務',
+                container.innerHTML = '';
+                data.events.forEach(ev => {
+                    const icon = eventIcons[ev.event_type] || '🌍';
+                    const el = document.createElement('div');
+                    el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-4';
+                    el.innerHTML = `
+                        <div class="flex justify-between items-start gap-x-3">
+                            <div class="flex gap-x-2">
+                                <span class="text-lg">${icon}</span>
+                                <div class="text-zinc-200 text-sm leading-relaxed">${ev.message}</div>
+                            </div>
+                            <div class="text-xs text-zinc-500 whitespace-nowrap">${ev.timestamp}</div>
+                        </div>
+                    `;
+                    container.appendChild(el);
                 });
             } catch (e) {
                 container.innerHTML = '<div class="text-red-400">載入失敗</div>';
