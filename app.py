@@ -756,14 +756,34 @@ def story_progress():
     })
 
 @app.route("/status")
-def status():
+def get_status():
     if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
+        return jsonify({"success": False, "error": "未登入"}), 401
+
     squad = get_squad(session["squad_id"])
     if not squad:
         session.clear()
-        return jsonify({"error": "未登入"}), 401
-    return jsonify(squad)
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    if not squad.get("team_id"):
+        return jsonify({
+            "success": True,
+            **squad,
+            "team": None,
+            "protagonists": {},
+            "is_team_leader": 0,
+        })
+
+    team = get_team_by_id(squad["team_id"])
+    protagonists = get_team_protagonists(squad["team_id"])
+
+    return jsonify({
+        "success": True,
+        **squad,
+        "team": team,
+        "protagonists": protagonists,
+        "is_team_leader": squad.get("is_team_leader", 0),
+    })
 
 @app.route("/team")
 def get_team():
@@ -2148,6 +2168,11 @@ HTML_TEMPLATE = """
             if (bar) bar.style.width = value + '%';
         }
 
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value ?? 0;
+        }
+
         async function editDisplayName() {
             const current = currentSquad.display_name || currentSquad.squad_id;
             const newName = prompt('輸入新顯示名稱（最多 20 字）', current);
@@ -2201,18 +2226,21 @@ HTML_TEMPLATE = """
             const marahPanel = document.getElementById('marah-panel');
             if (!iggyPanel || !marahPanel) return;
 
-            const show = inTeam && protagonists;
-            iggyPanel.classList.toggle('hidden', !show);
-            marahPanel.classList.toggle('hidden', !show);
-            if (!show) return;
+            iggyPanel.classList.toggle('hidden', !inTeam);
+            marahPanel.classList.toggle('hidden', !inTeam);
+            if (!inTeam) return;
 
-            renderProtagonistStats('iggy-', protagonists.iggy);
-            renderProtagonistStats('marah-', protagonists.marah);
+            const iggy = protagonists?.iggy || {};
+            const marah = protagonists?.marah || {};
+            const activeRoute = protagonists?.active_route;
 
-            iggyPanel.classList.toggle('ring-2', protagonists.active_route === 'iggy');
-            iggyPanel.classList.toggle('ring-amber-500/50', protagonists.active_route === 'iggy');
-            marahPanel.classList.toggle('ring-2', protagonists.active_route === 'marah');
-            marahPanel.classList.toggle('ring-amber-500/50', protagonists.active_route === 'marah');
+            renderProtagonistStats('iggy-', iggy);
+            renderProtagonistStats('marah-', marah);
+
+            iggyPanel.classList.toggle('ring-2', activeRoute === 'iggy');
+            iggyPanel.classList.toggle('ring-amber-500/50', activeRoute === 'iggy');
+            marahPanel.classList.toggle('ring-2', activeRoute === 'marah');
+            marahPanel.classList.toggle('ring-amber-500/50', activeRoute === 'marah');
         }
 
         function buildProtagonistCardHtml(title, prefix, stats, isActive) {
@@ -2249,7 +2277,10 @@ HTML_TEMPLATE = """
                 buildProtagonistCardHtml('🌊 Marah', 'marah', protagonists.marah, protagonists.active_route === 'marah');
         }
 
-        function updateDashboard(squad) {
+        function updateDashboard(data) {
+            const squad = data.squad_id ? data : (data.squad || data);
+            const protagonists = data.protagonists || squad.protagonists;
+
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
             document.getElementById('squad-name').textContent = squad.display_name || squad.squad_id;
@@ -2258,9 +2289,25 @@ HTML_TEMPLATE = """
             const routeBadge = document.getElementById('route-badge');
             const isLeader = squad.is_team_leader === 1;
             const hasTeamRoute = squad.route;
-            const inTeam = !!squad.team_id;
+            const inTeam = !!(squad.team_id || data.team);
 
-            updateProtagonistPanels(squad.protagonists, inTeam);
+            if (protagonists) {
+                const iggy = protagonists.iggy || {};
+                const marah = protagonists.marah || {};
+                setText('iggy-hp-value', iggy.hp ?? 100);
+                setText('iggy-sanity-value', iggy.sanity ?? 100);
+                setText('iggy-power-value', iggy.power ?? 100);
+                setText('iggy-intellect-value', iggy.intellect ?? 100);
+                setText('iggy-resilience-value', iggy.resilience ?? 100);
+                setText('marah-hp-value', marah.hp ?? 100);
+                setText('marah-sanity-value', marah.sanity ?? 100);
+                setText('marah-power-value', marah.power ?? 100);
+                setText('marah-intellect-value', marah.intellect ?? 100);
+                setText('marah-resilience-value', marah.resilience ?? 100);
+                renderProtagonistStats('iggy-', iggy);
+                renderProtagonistStats('marah-', marah);
+            }
+            updateProtagonistPanels(protagonists, inTeam);
 
             if (hasTeamRoute) {
                 if (routePicker) setVisible(routePicker, false);
@@ -2284,7 +2331,10 @@ HTML_TEMPLATE = """
                 if (routeBadge) setVisible(routeBadge, false);
             }
 
-            if (currentSquad) currentSquad.avatar = squad.avatar;
+            if (currentSquad) {
+                Object.assign(currentSquad, squad);
+                if (protagonists) currentSquad.protagonists = protagonists;
+            }
             initPlayerAvatar();
         }
 
@@ -2534,7 +2584,7 @@ HTML_TEMPLATE = """
                     const res = await fetch('/status', { credentials: 'same-origin' });
                     if (res.ok) {
                         const squad = await res.json();
-                        if (squad && squad.squad_id && !squad.error) {
+                        if (squad && squad.squad_id && squad.success !== false && !squad.error) {
                             if (loading) setVisible(loading, false);
                             await completeLogin({ squad, require_set_pin: false, skip_team_prompt: true });
                             return;
@@ -3043,7 +3093,12 @@ HTML_TEMPLATE = """
             if (currentSquad) {
                 fetch('/status', { credentials: 'same-origin' })
                     .then(r => r.ok ? r.json() : null)
-                    .then(d => { if (d && d.squad_id) updateDashboard(d); });
+                    .then(d => {
+                        if (d && d.squad_id && d.success !== false) {
+                            currentSquad = d;
+                            updateDashboard(d);
+                        }
+                    });
             }
         }, 12000);
 
