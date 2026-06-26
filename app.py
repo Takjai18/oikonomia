@@ -949,21 +949,29 @@ HTML_TEMPLATE = """
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
 
+            const routePicker = document.getElementById('route-picker');
+            const routeBadge = document.getElementById('route-badge');
             const hasRoute = !!squad.route;
-            document.getElementById('route-picker').classList.toggle('hidden', hasRoute);
+
             document.getElementById('protagonist-panel').classList.toggle('hidden', !hasRoute);
 
-            const badge = document.getElementById('route-badge');
-            if (hasRoute) {
-                const label = squad.route === 'iggy' ? '🔥 Iggy 路線' : '🌊 Marah 路線';
-                badge.textContent = label;
-                badge.className = 'mt-2 text-sm px-3 py-1 rounded-full inline-block ' +
-                    (squad.route === 'iggy' ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300');
-                badge.classList.remove('hidden');
+            if (squad.route) {
+                if (routePicker) setVisible(routePicker, false);
+                if (routeBadge) {
+                    setVisible(routeBadge, true);
+                    routeBadge.innerHTML = squad.route === 'iggy'
+                        ? `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">
+                            🔥 Iggy 路線
+                           </span>`
+                        : `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">
+                            🌊 Marah 路線
+                           </span>`;
+                }
                 document.getElementById('protagonist-title').textContent =
                     squad.route === 'iggy' ? '🔥 Iggy' : '🌊 Marah';
             } else {
-                badge.classList.add('hidden');
+                if (routePicker) setVisible(routePicker, true);
+                if (routeBadge) setVisible(routeBadge, false);
             }
 
             if (squad.protagonist && hasRoute) {
@@ -974,11 +982,24 @@ HTML_TEMPLATE = """
 
         async function selectRoute(route) {
             if (!confirm(route === 'iggy' ? '確認選擇 Iggy 路線？' : '確認選擇 Marah 路線？')) return;
-            const res = await fetch('/set_route', { method: 'POST', body: new URLSearchParams({route}) });
+
+            const res = await fetch('/set_route', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({route})
+            });
             const data = await res.json();
-            if (!data.success) { alert(data.error || '選擇失敗'); return; }
+
+            if (!data.success) {
+                alert(data.error || '選擇失敗');
+                return;
+            }
+
             currentSquad = data.squad;
             updateDashboard(currentSquad);
+
+            const picker = document.getElementById('route-picker');
+            if (picker) setVisible(picker, false);
         }
 
         async function loadMyTeam() {
@@ -1090,6 +1111,10 @@ HTML_TEMPLATE = """
                 nav.classList.add('flex');
                 document.getElementById('squad-name').textContent = currentSquad.squad_id;
                 updateDashboard(currentSquad);
+                setTimeout(() => {
+                    const picker = document.getElementById('route-picker');
+                    if (currentSquad.route && picker) setVisible(picker, false);
+                }, 300);
                 showSection('dashboard');
                 loadAnnouncements();
 
