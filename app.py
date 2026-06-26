@@ -45,7 +45,8 @@ def init_db():
         route TEXT,
         protagonist_stats TEXT,
         team_id TEXT,
-        is_team_leader INTEGER DEFAULT 0
+        is_team_leader INTEGER DEFAULT 0,
+        display_name TEXT
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS submissions (
@@ -91,6 +92,11 @@ def migrate_db():
                 c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
             except sqlite3.OperationalError:
                 pass
+    if "display_name" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN display_name TEXT")
+        except sqlite3.OperationalError:
+            pass
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
@@ -176,6 +182,7 @@ def row_to_squad(row):
         "zoo_skills": json.loads(d["zoo_skills"]) if d.get("zoo_skills") else [],
         "route": d.get("route"),
         "team_id": d.get("team_id"),
+        "display_name": d.get("display_name") or d["squad_id"],
         "protagonist": protagonist,
         "is_team_leader": 1 if d.get("is_team_leader") else 0,
     }
@@ -215,7 +222,7 @@ def get_all_squads():
     return [row_to_squad(r) for r in rows]
 
 def update_squad(squad_id, **kwargs):
-    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader"}
+    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader", "display_name"}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     updates = []
@@ -272,24 +279,31 @@ def get_team_by_id(team_id):
         "member_count": member_count,
     }
 
-def get_all_teams_with_stats():
+def query_teams_list(current_team_id=None):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM teams ORDER BY team_id").fetchall()
+    rows = conn.execute("SELECT * FROM teams ORDER BY created_at DESC").fetchall()
+
     teams = []
     for row in rows:
         member_count = conn.execute(
             "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
         ).fetchone()[0]
+
         teams.append({
             "team_id": row["team_id"],
             "team_name": row["team_name"],
             "route": row["route"],
             "created_at": row["created_at"],
             "member_count": member_count,
+            "is_joined": row["team_id"] == current_team_id,
         })
+
     conn.close()
     return teams
+
+def get_all_teams_with_stats():
+    return query_teams_list()
 
 # ==================== Routes ====================
 @app.route("/")
@@ -298,9 +312,14 @@ def index():
 
 @app.route("/login", methods=["POST"])
 def login():
-    squad_id = request.form.get("squad_id", "").strip().upper()
-    if not squad_id.startswith("FRAG-"):
-        return jsonify({"error": "請輸入正確嘅 Fragment ID (例如 FRAG-01)"}), 400
+    squad_id = request.form.get("squad_id", "").strip()
+
+    if not squad_id:
+        return jsonify({"error": "請輸入名稱"}), 400
+
+    original_input = squad_id
+    if not squad_id.upper().startswith("FRAG-"):
+        squad_id = squad_id.upper().replace(" ", "_")[:15]
 
     squad = get_squad(squad_id)
     if not squad:
@@ -311,8 +330,16 @@ def login():
         conn.close()
         squad = get_squad(squad_id)
 
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT display_name FROM squads WHERE squad_id = ?", (squad_id,)
+    ).fetchone()
+    conn.close()
+    if row and row[0] is None:
+        update_squad(squad_id, display_name=original_input)
+
     session["squad_id"] = squad_id
-    return jsonify({"success": True, "squad": squad})
+    return jsonify({"success": True, "squad": get_squad(squad_id)})
 
 @app.route("/status")
 def status():
@@ -355,7 +382,7 @@ def available_teams():
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM teams ORDER BY team_id").fetchall()
+    rows = conn.execute("SELECT * FROM teams ORDER BY created_at DESC").fetchall()
 
     teams = []
     for row in rows:
@@ -363,14 +390,14 @@ def available_teams():
             "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
         ).fetchone()[0]
 
-        is_joined = row["team_id"] == current_team_id
+        is_joined = (row["team_id"] == current_team_id)
 
         teams.append({
             "team_id": row["team_id"],
             "team_name": row["team_name"],
             "route": row["route"],
             "member_count": member_count,
-            "is_joined": is_joined,
+            "is_joined": is_joined
         })
 
     conn.close()
@@ -531,6 +558,20 @@ def submit_task():
     update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
 
     return jsonify({"success": True, "message": "任務提交成功！+6 Sanity +1 Resource"})
+
+@app.route("/update_display_name", methods=["POST"])
+def update_display_name():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    new_name = request.form.get("display_name", "").strip()
+    if not new_name:
+        return jsonify({"success": False, "error": "名稱不能為空"}), 400
+    if len(new_name) > 20:
+        return jsonify({"success": False, "error": "名稱最長 20 個字"}), 400
+
+    update_squad(session["squad_id"], display_name=new_name)
+    return jsonify({"success": True, "display_name": new_name})
 
 # ==================== GM Routes ====================
 
@@ -925,8 +966,8 @@ HTML_TEMPLATE = """
                 <h1 class="text-3xl font-bold">你已從臍帶中斷裂</h1>
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
-                <input type="text" id="squad_id" value="FRAG-01" 
-                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl font-mono">
+                <input type="text" id="squad_id" placeholder="輸入名稱（例如 Saka 或 FRAG-01）" 
+                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl">
                 <button type="submit" 
                         class="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold py-4 rounded-2xl">
                     進入 Oikonomia
@@ -1011,6 +1052,14 @@ HTML_TEMPLATE = """
                             <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="p-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
+                </div>
+
+                <div class="cartoon-box p-5 mt-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="font-semibold">你的顯示名稱</div>
+                        <button onclick="editDisplayName()" class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">修改</button>
+                    </div>
+                    <div id="display-name-display" class="text-xl font-bold text-amber-400"></div>
                 </div>
 
                 <!-- Zoo Skills -->
@@ -1131,9 +1180,36 @@ HTML_TEMPLATE = """
             if (bar) bar.style.width = value + '%';
         }
 
+        function updateDisplayNameUI(name) {
+            const el = document.getElementById('display-name-display');
+            if (el) el.textContent = name || currentSquad.squad_id;
+        }
+
+        async function editDisplayName() {
+            const current = currentSquad.display_name || currentSquad.squad_id;
+            const newName = prompt('輸入新顯示名稱（最多 20 字）', current);
+            if (!newName || newName === current) return;
+
+            const res = await fetch('/update_display_name', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({display_name: newName})
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentSquad.display_name = data.display_name;
+                updateDisplayNameUI(data.display_name);
+                alert('名稱已更新！');
+            } else {
+                alert(data.error || '更新失敗');
+            }
+        }
+
         function updateDashboard(squad) {
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
+            document.getElementById('squad-name').textContent = squad.squad_id;
+            updateDisplayNameUI(squad.display_name || squad.squad_id);
 
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');
@@ -1241,14 +1317,15 @@ HTML_TEMPLATE = """
                 const members = data.members || [];
                 if (members.length === 0) {
                     list.innerHTML = '<div class="text-zinc-400 col-span-2 text-center py-6">暫無隊友</div>';
-                    return;
-                }
+                } else {
                 members.forEach(m => {
                     const isYou = currentSquad && m.squad_id === currentSquad.squad_id;
+                    const displayName = m.display_name || m.squad_id;
                     const el = document.createElement('div');
                     el.className = 'cartoon-box p-4' + (isYou ? ' ring-2 ring-amber-500/50' : '');
                     el.innerHTML = `
-                        <div class="font-mono font-bold text-amber-400">${m.squad_id}${isYou ? ' (你)' : ''}</div>
+                        <div class="font-bold text-amber-400">${displayName}${isYou ? ' (你)' : ''}</div>
+                        <div class="font-mono text-xs text-zinc-500">${m.squad_id}</div>
                         <div class="grid grid-cols-5 gap-1 mt-2 text-center text-xs">
                             <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">HP</div></div>
                             <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">San</div></div>
@@ -1258,6 +1335,7 @@ HTML_TEMPLATE = """
                         </div>`;
                     list.appendChild(el);
                 });
+                }
                 loadAvailableTeams();
             } catch (e) {
                 console.error('loadMyTeam failed', e);
@@ -1269,7 +1347,6 @@ HTML_TEMPLATE = """
 
         async function loadAvailableTeams() {
             const container = document.getElementById('available-teams-list');
-            if (!container) return;
             container.innerHTML = '<div class="text-zinc-400 text-sm py-4 text-center">載入中...</div>';
 
             try {
@@ -1283,32 +1360,28 @@ HTML_TEMPLATE = """
 
                 container.innerHTML = '';
                 data.teams.forEach(team => {
-                    const joined = !!team.is_joined;
                     const el = document.createElement('div');
-                    el.className = 'flex items-center justify-between bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3' +
-                        (joined ? '' : ' hover:bg-zinc-700 cursor-pointer');
+                    el.className = 'flex items-center justify-between bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-2xl px-4 py-3';
+
+                    let actionBtn = '';
+                    if (team.is_joined) {
+                        actionBtn = `<span class="px-4 py-1 text-xs bg-zinc-600 text-zinc-300 rounded-xl">已加入</span>`;
+                    } else {
+                        actionBtn = `<button class="px-4 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 font-medium rounded-xl">加入</button>`;
+                    }
+
                     el.innerHTML = `
-                        <div>
+                        <div class="flex-1">
                             <div class="font-mono text-emerald-400 text-sm">${team.team_id}</div>
                             <div class="font-semibold">${team.team_name}</div>
+                            <div class="text-xs text-zinc-400 mt-0.5">${team.member_count} 人</div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-xs text-zinc-400">${team.member_count} 人</div>
-                            <button class="mt-1 px-4 py-1 text-xs font-medium rounded-xl ${
-                                joined
-                                    ? 'bg-zinc-600 text-zinc-400 cursor-default'
-                                    : 'bg-amber-500 hover:bg-amber-600 text-zinc-950'
-                            }">${joined ? '已加入' : '加入'}</button>
-                        </div>
+                        <div>${actionBtn}</div>
                     `;
+
                     const btn = el.querySelector('button');
-                    if (!joined) {
-                        btn.onclick = (e) => {
-                            e.stopImmediatePropagation();
-                            joinTeamDirectly(team.team_id);
-                        };
-                    } else {
-                        btn.disabled = true;
+                    if (btn) {
+                        btn.onclick = () => joinTeamDirectly(team.team_id);
                     }
                     container.appendChild(el);
                 });
@@ -1369,7 +1442,7 @@ HTML_TEMPLATE = """
                 const nav = document.getElementById('nav');
                 setVisible(nav, true);
                 nav.classList.add('flex');
-                document.getElementById('squad-name').textContent = currentSquad.squad_id;
+                updateDisplayNameUI(currentSquad.display_name || currentSquad.squad_id);
                 updateDashboard(currentSquad);
                 setTimeout(() => {
                     const picker = document.getElementById('route-picker');
@@ -1382,6 +1455,25 @@ HTML_TEMPLATE = """
                 }, 400);
                 showSection('dashboard');
                 loadAnnouncements();
+
+                if (!currentSquad.display_name || currentSquad.display_name === currentSquad.squad_id) {
+                    setTimeout(() => {
+                        const name = prompt('歡迎！請輸入你想顯示嘅名稱（最多20字）', currentSquad.squad_id);
+                        if (name) {
+                            fetch('/update_display_name', {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                body: new URLSearchParams({display_name: name})
+                            }).then(r => r.json()).then(data => {
+                                if (data.success) {
+                                    currentSquad.display_name = data.display_name;
+                                    updateDisplayNameUI(data.display_name);
+                                    alert('名稱已設定！');
+                                }
+                            });
+                        }
+                    }, 1500);
+                }
 
                 // Phase 2: 登入後自動檢查 Team 狀態
                 try {
