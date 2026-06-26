@@ -355,6 +355,8 @@ def available_teams():
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+
+    # 統一用 team_id 排序，同 GM 列表一致
     rows = conn.execute("SELECT * FROM teams ORDER BY team_id").fetchall()
 
     teams = []
@@ -371,6 +373,7 @@ def available_teams():
             "team_name": row["team_name"],
             "route": row["route"],
             "member_count": member_count,
+            "created_at": row["created_at"],
         })
 
     conn.close()
