@@ -87,7 +87,10 @@ def migrate_db():
     }
     for col, typedef in squad_additions.items():
         if col not in cols:
-            c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
+            try:
+                c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
@@ -112,7 +115,10 @@ def migrate_db():
         }
         for col, typedef in team_additions.items():
             if col not in team_cols:
-                c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
+                try:
+                    c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
+                except sqlite3.OperationalError:
+                    pass
 
     conn.commit()
     conn.close()
