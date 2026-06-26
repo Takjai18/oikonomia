@@ -23,10 +23,16 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
 )
 
-UPLOAD_FOLDER = "uploads"
+_default_data_dir = "."
+if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
+    _default_data_dir = "/data"
+DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-DB_PATH = "oikonomia.db"
+DB_PATH = os.path.join(DATA_DIR, "oikonomia.db")
 
 DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
 SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
@@ -541,7 +547,11 @@ def story_progress():
 def status():
     if "squad_id" not in session:
         return jsonify({"error": "未登入"}), 401
-    return jsonify(get_squad(session["squad_id"]))
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        session.clear()
+        return jsonify({"error": "未登入"}), 401
+    return jsonify(squad)
 
 @app.route("/team")
 def get_team():
