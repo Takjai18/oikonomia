@@ -171,6 +171,85 @@ LOCATIONS = {
     }
 }
 
+# ==================== 故事階段設定（之後容易改） ====================
+# 每個 Stage 解鎖所需「獨特已完成任務」最低數量（Stage 0 = 未達 Stage 1 門檻）
+STORY_STAGE_THRESHOLDS = {
+    1: 2,   # Stage 1：至少 N 個任務 — 可改
+    2: 4,   # Stage 2：至少 N 個任務 — 可改
+    3: 6,   # Stage 3（最終）：至少 N 個任務 — 可改
+}
+
+# 可選：特定任務 ID 解鎖階段（留空 = 只用上面數量門檻）
+# 完成 listed 任務之一即可達到該 stage（與數量門檻取較高）
+STORY_STAGE_REQUIRED_TASKS = {
+    # 1: ["loc1"],
+    # 2: ["loc2"],
+    # 3: ["loc3"],
+}
+
+STORY_CONTENT = {
+    "iggy": {
+        0: {"title": "🔥 第一階段：裂縫的開端", "content": "你踏入了 Oikonomia 的世界，Iggy 的第一段記憶正喺度等待被找回。"},
+        1: {"title": "🔥 第二階段：痛楚的回音", "content": "你開始感受到 Iggy 曾經承受過嘅界線與痛楚。Judas 的低語開始出現。"},
+        2: {"title": "🔥 第三階段：界線的崩壞", "content": "Iggy 嘅世界開始出現裂痕。你必須決定係咪繼續陪佢走落去。"},
+        3: {"title": "🔥 最終階段：救贖或崩壞", "content": "你已經深入 Iggy 嘅核心。最後嘅選擇將會決定一切。"},
+    },
+    "marah": {
+        0: {"title": "🌊 第一階段：智慧的開端", "content": "你選擇了 Marah 路線，開始以智慧同韌性去面對界線。"},
+        1: {"title": "🌊 第二階段：低語的解析", "content": "Judas 嘅謎題開始出現。你正試圖理解 Marah 背後嘅意義。"},
+        2: {"title": "🌊 第三階段：韌性的考驗", "content": "你開始面對更深層嘅情緒勒索同界線問題。"},
+        3: {"title": "🌊 最終階段：覺醒", "content": "你已經掌握足夠嘅資訊，準備迎接最後嘅真相。"},
+    },
+}
+
+def count_team_distinct_tasks(squad_id, team_id):
+    conn = sqlite3.connect(DB_PATH)
+    if team_id:
+        count = conn.execute("""
+            SELECT COUNT(DISTINCT task_id)
+            FROM submissions
+            WHERE squad_id IN (SELECT squad_id FROM squads WHERE team_id = ?)
+        """, (team_id,)).fetchone()[0]
+        rows = conn.execute("""
+            SELECT DISTINCT task_id
+            FROM submissions
+            WHERE squad_id IN (SELECT squad_id FROM squads WHERE team_id = ?)
+        """, (team_id,)).fetchall()
+    else:
+        count = conn.execute(
+            "SELECT COUNT(DISTINCT task_id) FROM submissions WHERE squad_id = ?",
+            (squad_id,),
+        ).fetchone()[0]
+        rows = conn.execute(
+            "SELECT DISTINCT task_id FROM submissions WHERE squad_id = ?",
+            (squad_id,),
+        ).fetchall()
+    conn.close()
+    return count, {row[0] for row in rows}
+
+def resolve_story_stage(completed_count, completed_task_ids):
+    stage = 0
+    for target_stage, min_tasks in STORY_STAGE_THRESHOLDS.items():
+        if completed_count >= min_tasks:
+            stage = max(stage, target_stage)
+    for target_stage, required_tasks in STORY_STAGE_REQUIRED_TASKS.items():
+        if required_tasks and any(t in completed_task_ids for t in required_tasks):
+            stage = max(stage, target_stage)
+    return min(stage, max(STORY_STAGE_THRESHOLDS.keys(), default=0))
+
+def get_story_for_route(route, stage):
+    if not route:
+        return {
+            "title": "故事尚未開始",
+            "content": "你尚未選擇路線。請先完成路線選擇，故事將會展開。",
+        }
+    route_stories = STORY_CONTENT.get(route, {})
+    return route_stories.get(stage, route_stories.get(0, {"title": "故事進行中", "content": ""}))
+
+def next_stage_threshold(current_stage):
+    next_stage = current_stage + 1
+    return STORY_STAGE_THRESHOLDS.get(next_stage)
+
 # ==================== 輔助函數 ====================
 def row_to_squad(row):
     d = dict(row)
@@ -419,6 +498,31 @@ def my_submissions():
         })
 
     return jsonify({"submissions": submissions})
+
+@app.route("/story_progress")
+def story_progress():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+
+    completed_count, completed_task_ids = count_team_distinct_tasks(
+        session["squad_id"], squad.get("team_id")
+    )
+    stage = resolve_story_stage(completed_count, completed_task_ids)
+    route = squad.get("route")
+    story = get_story_for_route(route, stage)
+
+    return jsonify({
+        "stage": stage,
+        "completed_tasks": completed_count,
+        "route": route,
+        "next_stage_at": next_stage_threshold(stage),
+        "stage_thresholds": STORY_STAGE_THRESHOLDS,
+        "story": story,
+    })
 
 @app.route("/status")
 def status():
@@ -1343,35 +1447,45 @@ HTML_TEMPLATE = """
             }
         }
 
-        function loadStoryLog() {
+        async function loadStoryLog() {
             const container = document.getElementById('story-log-content');
-            const route = currentSquad?.route;
+            container.innerHTML = '<div class="text-zinc-400">載入故事中...</div>';
 
-            let html = '';
+            try {
+                const res = await fetch('/story_progress', { credentials: 'same-origin' });
+                const data = await res.json();
 
-            if (!route) {
-                html = `<div class="text-zinc-400">你尚未選擇路線，故事尚未展開。</div>`;
-            } else if (route === 'iggy') {
-                html = `
-                    <div class="text-red-300 font-medium mb-2">🔥 Iggy 路線 - 目前進度</div>
-                    <div class="text-zinc-300 leading-relaxed">
-                        你選擇了與 Iggy 一同面對內心嘅界線與痛楚。<br>
-                        目前你正處於「裂縫起點」，Iggy 嘅第一段記憶正喺度等待被找回。<br>
-                        <span class="text-xs text-red-400">（劇情會隨任務推進而更新）</span>
+                const stage = data.stage || 0;
+                const completed = data.completed_tasks || 0;
+                const story = data.story || {};
+                const title = story.title || '故事進行中';
+                const content = story.content || '';
+
+                let progressHint = '';
+                if (data.next_stage_at != null) {
+                    const remaining = Math.max(0, data.next_stage_at - completed);
+                    progressHint = `<div class="text-xs text-zinc-500 mt-3">距離下一階段還需 ${remaining} 個新任務（門檻：${data.next_stage_at} 個）</div>`;
+                } else if (stage >= 3) {
+                    progressHint = `<div class="text-xs text-amber-400/80 mt-3">你已達最終故事階段</div>`;
+                }
+
+                container.innerHTML = `
+                    <div class="mb-3 flex flex-wrap gap-2">
+                        <div class="inline-block px-3 py-1 bg-zinc-700 rounded-full text-xs">
+                            已完成任務：${completed} 個
+                        </div>
+                        <div class="inline-block px-3 py-1 bg-zinc-800 border border-zinc-600 rounded-full text-xs">
+                            故事階段：Stage ${stage}
+                        </div>
                     </div>
+                    <div class="text-xl font-bold mb-2">${title}</div>
+                    <div class="text-zinc-300 leading-relaxed">${content}</div>
+                    ${progressHint}
                 `;
-            } else if (route === 'marah') {
-                html = `
-                    <div class="text-blue-300 font-medium mb-2">🌊 Marah 路線 - 目前進度</div>
-                    <div class="text-zinc-300 leading-relaxed">
-                        你選擇了 Marah 路線，透過智慧與韌性去面對界線。<br>
-                        目前你正處於探索階段，Judas 嘅低語正喺度等待被破解。<br>
-                        <span class="text-xs text-blue-400">（劇情會隨任務推進而更新）</span>
-                    </div>
-                `;
+
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400">載入故事失敗</div>';
             }
-
-            container.innerHTML = html;
         }
 
         async function loadMySubmissions() {
