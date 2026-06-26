@@ -315,8 +315,51 @@ def get_squad(squad_id):
                 squad["route"] = team_row["route"]
             if team_row["leader_squad_id"] == squad["squad_id"]:
                 squad["is_team_leader"] = 1
+            squad["protagonists"] = get_team_protagonists(squad["team_id"])
 
     return squad
+
+def get_team_protagonists(team_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    team_row = conn.execute(
+        "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (team_id,)
+    ).fetchone()
+    if not team_row:
+        conn.close()
+        return {
+            "iggy": DEFAULT_PROTAGONIST.copy(),
+            "marah": DEFAULT_PROTAGONIST.copy(),
+            "active_route": None,
+        }
+
+    route = team_row["route"]
+    leader_id = team_row["leader_squad_id"]
+    if leader_id:
+        squad_row = conn.execute(
+            "SELECT protagonist_stats FROM squads WHERE squad_id = ?", (leader_id,)
+        ).fetchone()
+    else:
+        squad_row = conn.execute(
+            "SELECT protagonist_stats FROM squads WHERE team_id = ? LIMIT 1", (team_id,)
+        ).fetchone()
+    conn.close()
+
+    protagonist = DEFAULT_PROTAGONIST.copy()
+    if squad_row and squad_row["protagonist_stats"]:
+        try:
+            protagonist = json.loads(squad_row["protagonist_stats"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    iggy = DEFAULT_PROTAGONIST.copy()
+    marah = DEFAULT_PROTAGONIST.copy()
+    if route == "iggy":
+        iggy = protagonist
+    elif route == "marah":
+        marah = protagonist
+
+    return {"iggy": iggy, "marah": marah, "active_route": route}
 
 def get_all_squads():
     conn = sqlite3.connect(DB_PATH)
@@ -575,8 +618,14 @@ def my_team():
         "SELECT * FROM squads WHERE team_id = ? ORDER BY squad_id", (squad["team_id"],)
     ).fetchall()
     conn.close()
-    members = [row_to_squad(r) for r in rows]
-    return jsonify({"has_team": True, "team": team, "members": members})
+    members = [get_squad(r["squad_id"]) for r in rows]
+    return jsonify({
+        "has_team": True,
+        "team": team,
+        "members": members,
+        "is_team_leader": squad.get("is_team_leader", 0),
+        "protagonists": get_team_protagonists(squad["team_id"]),
+    })
 
 @app.route("/available_teams")
 def available_teams():
@@ -1472,7 +1521,7 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <!-- Squad 五維 -->
                     <div class="cartoon-box p-5">
                         <h3 class="font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Squad Status</h3>
@@ -1489,15 +1538,27 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Protagonist 五維 -->
-                    <div id="protagonist-panel" class="hidden cartoon-box p-5">
-                        <h3 id="protagonist-title" class="font-bold mb-4">🔥 Iggy / Marah</h3>
+                    <!-- Iggy 五維（全隊可見） -->
+                    <div id="iggy-panel" class="hidden cartoon-box p-5">
+                        <h3 class="font-bold mb-4">🔥 Iggy</h3>
                         <div class="space-y-3">
-                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="p-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="p-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="p-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="p-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="p-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="iggy-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="iggy-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="iggy-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="iggy-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="iggy-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                        </div>
+                    </div>
+
+                    <!-- Marah 五維（全隊可見） -->
+                    <div id="marah-panel" class="hidden cartoon-box p-5">
+                        <h3 class="font-bold mb-4">🌊 Marah</h3>
+                        <div class="space-y-3">
+                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="marah-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="marah-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="marah-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="marah-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="marah-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
                 </div>
@@ -1608,6 +1669,8 @@ HTML_TEMPLATE = """
                         <div class="font-semibold">隊友列表</div>
                         <button onclick="loadMyTeam()" class="text-xs px-3 py-1 bg-zinc-700 rounded-xl">刷新</button>
                     </div>
+                    <div id="team-protagonists-section" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
+
                     <div id="team-members-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
 
@@ -1796,6 +1859,65 @@ HTML_TEMPLATE = """
             }
         }
 
+        function renderProtagonistStats(prefix, stats) {
+            ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
+                setStatBar(prefix, s, stats?.[s] ?? 100);
+            });
+        }
+
+        function updateProtagonistPanels(protagonists, inTeam) {
+            const iggyPanel = document.getElementById('iggy-panel');
+            const marahPanel = document.getElementById('marah-panel');
+            if (!iggyPanel || !marahPanel) return;
+
+            const show = inTeam && protagonists;
+            iggyPanel.classList.toggle('hidden', !show);
+            marahPanel.classList.toggle('hidden', !show);
+            if (!show) return;
+
+            renderProtagonistStats('iggy-', protagonists.iggy);
+            renderProtagonistStats('marah-', protagonists.marah);
+
+            iggyPanel.classList.toggle('ring-2', protagonists.active_route === 'iggy');
+            iggyPanel.classList.toggle('ring-amber-500/50', protagonists.active_route === 'iggy');
+            marahPanel.classList.toggle('ring-2', protagonists.active_route === 'marah');
+            marahPanel.classList.toggle('ring-amber-500/50', protagonists.active_route === 'marah');
+        }
+
+        function buildProtagonistCardHtml(title, prefix, stats, isActive) {
+            const ring = isActive ? 'ring-2 ring-amber-500/50' : '';
+            const statsList = ['hp', 'sanity', 'power', 'intellect', 'resilience'];
+            const labels = {hp: '❤️ HP', sanity: '🧠 San', power: '⚡ Pow', intellect: '📖 Int', resilience: '🛡️ Res'};
+            const colors = {hp: 'text-red-400', sanity: 'text-purple-400', power: 'text-orange-400', intellect: 'text-blue-400', resilience: 'text-emerald-400'};
+            const barColors = {hp: 'bg-red-500', sanity: 'bg-purple-500', power: 'bg-orange-500', intellect: 'bg-blue-500', resilience: 'bg-emerald-500'};
+            const rows = statsList.map(s => `
+                <div>
+                    <div class="flex justify-between text-xs mb-1"><span>${labels[s]}</span><span class="font-mono ${colors[s]}">${stats?.[s] ?? 100}</span></div>
+                    <div class="h-2 bg-zinc-800 rounded-full"><div class="h-2 rounded-full status-bar ${barColors[s]}" style="width:${stats?.[s] ?? 100}%"></div></div>
+                </div>
+            `).join('');
+            return `
+                <div class="cartoon-box p-5 ${ring}">
+                    <h3 class="font-bold mb-4">${title}${isActive ? ' <span class="text-xs text-amber-400">(使用中)</span>' : ''}</h3>
+                    <div class="space-y-2">${rows}</div>
+                </div>
+            `;
+        }
+
+        function renderTeamProtagonists(protagonists) {
+            const section = document.getElementById('team-protagonists-section');
+            if (!section) return;
+            if (!protagonists) {
+                section.classList.add('hidden');
+                section.innerHTML = '';
+                return;
+            }
+            section.classList.remove('hidden');
+            section.innerHTML =
+                buildProtagonistCardHtml('🔥 Iggy', 'iggy', protagonists.iggy, protagonists.active_route === 'iggy') +
+                buildProtagonistCardHtml('🌊 Marah', 'marah', protagonists.marah, protagonists.active_route === 'marah');
+        }
+
         function updateDashboard(squad) {
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
@@ -1807,7 +1929,7 @@ HTML_TEMPLATE = """
             const hasTeamRoute = squad.route;
             const inTeam = !!squad.team_id;
 
-            document.getElementById('protagonist-panel').classList.toggle('hidden', !hasTeamRoute);
+            updateProtagonistPanels(squad.protagonists, inTeam);
 
             if (hasTeamRoute) {
                 if (routePicker) setVisible(routePicker, false);
@@ -1817,8 +1939,6 @@ HTML_TEMPLATE = """
                         ? `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">🔥 Iggy 路線</span>`
                         : `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">🌊 Marah 路線</span>`;
                 }
-                document.getElementById('protagonist-title').textContent =
-                    squad.route === 'iggy' ? '🔥 Iggy' : '🌊 Marah';
             } else if (inTeam && isLeader) {
                 if (routePicker) setVisible(routePicker, true);
                 if (routeBadge) setVisible(routeBadge, false);
@@ -1831,11 +1951,6 @@ HTML_TEMPLATE = """
             } else {
                 if (routePicker) setVisible(routePicker, true);
                 if (routeBadge) setVisible(routeBadge, false);
-            }
-
-            if (squad.protagonist && hasTeamRoute) {
-                const p = squad.protagonist;
-                ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('p-', s, p[s] ?? 100));
             }
 
             if (currentSquad) currentSquad.avatar = squad.avatar;
@@ -1932,6 +2047,8 @@ HTML_TEMPLATE = """
                 } else {
                     routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未設定路線</div>';
                 }
+
+                renderTeamProtagonists(data.protagonists);
 
                 const list = document.getElementById('team-members-list');
                 list.innerHTML = '';
