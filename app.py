@@ -1037,7 +1037,14 @@ HTML_TEMPLATE = """
 
                 <div class="mb-6">
                     <div class="text-sm text-amber-400">FRAGMENT</div>
-                    <div id="squad-name" class="text-4xl font-semibold"></div>
+                    <div class="flex items-center gap-x-3">
+                        <div id="squad-name" class="text-4xl font-semibold"></div>
+                        <button onclick="editDisplayName()" 
+                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
+                            <i class="fa-solid fa-edit text-xs"></i>
+                            <span>改名</span>
+                        </button>
+                    </div>
                     <div id="route-badge" class="hidden mt-2 text-sm"></div>
                 </div>
 
@@ -1085,14 +1092,6 @@ HTML_TEMPLATE = """
                             <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="p-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="p-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
-                </div>
-
-                <div class="cartoon-box p-5 mt-4">
-                    <div class="flex justify-between items-center mb-2">
-                        <div class="font-semibold text-sm">你的顯示名稱</div>
-                        <button onclick="editDisplayName()" class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">修改</button>
-                    </div>
-                    <div id="display-name-display" class="text-2xl font-bold text-amber-400"></div>
                 </div>
 
                 <!-- Zoo Skills -->
@@ -1213,11 +1212,6 @@ HTML_TEMPLATE = """
             if (bar) bar.style.width = value + '%';
         }
 
-        function updateDisplayNameUI(name) {
-            const el = document.getElementById('display-name-display');
-            if (el) el.textContent = name || currentSquad.squad_id;
-        }
-
         async function editDisplayName() {
             const current = currentSquad.display_name || currentSquad.squad_id;
             const newName = prompt('輸入新顯示名稱（最多 20 字）', current);
@@ -1229,9 +1223,10 @@ HTML_TEMPLATE = """
                 body: new URLSearchParams({display_name: newName.trim()})
             });
             const data = await res.json();
+
             if (data.success) {
                 currentSquad.display_name = data.display_name;
-                updateDisplayNameUI(data.display_name);
+                document.getElementById('squad-name').textContent = data.display_name;
                 alert('名稱已更新！');
             } else {
                 alert(data.error || '更新失敗');
@@ -1242,7 +1237,6 @@ HTML_TEMPLATE = """
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
             document.getElementById('squad-name').textContent = squad.display_name || squad.squad_id;
-            updateDisplayNameUI(squad.display_name || squad.squad_id);
 
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');
@@ -1475,7 +1469,6 @@ HTML_TEMPLATE = """
                 const nav = document.getElementById('nav');
                 setVisible(nav, true);
                 nav.classList.add('flex');
-                updateDisplayNameUI(currentSquad.display_name || currentSquad.squad_id);
                 updateDashboard(currentSquad);
                 setTimeout(() => {
                     const picker = document.getElementById('route-picker');
@@ -1500,7 +1493,7 @@ HTML_TEMPLATE = """
                             }).then(r => r.json()).then(data => {
                                 if (data.success) {
                                     currentSquad.display_name = data.display_name;
-                                    updateDisplayNameUI(data.display_name);
+                                    document.getElementById('squad-name').textContent = data.display_name;
                                     alert('名稱已設定！');
                                 }
                             });
