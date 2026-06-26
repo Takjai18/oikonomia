@@ -1771,7 +1771,7 @@ HTML_TEMPLATE = """
                     </div>
 
                     <!-- Iggy 五維（已選 Iggy 路線時顯示） -->
-                    <div id="iggy-card" class="hidden cartoon-box p-5">
+                    <div id="iggy-card" class="cartoon-box p-5" style="display:none">
                         <h3 class="font-bold mb-4">🔥 Iggy</h3>
                         <div class="space-y-3">
                             <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="iggy-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
@@ -1783,7 +1783,7 @@ HTML_TEMPLATE = """
                     </div>
 
                     <!-- Marah 五維（已選 Marah 路線時顯示） -->
-                    <div id="marah-card" class="hidden cartoon-box p-5">
+                    <div id="marah-card" class="cartoon-box p-5" style="display:none">
                         <h3 class="font-bold mb-4">🌊 Marah</h3>
                         <div class="space-y-3">
                             <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="marah-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
@@ -2250,28 +2250,25 @@ HTML_TEMPLATE = """
             });
         }
 
-        function updateProtagonistCards(data, squad, protagonists) {
+        function showOnlyProtagonistCard(route, protagonists) {
             const iggyCard = document.getElementById('iggy-card');
             const marahCard = document.getElementById('marah-card');
             if (!iggyCard || !marahCard) return;
 
-            iggyCard.classList.add('hidden');
-            marahCard.classList.add('hidden');
+            iggyCard.style.display = 'none';
+            marahCard.style.display = 'none';
             iggyCard.classList.remove('ring-2', 'ring-amber-500/50');
             marahCard.classList.remove('ring-2', 'ring-amber-500/50');
-
-            const teamRoute = data.route || data.team?.route || squad.route || protagonists?.active_route;
-            if (!teamRoute) return;
 
             const iggy = protagonists?.iggy || {};
             const marah = protagonists?.marah || {};
 
-            if (teamRoute === 'iggy') {
-                iggyCard.classList.remove('hidden');
+            if (route === 'iggy') {
+                iggyCard.style.display = 'block';
                 iggyCard.classList.add('ring-2', 'ring-amber-500/50');
                 renderProtagonistStats('iggy-', iggy);
-            } else if (teamRoute === 'marah') {
-                marahCard.classList.remove('hidden');
+            } else if (route === 'marah') {
+                marahCard.style.display = 'block';
                 marahCard.classList.add('ring-2', 'ring-amber-500/50');
                 renderProtagonistStats('marah-', marah);
             }
@@ -2300,15 +2297,21 @@ HTML_TEMPLATE = """
         function renderTeamProtagonists(protagonists) {
             const section = document.getElementById('team-protagonists-section');
             if (!section) return;
-            if (!protagonists) {
+            const route = protagonists?.active_route;
+            if (!protagonists || !route) {
                 section.classList.add('hidden');
                 section.innerHTML = '';
                 return;
             }
             section.classList.remove('hidden');
-            section.innerHTML =
-                buildProtagonistCardHtml('🔥 Iggy', 'iggy', protagonists.iggy, protagonists.active_route === 'iggy') +
-                buildProtagonistCardHtml('🌊 Marah', 'marah', protagonists.marah, protagonists.active_route === 'marah');
+            if (route === 'iggy') {
+                section.innerHTML = buildProtagonistCardHtml('🔥 Iggy', 'iggy', protagonists.iggy, true);
+            } else if (route === 'marah') {
+                section.innerHTML = buildProtagonistCardHtml('🌊 Marah', 'marah', protagonists.marah, true);
+            } else {
+                section.classList.add('hidden');
+                section.innerHTML = '';
+            }
         }
 
         function updateDashboard(data) {
@@ -2325,7 +2328,7 @@ HTML_TEMPLATE = """
             const isLeader = squad.is_team_leader === 1;
             const inTeam = !!(squad.team_id || data.team);
 
-            updateProtagonistCards({ ...data, route }, squad, protagonists || {});
+            showOnlyProtagonistCard(route, protagonists || {});
 
             if (routePicker) setVisible(routePicker, !route && (!inTeam || isLeader));
 
