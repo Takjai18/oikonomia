@@ -1292,11 +1292,29 @@ HTML_TEMPLATE = """
         .route-iggy { background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); }
         .route-marah { background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); }
         /* Fallback（Tailwind CDN 載入失敗時仍可用） */
-        .hidden { display: none !important; }
-        .flex { display: flex !important; }
+        .hidden { display: none; }
         .fixed { position: fixed; }
         .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
-        #nav { align-items: center; gap: 0.25rem; }
+        /* 導航：桌面橫向 / 手機漢堡（唔用全局 .flex !important，避免蓋過響應式） */
+        #nav-desktop { display: none; }
+        @media (min-width: 768px) {
+            #nav-desktop.nav-visible {
+                display: flex !important;
+                align-items: center;
+                gap: 0.25rem;
+            }
+        }
+        #hamburger-btn { display: none; }
+        @media (max-width: 767px) {
+            #hamburger-btn.nav-visible { display: block; }
+        }
+        #mobile-menu { display: none !important; }
+        @media (max-width: 767px) {
+            #mobile-menu.menu-open {
+                display: flex !important;
+                flex-direction: column;
+            }
+        }
         .location-card { cursor: pointer; padding: 1.25rem; border-radius: 1.5rem; margin-bottom: 1rem;
             background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(245, 158, 11, 0.1); }
         .location-card:active { opacity: 0.85; }
@@ -1321,25 +1339,25 @@ HTML_TEMPLATE = """
                 <span class="title-font text-3xl font-bold">Oikonomia</span>
             </div>
 
-            <!-- 桌面版導航（重要！） -->
-            <div id="nav-desktop" class="hidden md:flex items-center gap-x-1 text-sm">
+            <!-- 桌面版導航（≥768px 先顯示） -->
+            <div id="nav-desktop" class="items-center gap-x-1 text-sm">
                 <button onclick="showSection('dashboard')" class="px-5 py-2 nav-btn">Dashboard</button>
                 <button onclick="showSection('explore')" class="px-5 py-2 nav-btn">探索</button>
                 <button onclick="showSection('team')" class="px-5 py-2 nav-btn">Team</button>
                 <button onclick="showSection('log')" class="px-5 py-2 nav-btn">日誌</button>
             </div>
 
-            <!-- 手機版漢堡按鈕 -->
-            <button onclick="toggleMobileMenu()"
-                    class="md:hidden text-2xl text-zinc-300 hover:text-white px-2">
+            <!-- 手機版漢堡按鈕（<768px 先顯示） -->
+            <button id="hamburger-btn" onclick="toggleMobileMenu()"
+                    class="text-2xl text-zinc-300 hover:text-white px-2">
                 <i class="fa-solid fa-bars"></i>
             </button>
         </div>
 
         <!-- 手機版彈出選單 -->
         <div id="mobile-menu" onclick="toggleMobileMenu()"
-             class="hidden md:hidden fixed inset-0 bg-black/90 z-[60] pt-20 px-6">
-            <div class="flex flex-col text-lg" onclick="event.stopImmediatePropagation()">
+             class="fixed inset-0 bg-black/90 z-[60] pt-20 px-6">
+            <div class="flex flex-col text-lg" onclick="event.stopPropagation()">
                 <button onclick="showSection('dashboard'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Dashboard</button>
                 <button onclick="showSection('explore'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">探索</button>
                 <button onclick="showSection('team'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Team</button>
@@ -1597,14 +1615,12 @@ HTML_TEMPLATE = """
 
         function toggleMobileMenu() {
             const menu = document.getElementById('mobile-menu');
-            if (!menu) return;
-            if (menu.classList.contains('hidden')) {
-                menu.classList.remove('hidden');
-                menu.classList.add('flex');
-            } else {
-                menu.classList.remove('flex');
-                menu.classList.add('hidden');
-            }
+            if (menu) menu.classList.toggle('menu-open');
+        }
+
+        function showNavAfterLogin() {
+            document.getElementById('nav-desktop')?.classList.add('nav-visible');
+            document.getElementById('hamburger-btn')?.classList.add('nav-visible');
         }
 
         function showSection(id) {
@@ -2041,12 +2057,7 @@ HTML_TEMPLATE = """
             currentSquad = data.squad;
             setVisible(document.getElementById('login-screen'), false);
             setVisible(document.getElementById('game-content'), true);
-            const navDesktop = document.getElementById('nav-desktop');
-            if (navDesktop) {
-                navDesktop.classList.remove('hidden');
-                navDesktop.classList.add('flex', 'max-md:hidden');
-                navDesktop.style.display = '';
-            }
+            showNavAfterLogin();
 
             document.getElementById('squad-name').textContent =
                 currentSquad.display_name || currentSquad.squad_id;
