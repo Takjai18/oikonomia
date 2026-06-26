@@ -47,7 +47,8 @@ def init_db():
         protagonist_stats TEXT,
         team_id TEXT,
         is_team_leader INTEGER DEFAULT 0,
-        display_name TEXT
+        display_name TEXT,
+        pin TEXT
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS submissions (
@@ -96,6 +97,11 @@ def migrate_db():
     if "display_name" not in cols:
         try:
             c.execute("ALTER TABLE squads ADD COLUMN display_name TEXT")
+        except sqlite3.OperationalError:
+            pass
+    if "pin" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN pin TEXT")
         except sqlite3.OperationalError:
             pass
     c.execute(
@@ -186,6 +192,7 @@ def row_to_squad(row):
         "route": d.get("route"),
         "team_id": d.get("team_id"),
         "is_team_leader": 1 if d.get("is_team_leader") else 0,
+        "has_pin": bool(d.get("pin")),
         "protagonist": protagonist,
     }
 
@@ -225,13 +232,17 @@ def get_all_squads():
     return [row_to_squad(r) for r in rows]
 
 def update_squad(squad_id, **kwargs):
-    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader", "display_name"}
+    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin"}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     updates = []
     params = []
     for key, val in kwargs.items():
-        if key in allowed and val is not None:
+        if key not in allowed:
+            continue
+        if key == "pin" and val is None:
+            updates.append("pin = NULL")
+        elif val is not None:
             updates.append(f"{key} = ?")
             params.append(val)
     if updates:
@@ -316,20 +327,30 @@ def index():
 @app.route("/login", methods=["POST"])
 def login():
     name = request.form.get("squad_id", "").strip()
+    pin = request.form.get("pin", "").strip()
+
     if not name:
         return jsonify({"error": "請輸入名稱"}), 400
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
-        "SELECT squad_id FROM squads WHERE display_name = ? COLLATE NOCASE",
+        "SELECT squad_id, pin FROM squads WHERE display_name = ? COLLATE NOCASE",
         (name,),
     ).fetchone()
 
     if row:
         internal_id = row["squad_id"]
+        stored_pin = row["pin"]
         conn.close()
         update_squad(internal_id, display_name=name)
+
+        if stored_pin:
+            if not pin:
+                return jsonify({"error": "請輸入 PIN"}), 401
+            if pin != stored_pin:
+                return jsonify({"error": "PIN 錯誤"}), 401
+        needs_pin_setup = not stored_pin
     else:
         conn.close()
         internal_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
@@ -343,9 +364,27 @@ def login():
         )
         conn.commit()
         conn.close()
+        needs_pin_setup = True
 
     session["squad_id"] = internal_id
-    return jsonify({"success": True, "squad": get_squad(internal_id)})
+    return jsonify({
+        "success": True,
+        "squad": get_squad(internal_id),
+        "needs_pin_setup": needs_pin_setup,
+    })
+
+@app.route("/set_pin", methods=["POST"])
+def set_pin():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    pin = request.form.get("pin", "").strip()
+    if not pin.isdigit() or len(pin) != 4:
+        return jsonify({"success": False, "error": "PIN 必須為 4 位數字"}), 400
+
+    update_squad(session["squad_id"], pin=pin)
+    squad = get_squad(session["squad_id"])
+    return jsonify({"success": True, "squad": squad})
 
 @app.route("/status")
 def status():
@@ -695,6 +734,23 @@ def gm_adjust():
 
     return jsonify({"success": True})
 
+@app.route("/gm/reset_pin", methods=["POST"])
+def gm_reset_pin():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    squad_id = request.form.get("squad_id", "").strip()
+    if not squad_id:
+        return jsonify({"success": False, "error": "缺少玩家 ID"}), 400
+
+    squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({"success": False, "error": "玩家不存在"}), 404
+
+    update_squad(squad_id, pin=None)
+    label = squad.get("display_name") or squad_id
+    return jsonify({"success": True, "message": f"已重置 {label} 的 PIN"})
+
 @app.route("/gm/global_event", methods=["POST"])
 def gm_global_event():
     if not session.get("is_gm"):
@@ -996,16 +1052,40 @@ HTML_TEMPLATE = """
             <div class="text-center mb-8">
                 <i class="fa-solid fa-user-secret text-6xl text-amber-400 mb-4"></i>
                 <h1 class="text-3xl font-bold">你已從臍帶中斷裂</h1>
-                <p class="text-zinc-400 mt-2">請輸入你想顯示嘅名稱</p>
+                <p class="text-zinc-400 mt-2">輸入名稱登入（首次無需 PIN）</p>
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
                 <input type="text" id="squad_id" placeholder="輸入你的名稱" 
                        class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl">
+                <input type="password" id="login_pin" placeholder="4 位 PIN（首次登入可留空）" maxlength="4"
+                       inputmode="numeric" pattern="[0-9]*"
+                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl tracking-widest text-center font-mono">
                 <button type="submit" 
                         class="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold py-4 rounded-2xl">
                     進入 Oikonomia
                 </button>
             </form>
+        </div>
+
+        <!-- 強制設定 PIN Modal -->
+        <div id="pin-setup-modal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center z-[200]">
+            <div class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-8 border border-zinc-700">
+                <h2 class="text-xl font-bold mb-2">設定你的 PIN</h2>
+                <p class="text-sm text-zinc-400 mb-6">請設定 4 位數 PIN，之後登入需要使用</p>
+                <div class="space-y-4">
+                    <input type="password" id="new-pin" maxlength="4" inputmode="numeric" pattern="[0-9]*"
+                           placeholder="輸入 4 位 PIN"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-3 text-center font-mono text-xl tracking-widest">
+                    <input type="password" id="confirm-pin" maxlength="4" inputmode="numeric" pattern="[0-9]*"
+                           placeholder="再次輸入確認"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-3 text-center font-mono text-xl tracking-widest">
+                    <button onclick="submitPinSetup()" 
+                            class="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold py-3 rounded-2xl">
+                        確認設定
+                    </button>
+                </div>
+                <p id="pin-setup-error" class="text-red-400 text-sm mt-3 hidden"></p>
+            </div>
         </div>
 
         <!-- Game Content -->
@@ -1478,66 +1558,109 @@ HTML_TEMPLATE = """
             }
         }
 
+        function showPinSetupModal() {
+            const modal = document.getElementById('pin-setup-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('new-pin').value = '';
+            document.getElementById('confirm-pin').value = '';
+            document.getElementById('pin-setup-error').classList.add('hidden');
+        }
+
+        function hidePinSetupModal() {
+            const modal = document.getElementById('pin-setup-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function submitPinSetup() {
+            const pin = document.getElementById('new-pin').value.trim();
+            const confirm = document.getElementById('confirm-pin').value.trim();
+            const errEl = document.getElementById('pin-setup-error');
+
+            if (!/^\\d{4}$/.test(pin)) {
+                errEl.textContent = 'PIN 必須為 4 位數字';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            if (pin !== confirm) {
+                errEl.textContent = '兩次輸入不一致';
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            const res = await fetch('/set_pin', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({pin})
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentSquad = data.squad;
+                hidePinSetupModal();
+                alert('PIN 已設定！請記住你的 PIN');
+                proceedAfterLogin();
+            } else {
+                errEl.textContent = data.error || '設定失敗';
+                errEl.classList.remove('hidden');
+            }
+        }
+
+        async function proceedAfterLogin() {
+            setVisible(document.getElementById('login-screen'), false);
+            setVisible(document.getElementById('game-content'), true);
+            const nav = document.getElementById('nav');
+            setVisible(nav, true);
+            nav.classList.add('flex');
+            updateDashboard(currentSquad);
+            setTimeout(() => {
+                const picker = document.getElementById('route-picker');
+                if (!picker) return;
+                if (currentSquad.route) {
+                    setVisible(picker, false);
+                } else if (currentSquad.is_team_leader !== 1) {
+                    setVisible(picker, false);
+                }
+            }, 400);
+            showSection('dashboard');
+            loadAnnouncements();
+
+            try {
+                const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
+                const teamData = await teamRes.json();
+                if (!teamData.has_team) {
+                    setTimeout(() => {
+                        if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
+                            showSection('team');
+                        }
+                    }, 1200);
+                }
+            } catch (teamErr) {
+                console.error('team check failed', teamErr);
+            }
+        }
+
         async function login(e) {
             e.preventDefault();
             try {
                 const id = document.getElementById('squad_id').value.trim();
-                const res = await fetch('/login', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({squad_id: id}) });
+                const pin = document.getElementById('login_pin').value.trim();
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({squad_id: id, pin})
+                });
                 const data = await res.json();
                 if (!data.success) { alert(data.error || '登入失敗'); return; }
 
                 currentSquad = data.squad;
-                setVisible(document.getElementById('login-screen'), false);
-                setVisible(document.getElementById('game-content'), true);
-                const nav = document.getElementById('nav');
-                setVisible(nav, true);
-                nav.classList.add('flex');
-                updateDashboard(currentSquad);
-                setTimeout(() => {
-                    const picker = document.getElementById('route-picker');
-                    if (!picker) return;
-                    if (currentSquad.route) {
-                        setVisible(picker, false);
-                    } else if (currentSquad.is_team_leader !== 1) {
-                        setVisible(picker, false);
-                    }
-                }, 400);
-                showSection('dashboard');
-                loadAnnouncements();
 
-                if (!currentSquad.display_name || currentSquad.display_name === currentSquad.squad_id) {
-                    setTimeout(() => {
-                        const name = prompt('歡迎！請輸入你想顯示嘅名稱（最多20字）', currentSquad.squad_id);
-                        if (name) {
-                            fetch('/update_display_name', {
-                                method: 'POST',
-                                credentials: 'same-origin',
-                                body: new URLSearchParams({display_name: name})
-                            }).then(r => r.json()).then(data => {
-                                if (data.success) {
-                                    currentSquad.display_name = data.display_name;
-                                    document.getElementById('squad-name').textContent = data.display_name;
-                                    alert('名稱已設定！');
-                                }
-                            });
-                        }
-                    }, 1500);
+                if (data.needs_pin_setup) {
+                    showPinSetupModal();
+                    return;
                 }
 
-                // Phase 2: 登入後自動檢查 Team 狀態
-                try {
-                    const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
-                    const teamData = await teamRes.json();
-                    if (!teamData.has_team) {
-                        setTimeout(() => {
-                            if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
-                                showSection('team');
-                            }
-                        }, 1200);
-                    }
-                } catch (teamErr) {
-                    console.error('team check failed', teamErr);
-                }
+                await proceedAfterLogin();
             } catch (err) {
                 console.error('login failed', err);
                 alert('登入失敗，請重試或檢查網絡連線');
@@ -2459,6 +2582,18 @@ GM_SQUAD_DETAIL_HTML = """
                     <span class="text-zinc-400">Resource</span><br>
                     <span class="font-mono text-purple-400">{{ squad.resources }}</span>
                 </div>
+                <div>
+                    <span class="text-zinc-400">PIN 狀態</span><br>
+                    <span class="font-mono {{ 'text-emerald-400' if squad.has_pin else 'text-zinc-500' }}">
+                        {{ '已設定' if squad.has_pin else '未設定' }}
+                    </span>
+                    {% if squad.has_pin %}
+                    <button onclick="gmResetPin('{{ squad.squad_id }}')" 
+                            class="ml-2 text-xs px-2 py-0.5 bg-red-900/50 hover:bg-red-900 text-red-300 rounded">
+                        重置 PIN
+                    </button>
+                    {% endif %}
+                </div>
                 
                 <div class="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mt-2 pt-4 border-t border-zinc-700">
                     <div>HP: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
@@ -2537,6 +2672,25 @@ GM_SQUAD_DETAIL_HTML = """
         </div>
 
         <script>
+        function gmResetPin(squadId) {
+            if (!confirm('確定要重置此玩家的 PIN？\\n玩家下次登入需重新設定 PIN。')) return;
+
+            fetch('/gm/reset_pin', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({squad_id: squadId})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message || 'PIN 已重置');
+                    location.reload();
+                } else {
+                    alert(data.error || '重置失敗');
+                }
+            });
+        }
+
         function adjustValue(field) {
             let valueInput;
             const ids = {hp:'hp-value', sanity:'sanity-value', power:'power-value', intellect:'intellect-value', resilience:'resilience-value', resources:'resource-value'};
