@@ -99,6 +99,7 @@ def migrate_db():
             c.execute("ALTER TABLE squads ADD COLUMN display_name TEXT")
         except sqlite3.OperationalError:
             pass
+    # === 新增 PIN 欄位 ===
     if "pin" not in cols:
         try:
             c.execute("ALTER TABLE squads ADD COLUMN pin TEXT")
@@ -327,50 +328,55 @@ def index():
 @app.route("/login", methods=["POST"])
 def login():
     name = request.form.get("squad_id", "").strip()
-    pin = request.form.get("pin", "").strip()
+    input_pin = request.form.get("pin", "").strip()
 
     if not name:
         return jsonify({"error": "請輸入名稱"}), 400
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+
     row = conn.execute(
-        "SELECT squad_id, pin FROM squads WHERE display_name = ? COLLATE NOCASE",
-        (name,),
+        "SELECT * FROM squads WHERE display_name = ? OR squad_id = ?",
+        (name, name),
     ).fetchone()
 
-    if row:
-        internal_id = row["squad_id"]
-        stored_pin = row["pin"]
-        conn.close()
-        update_squad(internal_id, display_name=name)
-
-        if stored_pin:
-            if not pin:
-                return jsonify({"error": "請輸入 PIN"}), 401
-            if pin != stored_pin:
-                return jsonify({"error": "PIN 錯誤"}), 401
-        needs_pin_setup = not stored_pin
-    else:
-        conn.close()
+    if not row:
         internal_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
         while get_squad(internal_id):
             internal_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
-        conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
             "INSERT INTO squads (squad_id, display_name) VALUES (?, ?)",
             (internal_id, name),
         )
         conn.commit()
-        conn.close()
-        needs_pin_setup = True
+        row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (internal_id,)).fetchone()
 
-    session["squad_id"] = internal_id
+    has_pin = bool(row["pin"])
+
+    if has_pin:
+        if not input_pin:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "require_pin": True,
+                "message": "請輸入 PIN",
+            })
+        if input_pin != row["pin"]:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "error": "PIN 錯誤",
+            })
+
+    session["squad_id"] = row["squad_id"]
+    conn.close()
+
     return jsonify({
         "success": True,
-        "squad": get_squad(internal_id),
-        "needs_pin_setup": needs_pin_setup,
+        "squad": get_squad(row["squad_id"]),
+        "require_set_pin": not has_pin,
     })
 
 @app.route("/set_pin", methods=["POST"])
@@ -378,13 +384,14 @@ def set_pin():
     if "squad_id" not in session:
         return jsonify({"success": False, "error": "未登入"}), 401
 
-    pin = request.form.get("pin", "").strip()
-    if not pin.isdigit() or len(pin) != 4:
-        return jsonify({"success": False, "error": "PIN 必須為 4 位數字"}), 400
+    new_pin = request.form.get("pin", "").strip()
 
-    update_squad(session["squad_id"], pin=pin)
-    squad = get_squad(session["squad_id"])
-    return jsonify({"success": True, "squad": squad})
+    if not new_pin or len(new_pin) != 4 or not new_pin.isdigit():
+        return jsonify({"success": False, "error": "請輸入 4 位數字 PIN"}), 400
+
+    update_squad(session["squad_id"], pin=new_pin)
+
+    return jsonify({"success": True, "message": "PIN 設定成功"})
 
 @app.route("/status")
 def status():
@@ -1056,8 +1063,8 @@ HTML_TEMPLATE = """
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
                 <input type="text" id="squad_id" placeholder="輸入你的名稱" 
-                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl">
-                <input type="password" id="login_pin" placeholder="4 位 PIN（首次登入可留空）" maxlength="4"
+                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl mb-3">
+                <input type="password" id="login_pin" placeholder="輸入 PIN（第一次登入可留空）" maxlength="4"
                        inputmode="numeric" pattern="[0-9]*"
                        class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl tracking-widest text-center font-mono">
                 <button type="submit" 
@@ -1065,27 +1072,6 @@ HTML_TEMPLATE = """
                     進入 Oikonomia
                 </button>
             </form>
-        </div>
-
-        <!-- 強制設定 PIN Modal -->
-        <div id="pin-setup-modal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center z-[200]">
-            <div class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-8 border border-zinc-700">
-                <h2 class="text-xl font-bold mb-2">設定你的 PIN</h2>
-                <p class="text-sm text-zinc-400 mb-6">請設定 4 位數 PIN，之後登入需要使用</p>
-                <div class="space-y-4">
-                    <input type="password" id="new-pin" maxlength="4" inputmode="numeric" pattern="[0-9]*"
-                           placeholder="輸入 4 位 PIN"
-                           class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-3 text-center font-mono text-xl tracking-widest">
-                    <input type="password" id="confirm-pin" maxlength="4" inputmode="numeric" pattern="[0-9]*"
-                           placeholder="再次輸入確認"
-                           class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-3 text-center font-mono text-xl tracking-widest">
-                    <button onclick="submitPinSetup()" 
-                            class="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold py-3 rounded-2xl">
-                        確認設定
-                    </button>
-                </div>
-                <p id="pin-setup-error" class="text-red-400 text-sm mt-3 hidden"></p>
-            </div>
         </div>
 
         <!-- Game Content -->
@@ -1558,61 +1544,43 @@ HTML_TEMPLATE = """
             }
         }
 
-        function showPinSetupModal() {
-            const modal = document.getElementById('pin-setup-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            document.getElementById('new-pin').value = '';
-            document.getElementById('confirm-pin').value = '';
-            document.getElementById('pin-setup-error').classList.add('hidden');
-        }
-
-        function hidePinSetupModal() {
-            const modal = document.getElementById('pin-setup-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-
-        async function submitPinSetup() {
-            const pin = document.getElementById('new-pin').value.trim();
-            const confirm = document.getElementById('confirm-pin').value.trim();
-            const errEl = document.getElementById('pin-setup-error');
-
-            if (!/^\\d{4}$/.test(pin)) {
-                errEl.textContent = 'PIN 必須為 4 位數字';
-                errEl.classList.remove('hidden');
-                return;
-            }
-            if (pin !== confirm) {
-                errEl.textContent = '兩次輸入不一致';
-                errEl.classList.remove('hidden');
-                return;
-            }
-
-            const res = await fetch('/set_pin', {
-                method: 'POST',
-                credentials: 'same-origin',
-                body: new URLSearchParams({pin})
-            });
-            const data = await res.json();
-            if (data.success) {
-                currentSquad = data.squad;
-                hidePinSetupModal();
-                alert('PIN 已設定！請記住你的 PIN');
-                proceedAfterLogin();
-            } else {
-                errEl.textContent = data.error || '設定失敗';
-                errEl.classList.remove('hidden');
-            }
-        }
-
-        async function proceedAfterLogin() {
+        async function completeLogin(data) {
+            currentSquad = data.squad;
             setVisible(document.getElementById('login-screen'), false);
             setVisible(document.getElementById('game-content'), true);
             const nav = document.getElementById('nav');
             setVisible(nav, true);
             nav.classList.add('flex');
+
+            document.getElementById('squad-name').textContent =
+                currentSquad.display_name || currentSquad.squad_id;
+
+            if (data.require_set_pin) {
+                setTimeout(() => {
+                    const pin = prompt('請設定你的 4 位數 PIN（之後登入要用）');
+                    if (pin && pin.length === 4 && /^\\d+$/.test(pin)) {
+                        fetch('/set_pin', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            body: new URLSearchParams({pin: pin})
+                        }).then(r => r.json()).then(res => {
+                            if (res.success) {
+                                alert('PIN 設定成功！請記住。');
+                                currentSquad.has_pin = true;
+                            } else {
+                                alert(res.error || 'PIN 設定失敗');
+                            }
+                        });
+                    } else if (pin) {
+                        alert('PIN 設定失敗，請之後再設定。');
+                    }
+                }, 800);
+            }
+
+            showSection('dashboard');
             updateDashboard(currentSquad);
+            loadAnnouncements();
+
             setTimeout(() => {
                 const picker = document.getElementById('route-picker');
                 if (!picker) return;
@@ -1622,8 +1590,6 @@ HTML_TEMPLATE = """
                     setVisible(picker, false);
                 }
             }, 400);
-            showSection('dashboard');
-            loadAnnouncements();
 
             try {
                 const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
@@ -1640,27 +1606,44 @@ HTML_TEMPLATE = """
             }
         }
 
+        async function loginWithPin(name, pin) {
+            const res = await fetch('/login', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({squad_id: name, pin: pin})
+            });
+            const data = await res.json();
+            if (data.success) {
+                await completeLogin(data);
+            } else {
+                alert(data.error || 'PIN 錯誤');
+            }
+        }
+
         async function login(e) {
             e.preventDefault();
             try {
-                const id = document.getElementById('squad_id').value.trim();
+                const name = document.getElementById('squad_id').value.trim();
                 const pin = document.getElementById('login_pin').value.trim();
                 const res = await fetch('/login', {
                     method: 'POST',
                     credentials: 'same-origin',
-                    body: new URLSearchParams({squad_id: id, pin})
+                    body: new URLSearchParams({squad_id: name, pin: pin})
                 });
                 const data = await res.json();
-                if (!data.success) { alert(data.error || '登入失敗'); return; }
 
-                currentSquad = data.squad;
-
-                if (data.needs_pin_setup) {
-                    showPinSetupModal();
-                    return;
+                if (data.success) {
+                    await completeLogin(data);
+                } else {
+                    if (data.require_pin) {
+                        const inputPin = prompt('請輸入你的 4 位數 PIN');
+                        if (inputPin) {
+                            await loginWithPin(name, inputPin);
+                        }
+                    } else {
+                        alert(data.error || data.message || '登入失敗');
+                    }
                 }
-
-                await proceedAfterLogin();
             } catch (err) {
                 console.error('login failed', err);
                 alert('登入失敗，請重試或檢查網絡連線');
