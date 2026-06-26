@@ -49,7 +49,8 @@ def init_db():
         team_id TEXT PRIMARY KEY,
         team_name TEXT NOT NULL,
         route TEXT,
-        created_at TEXT
+        created_at TEXT,
+        leader_squad_id TEXT
     )''')
     c.execute('''CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +84,10 @@ def migrate_db():
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
     )
+    c.execute("PRAGMA table_info(teams)")
+    team_cols = {row[1] for row in c.fetchall()}
+    if "leader_squad_id" not in team_cols:
+        c.execute("ALTER TABLE teams ADD COLUMN leader_squad_id TEXT")
     conn.commit()
     conn.close()
 
@@ -140,14 +145,35 @@ def row_to_squad(row):
         "route": d.get("route"),
         "team_id": d.get("team_id"),
         "protagonist": protagonist,
+        "is_team_leader": 0,
     }
+
+def enrich_squad(squad):
+    if not squad:
+        return squad
+    squad = dict(squad)
+    squad["is_team_leader"] = 0
+    team_id = squad.get("team_id")
+    if team_id:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (team_id,)
+        ).fetchone()
+        conn.close()
+        if row:
+            if row["route"]:
+                squad["route"] = row["route"]
+            if row["leader_squad_id"] == squad["squad_id"]:
+                squad["is_team_leader"] = 1
+    return squad
 
 def get_squad(squad_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
     conn.close()
-    return row_to_squad(row) if row else None
+    return enrich_squad(row_to_squad(row)) if row else None
 
 def get_all_squads():
     conn = sqlite3.connect(DB_PATH)
@@ -311,14 +337,43 @@ def create_player_team():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
-        (team_id, team_name, None, created_at),
+        "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
+        (team_id, team_name, None, created_at, session["squad_id"]),
     )
     conn.commit()
     conn.close()
 
     update_squad(session["squad_id"], team_id=team_id)
     return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
+
+@app.route("/set_team_route_by_leader", methods=["POST"])
+def set_team_route_by_leader():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad or squad.get("is_team_leader") != 1:
+        return jsonify({"success": False, "error": "只有隊長可以設定路線"}), 403
+
+    route = request.form.get("route", "").lower()
+    if route not in ("iggy", "marah"):
+        return jsonify({"success": False, "error": "無效路線"}), 400
+
+    team_id = squad.get("team_id")
+    if not team_id:
+        return jsonify({"success": False, "error": "你未加入任何 Team"}), 400
+
+    team = get_team_by_id(team_id)
+    if team and team.get("route"):
+        return jsonify({"success": False, "error": "Team 已設定路線，無法更改"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE teams SET route = ? WHERE team_id = ?", (route, team_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "squad": get_squad(session["squad_id"])})
 
 @app.route("/set_route", methods=["POST"])
 def set_route():
@@ -608,8 +663,8 @@ def gm_create_team():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
-        (team_id, team_name, None, created_at),
+        "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
+        (team_id, team_name, None, created_at, None),
     )
     conn.commit()
     conn.close()
@@ -972,30 +1027,37 @@ HTML_TEMPLATE = """
 
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');
-            const hasRoute = !!squad.route;
+            const isLeader = squad.is_team_leader === 1;
+            const hasTeamRoute = squad.route;
+            const inTeam = !!squad.team_id;
 
-            document.getElementById('protagonist-panel').classList.toggle('hidden', !hasRoute);
+            document.getElementById('protagonist-panel').classList.toggle('hidden', !hasTeamRoute);
 
-            if (squad.route) {
+            if (hasTeamRoute) {
                 if (routePicker) setVisible(routePicker, false);
                 if (routeBadge) {
                     setVisible(routeBadge, true);
                     routeBadge.innerHTML = squad.route === 'iggy'
-                        ? `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">
-                            🔥 Iggy 路線
-                           </span>`
-                        : `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">
-                            🌊 Marah 路線
-                           </span>`;
+                        ? `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">🔥 Iggy 路線</span>`
+                        : `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">🌊 Marah 路線</span>`;
                 }
                 document.getElementById('protagonist-title').textContent =
                     squad.route === 'iggy' ? '🔥 Iggy' : '🌊 Marah';
+            } else if (inTeam && isLeader) {
+                if (routePicker) setVisible(routePicker, true);
+                if (routeBadge) setVisible(routeBadge, false);
+            } else if (inTeam && !isLeader) {
+                if (routePicker) setVisible(routePicker, false);
+                if (routeBadge) {
+                    setVisible(routeBadge, true);
+                    routeBadge.innerHTML = `<span class="text-xs text-zinc-400">等待隊長選擇路線...</span>`;
+                }
             } else {
                 if (routePicker) setVisible(routePicker, true);
                 if (routeBadge) setVisible(routeBadge, false);
             }
 
-            if (squad.protagonist && hasRoute) {
+            if (squad.protagonist && hasTeamRoute) {
                 const p = squad.protagonist;
                 ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('p-', s, p[s] ?? 100));
             }
@@ -1004,7 +1066,10 @@ HTML_TEMPLATE = """
         async function selectRoute(route) {
             if (!confirm(route === 'iggy' ? '確認選擇 Iggy 路線？' : '確認選擇 Marah 路線？')) return;
 
-            const res = await fetch('/set_route', {
+            const useTeamRoute = currentSquad && currentSquad.is_team_leader === 1 && currentSquad.team_id;
+            const endpoint = useTeamRoute ? '/set_team_route_by_leader' : '/set_route';
+
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 credentials: 'same-origin',
                 body: new URLSearchParams({route})
@@ -1016,7 +1081,12 @@ HTML_TEMPLATE = """
                 return;
             }
 
-            currentSquad = data.squad;
+            if (data.squad) {
+                currentSquad = data.squad;
+            } else {
+                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                currentSquad = await statusRes.json();
+            }
             updateDashboard(currentSquad);
 
             const picker = document.getElementById('route-picker');
@@ -1134,8 +1204,13 @@ HTML_TEMPLATE = """
                 updateDashboard(currentSquad);
                 setTimeout(() => {
                     const picker = document.getElementById('route-picker');
-                    if (currentSquad.route && picker) setVisible(picker, false);
-                }, 300);
+                    if (!picker) return;
+                    if (currentSquad.route) {
+                        setVisible(picker, false);
+                    } else if (currentSquad.is_team_leader !== 1) {
+                        setVisible(picker, false);
+                    }
+                }, 400);
                 showSection('dashboard');
                 loadAnnouncements();
 
