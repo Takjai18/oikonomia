@@ -1000,6 +1000,64 @@ def gm_teams():
         return jsonify({"error": "未授權"}), 403
     return jsonify({"teams": get_all_teams_with_stats()})
 
+@app.route("/gm/team_members/<team_id>")
+def gm_team_members(team_id):
+    if not session.get("is_gm"):
+        return jsonify({"error": "未授權"}), 403
+
+    team = get_team_by_id(team_id)
+    if not team:
+        return jsonify({"error": "Team 不存在"}), 404
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM squads WHERE team_id = ? ORDER BY display_name, squad_id",
+        (team_id,),
+    ).fetchall()
+    conn.close()
+
+    members = [get_squad(row["squad_id"]) for row in rows]
+    return jsonify({"team": team, "members": members})
+
+@app.route("/gm/assignable_players")
+def gm_assignable_players():
+    if not session.get("is_gm"):
+        return jsonify({"error": "未授權"}), 403
+
+    team_id = request.args.get("team_id", "").strip().upper()
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+
+    if team_id:
+        rows = conn.execute("""
+            SELECT squad_id, display_name, team_id
+            FROM squads
+            WHERE team_id IS NULL OR team_id != ?
+            ORDER BY display_name
+        """, (team_id,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT squad_id, display_name, team_id FROM squads ORDER BY display_name
+        """).fetchall()
+
+    conn.close()
+
+    players = []
+    for row in rows:
+        label = row["display_name"] or row["squad_id"]
+        if row["team_id"]:
+            label += f"（現於 {row['team_id']}）"
+        players.append({
+            "squad_id": row["squad_id"],
+            "display_name": row["display_name"] or row["squad_id"],
+            "current_team_id": row["team_id"],
+            "label": label,
+        })
+
+    return jsonify({"players": players})
+
 @app.route("/gm/create_team", methods=["POST"])
 def gm_create_team():
     if not session.get("is_gm"):
@@ -1028,19 +1086,21 @@ def gm_assign_squad():
     new_team_id = request.form.get("team_id", "").strip().upper()
 
     if not squad_id:
-        return jsonify({"success": False, "error": "請輸入玩家 ID"}), 400
-    if not squad_id.upper().startswith("FRAG-"):
-        squad_id = squad_id.upper().replace(" ", "_")[:15]
-    else:
-        squad_id = squad_id.upper()
+        return jsonify({"success": False, "error": "請選擇玩家"}), 400
+
+    squad = get_squad(squad_id)
+    if not squad:
+        if not squad_id.upper().startswith("FRAG-"):
+            squad_id = squad_id.upper().replace(" ", "_")[:15]
+        else:
+            squad_id = squad_id.upper()
+        squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({"success": False, "error": "玩家不存在"}), 400
 
     new_team = get_team_by_id(new_team_id)
     if not new_team:
         return jsonify({"success": False, "error": "目標 Team 不存在"}), 400
-
-    squad = get_squad(squad_id)
-    if not squad:
-        return jsonify({"success": False, "error": "玩家不存在"}), 400
 
     old_team_id = squad.get("team_id")
     old_team_name = None
@@ -2615,27 +2675,90 @@ GM_DASHBOARD_HTML = """
             });
         }
 
-        function gmAssignSquadToTeam(teamId) {
-            const squadId = prompt('請輸入要分配/轉隊嘅玩家 ID（例如 FRAG-01 或 Saka）：');
-            if (!squadId) return;
+        async function gmAssignSquadToTeam(teamId) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[100]';
 
-            fetch('/gm/assign_squad', {
+            modal.innerHTML = `
+                <div class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-6 border border-zinc-700">
+                    <div class="text-xl font-bold mb-1">分配 / 轉隊玩家</div>
+                    <div class="text-sm text-zinc-400 mb-4">Team ID: ${teamId}</div>
+
+                    <div class="mb-4">
+                        <div class="text-sm text-zinc-400 mb-2">選擇玩家：</div>
+                        <select id="assign-player-select"
+                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-sm">
+                            <option value="">載入中...</option>
+                        </select>
+                    </div>
+
+                    <div class="flex gap-x-3">
+                        <button onclick="this.closest('.fixed').remove()"
+                                class="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">
+                            取消
+                        </button>
+                        <button onclick="confirmAssignPlayer('${teamId}', this)"
+                                class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl text-sm">
+                            確認分配
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            try {
+                const res = await fetch(`/gm/assignable_players?team_id=${teamId}`);
+                const data = await res.json();
+
+                const select = modal.querySelector('#assign-player-select');
+                select.innerHTML = '<option value="">-- 請選擇玩家 --</option>';
+
+                (data.players || []).forEach(player => {
+                    const option = document.createElement('option');
+                    option.value = player.squad_id;
+                    option.textContent = player.label || `${player.display_name} (${player.squad_id})`;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                alert('載入玩家列表失敗');
+                modal.remove();
+            }
+        }
+
+        async function confirmAssignPlayer(teamId, buttonElement) {
+            const modal = buttonElement.closest('.fixed');
+            const select = modal.querySelector('#assign-player-select');
+            const squadId = select.value;
+
+            if (!squadId) {
+                alert('請選擇一個玩家');
+                return;
+            }
+
+            buttonElement.disabled = true;
+            buttonElement.textContent = '分配中...';
+
+            const res = await fetch('/gm/assign_squad', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams({
-                    squad_id: squadId.trim(),
+                    squad_id: squadId,
                     team_id: teamId
                 })
-            })
-            .then(r => r.json())
-            .then(d => {
-                if (d.success) {
-                    alert(d.message || '操作成功');
-                    loadGMTeams();
-                } else {
-                    alert(d.error || '操作失敗');
-                }
             });
+
+            const data = await res.json();
+
+            if (data.success) {
+                modal.remove();
+                alert(data.message || '分配成功！');
+                loadGMTeams();
+            } else {
+                alert(data.error || '分配失敗');
+                buttonElement.disabled = false;
+                buttonElement.textContent = '確認分配';
+            }
         }
 
         function gmSetRoutePrompt(teamId) {
@@ -2689,8 +2812,64 @@ GM_DASHBOARD_HTML = """
             });
         }
 
-        function gmViewTeamMembers(teamId, teamName) {
-            alert(`${teamName} (${teamId})\\n\\n完整成員列表 + 每人狀態將在下一版 Modal 顯示`);
+        async function gmViewTeamMembers(teamId, teamName) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[100]';
+
+            modal.innerHTML = `
+                <div class="bg-zinc-900 w-full max-w-2xl mx-4 rounded-3xl p-6 border border-zinc-700 max-h-[80vh] overflow-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <div class="text-xl font-bold">${teamName}</div>
+                            <div class="text-sm text-zinc-400">Team ID: ${teamId}</div>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()"
+                                class="text-3xl leading-none text-zinc-400 hover:text-white">×</button>
+                    </div>
+                    <div id="team-members-content">
+                        <div class="text-center py-8 text-zinc-400">載入中...</div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const contentEl = modal.querySelector('#team-members-content');
+            try {
+                const res = await fetch(`/gm/team_members/${teamId}`);
+                const data = await res.json();
+
+                if (!data.members || data.members.length === 0) {
+                    contentEl.innerHTML = '<div class="text-center py-6 text-zinc-400">暫無成員</div>';
+                    return;
+                }
+
+                contentEl.innerHTML = '';
+                data.members.forEach(m => {
+                    const el = document.createElement('div');
+                    el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-4 mb-3';
+                    const name = m.display_name || m.squad_id;
+                    el.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="font-semibold text-lg">${name}</div>
+                                <div class="text-xs text-zinc-500 font-mono">${m.squad_id}</div>
+                            </div>
+                            <a href="/gm/squad/${m.squad_id}" class="text-xs px-3 py-1 bg-amber-500/20 text-amber-400 rounded-xl hover:bg-amber-500/30">詳情</a>
+                        </div>
+                        <div class="grid grid-cols-5 gap-2 text-center text-xs">
+                            <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">HP</div></div>
+                            <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">San</div></div>
+                            <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">Pow</div></div>
+                            <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">Int</div></div>
+                            <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">Res</div></div>
+                        </div>
+                    `;
+                    contentEl.appendChild(el);
+                });
+            } catch (e) {
+                contentEl.innerHTML = '<div class="text-red-400 text-center py-6">載入失敗</div>';
+            }
         }
 
         function switchGMTab(tab) {
