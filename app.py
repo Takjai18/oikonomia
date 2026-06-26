@@ -83,8 +83,8 @@ def init_db():
         description TEXT,
         effect_type TEXT,
         effect_value INTEGER DEFAULT 0,
-        created_by TEXT,
-        timestamp TEXT
+        created_by TEXT DEFAULT 'GM',
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
 
     conn.commit()
@@ -152,8 +152,8 @@ def migrate_db():
             description TEXT,
             effect_type TEXT,
             effect_value INTEGER DEFAULT 0,
-            created_by TEXT,
-            timestamp TEXT
+            created_by TEXT DEFAULT 'GM',
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP
         )''')
     else:
         c.execute("PRAGMA table_info(global_events)")
@@ -705,30 +705,19 @@ def team_task_logs():
     return jsonify({"success": True, "logs": logs, "has_team": bool(team_id)})
 
 @app.route("/global_events")
-def global_events():
+def get_global_events():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
         SELECT id, title, description, effect_type, effect_value, created_by, timestamp
         FROM global_events
-        ORDER BY id DESC
-        LIMIT 20
+        ORDER BY timestamp DESC
+        LIMIT 30
     """).fetchall()
     conn.close()
     return jsonify({
         "success": True,
-        "events": [
-            {
-                "id": row["id"],
-                "title": row["title"],
-                "description": row["description"] or "",
-                "effect_type": row["effect_type"],
-                "effect_value": row["effect_value"],
-                "created_by": row["created_by"],
-                "timestamp": row["timestamp"],
-            }
-            for row in rows
-        ],
+        "events": [dict(row) for row in rows],
     })
 
 @app.route("/story_progress")
@@ -1235,13 +1224,13 @@ def gm_create_global_event():
     if not session.get("is_gm"):
         return jsonify({"success": False, "error": "未授權"}), 403
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or request.form
     title = (data.get("title") or "").strip()
     if not title:
-        return jsonify({"success": False, "error": "標題不能為空"})
+        return jsonify({"success": False, "error": "標題不能為空"}), 400
 
     description = (data.get("description") or "").strip()
-    effect_type = data.get("effect_type") or None
+    effect_type = (data.get("effect_type") or "").strip() or None
     effect_value = int(data.get("effect_value", 0) or 0)
 
     apply_global_effect(effect_type, effect_value)
@@ -1789,20 +1778,6 @@ HTML_TEMPLATE = """
                 <div class="cartoon-box p-6 mb-8">
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-globe text-amber-400"></i>
-                            <span>全球事件記錄</span>
-                        </h3>
-                        <button onclick="loadGlobalEvents()"
-                                class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
-                            刷新
-                        </button>
-                    </div>
-                    <div id="global-events-list" class="space-y-3"></div>
-                </div>
-
-                <div class="cartoon-box p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
                             <i class="fa-solid fa-tasks text-amber-400"></i>
                             <span id="submission-list-title">任務記錄</span>
                         </h3>
@@ -1812,6 +1787,21 @@ HTML_TEMPLATE = """
                         </button>
                     </div>
                     <div id="submission-list" class="space-y-4"></div>
+                </div>
+
+                <!-- 全球事件記錄（日誌頁最底部） -->
+                <div class="cartoon-box p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2">
+                            <i class="fa-solid fa-globe text-amber-400"></i>
+                            <span>全球事件記錄</span>
+                        </h3>
+                        <button onclick="loadGlobalEvents()"
+                                class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                            刷新
+                        </button>
+                    </div>
+                    <div id="global-events-list" class="space-y-3"></div>
                 </div>
             </div>
 
@@ -1928,8 +1918,8 @@ HTML_TEMPLATE = """
             if (id === 'team') loadMyTeam();
             if (id === 'log') {
                 loadStoryLog();
-                loadGlobalEvents();
                 loadTaskLogs();
+                loadGlobalEvents();
             }
         }
 
@@ -2111,23 +2101,29 @@ HTML_TEMPLATE = """
                 }
 
                 container.innerHTML = '';
-                data.events.forEach(ev => {
-                    const icon = eventIcons[ev.effect_type] || '🌍';
-                    const effectText = formatGlobalEffect(ev);
+                data.events.forEach(event => {
+                    const icon = eventIcons[event.effect_type] || '🌍';
+                    const effectText = formatGlobalEffect(event);
                     const el = document.createElement('div');
-                    el.className = 'bg-zinc-800 border border-zinc-700 rounded-2xl p-4';
+                    el.className = 'global-event-item bg-zinc-800 border border-zinc-700 rounded-2xl p-4';
                     el.innerHTML = `
                         <div class="flex justify-between items-start gap-x-3">
                             <div class="flex gap-x-2 min-w-0">
                                 <span class="text-lg shrink-0">${icon}</span>
                                 <div class="min-w-0">
-                                    <div class="font-semibold text-zinc-100">${ev.title}</div>
-                                    ${ev.description ? `<div class="text-zinc-300 text-sm mt-1 leading-relaxed">${ev.description}</div>` : ''}
-                                    ${effectText ? `<div class="text-xs text-amber-400 mt-2">${effectText}</div>` : ''}
-                                    ${ev.created_by ? `<div class="text-xs text-zinc-500 mt-1">由 ${ev.created_by} 觸發</div>` : ''}
+                                    <div class="font-semibold text-red-400">${event.title}</div>
+                                    ${event.description ? `<div class="text-zinc-300 text-sm mt-1 leading-relaxed">${event.description}</div>` : ''}
+                                    ${event.effect_type ? `
+                                        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                            <span class="px-2 py-0.5 bg-zinc-700 rounded-full text-zinc-300">${event.effect_type}</span>
+                                            <span class="text-zinc-400">數值: ${event.effect_value ?? 0}</span>
+                                            ${effectText ? `<span class="text-amber-400">${effectText}</span>` : ''}
+                                        </div>
+                                    ` : ''}
+                                    ${event.created_by ? `<div class="text-xs text-zinc-500 mt-1">由 ${event.created_by} 觸發</div>` : ''}
                                 </div>
                             </div>
-                            <div class="text-xs text-zinc-500 whitespace-nowrap shrink-0">${ev.timestamp}</div>
+                            <div class="text-xs text-zinc-500 whitespace-nowrap shrink-0">${event.timestamp}</div>
                         </div>
                     `;
                     container.appendChild(el);
