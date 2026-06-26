@@ -659,6 +659,27 @@ def gm_set_team_route():
     conn.close()
     return jsonify({"success": True})
 
+@app.route("/gm/update_team_name", methods=["POST"])
+def gm_update_team_name():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未登入 GM"}), 403
+
+    team_id = request.form.get("team_id", "").strip().upper()
+    new_name = request.form.get("new_name", "").strip()
+
+    if not team_id or not new_name:
+        return jsonify({"success": False, "error": "參數不完整"}), 400
+    if not get_team_by_id(team_id):
+        return jsonify({"success": False, "error": "Team 不存在"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE teams SET team_name = ? WHERE team_id = ?", (new_name, team_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": "隊名已更新"})
+
 @app.route("/announcements")
 def get_announcements():
     return jsonify({"announcements": ANNOUNCEMENTS})
@@ -1758,9 +1779,76 @@ GM_DASHBOARD_HTML = """
         }
 
         function gmEditTeamName(teamId, currentName) {
-            const newName = prompt('輸入新隊名：', currentName);
-            if (!newName || newName === currentName) return;
-            alert('隊名修改功能將在下一版加入（目前可透過 GM 筆記記低）');
+            const safeVal = (currentName || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[100]';
+            
+            modal.innerHTML = `
+                <div class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-6 border border-zinc-700">
+                    <div class="text-xl font-bold mb-1">修改隊名</div>
+                    <div class="text-sm text-zinc-400 mb-4">Team ID: ${teamId}</div>
+                    
+                    <input type="text" id="edit-team-name-input" value="${safeVal}" 
+                           class="w-full bg-zinc-800 border border-zinc-700 focus:border-amber-500 rounded-2xl px-5 py-3 text-lg mb-6">
+                    
+                    <div class="flex gap-x-3">
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">
+                            取消
+                        </button>
+                        <button onclick="confirmUpdateTeamName('${teamId}', this)" 
+                                class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl text-sm">
+                            確認修改
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            setTimeout(() => {
+                const input = modal.querySelector('#edit-team-name-input');
+                if (input) input.focus();
+            }, 100);
+        }
+
+        function confirmUpdateTeamName(teamId, buttonElement) {
+            const input = document.getElementById('edit-team-name-input');
+            const newName = input.value.trim();
+            
+            if (!newName) {
+                alert('隊名不能為空');
+                return;
+            }
+
+            buttonElement.disabled = true;
+            buttonElement.textContent = '更新中...';
+
+            fetch('/gm/update_team_name', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({
+                    team_id: teamId,
+                    new_name: newName
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    buttonElement.closest('.fixed').remove();
+                    alert('隊名已成功更新！');
+                    loadGMTeams();
+                } else {
+                    alert(data.error || '更新失敗');
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = '確認修改';
+                }
+            })
+            .catch(() => {
+                alert('發生錯誤，請重試');
+                buttonElement.disabled = false;
+                buttonElement.textContent = '確認修改';
+            });
         }
 
         function gmAssignSquadToTeam(teamId) {
