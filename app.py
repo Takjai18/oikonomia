@@ -345,6 +345,37 @@ def my_team():
     members = [row_to_squad(r) for r in rows]
     return jsonify({"has_team": True, "team": team, "members": members})
 
+@app.route("/available_teams")
+def available_teams():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    current_team_id = squad.get("team_id") if squad else None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM teams ORDER BY team_id").fetchall()
+
+    teams = []
+    for row in rows:
+        if row["team_id"] == current_team_id:
+            continue
+
+        member_count = conn.execute(
+            "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
+        ).fetchone()[0]
+
+        teams.append({
+            "team_id": row["team_id"],
+            "team_name": row["team_name"],
+            "route": row["route"],
+            "member_count": member_count,
+        })
+
+    conn.close()
+    return jsonify({"teams": teams})
+
 @app.route("/team/join", methods=["POST"])
 def join_team():
     if "squad_id" not in session:
@@ -1002,27 +1033,38 @@ HTML_TEMPLATE = """
                     <div class="text-3xl font-semibold">你的小隊</div>
                 </div>
 
-                <!-- 未有 Team 時顯示 -->
-                <div id="no-team-box" class="hidden cartoon-box p-8 text-center">
-                    <i class="fa-solid fa-users text-5xl text-zinc-600 mb-4"></i>
-                    <h3 class="text-xl font-bold mb-2">你尚未加入任何 Team</h3>
-                    <p class="text-zinc-400 mb-6">請輸入 Team Code 加入，或建立新隊</p>
-                    
-                    <div class="max-w-sm mx-auto space-y-3">
-                        <!-- 加入 Team -->
-                        <div class="flex gap-x-2">
-                            <input type="text" id="join-team-code" placeholder="輸入 Team Code (例如 TEAM-01)" 
-                                   class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-5 py-3 text-sm font-mono">
-                            <button onclick="joinTeamByCode()" 
-                                    class="px-6 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl">加入</button>
+                <!-- 未有 Team 時顯示（改為列表模式） -->
+                <div id="no-team-box" class="hidden cartoon-box p-8">
+                    <div class="text-center mb-6">
+                        <i class="fa-solid fa-users text-5xl text-zinc-600 mb-4"></i>
+                        <h3 class="text-xl font-bold mb-2">你尚未加入任何 Team</h3>
+                        <p class="text-zinc-400">請選擇一個 Team 加入，或建立新隊</p>
+                    </div>
+
+                    <!-- 可加入嘅 Team 列表 -->
+                    <div class="mb-6">
+                        <div class="flex items-center justify-between mb-3 px-1">
+                            <div class="font-semibold text-sm">現有 Team</div>
+                            <button onclick="loadAvailableTeams()" 
+                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
+                                <i class="fa-solid fa-sync text-xs"></i>
+                                <span>刷新列表</span>
+                            </button>
                         </div>
-                        
-                        <!-- 建立新隊 -->
+                        <div id="available-teams-list" class="space-y-2 max-h-[280px] overflow-auto pr-1">
+                        </div>
+                    </div>
+
+                    <!-- 建立新隊 -->
+                    <div class="border-t border-zinc-700 pt-5">
+                        <div class="text-sm text-zinc-400 mb-2 px-1">或者建立新隊</div>
                         <div class="flex gap-x-2">
-                            <input type="text" id="create-team-name" placeholder="輸入你想嘅隊名" 
+                            <input type="text" id="create-team-name" placeholder="輸入隊名（例如：界線守護者）" 
                                    class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-5 py-3 text-sm">
                             <button onclick="createMyTeam()" 
-                                    class="px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl">建立新隊</button>
+                                    class="px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl whitespace-nowrap">
+                                建立新隊
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1160,6 +1202,7 @@ HTML_TEMPLATE = """
                 if (!data.has_team) {
                     setVisible(noBox, true);
                     setVisible(hasBox, false);
+                    loadAvailableTeams();
                     return;
                 }
 
@@ -1208,18 +1251,60 @@ HTML_TEMPLATE = """
             }
         }
 
-        async function joinTeamByCode() {
-            const code = document.getElementById('join-team-code').value.trim().toUpperCase();
-            if (!code) { alert('請輸入 Team Code'); return; }
+        async function loadAvailableTeams() {
+            const container = document.getElementById('available-teams-list');
+            if (!container) return;
+            container.innerHTML = '<div class="text-zinc-400 text-sm py-4 text-center">載入中...</div>';
+
+            try {
+                const res = await fetch('/available_teams', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!data.teams || data.teams.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇其他 Team</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                data.teams.forEach(team => {
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center justify-between bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-2xl px-4 py-3 cursor-pointer';
+                    el.innerHTML = `
+                        <div>
+                            <div class="font-mono text-emerald-400 text-sm">${team.team_id}</div>
+                            <div class="font-semibold">${team.team_name}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-zinc-400">${team.member_count} 人</div>
+                            <button class="mt-1 px-4 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 font-medium rounded-xl">加入</button>
+                        </div>
+                    `;
+                    el.querySelector('button').onclick = (e) => {
+                        e.stopImmediatePropagation();
+                        joinTeamDirectly(team.team_id);
+                    };
+                    container.appendChild(el);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400 text-sm py-4 text-center">載入失敗</div>';
+            }
+        }
+
+        async function joinTeamDirectly(teamId) {
             const res = await fetch('/team/join', {
                 method: 'POST',
                 credentials: 'same-origin',
-                body: new URLSearchParams({team_id: code})
+                body: new URLSearchParams({team_id: teamId})
             });
             const data = await res.json();
             if (data.success) {
                 alert('成功加入 Team！');
-                document.getElementById('join-team-code').value = '';
+                if (currentSquad) {
+                    currentSquad.team_id = data.team.team_id;
+                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    currentSquad = await statusRes.json();
+                    updateDashboard(currentSquad);
+                }
                 loadMyTeam();
             } else {
                 alert(data.error || '加入失敗');
