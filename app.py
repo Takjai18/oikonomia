@@ -1460,9 +1460,9 @@ GM_DASHBOARD_HTML = """
                 <p class="text-zinc-400 text-sm mt-1">即時監控所有小隊狀態</p>
             </div>
             <div class="flex items-center gap-x-3">
-                <div class="text-xs px-3 py-1.5 bg-zinc-800 rounded-2xl text-emerald-400 flex items-center gap-x-2">
-                    <i class="fa-solid fa-sync fa-spin"></i>
-                    <span>自動刷新中</span>
+                <div class="text-xs px-3 py-1.5 bg-zinc-800 rounded-2xl text-zinc-400 flex items-center gap-x-2">
+                    <i class="fa-solid fa-sync"></i>
+                    <span>手動刷新</span>
                 </div>
                 <button onclick="location.reload()" 
                         class="px-5 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-2xl text-sm flex items-center gap-x-2">
@@ -1925,12 +1925,6 @@ GM_DASHBOARD_HTML = """
         </script>
     </div>
 
-    <script>
-        // 每 8 秒自動刷新
-        setInterval(() => {
-            location.reload();
-        }, 8000);
-    </script>
 </body>
 </html>
 """
