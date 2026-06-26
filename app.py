@@ -2414,30 +2414,59 @@ GM_SQUAD_DETAIL_HTML = """
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>{{ squad.squad_id }} 詳情 • GM</title>
+    <title>{{ squad.display_name or squad.squad_id }} 詳情 • GM</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body class="bg-zinc-950 text-white p-8">
     <div class="max-w-5xl mx-auto">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <a href="/gm/dashboard" class="text-amber-400 hover:underline">← 返回 GM Dashboard</a>
-                <h1 class="text-3xl font-bold mt-2">{{ squad.squad_id }} 提交記錄</h1>
+        <div class="mb-8">
+            <a href="/gm/dashboard" class="text-amber-400 hover:underline flex items-center gap-x-2 mb-2">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>返回 GM Dashboard</span>
+            </a>
+            
+            <div class="flex items-end gap-x-3">
+                <h1 class="text-3xl font-bold">{{ squad.display_name or squad.squad_id }}</h1>
+                
+                {% if squad.display_name %}
+                <div class="text-xs text-zinc-500 pb-1 font-mono">
+                    {{ squad.squad_id }}
+                </div>
+                {% endif %}
             </div>
+            
+            <div class="text-sm text-zinc-400 mt-1">玩家詳情與提交記錄</div>
         </div>
 
         <div class="bg-zinc-900 rounded-3xl p-6 mb-8">
             <h2 class="text-lg font-semibold mb-4">玩家目前狀態</h2>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>顯示名稱: <span class="font-mono text-amber-400">{{ squad.display_name or squad.squad_id }}</span></div>
-                <div>路線: <span class="font-mono text-amber-400">{{ squad.route_label }}</span></div>
-                <div>HP: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
-                <div>Sanity: <span class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
-                <div>Power: <span class="font-mono text-orange-400">{{ squad.power }}</span></div>
-                <div>Intellect: <span class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
-                <div>Resilience: <span class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
-                <div>Resource: <span class="font-mono">{{ squad.resources }}</span></div>
-                <div>所屬 Team: <span class="font-mono text-emerald-400">{{ squad.team_id or '未加入' }}</span></div>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm">
+                <div>
+                    <span class="text-zinc-400">顯示名稱</span><br>
+                    <span class="font-semibold text-lg">{{ squad.display_name or squad.squad_id }}</span>
+                </div>
+                <div>
+                    <span class="text-zinc-400">所屬 Team</span><br>
+                    <span class="font-mono text-emerald-400">{{ squad.team_id or '未加入任何隊' }}</span>
+                </div>
+                <div>
+                    <span class="text-zinc-400">路線</span><br>
+                    <span class="font-mono">{{ squad.route_label }}</span>
+                </div>
+                <div>
+                    <span class="text-zinc-400">Resource</span><br>
+                    <span class="font-mono text-purple-400">{{ squad.resources }}</span>
+                </div>
+                
+                <div class="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mt-2 pt-4 border-t border-zinc-700">
+                    <div>HP: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
+                    <div>Sanity: <span class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
+                    <div>Power: <span class="font-mono text-orange-400">{{ squad.power }}</span></div>
+                    <div>Intellect: <span class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
+                    <div>Resilience: <span class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
+                </div>
             </div>
         </div>
 
