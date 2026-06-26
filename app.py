@@ -13,7 +13,12 @@ from datetime import datetime
 import math
 
 app = Flask(__name__)
-app.secret_key = "oikonomia-2026-prototype"
+app.secret_key = os.environ.get("SECRET_KEY", "oikonomia-2026-prototype")
+app.config.update(
+    SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") == "production",
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_HTTPONLY=True,
+)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -510,6 +515,23 @@ HTML_TEMPLATE = """
         .route-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0px rgba(44, 62, 80, 0.5); }
         .route-iggy { background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); }
         .route-marah { background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); }
+        /* Fallback（Tailwind CDN 載入失敗時仍可用） */
+        .hidden { display: none !important; }
+        .flex { display: flex !important; }
+        .fixed { position: fixed; }
+        .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+        #nav { align-items: center; gap: 0.25rem; }
+        .location-card { cursor: pointer; padding: 1.25rem; border-radius: 1.5rem; margin-bottom: 1rem;
+            background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(245, 158, 11, 0.1); }
+        .location-card:active { opacity: 0.85; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
+            display: flex; align-items: flex-end; justify-content: center; }
+        .modal-box { background: #18181b; width: 100%; max-width: 480px; padding: 1.5rem;
+            border-radius: 1.5rem 1.5rem 0 0; border-top: 1px solid #3f3f46; }
+        @media (min-width: 768px) {
+            .modal-overlay { align-items: center; }
+            .modal-box { border-radius: 1.5rem; }
+        }
     </style>
 </head>
 <body class="game-bg text-zinc-200">
@@ -663,11 +685,22 @@ HTML_TEMPLATE = """
     <script>
         let currentSquad = null;
 
+        function setVisible(el, visible) {
+            if (!el) return;
+            el.classList.toggle('hidden', !visible);
+            el.style.display = visible ? '' : 'none';
+        }
+
         function showSection(id) {
-            document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
+            document.querySelectorAll('.section').forEach(s => setVisible(s, false));
+            setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
             if (id === 'team') loadTeam();
+        }
+
+        function closeModal(el) {
+            const modal = el?.closest?.('.modal-overlay') || el?.closest?.('.fixed');
+            if (modal) modal.remove();
         }
 
         function setStatBar(prefix, stat, value) {
@@ -748,15 +781,16 @@ HTML_TEMPLATE = """
         async function login(e) {
             e.preventDefault();
             const id = document.getElementById('squad_id').value.trim();
-            const res = await fetch('/login', { method: 'POST', body: new URLSearchParams({squad_id: id}) });
+            const res = await fetch('/login', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({squad_id: id}) });
             const data = await res.json();
             if (!data.success) { alert(data.error); return; }
 
             currentSquad = data.squad;
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('game-content').classList.remove('hidden');
-            document.getElementById('nav').classList.remove('hidden');
-            document.getElementById('nav').classList.add('flex');
+            setVisible(document.getElementById('login-screen'), false);
+            setVisible(document.getElementById('game-content'), true);
+            const nav = document.getElementById('nav');
+            setVisible(nav, true);
+            nav.classList.add('flex');
             document.getElementById('squad-name').textContent = currentSquad.squad_id;
             updateDashboard(currentSquad);
             showSection('dashboard');
@@ -827,22 +861,33 @@ HTML_TEMPLATE = """
             }
         }
 
+        const fetchOpts = { credentials: 'same-origin' };
+
         async function loadLocations() {
-            const res = await fetch('/locations');
-            const locs = await res.json();
             const container = document.getElementById('location-list');
-            container.innerHTML = '';
-            Object.keys(locs).forEach(key => {
-                const loc = locs[key];
-                const el = document.createElement('div');
-                el.className = 'section-card rounded-3xl p-5 cursor-pointer';
-                el.innerHTML = `<div class="font-semibold">${loc.name}</div><div class="text-xs text-amber-400">${loc.hint}</div>`;
-                el.onclick = () => {
-                    console.log("你點擊了地點：", key);
-                    openLocation(key, loc);
-                };
-                container.appendChild(el);
-            });
+            container.innerHTML = '<div class="text-zinc-400 text-sm py-4">載入地點中…</div>';
+            try {
+                const res = await fetch('/locations', fetchOpts);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const locs = await res.json();
+                container.innerHTML = '';
+                const keys = Object.keys(locs);
+                if (keys.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 text-sm py-4">暫無地點</div>';
+                    return;
+                }
+                keys.forEach(key => {
+                    const loc = locs[key];
+                    const el = document.createElement('div');
+                    el.className = 'section-card rounded-3xl p-5 location-card';
+                    el.innerHTML = `<div class="font-semibold">${loc.name}</div><div class="text-xs text-amber-400">${loc.hint}</div>`;
+                    el.addEventListener('click', () => openLocation(key, loc));
+                    container.appendChild(el);
+                });
+            } catch (e) {
+                console.error('loadLocations failed', e);
+                container.innerHTML = '<div class="text-red-400 text-sm py-4">載入失敗，<button onclick="loadLocations()" class="underline">按此重試</button></div>';
+            }
         }
 
         function openLocation(id, loc) {
@@ -850,15 +895,15 @@ HTML_TEMPLATE = """
 
             // 建立簡單 Modal
             const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-50';
+            modal.className = 'modal-overlay fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-50';
             modal.innerHTML = `
-                <div class="bg-zinc-900 w-full md:w-[480px] md:rounded-t-3xl md:rounded-b-3xl rounded-t-3xl p-6 border-t border-zinc-700">
+                <div class="modal-box bg-zinc-900 w-full md:w-[480px] md:rounded-t-3xl md:rounded-b-3xl rounded-t-3xl p-6 border-t border-zinc-700">
                     <div class="flex justify-between items-start mb-4">
                         <div>
                             <div class="font-semibold text-2xl">${loc.name}</div>
                             <div class="text-sm text-amber-400 mt-0.5">${loc.hint}</div>
                         </div>
-                        <button class="text-3xl leading-none text-zinc-400 hover:text-white" onclick="this.closest('.fixed').remove()">×</button>
+                        <button type="button" class="text-3xl leading-none text-zinc-400 hover:text-white" onclick="closeModal(this)">×</button>
                     </div>
 
                     <div class="text-zinc-300 mb-6">${loc.description}</div>
@@ -923,6 +968,7 @@ HTML_TEMPLATE = """
             navigator.geolocation.getCurrentPosition(async (position) => {
                 const res = await fetch('/verify_gps', {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         loc_id: locId,
@@ -931,10 +977,8 @@ HTML_TEMPLATE = """
                     })
                 });
                 const data = await res.json();
-                alert(data.message);
-                if (data.success) {
-                    document.querySelector('.fixed').remove();
-                }
+                alert(data.message || (data.error ? '錯誤：' + data.error : '驗證失敗'));
+                if (data.success) closeModal(document.querySelector('.modal-overlay'));
             }, () => {
                 alert('無法取得定位，請檢查權限');
             });
@@ -945,12 +989,9 @@ HTML_TEMPLATE = """
             formData.append('task_id', locId);
             formData.append('photo', file);
 
-            const res = await fetch('/submit_task', {
-                method: 'POST',
-                body: formData
-            });
+            const res = await fetch('/submit_task', { method: 'POST', credentials: 'same-origin', body: formData });
             const data = await res.json();
-            alert(data.message);
+            alert(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'));
             if (modal) modal.remove();
         }
 
@@ -961,13 +1002,10 @@ HTML_TEMPLATE = """
             const formData = new FormData();
             formData.append('task_id', locId);
 
-            const res = await fetch('/submit_task', {
-                method: 'POST',
-                body: formData
-            });
+            const res = await fetch('/submit_task', { method: 'POST', credentials: 'same-origin', body: formData });
             const data = await res.json();
             alert(data.message);
-            btn.closest('.fixed').remove();
+            closeModal(btn);
         }
 
         async function startPuzzle(locId, btn) {
@@ -977,7 +1015,7 @@ HTML_TEMPLATE = """
             // 簡單示範，之後可以改做真實後端驗證
             if (answer.toLowerCase() === 'iggy') {
                 alert('正確！獲得 Sanity +8');
-                btn.closest('.fixed').remove();
+                closeModal(btn);
             } else {
                 alert('唔正確');
             }
