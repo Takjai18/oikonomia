@@ -1410,6 +1410,22 @@ GM_DASHBOARD_HTML = """
     <meta charset="UTF-8">
     <title>GM Dashboard • Oikonomia</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .hidden { display: none !important; }
+        .gm-tab { background: #27272a; color: #a1a1aa; }
+        .gm-tab.active { background: #f59e0b; color: #09090b; }
+        .route-card {
+            border: 3px solid #2C3E50;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            box-shadow: 4px 4px 0px rgba(44, 62, 80, 0.5);
+        }
+        .route-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0px rgba(44, 62, 80, 0.5); }
+        .route-iggy { background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); }
+        .route-marah { background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); }
+    </style>
 </head>
 <body class="bg-zinc-950 text-white p-8">
     <div class="max-w-6xl mx-auto">
@@ -1432,6 +1448,15 @@ GM_DASHBOARD_HTML = """
             </div>
         </div>
 
+        <!-- Tab 切換 -->
+        <div class="flex gap-x-2 mb-6 px-1">
+            <button onclick="switchGMTab('squads')" id="tab-squads"
+                    class="gm-tab active px-6 py-2 rounded-2xl text-sm font-medium">小隊狀態</button>
+            <button onclick="switchGMTab('teams')" id="tab-teams"
+                    class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">Team 管理</button>
+        </div>
+
+        <div id="gm-squads-tab">
         <div class="bg-zinc-900 rounded-3xl p-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">所有小隊即時狀態</h2>
@@ -1539,8 +1564,29 @@ GM_DASHBOARD_HTML = """
             </div>
         </div>
 
+        <!-- Danger Zone -->
+        <div class="mt-8 border border-red-500/30 rounded-3xl p-6">
+            <div class="flex items-center gap-x-2 mb-4">
+                <i class="fa-solid fa-exclamation-triangle text-red-400"></i>
+                <h2 class="text-lg font-semibold text-red-400">Danger Zone</h2>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="font-medium">重置整個遊戲</div>
+                    <div class="text-xs text-zinc-400">會清空所有提交記錄，並將所有小隊數值重置為初始值</div>
+                </div>
+                <button onclick="showResetModal()" 
+                        class="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-2xl text-sm font-medium">
+                    重置遊戲
+                </button>
+            </div>
+        </div>
+        </div>
+
+        <div id="gm-teams-tab" class="hidden">
         <!-- Team 管理 (加強版) -->
-        <div class="bg-zinc-900 rounded-3xl p-6 mt-6">
+        <div class="bg-zinc-900 rounded-3xl p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-semibold">Team 管理</h2>
                 <button onclick="loadGMTeams()" 
@@ -1565,6 +1611,7 @@ GM_DASHBOARD_HTML = """
 
             <!-- Teams 列表 -->
             <div id="gm-teams-list" class="space-y-4"></div>
+        </div>
         </div>
 
         <script>
@@ -1635,7 +1682,6 @@ GM_DASHBOARD_HTML = """
                 const div = document.createElement('div');
                 div.className = 'bg-zinc-800 rounded-2xl p-5 border border-zinc-700';
                 const safeName = (team.team_name || '').replace(/'/g, "\\'");
-                const routeVal = team.route || '';
                 
                 div.innerHTML = `
                     <div class="flex justify-between items-start mb-3">
@@ -1661,7 +1707,7 @@ GM_DASHBOARD_HTML = """
                             <i class="fa-solid fa-user-plus"></i>
                             <span>分配玩家入隊</span>
                         </button>
-                        <button onclick="gmSetRoutePrompt('${team.team_id}', '${routeVal}')" 
+                        <button onclick="gmSetRoutePrompt('${team.team_id}')" 
                                 class="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 rounded-xl">設定路線</button>
                         <button onclick="gmViewTeamMembers('${team.team_id}', '${safeName}')" 
                                 class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-xl">查看成員</button>
@@ -1715,44 +1761,86 @@ GM_DASHBOARD_HTML = """
             });
         }
 
-        function gmSetRoutePrompt(teamId, current) {
-            const route = prompt(`設定 Team 路線 (輸入 iggy 或 marah)\n目前：${current || '未設定'}`, current || '');
-            if (!route) return;
+        function gmSetRoutePrompt(teamId) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[100]';
+            modal.innerHTML = `
+                <div class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-6 border border-zinc-700">
+                    <div class="text-xl font-bold mb-1">設定 Team 路線</div>
+                    <div class="text-sm text-zinc-400 mb-6">Team ID: ${teamId}</div>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div onclick="gmConfirmSetRoute('${teamId}', 'iggy', this)" 
+                             class="route-card route-iggy p-6 text-center cursor-pointer">
+                            <div class="text-3xl mb-2">🔥</div>
+                            <div class="text-xl font-bold">Iggy 路線</div>
+                            <div class="text-xs mt-1 opacity-80">界線、力量、面對 Judas</div>
+                        </div>
+                        
+                        <div onclick="gmConfirmSetRoute('${teamId}', 'marah', this)" 
+                             class="route-card route-marah p-6 text-center cursor-pointer">
+                            <div class="text-3xl mb-2">🌊</div>
+                            <div class="text-xl font-bold">Marah 路線</div>
+                            <div class="text-xs mt-1 opacity-80">智慧、韌性、深度連結</div>
+                        </div>
+                    </div>
+                    
+                    <button onclick="this.closest('.fixed').remove()" 
+                            class="w-full py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">
+                        取消
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function gmConfirmSetRoute(teamId, route, element) {
             fetch('/gm/set_team_route', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams({team_id: teamId, route: route.toLowerCase()})
-            }).then(() => loadGMTeams());
+                body: new URLSearchParams({team_id: teamId, route: route})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    element.closest('.fixed').remove();
+                    alert('路線已成功設定為 ' + (route === 'iggy' ? 'Iggy' : 'Marah'));
+                    loadGMTeams();
+                } else {
+                    alert('設定失敗');
+                }
+            });
         }
 
         function gmViewTeamMembers(teamId, teamName) {
-            alert(`${teamName} (${teamId})\n\n完整成員列表 + 每人狀態將在下一版 Modal 顯示`);
+            alert(`${teamName} (${teamId})\\n\\n完整成員列表 + 每人狀態將在下一版 Modal 顯示`);
         }
 
-        // 自動載入
-        setTimeout(() => {
-            if (document.getElementById('gm-teams-list')) loadGMTeams();
-        }, 600);
-        </script>
+        function switchGMTab(tab) {
+            const squadsTab = document.getElementById('gm-squads-tab');
+            const teamsTab = document.getElementById('gm-teams-tab');
+            const btnSquads = document.getElementById('tab-squads');
+            const btnTeams = document.getElementById('tab-teams');
 
-        <!-- Danger Zone -->
-        <div class="mt-8 border border-red-500/30 rounded-3xl p-6">
-            <div class="flex items-center gap-x-2 mb-4">
-                <i class="fa-solid fa-exclamation-triangle text-red-400"></i>
-                <h2 class="text-lg font-semibold text-red-400">Danger Zone</h2>
-            </div>
-            
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="font-medium">重置整個遊戲</div>
-                    <div class="text-xs text-zinc-400">會清空所有提交記錄，並將所有小隊數值重置為初始值</div>
-                </div>
-                <button onclick="showResetModal()" 
-                        class="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-2xl text-sm font-medium">
-                    重置遊戲
-                </button>
-            </div>
-        </div>
+            if (tab === 'squads') {
+                squadsTab.classList.remove('hidden');
+                teamsTab.classList.add('hidden');
+                btnSquads.classList.add('active', 'bg-amber-500', 'text-zinc-950');
+                btnTeams.classList.remove('active', 'bg-amber-500', 'text-zinc-950');
+            } else {
+                squadsTab.classList.add('hidden');
+                teamsTab.classList.remove('hidden');
+                btnTeams.classList.add('active', 'bg-amber-500', 'text-zinc-950');
+                btnSquads.classList.remove('active', 'bg-amber-500', 'text-zinc-950');
+                loadGMTeams();
+            }
+        }
+
+        setTimeout(() => {
+            const btn = document.getElementById('tab-squads');
+            if (btn) btn.classList.add('active', 'bg-amber-500', 'text-zinc-950');
+        }, 300);
+        </script>
 
         <!-- 重置確認 Modal -->
         <div id="reset-modal" onclick="if (event.target.id === 'reset-modal') hideResetModal()" 
