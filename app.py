@@ -1076,34 +1076,41 @@ HTML_TEMPLATE = """
 
         async function login(e) {
             e.preventDefault();
-            const id = document.getElementById('squad_id').value.trim();
-            const res = await fetch('/login', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({squad_id: id}) });
-            const data = await res.json();
-            if (!data.success) { alert(data.error); return; }
-
-            currentSquad = data.squad;
-            setVisible(document.getElementById('login-screen'), false);
-            setVisible(document.getElementById('game-content'), true);
-            const nav = document.getElementById('nav');
-            setVisible(nav, true);
-            nav.classList.add('flex');
-            document.getElementById('squad-name').textContent = currentSquad.squad_id;
-            updateDashboard(currentSquad);
-            showSection('dashboard');
-            loadAnnouncements();
-
-            // Phase 2: 登入後自動檢查 Team 狀態
             try {
-                const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
-                const teamData = await teamRes.json();
-                if (!teamData.has_team) {
-                    setTimeout(() => {
-                        if (confirm('你尚未加入任何 Team。\n是否立即建立或加入一個 Team？')) {
-                            showSection('team');
-                        }
-                    }, 1200);
+                const id = document.getElementById('squad_id').value.trim();
+                const res = await fetch('/login', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({squad_id: id}) });
+                const data = await res.json();
+                if (!data.success) { alert(data.error || '登入失敗'); return; }
+
+                currentSquad = data.squad;
+                setVisible(document.getElementById('login-screen'), false);
+                setVisible(document.getElementById('game-content'), true);
+                const nav = document.getElementById('nav');
+                setVisible(nav, true);
+                nav.classList.add('flex');
+                document.getElementById('squad-name').textContent = currentSquad.squad_id;
+                updateDashboard(currentSquad);
+                showSection('dashboard');
+                loadAnnouncements();
+
+                // Phase 2: 登入後自動檢查 Team 狀態
+                try {
+                    const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
+                    const teamData = await teamRes.json();
+                    if (!teamData.has_team) {
+                        setTimeout(() => {
+                            if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
+                                showSection('team');
+                            }
+                        }, 1200);
+                    }
+                } catch (teamErr) {
+                    console.error('team check failed', teamErr);
                 }
-            } catch(e) {}
+            } catch (err) {
+                console.error('login failed', err);
+                alert('登入失敗，請重試或檢查網絡連線');
+            }
         }
 
         let showAllAnnouncements = false;
