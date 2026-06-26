@@ -363,6 +363,38 @@ def create_global_event(title, description="", effect_type=None, effect_value=0,
     conn.close()
 
 # ==================== 輔助函數 ====================
+def normalize_team_id(team_id):
+    if not team_id:
+        return None
+    return str(team_id).strip().upper()
+
+def build_player_status(squad):
+    if not squad:
+        return None
+
+    if not squad.get("team_id"):
+        return {
+            "success": True,
+            **squad,
+            "team": None,
+            "protagonists": {},
+            "route": squad.get("route"),
+            "is_team_leader": 0,
+        }
+
+    team = get_team_by_id(squad["team_id"])
+    protagonists = get_team_protagonists(squad["team_id"])
+    route = (team or {}).get("route") or squad.get("route")
+
+    return {
+        "success": True,
+        **squad,
+        "route": route,
+        "team": team,
+        "protagonists": protagonists,
+        "is_team_leader": squad.get("is_team_leader", 0),
+    }
+
 def row_to_squad(row):
     d = dict(row)
     protagonist = DEFAULT_PROTAGONIST.copy()
@@ -402,11 +434,12 @@ def get_squad(squad_id):
     squad = row_to_squad(row)
 
     if squad.get("team_id"):
+        clean_team_id = normalize_team_id(squad["team_id"])
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         team_row = conn.execute(
             "SELECT route, leader_squad_id FROM teams WHERE team_id = ?",
-            (squad["team_id"],),
+            (clean_team_id,),
         ).fetchone()
         conn.close()
 
@@ -415,15 +448,23 @@ def get_squad(squad_id):
                 squad["route"] = team_row["route"]
             if team_row["leader_squad_id"] == squad["squad_id"]:
                 squad["is_team_leader"] = 1
-            squad["protagonists"] = get_team_protagonists(squad["team_id"])
+            squad["protagonists"] = get_team_protagonists(clean_team_id)
 
     return squad
 
 def get_team_protagonists(team_id):
+    clean_team_id = normalize_team_id(team_id)
+    if not clean_team_id:
+        return {
+            "iggy": DEFAULT_PROTAGONIST.copy(),
+            "marah": DEFAULT_PROTAGONIST.copy(),
+            "active_route": None,
+        }
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     team_row = conn.execute(
-        "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (team_id,)
+        "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (clean_team_id,)
     ).fetchone()
     if not team_row:
         conn.close()
@@ -441,7 +482,7 @@ def get_team_protagonists(team_id):
         ).fetchone()
     else:
         squad_row = conn.execute(
-            "SELECT protagonist_stats FROM squads WHERE team_id = ? LIMIT 1", (team_id,)
+            "SELECT protagonist_stats FROM squads WHERE team_id = ? LIMIT 1", (clean_team_id,)
         ).fetchone()
     conn.close()
 
@@ -615,11 +656,10 @@ def login():
     session["squad_id"] = row["squad_id"]
     conn.close()
 
-    return jsonify({
-        "success": True,
-        "squad": get_squad(row["squad_id"]),
-        "require_set_pin": not has_pin,
-    })
+    squad = get_squad(row["squad_id"])
+    status = build_player_status(squad)
+    status["require_set_pin"] = not has_pin
+    return jsonify(status)
 
 @app.route("/set_pin", methods=["POST"])
 def set_pin():
@@ -765,28 +805,7 @@ def get_status():
         session.clear()
         return jsonify({"success": False, "error": "未登入"}), 401
 
-    if not squad.get("team_id"):
-        return jsonify({
-            "success": True,
-            **squad,
-            "team": None,
-            "protagonists": {},
-            "route": squad.get("route"),
-            "is_team_leader": 0,
-        })
-
-    team = get_team_by_id(squad["team_id"])
-    protagonists = get_team_protagonists(squad["team_id"])
-    team_route = (team or {}).get("route") or squad.get("route")
-
-    return jsonify({
-        "success": True,
-        **squad,
-        "team": team,
-        "protagonists": protagonists,
-        "route": team_route,
-        "is_team_leader": squad.get("is_team_leader", 0),
-    })
+    return jsonify(build_player_status(squad))
 
 @app.route("/team")
 def get_team():
@@ -801,22 +820,26 @@ def my_team():
     squad = get_squad(session["squad_id"])
     if not squad or not squad.get("team_id"):
         return jsonify({"has_team": False})
-    team = get_team_by_id(squad["team_id"])
+    clean_team_id = normalize_team_id(squad["team_id"])
+    team = get_team_by_id(clean_team_id)
     if not team:
         return jsonify({"has_team": False})
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        "SELECT * FROM squads WHERE team_id = ? ORDER BY squad_id", (squad["team_id"],)
+        "SELECT * FROM squads WHERE team_id = ? ORDER BY squad_id", (clean_team_id,)
     ).fetchall()
     conn.close()
     members = [get_squad(r["squad_id"]) for r in rows]
+    protagonists = get_team_protagonists(squad["team_id"])
     return jsonify({
+        "success": True,
         "has_team": True,
         "team": team,
+        "route": team.get("route"),
         "members": members,
         "is_team_leader": squad.get("is_team_leader", 0),
-        "protagonists": get_team_protagonists(squad["team_id"]),
+        "protagonists": protagonists,
     })
 
 @app.route("/available_teams")
@@ -868,7 +891,7 @@ def join_team():
     if squad.get("team_id"):
         return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
 
-    update_squad(session["squad_id"], team_id=team["team_id"], is_team_leader=0)
+    update_squad(session["squad_id"], team_id=normalize_team_id(team["team_id"]), is_team_leader=0)
     return jsonify({"success": True, "team": team})
 
 @app.route("/team/create", methods=["POST"])
@@ -936,7 +959,7 @@ def set_team_route_by_leader():
     if route not in ("iggy", "marah"):
         return jsonify({"success": False, "error": "無效路線"}), 400
 
-    team_id = squad.get("team_id")
+    team_id = normalize_team_id(squad.get("team_id"))
     if not team_id:
         return jsonify({"success": False, "error": "你未加入任何 Team"}), 400
 
@@ -950,7 +973,10 @@ def set_team_route_by_leader():
     conn.commit()
     conn.close()
 
-    return jsonify({"success": True, "squad": get_squad(session["squad_id"])})
+    updated = get_squad(session["squad_id"])
+    status = build_player_status(updated)
+    status["squad"] = updated
+    return jsonify(status)
 
 @app.route("/set_route", methods=["POST"])
 def set_route():
@@ -966,7 +992,7 @@ def set_route():
         return jsonify({"error": "你已選擇路線，無法更改"}), 400
 
     update_squad(session["squad_id"], route=route)
-    return jsonify({"success": True, "squad": get_squad(session["squad_id"])})
+    return jsonify(build_player_status(get_squad(session["squad_id"])))
 
 @app.route("/locations")
 def get_locations():
@@ -2234,7 +2260,7 @@ HTML_TEMPLATE = """
             iggyCard.classList.remove('ring-2', 'ring-amber-500/50');
             marahCard.classList.remove('ring-2', 'ring-amber-500/50');
 
-            const teamRoute = data.team?.route || data.route || squad.route || protagonists?.active_route;
+            const teamRoute = data.route || data.team?.route || squad.route || protagonists?.active_route;
             if (!teamRoute) return;
 
             const iggy = protagonists?.iggy || {};
@@ -2288,6 +2314,7 @@ HTML_TEMPLATE = """
         function updateDashboard(data) {
             const squad = data.squad_id ? data : (data.squad || data);
             const protagonists = data.protagonists || squad.protagonists;
+            const route = data.route || data.team?.route || squad.route;
 
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
@@ -2297,37 +2324,32 @@ HTML_TEMPLATE = """
             const routeBadge = document.getElementById('route-badge');
             const isLeader = squad.is_team_leader === 1;
             const inTeam = !!(squad.team_id || data.team);
-            const teamRoute = data.team?.route || data.route || squad.route;
-            const hasTeamRoute = teamRoute;
 
-            updateProtagonistCards(data, squad, protagonists || {});
+            updateProtagonistCards({ ...data, route }, squad, protagonists || {});
 
-            if (hasTeamRoute) {
-                if (routePicker) setVisible(routePicker, false);
-                if (routeBadge) {
+            if (routePicker) setVisible(routePicker, !route && (!inTeam || isLeader));
+
+            if (routeBadge) {
+                if (route === 'iggy') {
                     setVisible(routeBadge, true);
-                    routeBadge.innerHTML = teamRoute === 'iggy'
-                        ? `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">🔥 Iggy 路線</span>`
-                        : `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">🌊 Marah 路線</span>`;
-                }
-            } else if (inTeam && isLeader) {
-                if (routePicker) setVisible(routePicker, true);
-                if (routeBadge) setVisible(routeBadge, false);
-            } else if (inTeam && !isLeader) {
-                if (routePicker) setVisible(routePicker, false);
-                if (routeBadge) {
+                    routeBadge.innerHTML = `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">🔥 Iggy 路線</span>`;
+                } else if (route === 'marah') {
+                    setVisible(routeBadge, true);
+                    routeBadge.innerHTML = `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">🌊 Marah 路線</span>`;
+                } else if (inTeam && !isLeader) {
                     setVisible(routeBadge, true);
                     routeBadge.innerHTML = `<span class="text-xs text-zinc-400">等待隊長選擇路線...</span>`;
+                } else {
+                    setVisible(routeBadge, true);
+                    routeBadge.innerHTML = `<span class="text-xs text-zinc-500">未選擇路線</span>`;
                 }
-            } else {
-                if (routePicker) setVisible(routePicker, true);
-                if (routeBadge) setVisible(routeBadge, false);
             }
 
             if (currentSquad) {
                 Object.assign(currentSquad, squad);
                 if (protagonists) currentSquad.protagonists = protagonists;
-                if (teamRoute) currentSquad.route = teamRoute;
+                if (route) currentSquad.route = route;
+                if (data.team) currentSquad.team = data.team;
             }
             initPlayerAvatar();
         }
@@ -2350,8 +2372,10 @@ HTML_TEMPLATE = """
                 return;
             }
 
-            if (data.squad) {
-                currentSquad = data.squad;
+            if (data.squad_id) {
+                currentSquad = data;
+            } else if (data.squad) {
+                currentSquad = { ...data.squad, route: data.route, team: data.team, protagonists: data.protagonists };
             } else {
                 const statusRes = await fetch('/status', { credentials: 'same-origin' });
                 currentSquad = await statusRes.json();
@@ -2580,7 +2604,7 @@ HTML_TEMPLATE = """
                         const squad = await res.json();
                         if (squad && squad.squad_id && squad.success !== false && !squad.error) {
                             if (loading) setVisible(loading, false);
-                            await completeLogin({ squad, require_set_pin: false, skip_team_prompt: true });
+                            await completeLogin({ ...squad, require_set_pin: false, skip_team_prompt: true });
                             return;
                         }
                     }
@@ -2597,7 +2621,7 @@ HTML_TEMPLATE = """
         }
 
         async function completeLogin(data) {
-            currentSquad = data.squad;
+            currentSquad = data.squad_id ? data : (data.squad || data);
             setVisible(document.getElementById('login-screen'), false);
             setVisible(document.getElementById('game-content'), true);
             showNavAfterLogin();
