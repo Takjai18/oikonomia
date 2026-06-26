@@ -2377,32 +2377,128 @@ HTML_TEMPLATE = """
             alert(msg);
         }
 
+        function detectBrowser() {
+            const ua = navigator.userAgent;
+            const isIOS = /iPad|iPhone|iPod/.test(ua)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            const isAndroid = /Android/.test(ua);
+
+            let browser = 'other';
+            if (/CriOS/.test(ua)) browser = 'chrome-ios';
+            else if (/FxiOS/.test(ua)) browser = 'firefox-ios';
+            else if (/EdgiOS/.test(ua)) browser = 'edge-ios';
+            else if (/OPiOS/.test(ua)) browser = 'opera-ios';
+            else if (isIOS && /Safari/.test(ua)) browser = 'safari-ios';
+            else if (/SamsungBrowser/.test(ua)) browser = 'samsung';
+            else if (/EdgA/.test(ua)) browser = 'edge-android';
+            else if (/Firefox/.test(ua)) browser = 'firefox';
+            else if (/Chrome/.test(ua)) browser = 'chrome';
+            else if (isIOS) browser = 'safari-ios';
+
+            const names = {
+                'safari-ios': 'Safari',
+                'chrome-ios': 'Chrome',
+                'firefox-ios': 'Firefox',
+                'edge-ios': 'Edge',
+                'opera-ios': 'Opera',
+                'chrome': 'Chrome',
+                'firefox': 'Firefox',
+                'edge-android': 'Edge',
+                'samsung': 'Samsung 瀏覽器',
+                'other': '你的瀏覽器',
+            };
+
+            return { isIOS, isAndroid, browser, browserName: names[browser] || names.other };
+        }
+
+        function getLocationPermissionGuide() {
+            const { isIOS, isAndroid, browser, browserName } = detectBrowser();
+
+            const guides = {
+                'safari-ios': `
+                    <strong>Safari（iPhone / iPad）：</strong><br>
+                    1. 喺 Safari 網址列左邊點 <strong>aA</strong> →「網站設定」→ 位置 → <strong>允許</strong><br>
+                    2. 或者：設定 → Safari → 進階 → 網站資料 → 搵 oikonomia → 位置 → 允許<br>
+                    3. 確保：設定 → 私隱與保安 → 定位服務 → <strong>開啟</strong>
+                `,
+                'chrome-ios': `
+                    <strong>Chrome（iPhone / iPad）：</strong><br>
+                    1. 設定 → Chrome → 位置 → <strong>使用 App 期間</strong><br>
+                    2. 返回 Chrome，點網址列左邊圖示 → 網站設定 → 位置 → <strong>允許</strong><br>
+                    3. 確保：設定 → 私隱與保安 → 定位服務 → <strong>開啟</strong>
+                `,
+                'firefox-ios': `
+                    <strong>Firefox（iPhone / iPad）：</strong><br>
+                    1. 設定 → Firefox → 位置 → <strong>使用 App 期間</strong><br>
+                    2. 返回 Firefox，重新整理頁面，彈出提示時選 <strong>允許</strong><br>
+                    3. 確保：設定 → 私隱與保安 → 定位服務 → <strong>開啟</strong>
+                `,
+                'edge-ios': `
+                    <strong>Edge（iPhone / iPad）：</strong><br>
+                    1. 設定 → Edge → 位置 → <strong>使用 App 期間</strong><br>
+                    2. 返回 Edge，點網址列圖示 → 網站權限 → 位置 → <strong>允許</strong>
+                `,
+                'chrome': `
+                    <strong>Chrome（Android）：</strong><br>
+                    1. 點網址列左邊 <strong>鎖頭／圖示</strong> → 權限 → 位置 → <strong>允許</strong><br>
+                    2. 或者：設定 → 應用程式 → Chrome → 權限 → 位置 → <strong>允許</strong>
+                `,
+                'samsung': `
+                    <strong>Samsung 瀏覽器（Android）：</strong><br>
+                    1. 點網址列左邊圖示 → 權限 → 位置 → <strong>允許</strong><br>
+                    2. 或者：設定 → 應用程式 → Samsung 瀏覽器 → 權限 → 位置 → <strong>允許</strong>
+                `,
+                'firefox': `
+                    <strong>Firefox（Android）：</strong><br>
+                    1. 點網址列左邊圖示 → 權限 → 位置 → <strong>允許</strong><br>
+                    2. 或者：設定 → 應用程式 → Firefox → 權限 → 位置 → <strong>允許</strong>
+                `,
+                'edge-android': `
+                    <strong>Edge（Android）：</strong><br>
+                    1. 點網址列左邊圖示 → 權限 → 位置 → <strong>允許</strong><br>
+                    2. 或者：設定 → 應用程式 → Edge → 權限 → 位置 → <strong>允許</strong>
+                `,
+            };
+
+            if (isIOS) {
+                return {
+                    intro: `Oikonomia 係網頁，定位權限要畀 <strong>${browserName}</strong>，唔係 Oikonomia 本身。`,
+                    steps: guides[browser] || guides['safari-ios'],
+                };
+            }
+            if (isAndroid) {
+                return {
+                    intro: `Oikonomia 係網頁，定位權限要畀 <strong>${browserName}</strong>，唔係 Oikonomia 本身。`,
+                    steps: guides[browser] || guides['chrome'],
+                };
+            }
+            return {
+                intro: '請喺瀏覽器允許此網站使用定位，先至可以用到探索功能。',
+                steps: `
+                    <strong>桌面瀏覽器：</strong><br>
+                    點網址列左邊嘅鎖頭／圖示 → 網站設定 → 位置 → <strong>允許</strong>，然後重新整理頁面。
+                `,
+            };
+        }
+
         function showLocationPermissionGuide() {
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[100] px-4';
 
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const guide = getLocationPermissionGuide();
 
             modal.innerHTML = `
-                <div class="bg-zinc-900 w-full max-w-md rounded-3xl p-6 border border-zinc-700">
+                <div class="bg-zinc-900 w-full max-w-md rounded-3xl p-6 border border-zinc-700 max-h-[90vh] overflow-auto">
                     <div class="text-xl font-bold mb-4">需要開啟定位權限</div>
 
-                    <div class="text-zinc-300 mb-6 leading-relaxed">
-                        請到手機設定開啟定位權限，先至可以用到探索功能。
+                    <div class="text-zinc-300 mb-4 leading-relaxed text-sm">
+                        ${guide.intro}
                     </div>
 
                     <div class="space-y-3">
-                        ${isIOS ? `
-                            <div class="bg-zinc-800 p-4 rounded-2xl text-sm">
-                                <strong>iPhone / iPad：</strong><br>
-                                設定 → Oikonomia → 位置 → 選擇「使用 App 期間」或「永遠」
-                            </div>
-                        ` : `
-                            <div class="bg-zinc-800 p-4 rounded-2xl text-sm">
-                                <strong>Android：</strong><br>
-                                設定 → 應用程式 → Oikonomia → 權限 → 位置 → 允許
-                            </div>
-                        `}
+                        <div class="bg-zinc-800 p-4 rounded-2xl text-sm leading-relaxed">
+                            ${guide.steps}
+                        </div>
 
                         <button onclick="this.closest('.fixed').remove()"
                                 class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl">
