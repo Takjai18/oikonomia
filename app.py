@@ -9,7 +9,7 @@ from flask import Flask, render_template_string, request, jsonify, session, redi
 import sqlite3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 import time
 import random
@@ -20,6 +20,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") == "production",
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=14),
 )
 
 UPLOAD_FOLDER = "uploads"
@@ -456,6 +457,7 @@ def login():
                 "error": "PIN 錯誤",
             })
 
+    session.permanent = True
     session["squad_id"] = row["squad_id"]
     conn.close()
 
@@ -2053,6 +2055,18 @@ HTML_TEMPLATE = """
             }
         }
 
+        async function restoreSession() {
+            try {
+                const res = await fetch('/status', { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const squad = await res.json();
+                if (!squad || squad.error || !squad.squad_id) return;
+                await completeLogin({ squad, require_set_pin: false, skip_team_prompt: true });
+            } catch (e) {
+                console.log('no saved session');
+            }
+        }
+
         async function completeLogin(data) {
             currentSquad = data.squad;
             setVisible(document.getElementById('login-screen'), false);
@@ -2099,18 +2113,20 @@ HTML_TEMPLATE = """
                 }
             }, 400);
 
-            try {
-                const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
-                const teamData = await teamRes.json();
-                if (!teamData.has_team) {
-                    setTimeout(() => {
-                        if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
-                            showSection('team');
-                        }
-                    }, 1200);
+            if (!data.skip_team_prompt) {
+                try {
+                    const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
+                    const teamData = await teamRes.json();
+                    if (!teamData.has_team) {
+                        setTimeout(() => {
+                            if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
+                                showSection('team');
+                            }
+                        }, 1200);
+                    }
+                } catch (teamErr) {
+                    console.error('team check failed', teamErr);
                 }
-            } catch (teamErr) {
-                console.error('team check failed', teamErr);
             }
         }
 
@@ -2444,9 +2460,14 @@ HTML_TEMPLATE = """
         // 每 12 秒自動更新狀態
         setInterval(() => {
             if (currentSquad) {
-                fetch('/status').then(r => r.json()).then(d => updateDashboard(d));
+                fetch('/status', { credentials: 'same-origin' })
+                    .then(r => r.ok ? r.json() : null)
+                    .then(d => { if (d && d.squad_id) updateDashboard(d); });
             }
         }, 12000);
+
+        // 頁面載入時還原登入狀態
+        restoreSession();
 
         let currentAvatar = null;
 
