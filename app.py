@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 import math
 import time
+import random
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "oikonomia-2026-prototype")
@@ -744,19 +745,34 @@ def gm_adjust():
 @app.route("/gm/reset_pin", methods=["POST"])
 def gm_reset_pin():
     if not session.get("is_gm"):
-        return jsonify({"success": False, "error": "未授權"}), 403
+        return jsonify({"success": False, "error": "未登入 GM"}), 403
 
     squad_id = request.form.get("squad_id", "").strip()
-    if not squad_id:
-        return jsonify({"success": False, "error": "缺少玩家 ID"}), 400
+    new_pin = request.form.get("new_pin", "").strip()
 
-    squad = get_squad(squad_id)
-    if not squad:
+    if not squad_id:
+        return jsonify({"success": False, "error": "請提供 Player ID"}), 400
+
+    if not get_squad(squad_id):
         return jsonify({"success": False, "error": "玩家不存在"}), 404
 
-    update_squad(squad_id, pin=None)
-    label = squad.get("display_name") or squad_id
-    return jsonify({"success": True, "message": f"已重置 {label} 的 PIN"})
+    if not new_pin:
+        new_pin = str(random.randint(1000, 9999))
+
+    if len(new_pin) != 4 or not new_pin.isdigit():
+        return jsonify({"success": False, "error": "PIN 必須係 4 位數字"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE squads SET pin = ? WHERE squad_id = ?", (new_pin, squad_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": f"已重置 {squad_id} 的 PIN",
+        "new_pin": new_pin,
+    })
 
 @app.route("/gm/global_event", methods=["POST"])
 def gm_global_event():
@@ -2570,12 +2586,6 @@ GM_SQUAD_DETAIL_HTML = """
                     <span class="font-mono {{ 'text-emerald-400' if squad.has_pin else 'text-zinc-500' }}">
                         {{ '已設定' if squad.has_pin else '未設定' }}
                     </span>
-                    {% if squad.has_pin %}
-                    <button onclick="gmResetPin('{{ squad.squad_id }}')" 
-                            class="ml-2 text-xs px-2 py-0.5 bg-red-900/50 hover:bg-red-900 text-red-300 rounded">
-                        重置 PIN
-                    </button>
-                    {% endif %}
                 </div>
                 
                 <div class="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mt-2 pt-4 border-t border-zinc-700">
@@ -2587,6 +2597,11 @@ GM_SQUAD_DETAIL_HTML = """
                 </div>
             </div>
         </div>
+
+        <button onclick="gmResetPlayerPin('{{ squad.squad_id }}', '{{ squad.display_name or squad.squad_id }}')"
+                class="mb-8 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-2xl text-sm">
+            重置玩家 PIN
+        </button>
 
         <!-- 手動調整數值 -->
         <div class="bg-zinc-900 rounded-3xl p-6 mt-6">
@@ -2655,18 +2670,23 @@ GM_SQUAD_DETAIL_HTML = """
         </div>
 
         <script>
-        function gmResetPin(squadId) {
-            if (!confirm('確定要重置此玩家的 PIN？\\n玩家下次登入需重新設定 PIN。')) return;
+        function gmResetPlayerPin(squadId, displayName) {
+            if (!confirm(`確定要重置 ${displayName || squadId} 的 PIN 嗎？`)) return;
+
+            const newPin = prompt('輸入新 PIN（留空則自動生成 4 位數字）');
 
             fetch('/gm/reset_pin', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams({squad_id: squadId})
+                body: new URLSearchParams({
+                    squad_id: squadId,
+                    new_pin: newPin || ''
+                })
             })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert(data.message || 'PIN 已重置');
+                    alert(`${displayName || squadId} 的新 PIN 是：${data.new_pin}\\n請告知玩家！`);
                     location.reload();
                 } else {
                     alert(data.error || '重置失敗');
