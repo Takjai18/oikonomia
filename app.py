@@ -31,6 +31,7 @@ SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
     c.execute('''CREATE TABLE IF NOT EXISTS squads (
         squad_id TEXT PRIMARY KEY,
         sanity INTEGER DEFAULT 50,
@@ -43,15 +44,10 @@ def init_db():
         resilience INTEGER DEFAULT 100,
         route TEXT,
         protagonist_stats TEXT,
-        team_id TEXT
+        team_id TEXT,
+        is_team_leader INTEGER DEFAULT 0
     )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS teams (
-        team_id TEXT PRIMARY KEY,
-        team_name TEXT NOT NULL,
-        route TEXT,
-        created_at TEXT,
-        leader_squad_id TEXT
-    )''')
+
     c.execute('''CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         squad_id TEXT,
@@ -60,6 +56,16 @@ def init_db():
         photo_path TEXT,
         timestamp TEXT
     )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS teams (
+        team_id TEXT PRIMARY KEY,
+        team_name TEXT NOT NULL,
+        route TEXT,
+        created_at TEXT,
+        leader_squad_id TEXT,
+        gm_notes TEXT DEFAULT ''
+    )''')
+
     conn.commit()
     conn.close()
     migrate_db()
@@ -67,27 +73,47 @@ def init_db():
 def migrate_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
     c.execute("PRAGMA table_info(squads)")
     cols = {row[1] for row in c.fetchall()}
-    additions = {
+    squad_additions = {
         "power": "INTEGER DEFAULT 100",
         "intellect": "INTEGER DEFAULT 100",
         "resilience": "INTEGER DEFAULT 100",
         "route": "TEXT",
         "protagonist_stats": "TEXT",
         "team_id": "TEXT",
+        "is_team_leader": "INTEGER DEFAULT 0",
     }
-    for col, typedef in additions.items():
+    for col, typedef in squad_additions.items():
         if col not in cols:
             c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
     )
-    c.execute("PRAGMA table_info(teams)")
-    team_cols = {row[1] for row in c.fetchall()}
-    if "leader_squad_id" not in team_cols:
-        c.execute("ALTER TABLE teams ADD COLUMN leader_squad_id TEXT")
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='teams'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE teams (
+            team_id TEXT PRIMARY KEY,
+            team_name TEXT NOT NULL,
+            route TEXT,
+            created_at TEXT,
+            leader_squad_id TEXT,
+            gm_notes TEXT DEFAULT ''
+        )''')
+    else:
+        c.execute("PRAGMA table_info(teams)")
+        team_cols = {row[1] for row in c.fetchall()}
+        team_additions = {
+            "leader_squad_id": "TEXT",
+            "gm_notes": "TEXT DEFAULT ''",
+        }
+        for col, typedef in team_additions.items():
+            if col not in team_cols:
+                c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
+
     conn.commit()
     conn.close()
 
@@ -145,7 +171,7 @@ def row_to_squad(row):
         "route": d.get("route"),
         "team_id": d.get("team_id"),
         "protagonist": protagonist,
-        "is_team_leader": 0,
+        "is_team_leader": 1 if d.get("is_team_leader") else 0,
     }
 
 def enrich_squad(squad):
@@ -183,7 +209,7 @@ def get_all_squads():
     return [row_to_squad(r) for r in rows]
 
 def update_squad(squad_id, **kwargs):
-    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id"}
+    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader"}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     updates = []
@@ -318,7 +344,7 @@ def join_team():
     if squad.get("team_id"):
         return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
 
-    update_squad(session["squad_id"], team_id=team_id)
+    update_squad(session["squad_id"], team_id=team_id, is_team_leader=0)
     return jsonify({"success": True, "team": get_team_by_id(team_id)})
 
 @app.route("/team/create", methods=["POST"])
@@ -343,7 +369,7 @@ def create_player_team():
     conn.commit()
     conn.close()
 
-    update_squad(session["squad_id"], team_id=team_id)
+    update_squad(session["squad_id"], team_id=team_id, is_team_leader=1)
     return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
 
 @app.route("/set_team_route_by_leader", methods=["POST"])
@@ -691,7 +717,7 @@ def gm_assign_squad():
         conn.commit()
         conn.close()
 
-    update_squad(squad_id, team_id=team_id)
+    update_squad(squad_id, team_id=team_id, is_team_leader=0)
     return jsonify({"success": True})
 
 @app.route("/gm/set_team_route", methods=["POST"])
@@ -734,6 +760,18 @@ def gm_update_team_name():
     conn.close()
 
     return jsonify({"success": True, "message": "隊名已更新"})
+
+@app.route("/debug/teams")
+def debug_teams():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='teams'")
+    exists = c.fetchone() is not None
+    count = 0
+    if exists:
+        count = c.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
+    conn.close()
+    return jsonify({"teams_table_exists": exists, "team_count": count})
 
 @app.route("/announcements")
 def get_announcements():
