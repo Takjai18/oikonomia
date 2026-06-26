@@ -748,23 +748,39 @@ def gm_assign_squad():
         return jsonify({"success": False, "error": "未授權"}), 403
 
     squad_id = request.form.get("squad_id", "").strip().upper()
-    team_id = request.form.get("team_id", "").strip().upper()
+    new_team_id = request.form.get("team_id", "").strip().upper()
 
     if not squad_id.startswith("FRAG-"):
         return jsonify({"success": False, "error": "Squad ID 格式錯誤"}), 400
-    if not get_team_by_id(team_id):
-        return jsonify({"success": False, "error": "Team 不存在"}), 400
+
+    new_team = get_team_by_id(new_team_id)
+    if not new_team:
+        return jsonify({"success": False, "error": "目標 Team 不存在"}), 400
 
     squad = get_squad(squad_id)
     if not squad:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO squads (squad_id) VALUES (?)", (squad_id,))
-        conn.commit()
-        conn.close()
+        return jsonify({"success": False, "error": "玩家不存在"}), 400
 
-    update_squad(squad_id, team_id=team_id, is_team_leader=0)
-    return jsonify({"success": True})
+    old_team_id = squad.get("team_id")
+    old_team_name = None
+    if old_team_id:
+        old_team = get_team_by_id(old_team_id)
+        if old_team:
+            old_team_name = old_team["team_name"]
+
+    is_leader = 0
+    update_squad(squad_id, team_id=new_team_id, is_team_leader=is_leader)
+
+    message = f"已將 {squad_id} 分配到 {new_team['team_name']}"
+    if old_team_name:
+        message = f"已將 {squad_id} 從「{old_team_name}」轉到「{new_team['team_name']}」"
+
+    return jsonify({
+        "success": True,
+        "message": message,
+        "old_team": old_team_name,
+        "new_team": new_team["team_name"],
+    })
 
 @app.route("/gm/set_team_route", methods=["POST"])
 def gm_set_team_route():
@@ -1978,8 +1994,8 @@ GM_DASHBOARD_HTML = """
                     <div class="flex flex-wrap gap-2 mb-3">
                         <button onclick="gmAssignSquadToTeam('${team.team_id}')" 
                                 class="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 rounded-xl flex items-center gap-x-1">
-                            <i class="fa-solid fa-user-plus"></i>
-                            <span>分配玩家入隊</span>
+                            <i class="fa-solid fa-right-left"></i>
+                            <span>轉隊 / 分配</span>
                         </button>
                         <button onclick="gmSetRoutePrompt('${team.team_id}')" 
                                 class="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 rounded-xl">設定路線</button>
@@ -2080,26 +2096,29 @@ GM_DASHBOARD_HTML = """
         }
 
         function gmAssignSquadToTeam(teamId) {
-            const squadId = prompt('請輸入要加入嘅 Squad ID（例如 FRAG-01）：');
+            const squadId = prompt('請輸入要分配/轉隊嘅玩家 ID（例如 FRAG-01）：');
             if (!squadId) return;
-            
-            fetch('/gm/assign_squad', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams({
-                    squad_id: squadId.toUpperCase(),
-                    team_id: teamId
-                })
-            })
-            .then(r => r.json())
-            .then(d => {
-                if (d.success) {
-                    alert('分配成功！');
-                    loadGMTeams();
-                } else {
-                    alert(d.error || '分配失敗');
-                }
-            });
+
+            fetch('/gm/teams')
+                .then(() => {
+                    fetch('/gm/assign_squad', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: new URLSearchParams({
+                            squad_id: squadId.toUpperCase(),
+                            team_id: teamId
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success) {
+                            alert(d.message || '操作成功');
+                            loadGMTeams();
+                        } else {
+                            alert(d.error || '操作失敗');
+                        }
+                    });
+                });
         }
 
         function gmSetRoutePrompt(teamId) {
