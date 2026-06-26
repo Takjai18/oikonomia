@@ -268,7 +268,57 @@ def my_team():
     team = get_team_by_id(squad["team_id"])
     if not team:
         return jsonify({"has_team": False})
-    return jsonify({"has_team": True, "team": team})
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM squads WHERE team_id = ? ORDER BY squad_id", (squad["team_id"],)
+    ).fetchall()
+    conn.close()
+    members = [row_to_squad(r) for r in rows]
+    return jsonify({"has_team": True, "team": team, "members": members})
+
+@app.route("/team/join", methods=["POST"])
+def join_team():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    team_id = request.form.get("team_id", "").strip().upper()
+    if not team_id:
+        return jsonify({"success": False, "error": "請輸入 Team Code"}), 400
+    if not get_team_by_id(team_id):
+        return jsonify({"success": False, "error": "Team 不存在"}), 400
+
+    squad = get_squad(session["squad_id"])
+    if squad.get("team_id"):
+        return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
+
+    update_squad(session["squad_id"], team_id=team_id)
+    return jsonify({"success": True, "team": get_team_by_id(team_id)})
+
+@app.route("/team/create", methods=["POST"])
+def create_player_team():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if squad.get("team_id"):
+        return jsonify({"success": False, "error": "你已加入 Team，請先離開現有隊伍"}), 400
+
+    team_name = request.form.get("team_name", "").strip() or "新小隊"
+    team_id = get_next_team_id()
+    created_at = datetime.now().isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
+        (team_id, team_name, None, created_at),
+    )
+    conn.commit()
+    conn.close()
+
+    update_squad(session["squad_id"], team_id=team_id)
+    return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
 
 @app.route("/set_route", methods=["POST"])
 def set_route():
@@ -812,11 +862,57 @@ HTML_TEMPLATE = """
                 <div id="location-list" class="space-y-4"></div>
             </div>
 
-            <!-- Team -->
+            <!-- Team 區塊 -->
             <div id="team" class="section hidden">
-                <h2 class="text-2xl font-semibold mb-2">Team</h2>
-                <p class="text-sm text-zinc-400 mb-6">所有 Fragment 即時狀態</p>
-                <div id="team-list" class="space-y-4"></div>
+                <div class="mb-6">
+                    <div class="text-sm text-amber-400">TEAM</div>
+                    <div class="text-3xl font-semibold">你的小隊</div>
+                </div>
+
+                <!-- 未有 Team 時顯示 -->
+                <div id="no-team-box" class="hidden cartoon-box p-8 text-center">
+                    <i class="fa-solid fa-users text-5xl text-zinc-600 mb-4"></i>
+                    <h3 class="text-xl font-bold mb-2">你尚未加入任何 Team</h3>
+                    <p class="text-zinc-400 mb-6">請輸入 Team Code 加入，或建立新隊</p>
+                    
+                    <div class="max-w-sm mx-auto space-y-3">
+                        <!-- 加入 Team -->
+                        <div class="flex gap-x-2">
+                            <input type="text" id="join-team-code" placeholder="輸入 Team Code (例如 TEAM-01)" 
+                                   class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-5 py-3 text-sm font-mono">
+                            <button onclick="joinTeamByCode()" 
+                                    class="px-6 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl">加入</button>
+                        </div>
+                        
+                        <!-- 建立新隊 -->
+                        <div class="flex gap-x-2">
+                            <input type="text" id="create-team-name" placeholder="輸入你想嘅隊名" 
+                                   class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-5 py-3 text-sm">
+                            <button onclick="createMyTeam()" 
+                                    class="px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl">建立新隊</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 已有 Team 時顯示 -->
+                <div id="has-team-box" class="hidden">
+                    <div class="cartoon-box p-6 mb-6">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="text-xs text-emerald-400">TEAM NAME</div>
+                                <div id="my-team-name" class="text-2xl font-bold"></div>
+                                <div id="my-team-id" class="font-mono text-xs text-zinc-500"></div>
+                            </div>
+                            <div id="my-team-route-badge"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4 flex items-center justify-between">
+                        <div class="font-semibold">隊友列表</div>
+                        <button onclick="loadMyTeam()" class="text-xs px-3 py-1 bg-zinc-700 rounded-xl">刷新</button>
+                    </div>
+                    <div id="team-members-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -834,7 +930,7 @@ HTML_TEMPLATE = """
             document.querySelectorAll('.section').forEach(s => setVisible(s, false));
             setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
-            if (id === 'team') loadTeam();
+            if (id === 'team') loadMyTeam();
         }
 
         function closeModal(el) {
@@ -885,36 +981,97 @@ HTML_TEMPLATE = """
             updateDashboard(currentSquad);
         }
 
-        async function loadTeam() {
-            const res = await fetch('/team');
-            const data = await res.json();
-            const container = document.getElementById('team-list');
-            container.innerHTML = '';
-            if (!data.members || data.members.length === 0) {
-                container.innerHTML = '<div class="text-zinc-400 text-center py-8">暫無小隊資料</div>';
-                return;
+        async function loadMyTeam() {
+            const noBox = document.getElementById('no-team-box');
+            const hasBox = document.getElementById('has-team-box');
+            try {
+                const res = await fetch('/my_team', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!data.has_team) {
+                    setVisible(noBox, true);
+                    setVisible(hasBox, false);
+                    return;
+                }
+
+                setVisible(noBox, false);
+                setVisible(hasBox, true);
+
+                const team = data.team;
+                document.getElementById('my-team-name').textContent = team.team_name;
+                document.getElementById('my-team-id').textContent = team.team_id;
+
+                const routeBadge = document.getElementById('my-team-route-badge');
+                if (team.route === 'iggy') {
+                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 線</div>';
+                } else if (team.route === 'marah') {
+                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 線</div>';
+                } else {
+                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未設定路線</div>';
+                }
+
+                const list = document.getElementById('team-members-list');
+                list.innerHTML = '';
+                const members = data.members || [];
+                if (members.length === 0) {
+                    list.innerHTML = '<div class="text-zinc-400 col-span-2 text-center py-6">暫無隊友</div>';
+                    return;
+                }
+                members.forEach(m => {
+                    const isYou = currentSquad && m.squad_id === currentSquad.squad_id;
+                    const el = document.createElement('div');
+                    el.className = 'cartoon-box p-4' + (isYou ? ' ring-2 ring-amber-500/50' : '');
+                    el.innerHTML = `
+                        <div class="font-mono font-bold text-amber-400">${m.squad_id}${isYou ? ' (你)' : ''}</div>
+                        <div class="grid grid-cols-5 gap-1 mt-2 text-center text-xs">
+                            <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">HP</div></div>
+                            <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">San</div></div>
+                            <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">Pow</div></div>
+                            <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">Int</div></div>
+                            <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">Res</div></div>
+                        </div>`;
+                    list.appendChild(el);
+                });
+            } catch (e) {
+                console.error('loadMyTeam failed', e);
+                setVisible(noBox, true);
+                setVisible(hasBox, false);
             }
-            data.members.forEach(m => {
-                const routeLabel = m.route === 'iggy' ? 'Iggy' : m.route === 'marah' ? 'Marah' : '未選';
-                const isYou = currentSquad && m.squad_id === currentSquad.squad_id;
-                const el = document.createElement('div');
-                el.className = 'cartoon-box p-5' + (isYou ? ' ring-2 ring-amber-500/50' : '');
-                el.innerHTML = `
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <div class="font-mono font-bold text-amber-400">${m.squad_id}${isYou ? ' (你)' : ''}</div>
-                            <div class="text-xs text-zinc-400 mt-0.5">${routeLabel} 路線</div>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-5 gap-2 text-center text-xs">
-                        <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">HP</div></div>
-                        <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">San</div></div>
-                        <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">Pow</div></div>
-                        <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">Int</div></div>
-                        <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">Res</div></div>
-                    </div>`;
-                container.appendChild(el);
+        }
+
+        async function joinTeamByCode() {
+            const code = document.getElementById('join-team-code').value.trim().toUpperCase();
+            if (!code) { alert('請輸入 Team Code'); return; }
+            const res = await fetch('/team/join', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({team_id: code})
             });
+            const data = await res.json();
+            if (data.success) {
+                alert('成功加入 Team！');
+                document.getElementById('join-team-code').value = '';
+                loadMyTeam();
+            } else {
+                alert(data.error || '加入失敗');
+            }
+        }
+
+        async function createMyTeam() {
+            const name = document.getElementById('create-team-name').value.trim() || '新小隊';
+            const res = await fetch('/team/create', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({team_name: name})
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`Team ${data.team_id} 已建立！`);
+                document.getElementById('create-team-name').value = '';
+                loadMyTeam();
+            } else {
+                alert(data.error || '建立失敗');
+            }
         }
 
         async function login(e) {
@@ -1375,7 +1532,7 @@ GM_DASHBOARD_HTML = """
             </div>
         </div>
 
-        <!-- Team 管理 (Phase 2 新增) -->
+        <!-- Team 管理 (加強版) -->
         <div class="bg-zinc-900 rounded-3xl p-6 mt-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-semibold">Team 管理</h2>
@@ -1386,20 +1543,20 @@ GM_DASHBOARD_HTML = """
                 </button>
             </div>
 
-            <!-- Create Team -->
+            <!-- 建立新 Team -->
             <div class="bg-zinc-800 rounded-2xl p-5 mb-4">
                 <div class="font-medium mb-3">建立新 Team</div>
                 <div class="flex gap-x-3">
-                    <input type="text" id="new-team-name" placeholder="Team 名稱（例如：界線守護者）" 
+                    <input type="text" id="new-team-name" placeholder="輸入隊名（例如：界線守護者）" 
                            class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
                     <button onclick="gmCreateTeam()" 
                             class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-2xl text-sm font-medium">
-                        建立
+                        建立新隊
                     </button>
                 </div>
             </div>
 
-            <!-- Teams List -->
+            <!-- Teams 列表 -->
             <div id="gm-teams-list" class="space-y-4"></div>
         </div>
 
@@ -1452,7 +1609,7 @@ GM_DASHBOARD_HTML = """
             });
         }
 
-        // ==================== Team 管理 JS (Phase 2) ====================
+        // ==================== GM Team 管理加強版 ====================
         async function loadGMTeams() {
             const container = document.getElementById('gm-teams-list');
             container.innerHTML = '<div class="text-zinc-400 text-center py-4">載入中...</div>';
@@ -1466,109 +1623,109 @@ GM_DASHBOARD_HTML = """
             }
             
             container.innerHTML = '';
-            data.teams.forEach(team => {
+            
+            for (const team of data.teams) {
                 const div = document.createElement('div');
                 div.className = 'bg-zinc-800 rounded-2xl p-5 border border-zinc-700';
+                const safeName = (team.team_name || '').replace(/'/g, "\\'");
+                const routeVal = team.route || '';
+                
                 div.innerHTML = `
                     <div class="flex justify-between items-start mb-3">
                         <div>
                             <div class="font-mono font-bold text-emerald-400">${team.team_id}</div>
-                            <div class="text-lg font-semibold">${team.team_name}</div>
+                            <div class="text-lg font-semibold flex items-center gap-x-2">
+                                ${team.team_name}
+                                <button onclick="gmEditTeamName('${team.team_id}', '${safeName}')" 
+                                        class="text-xs px-2 py-0.5 bg-zinc-700 hover:bg-zinc-600 rounded">改名</button>
+                            </div>
                             <div class="text-xs text-zinc-400 mt-0.5">${team.member_count} 位成員</div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-xs px-3 py-1 rounded-full ${team.route === 'iggy' ? 'bg-red-900/50 text-red-400' : team.route === 'marah' ? 'bg-blue-900/50 text-blue-400' : 'bg-zinc-700 text-zinc-400'}">
+                        <div>
+                            <div class="text-xs px-3 py-1 rounded-full text-center ${team.route === 'iggy' ? 'bg-red-900/60 text-red-400' : team.route === 'marah' ? 'bg-blue-900/60 text-blue-400' : 'bg-zinc-700 text-zinc-400'}">
                                 ${team.route === 'iggy' ? '🔥 Iggy 線' : team.route === 'marah' ? '🌊 Marah 線' : '未設定路線'}
                             </div>
                         </div>
                     </div>
                     
-                    <div class="flex flex-wrap gap-2 mb-4">
-                        <button onclick="gmAssignSquadPrompt('${team.team_id}')" 
-                                class="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 rounded-xl">分配成員</button>
-                        <button onclick="gmSetRoutePrompt('${team.team_id}', '${team.route}')" 
-                                class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 rounded-xl">設定路線</button>
-                        <button onclick="gmViewTeamMembers('${team.team_id}', '${team.team_name}')" 
-                                class="px-3 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-xl">查看成員</button>
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        <button onclick="gmAssignSquadToTeam('${team.team_id}')" 
+                                class="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 rounded-xl flex items-center gap-x-1">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <span>分配玩家入隊</span>
+                        </button>
+                        <button onclick="gmSetRoutePrompt('${team.team_id}', '${routeVal}')" 
+                                class="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 rounded-xl">設定路線</button>
+                        <button onclick="gmViewTeamMembers('${team.team_id}', '${safeName}')" 
+                                class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-xl">查看成員</button>
                     </div>
-                    
-                    <div class="text-xs text-zinc-500">建立於 ${team.created_at ? team.created_at.substring(0,16) : 'N/A'}</div>
                 `;
                 container.appendChild(div);
-            });
+            }
         }
 
         async function gmCreateTeam() {
-            const nameInput = document.getElementById('new-team-name');
-            const name = nameInput.value.trim() || '新小隊';
-            
+            const name = document.getElementById('new-team-name').value.trim() || '新小隊';
             const res = await fetch('/gm/create_team', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams({team_name: name})
             });
             const data = await res.json();
-            
             if (data.success) {
                 alert(`Team ${data.team_id} 已建立`);
-                nameInput.value = '';
+                document.getElementById('new-team-name').value = '';
                 loadGMTeams();
-            } else {
-                alert('建立失敗');
             }
         }
 
-        function gmAssignSquadPrompt(teamId) {
-            const squadId = prompt('請輸入要分配的 Squad ID (例如 FRAG-01)：');
+        function gmEditTeamName(teamId, currentName) {
+            const newName = prompt('輸入新隊名：', currentName);
+            if (!newName || newName === currentName) return;
+            alert('隊名修改功能將在下一版加入（目前可透過 GM 筆記記低）');
+        }
+
+        function gmAssignSquadToTeam(teamId) {
+            const squadId = prompt('請輸入要加入嘅 Squad ID（例如 FRAG-01）：');
             if (!squadId) return;
             
             fetch('/gm/assign_squad', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams({squad_id: squadId.toUpperCase(), team_id: teamId})
+                body: new URLSearchParams({
+                    squad_id: squadId.toUpperCase(),
+                    team_id: teamId
+                })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    alert('分配成功');
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    alert('分配成功！');
                     loadGMTeams();
                 } else {
-                    alert(data.error || '分配失敗');
+                    alert(d.error || '分配失敗');
                 }
             });
         }
 
-        function gmSetRoutePrompt(teamId, currentRoute) {
-            const route = prompt(`請輸入路線 (iggy 或 marah)\n目前：${currentRoute || '未設定'}`);
+        function gmSetRoutePrompt(teamId, current) {
+            const route = prompt(`設定 Team 路線 (輸入 iggy 或 marah)\n目前：${current || '未設定'}`, current || '');
             if (!route) return;
-            
             fetch('/gm/set_team_route', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams({team_id: teamId, route: route.toLowerCase()})
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    alert('路線已更新');
-                    loadGMTeams();
-                } else {
-                    alert(data.error || '設定失敗');
-                }
-            });
+            }).then(() => loadGMTeams());
         }
 
-        async function gmViewTeamMembers(teamId, teamName) {
-            alert(`${teamName} (${teamId})\n\n（完整成員列表將在下一版以 Modal 顯示）`);
+        function gmViewTeamMembers(teamId, teamName) {
+            alert(`${teamName} (${teamId})\n\n完整成員列表 + 每人狀態將在下一版 Modal 顯示`);
         }
 
-        // 自動載入 Team 列表
+        // 自動載入
         setTimeout(() => {
-            const teamsContainer = document.getElementById('gm-teams-list');
-            if (teamsContainer) {
-                loadGMTeams();
-            }
-        }, 800);
+            if (document.getElementById('gm-teams-list')) loadGMTeams();
+        }, 600);
         </script>
 
         <!-- Danger Zone -->
