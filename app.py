@@ -681,28 +681,15 @@ def gm_reset_game():
     # 2. 清空所有 Team
     c.execute("DELETE FROM teams")
 
-    # 3. 重置所有玩家（squads）
-    c.execute("""
-        UPDATE squads 
-        SET hp = 100, 
-            sanity = 50, 
-            power = 100, 
-            intellect = 100, 
-            resilience = 100,
-            resources = 0, 
-            zoo_skills = '[]', 
-            route = NULL, 
-            team_id = NULL, 
-            is_team_leader = 0,
-            protagonist_stats = ?
-    """, (json.dumps(DEFAULT_PROTAGONIST),))
+    # 3. 刪除所有玩家記錄（Squad = 獨立玩家ID）
+    c.execute("DELETE FROM squads")
 
     conn.commit()
     conn.close()
 
     return jsonify({
         "success": True,
-        "message": "遊戲已完全重置（包括所有 Team 都被刪除）",
+        "message": "遊戲已完全重置（所有玩家ID、Team、提交記錄已清空）",
     })
 
 # 公告歷史記錄（每條包含訊息 + 時間）
@@ -1861,7 +1848,7 @@ GM_DASHBOARD_HTML = """
             <div class="flex items-center justify-between">
                 <div>
                     <div class="font-medium">重置整個遊戲</div>
-                    <div class="text-xs text-zinc-400">會清空所有提交記錄，並將所有小隊數值重置為初始值</div>
+                    <div class="text-xs text-zinc-400">會刪除所有玩家ID（FRAG-XX）、Team 同提交記錄，一切由零開始</div>
                 </div>
                 <button onclick="showResetModal()" 
                         class="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-2xl text-sm font-medium">
