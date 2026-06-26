@@ -675,26 +675,35 @@ def gm_reset_game():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    # 清空提交記錄
+    # 1. 清空提交記錄
     c.execute("DELETE FROM submissions")
 
-    # 重置所有小隊數值
+    # 2. 清空所有 Team
+    c.execute("DELETE FROM teams")
+
+    # 3. 重置所有玩家（squads）
     c.execute("""
         UPDATE squads 
-        SET hp = 100, sanity = 50, power = 100, intellect = 100, resilience = 100,
-            resources = 0, zoo_skills = '[]', route = NULL, team_id = NULL, protagonist_stats = ?
+        SET hp = 100, 
+            sanity = 50, 
+            power = 100, 
+            intellect = 100, 
+            resilience = 100,
+            resources = 0, 
+            zoo_skills = '[]', 
+            route = NULL, 
+            team_id = NULL, 
+            is_team_leader = 0,
+            protagonist_stats = ?
     """, (json.dumps(DEFAULT_PROTAGONIST),))
 
     conn.commit()
     conn.close()
 
-    # 可選：刪除上傳相片（如果想清乾淨）
-    # import shutil
-    # if os.path.exists("uploads"):
-    #     shutil.rmtree("uploads")
-    #     os.makedirs("uploads")
-
-    return jsonify({"success": True, "message": "遊戲已重置"})
+    return jsonify({
+        "success": True,
+        "message": "遊戲已完全重置（包括所有 Team 都被刪除）",
+    })
 
 # 公告歷史記錄（每條包含訊息 + 時間）
 ANNOUNCEMENTS = []   # 格式: [{"message": "...", "timestamp": "..."}]
