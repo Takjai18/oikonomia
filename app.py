@@ -771,17 +771,20 @@ def get_status():
             **squad,
             "team": None,
             "protagonists": {},
+            "route": squad.get("route"),
             "is_team_leader": 0,
         })
 
     team = get_team_by_id(squad["team_id"])
     protagonists = get_team_protagonists(squad["team_id"])
+    team_route = (team or {}).get("route") or squad.get("route")
 
     return jsonify({
         "success": True,
         **squad,
         "team": team,
         "protagonists": protagonists,
+        "route": team_route,
         "is_team_leader": squad.get("is_team_leader", 0),
     })
 
@@ -1741,8 +1744,8 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Iggy 五維（全隊可見） -->
-                    <div id="iggy-panel" class="hidden cartoon-box p-5">
+                    <!-- Iggy 五維（已選 Iggy 路線時顯示） -->
+                    <div id="iggy-card" class="hidden cartoon-box p-5">
                         <h3 class="font-bold mb-4">🔥 Iggy</h3>
                         <div class="space-y-3">
                             <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="iggy-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
@@ -1753,8 +1756,8 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Marah 五維（全隊可見） -->
-                    <div id="marah-panel" class="hidden cartoon-box p-5">
+                    <!-- Marah 五維（已選 Marah 路線時顯示） -->
+                    <div id="marah-card" class="hidden cartoon-box p-5">
                         <h3 class="font-bold mb-4">🌊 Marah</h3>
                         <div class="space-y-3">
                             <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="marah-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
@@ -2221,26 +2224,31 @@ HTML_TEMPLATE = """
             });
         }
 
-        function updateProtagonistPanels(protagonists, inTeam) {
-            const iggyPanel = document.getElementById('iggy-panel');
-            const marahPanel = document.getElementById('marah-panel');
-            if (!iggyPanel || !marahPanel) return;
+        function updateProtagonistCards(data, squad, protagonists) {
+            const iggyCard = document.getElementById('iggy-card');
+            const marahCard = document.getElementById('marah-card');
+            if (!iggyCard || !marahCard) return;
 
-            iggyPanel.classList.toggle('hidden', !inTeam);
-            marahPanel.classList.toggle('hidden', !inTeam);
-            if (!inTeam) return;
+            iggyCard.classList.add('hidden');
+            marahCard.classList.add('hidden');
+            iggyCard.classList.remove('ring-2', 'ring-amber-500/50');
+            marahCard.classList.remove('ring-2', 'ring-amber-500/50');
+
+            const teamRoute = data.team?.route || data.route || squad.route || protagonists?.active_route;
+            if (!teamRoute) return;
 
             const iggy = protagonists?.iggy || {};
             const marah = protagonists?.marah || {};
-            const activeRoute = protagonists?.active_route;
 
-            renderProtagonistStats('iggy-', iggy);
-            renderProtagonistStats('marah-', marah);
-
-            iggyPanel.classList.toggle('ring-2', activeRoute === 'iggy');
-            iggyPanel.classList.toggle('ring-amber-500/50', activeRoute === 'iggy');
-            marahPanel.classList.toggle('ring-2', activeRoute === 'marah');
-            marahPanel.classList.toggle('ring-amber-500/50', activeRoute === 'marah');
+            if (teamRoute === 'iggy') {
+                iggyCard.classList.remove('hidden');
+                iggyCard.classList.add('ring-2', 'ring-amber-500/50');
+                renderProtagonistStats('iggy-', iggy);
+            } else if (teamRoute === 'marah') {
+                marahCard.classList.remove('hidden');
+                marahCard.classList.add('ring-2', 'ring-amber-500/50');
+                renderProtagonistStats('marah-', marah);
+            }
         }
 
         function buildProtagonistCardHtml(title, prefix, stats, isActive) {
@@ -2288,32 +2296,17 @@ HTML_TEMPLATE = """
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');
             const isLeader = squad.is_team_leader === 1;
-            const hasTeamRoute = squad.route;
             const inTeam = !!(squad.team_id || data.team);
+            const teamRoute = data.team?.route || data.route || squad.route;
+            const hasTeamRoute = teamRoute;
 
-            if (protagonists) {
-                const iggy = protagonists.iggy || {};
-                const marah = protagonists.marah || {};
-                setText('iggy-hp-value', iggy.hp ?? 100);
-                setText('iggy-sanity-value', iggy.sanity ?? 100);
-                setText('iggy-power-value', iggy.power ?? 100);
-                setText('iggy-intellect-value', iggy.intellect ?? 100);
-                setText('iggy-resilience-value', iggy.resilience ?? 100);
-                setText('marah-hp-value', marah.hp ?? 100);
-                setText('marah-sanity-value', marah.sanity ?? 100);
-                setText('marah-power-value', marah.power ?? 100);
-                setText('marah-intellect-value', marah.intellect ?? 100);
-                setText('marah-resilience-value', marah.resilience ?? 100);
-                renderProtagonistStats('iggy-', iggy);
-                renderProtagonistStats('marah-', marah);
-            }
-            updateProtagonistPanels(protagonists, inTeam);
+            updateProtagonistCards(data, squad, protagonists || {});
 
             if (hasTeamRoute) {
                 if (routePicker) setVisible(routePicker, false);
                 if (routeBadge) {
                     setVisible(routeBadge, true);
-                    routeBadge.innerHTML = squad.route === 'iggy'
+                    routeBadge.innerHTML = teamRoute === 'iggy'
                         ? `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">🔥 Iggy 路線</span>`
                         : `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">🌊 Marah 路線</span>`;
                 }
@@ -2334,6 +2327,7 @@ HTML_TEMPLATE = """
             if (currentSquad) {
                 Object.assign(currentSquad, squad);
                 if (protagonists) currentSquad.protagonists = protagonists;
+                if (teamRoute) currentSquad.route = teamRoute;
             }
             initPlayerAvatar();
         }
