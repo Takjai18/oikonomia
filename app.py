@@ -106,6 +106,11 @@ def migrate_db():
             c.execute("ALTER TABLE squads ADD COLUMN pin TEXT")
         except sqlite3.OperationalError:
             pass
+    if "avatar" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN avatar TEXT")
+        except sqlite3.OperationalError:
+            pass
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
@@ -274,6 +279,7 @@ def row_to_squad(row):
         "team_id": d.get("team_id"),
         "is_team_leader": 1 if d.get("is_team_leader") else 0,
         "has_pin": bool(d.get("pin")),
+        "avatar": d.get("avatar"),
         "protagonist": protagonist,
     }
 
@@ -313,7 +319,7 @@ def get_all_squads():
     return [row_to_squad(r) for r in rows]
 
 def update_squad(squad_id, **kwargs):
-    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin"}
+    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin", "avatar"}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     updates = []
@@ -776,6 +782,33 @@ def update_display_name():
 
     update_squad(session["squad_id"], display_name=new_name)
     return jsonify({"success": True, "display_name": new_name})
+
+@app.route("/available_avatars")
+def available_avatars():
+    avatar_dir = os.path.join(app.static_folder, "avatars")
+    if not os.path.exists(avatar_dir):
+        return jsonify({"avatars": []})
+    files = [
+        filename for filename in os.listdir(avatar_dir)
+        if filename.lower().endswith((".png", ".jpg", ".jpeg")) and filename != "default.png"
+    ]
+    return jsonify({"avatars": sorted(files)})
+
+@app.route("/set_avatar", methods=["POST"])
+def set_avatar():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    avatar_filename = os.path.basename(request.form.get("avatar", "").strip())
+    if not avatar_filename:
+        return jsonify({"success": False, "error": "請選擇頭像"}), 400
+
+    avatar_path = os.path.join(app.static_folder, "avatars", avatar_filename)
+    if not os.path.exists(avatar_path):
+        return jsonify({"success": False, "error": "頭像不存在"}), 400
+
+    update_squad(session["squad_id"], avatar=avatar_filename)
+    return jsonify({"success": True, "avatar": avatar_filename})
 
 # ==================== GM Routes ====================
 
@@ -1322,17 +1355,25 @@ HTML_TEMPLATE = """
                     <div id="all-announcements" class="hidden mt-4 pt-4 border-t border-blue-700/50 space-y-3 text-sm"></div>
                 </div>
 
-                <div class="mb-6">
-                    <div class="text-sm text-amber-400">FRAGMENT</div>
-                    <div class="flex items-center gap-x-3">
-                        <div id="squad-name" class="text-4xl font-semibold"></div>
-                        <button onclick="editDisplayName()" 
-                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
-                            <i class="fa-solid fa-edit text-xs"></i>
-                            <span>改名</span>
-                        </button>
+                <div class="flex items-center gap-x-3 mb-6">
+                    <img id="player-avatar"
+                         src="/static/avatars/default.png"
+                         class="w-16 h-16 rounded-full object-cover border-2 border-zinc-600 cursor-pointer"
+                         onclick="showAvatarModal()">
+
+                    <div>
+                        <div class="text-sm text-amber-400">FRAGMENT</div>
+                        <div class="flex items-center gap-x-2">
+                            <div id="squad-name" class="text-4xl font-semibold"></div>
+                            <button onclick="editDisplayName()"
+                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
+                                <i class="fa-solid fa-edit text-xs"></i>
+                                <span>改名</span>
+                            </button>
+                        </div>
+                        <div id="route-badge" class="hidden mt-2 text-sm"></div>
+                        <div class="text-sm text-zinc-400 mt-1">點擊頭像更換角色頭像</div>
                     </div>
-                    <div id="route-badge" class="hidden mt-2 text-sm"></div>
                 </div>
 
                 <!-- 路線選擇 -->
@@ -1402,9 +1443,14 @@ HTML_TEMPLATE = """
 
             <!-- ==================== 日誌頁面 ==================== -->
             <div id="log" class="section hidden">
-                <div class="mb-8">
-                    <div class="text-sm text-amber-400">LOG</div>
-                    <div class="text-3xl font-semibold">故事與任務記錄</div>
+                <div class="mb-8 flex items-center gap-x-4">
+                    <img id="log-player-avatar"
+                         src="/static/avatars/default.png"
+                         class="w-12 h-12 rounded-full object-cover border border-zinc-600">
+                    <div>
+                        <div class="text-sm text-amber-400">LOG</div>
+                        <div class="text-3xl font-semibold">故事與任務記錄</div>
+                    </div>
                 </div>
 
                 <div class="cartoon-box p-6 mb-8">
@@ -1694,6 +1740,9 @@ HTML_TEMPLATE = """
                 const p = squad.protagonist;
                 ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('p-', s, p[s] ?? 100));
             }
+
+            if (currentSquad) currentSquad.avatar = squad.avatar;
+            initPlayerAvatar();
         }
 
         async function selectRoute(route) {
@@ -1773,10 +1822,14 @@ HTML_TEMPLATE = """
                     const displayName = m.display_name || m.squad_id;
 
                     el.innerHTML = `
-                        <div class="flex items-center justify-between">
-                            <div class="font-semibold text-lg">
-                                ${displayName}
-                                ${isYou ? '<span class="text-xs text-amber-400 ml-1">(你)</span>' : ''}
+                        <div class="flex items-center gap-x-3">
+                            <img src="${avatarSrc(m.avatar)}"
+                                 class="w-12 h-12 rounded-full object-cover border border-zinc-600 shrink-0">
+                            <div class="flex-1">
+                                <div class="font-semibold text-lg">
+                                    ${displayName}
+                                    ${isYou ? '<span class="text-xs text-amber-400 ml-1">(你)</span>' : ''}
+                                </div>
                             </div>
                         </div>
 
@@ -1937,6 +1990,7 @@ HTML_TEMPLATE = """
 
             showSection('dashboard');
             updateDashboard(currentSquad);
+            initPlayerAvatar();
             loadAnnouncements();
 
             setTimeout(() => {
@@ -2297,7 +2351,111 @@ HTML_TEMPLATE = """
                 fetch('/status').then(r => r.json()).then(d => updateDashboard(d));
             }
         }, 12000);
+
+        let currentAvatar = null;
+
+        function avatarSrc(filename) {
+            return `/static/avatars/${filename || 'default.png'}`;
+        }
+
+        function showAvatarModal() {
+            const modal = document.getElementById('avatar-modal');
+            const grid = document.getElementById('avatar-grid');
+            grid.innerHTML = '<div class="col-span-full text-center py-8 text-zinc-400">載入中...</div>';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            fetch('/available_avatars', { credentials: 'same-origin' })
+                .then(res => res.json())
+                .then(data => {
+                    grid.innerHTML = '';
+
+                    if (!data.avatars || data.avatars.length === 0) {
+                        grid.innerHTML = '<div class="col-span-full text-center text-zinc-400 py-8">暫無可用頭像</div>';
+                        return;
+                    }
+
+                    data.avatars.forEach(filename => {
+                        const div = document.createElement('div');
+                        div.className = `cursor-pointer rounded-2xl overflow-hidden border-2 transition-all hover:scale-105 ${currentAvatar === filename ? 'border-amber-500' : 'border-zinc-700'}`;
+
+                        div.innerHTML = `
+                            <img src="/static/avatars/${filename}"
+                                 class="w-full aspect-square object-cover">
+                        `;
+
+                        div.onclick = () => selectAvatar(filename, div);
+                        grid.appendChild(div);
+                    });
+                })
+                .catch(() => {
+                    grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-8">載入失敗</div>';
+                });
+        }
+
+        function hideAvatarModal() {
+            const modal = document.getElementById('avatar-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function selectAvatar(filename, element) {
+            document.querySelectorAll('#avatar-grid > div').forEach(el => {
+                el.classList.remove('border-amber-500');
+                el.classList.add('border-zinc-700');
+            });
+
+            element.classList.remove('border-zinc-700');
+            element.classList.add('border-amber-500');
+
+            fetch('/set_avatar', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: new URLSearchParams({ avatar: filename })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    currentAvatar = filename;
+                    if (currentSquad) currentSquad.avatar = filename;
+                    initPlayerAvatar();
+
+                    setTimeout(() => {
+                        hideAvatarModal();
+                        alert('頭像已更新！');
+                    }, 300);
+                } else {
+                    alert(data.error || '更新失敗');
+                }
+            });
+        }
+
+        function initPlayerAvatar() {
+            const filename = currentSquad?.avatar || null;
+            currentAvatar = filename;
+            ['player-avatar', 'log-player-avatar'].forEach(id => {
+                const img = document.getElementById(id);
+                if (img) img.src = avatarSrc(filename);
+            });
+        }
     </script>
+
+    <!-- 選擇頭像 Modal -->
+    <div id="avatar-modal" class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[100]">
+        <div class="bg-zinc-900 w-full max-w-2xl mx-4 rounded-3xl p-6 border border-zinc-700">
+            <div class="flex justify-between items-center mb-6">
+                <div class="text-2xl font-bold">選擇角色頭像</div>
+                <button onclick="hideAvatarModal()" class="text-3xl text-zinc-400 hover:text-white">×</button>
+            </div>
+
+            <div id="avatar-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 max-h-[400px] overflow-auto p-1">
+            </div>
+
+            <div class="mt-6 text-center text-xs text-zinc-400">
+                頭像只會喺呢個營會顯示
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 """
@@ -2415,7 +2573,8 @@ GM_DASHBOARD_HTML = """
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-zinc-700 text-left text-sm text-zinc-400">
-                        <th class="py-3 pl-2">Player ID</th>
+                        <th class="py-3 pl-2 w-12"></th>
+                        <th class="py-3">Player ID</th>
                         <th class="py-3">路線</th>
                         <th class="py-3">HP</th>
                         <th class="py-3">Sanity</th>
@@ -2426,7 +2585,11 @@ GM_DASHBOARD_HTML = """
                 <tbody class="divide-y divide-zinc-800">
                     {% for squad in squads %}
                     <tr class="hover:bg-zinc-800/60">
-                        <td class="py-4 pl-2 font-mono font-semibold text-amber-400">
+                        <td class="py-4 pl-2">
+                            <img src="/static/avatars/{{ squad.avatar or 'default.png' }}"
+                                 class="w-10 h-10 rounded-full object-cover border border-zinc-600">
+                        </td>
+                        <td class="py-4 font-mono font-semibold text-amber-400">
                             <a href="/gm/squad/{{ squad.squad_id }}" class="hover:underline">
                                 {{ squad.display_name or squad.squad_id }}
                             </a>
@@ -2937,9 +3100,13 @@ GM_DASHBOARD_HTML = """
                     const name = m.display_name || m.squad_id;
                     el.innerHTML = `
                         <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <div class="font-semibold text-lg">${name}</div>
-                                <div class="text-xs text-zinc-500 font-mono">${m.squad_id}</div>
+                            <div class="flex items-center gap-x-3">
+                                <img src="/static/avatars/${m.avatar || 'default.png'}"
+                                     class="w-10 h-10 rounded-full object-cover border border-zinc-600 shrink-0">
+                                <div>
+                                    <div class="font-semibold text-lg">${name}</div>
+                                    <div class="text-xs text-zinc-500 font-mono">${m.squad_id}</div>
+                                </div>
                             </div>
                             <a href="/gm/squad/${m.squad_id}" class="text-xs px-3 py-1 bg-amber-500/20 text-amber-400 rounded-xl hover:bg-amber-500/30">詳情</a>
                         </div>
@@ -3063,14 +3230,18 @@ GM_SQUAD_DETAIL_HTML = """
                 <span>返回 GM Dashboard</span>
             </a>
             
-            <div class="flex items-end gap-x-3">
-                <h1 class="text-3xl font-bold">{{ squad.display_name or squad.squad_id }}</h1>
-                
-                {% if squad.display_name %}
-                <div class="text-xs text-zinc-500 pb-1 font-mono">
-                    {{ squad.squad_id }}
+            <div class="flex items-end gap-x-4">
+                <img src="/static/avatars/{{ squad.avatar or 'default.png' }}"
+                     class="w-16 h-16 rounded-full object-cover border-2 border-zinc-600">
+                <div class="flex items-end gap-x-3">
+                    <h1 class="text-3xl font-bold">{{ squad.display_name or squad.squad_id }}</h1>
+
+                    {% if squad.display_name %}
+                    <div class="text-xs text-zinc-500 pb-1 font-mono">
+                        {{ squad.squad_id }}
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
             
             <div class="text-sm text-zinc-400 mt-1">玩家詳情與提交記錄</div>
