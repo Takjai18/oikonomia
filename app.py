@@ -1994,53 +1994,87 @@ HTML_TEMPLATE = """
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {
+            --bg-main: #0D0D0D;
             --bg-color: #0D0D0D;
+            --bg-gradient-start: #0D0D0D;
+            --bg-gradient-mid: #141414;
             --bg-gradient-end: #141414;
+            --bg-glow: transparent;
             --card-bg: #1F1F1F;
-            --card-border: #2C3E50;
+            --card-border: #555555;
+            --text-primary: #FFFFFF;
+            --text-secondary: #AAAAAA;
             --text-color: #FFFFFF;
-            --text-muted: #a1a1aa;
+            --text-muted: #AAAAAA;
+            --accent-gold: #FFFFFF;
+            --accent-orange: #888888;
             --accent-color: #FFFFFF;
             --accent-contrast: #0D0D0D;
             --accent-soft: rgba(255, 255, 255, 0.12);
-            --progress-track: #27272a;
+            --progress-bg: #333333;
+            --progress-track: #333333;
             --progress-color: #888888;
             --header-border: rgba(63, 63, 70, 0.8);
             --shadow-color: rgba(44, 62, 80, 0.6);
+            --card-glow: none;
         }
         .theme-iggy {
+            --bg-main: #0D0D0D;
             --bg-color: #0D0D0D;
-            --bg-gradient-end: #2a1520;
+            --bg-gradient-start: #3D1A2E;
+            --bg-gradient-mid: #1a0f14;
+            --bg-gradient-end: #0D0D0D;
+            --bg-glow: rgba(212, 160, 23, 0.1);
             --card-bg: #4A1C2E;
-            --card-border: #6b2d45;
+            --card-border: #D4A017;
+            --text-primary: #F5E8C7;
+            --text-secondary: #C9A36A;
             --text-color: #F5E8C7;
-            --text-muted: #c4b59a;
+            --text-muted: #C9A36A;
+            --accent-gold: #D4A017;
+            --accent-orange: #E07A5F;
             --accent-color: #D4A017;
             --accent-contrast: #1a0f14;
             --accent-soft: rgba(212, 160, 23, 0.22);
-            --progress-track: #3d1a28;
+            --progress-bg: #3D1A2E;
+            --progress-track: #3D1A2E;
             --progress-color: #E07A5F;
-            --header-border: rgba(212, 160, 23, 0.28);
-            --shadow-color: rgba(107, 45, 69, 0.65);
+            --header-border: rgba(212, 160, 23, 0.45);
+            --shadow-color: rgba(61, 26, 46, 0.85);
+            --card-glow: 0 0 24px rgba(212, 160, 23, 0.18), inset 0 1px 0 rgba(212, 160, 23, 0.15);
         }
         .theme-marah {
+            --bg-main: #0D0D0D;
             --bg-color: #0D0D0D;
-            --bg-gradient-end: #0f1a2e;
+            --bg-gradient-start: #152033;
+            --bg-gradient-mid: #0f1a2e;
+            --bg-gradient-end: #0D0D0D;
+            --bg-glow: rgba(74, 144, 164, 0.08);
             --card-bg: #1E2A44;
-            --card-border: #2d3f5c;
+            --card-border: #4A90A4;
+            --text-primary: #E8E8E8;
+            --text-secondary: #9ca8b8;
             --text-color: #E8E8E8;
             --text-muted: #9ca8b8;
+            --accent-gold: #C0C0C0;
+            --accent-orange: #4A90A4;
             --accent-color: #C0C0C0;
             --accent-contrast: #0f1520;
             --accent-soft: rgba(74, 144, 164, 0.28);
+            --progress-bg: #152033;
             --progress-track: #152033;
             --progress-color: #4A90A4;
-            --header-border: rgba(74, 144, 164, 0.32);
+            --header-border: rgba(74, 144, 164, 0.38);
             --shadow-color: rgba(30, 42, 68, 0.75);
+            --card-glow: 0 0 20px rgba(74, 144, 164, 0.12), inset 0 1px 0 rgba(192, 192, 192, 0.08);
         }
         body { font-family: 'Noto Sans TC', system-ui, sans-serif; }
         body.theme-body {
-            background: linear-gradient(145deg, var(--bg-color) 0%, var(--bg-gradient-end) 100%);
+            background:
+                radial-gradient(ellipse 110% 75% at 50% -8%, var(--bg-glow) 0%, transparent 52%),
+                radial-gradient(ellipse 85% 55% at 8% 18%, color-mix(in srgb, var(--bg-gradient-start) 55%, transparent) 0%, transparent 48%),
+                linear-gradient(165deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 38%, var(--bg-main) 100%);
+            background-attachment: fixed;
             color: var(--text-color);
             min-height: 100vh;
         }
@@ -2070,11 +2104,20 @@ HTML_TEMPLATE = """
         }
         .app-header { border-color: var(--header-border) !important; }
         .cartoon-box {
-            border: 3px solid var(--card-border);
+            border: 2px solid var(--card-border);
             border-radius: 12px;
             background: var(--card-bg);
-            box-shadow: 6px 6px 0px var(--shadow-color);
+            box-shadow: var(--card-glow), 6px 6px 0px var(--shadow-color);
             color: var(--text-color);
+        }
+        body.theme-iggy .cartoon-box {
+            border-width: 2px;
+        }
+        .theme-card-title {
+            color: var(--accent-gold);
+        }
+        .ring-active-route {
+            box-shadow: var(--card-glow), 0 0 0 2px var(--accent-gold), 6px 6px 0px var(--shadow-color);
         }
         .route-card {
             border: 3px solid #2C3E50;
@@ -2267,7 +2310,7 @@ HTML_TEMPLATE = """
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <!-- Squad 五維 -->
                     <div class="cartoon-box p-5">
-                        <h3 class="font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Player Status</h3>
+                        <h3 class="font-bold mb-4 flex items-center gap-2 theme-card-title"><i class="fa-solid fa-shield-halved theme-accent-text"></i> Player Status</h3>
                         <div class="space-y-3">
                             <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="hp-bar" class="h-2.5 rounded-full status-bar" style="width:100%;background:var(--progress-color)"></div></div></div>
                             <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 stat-track rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
@@ -2786,7 +2829,7 @@ HTML_TEMPLATE = """
         }
 
         function buildProtagonistCardHtml(title, prefix, stats, isActive) {
-            const ring = isActive ? 'ring-2 ring-amber-500/50' : '';
+            const ring = isActive ? 'ring-active-route' : '';
             const statsList = ['hp', 'sanity', 'power', 'intellect', 'resilience'];
             const labels = {hp: '❤️ HP', sanity: '🧠 San', power: '⚡ Pow', intellect: '📖 Int', resilience: '🛡️ Res'};
             const colors = {hp: 'text-red-400', sanity: 'text-purple-400', power: 'text-orange-400', intellect: 'text-blue-400', resilience: 'text-emerald-400'};
@@ -2794,12 +2837,12 @@ HTML_TEMPLATE = """
             const rows = statsList.map(s => `
                 <div>
                     <div class="flex justify-between text-xs mb-1"><span>${labels[s]}</span><span class="font-mono ${colors[s]}">${stats?.[s] ?? 100}</span></div>
-                    <div class="h-2 bg-zinc-800 rounded-full"><div class="h-2 rounded-full status-bar ${barColors[s]}" style="width:${stats?.[s] ?? 100}%"></div></div>
+                    <div class="h-2 stat-track rounded-full"><div class="h-2 rounded-full status-bar ${barColors[s]}" style="width:${stats?.[s] ?? 100}%"></div></div>
                 </div>
             `).join('');
             return `
                 <div class="cartoon-box p-5 ${ring}">
-                    <h3 class="font-bold mb-4">${title}${isActive ? ' <span class="text-xs text-amber-400">(使用中)</span>' : ''}</h3>
+                    <h3 class="font-bold mb-4 theme-card-title">${title}${isActive ? ' <span class="text-xs theme-accent-text">(使用中)</span>' : ''}</h3>
                     <div class="space-y-2">${rows}</div>
                 </div>
             `;
@@ -2825,13 +2868,115 @@ HTML_TEMPLATE = """
             }
         }
 
+        const THEME_VARS = {
+            default: {
+                '--bg-main': '#0D0D0D',
+                '--bg-color': '#0D0D0D',
+                '--bg-gradient-start': '#0D0D0D',
+                '--bg-gradient-mid': '#141414',
+                '--bg-gradient-end': '#141414',
+                '--bg-glow': 'transparent',
+                '--card-bg': '#1F1F1F',
+                '--card-border': '#555555',
+                '--text-primary': '#FFFFFF',
+                '--text-secondary': '#AAAAAA',
+                '--text-color': '#FFFFFF',
+                '--text-muted': '#AAAAAA',
+                '--accent-gold': '#FFFFFF',
+                '--accent-orange': '#888888',
+                '--accent-color': '#FFFFFF',
+                '--accent-contrast': '#0D0D0D',
+                '--accent-soft': 'rgba(255, 255, 255, 0.12)',
+                '--progress-bg': '#333333',
+                '--progress-track': '#333333',
+                '--progress-color': '#888888',
+                '--header-border': 'rgba(63, 63, 70, 0.8)',
+                '--shadow-color': 'rgba(44, 62, 80, 0.6)',
+                '--card-glow': 'none',
+            },
+            iggy: {
+                '--bg-main': '#0D0D0D',
+                '--bg-color': '#0D0D0D',
+                '--bg-gradient-start': '#3D1A2E',
+                '--bg-gradient-mid': '#1a0f14',
+                '--bg-gradient-end': '#0D0D0D',
+                '--bg-glow': 'rgba(212, 160, 23, 0.1)',
+                '--card-bg': '#4A1C2E',
+                '--card-border': '#D4A017',
+                '--text-primary': '#F5E8C7',
+                '--text-secondary': '#C9A36A',
+                '--text-color': '#F5E8C7',
+                '--text-muted': '#C9A36A',
+                '--accent-gold': '#D4A017',
+                '--accent-orange': '#E07A5F',
+                '--accent-color': '#D4A017',
+                '--accent-contrast': '#1a0f14',
+                '--accent-soft': 'rgba(212, 160, 23, 0.22)',
+                '--progress-bg': '#3D1A2E',
+                '--progress-track': '#3D1A2E',
+                '--progress-color': '#E07A5F',
+                '--header-border': 'rgba(212, 160, 23, 0.45)',
+                '--shadow-color': 'rgba(61, 26, 46, 0.85)',
+                '--card-glow': '0 0 24px rgba(212, 160, 23, 0.18), inset 0 1px 0 rgba(212, 160, 23, 0.15)',
+            },
+            marah: {
+                '--bg-main': '#0D0D0D',
+                '--bg-color': '#0D0D0D',
+                '--bg-gradient-start': '#152033',
+                '--bg-gradient-mid': '#0f1a2e',
+                '--bg-gradient-end': '#0D0D0D',
+                '--bg-glow': 'rgba(74, 144, 164, 0.08)',
+                '--card-bg': '#1E2A44',
+                '--card-border': '#4A90A4',
+                '--text-primary': '#E8E8E8',
+                '--text-secondary': '#9ca8b8',
+                '--text-color': '#E8E8E8',
+                '--text-muted': '#9ca8b8',
+                '--accent-gold': '#C0C0C0',
+                '--accent-orange': '#4A90A4',
+                '--accent-color': '#C0C0C0',
+                '--accent-contrast': '#0f1520',
+                '--accent-soft': 'rgba(74, 144, 164, 0.28)',
+                '--progress-bg': '#152033',
+                '--progress-track': '#152033',
+                '--progress-color': '#4A90A4',
+                '--header-border': 'rgba(74, 144, 164, 0.38)',
+                '--shadow-color': 'rgba(30, 42, 68, 0.75)',
+                '--card-glow': '0 0 20px rgba(74, 144, 164, 0.12), inset 0 1px 0 rgba(192, 192, 192, 0.08)',
+            },
+        };
+
+        function applyThemeVars(themeName) {
+            const root = document.documentElement;
+            const vars = THEME_VARS[themeName] || THEME_VARS.default;
+            Object.entries(vars).forEach(([key, value]) => {
+                root.style.setProperty(key, value);
+            });
+        }
+
+        function applyDefaultTheme() {
+            applyThemeVars('default');
+        }
+
+        function applyIggyTheme() {
+            applyThemeVars('iggy');
+        }
+
+        function applyMarahTheme() {
+            applyThemeVars('marah');
+        }
+
         function applyRouteTheme(route) {
             const body = document.body;
             body.classList.remove('theme-iggy', 'theme-marah');
             if (route === 'iggy') {
                 body.classList.add('theme-iggy');
+                applyIggyTheme();
             } else if (route === 'marah') {
                 body.classList.add('theme-marah');
+                applyMarahTheme();
+            } else {
+                applyDefaultTheme();
             }
         }
 
