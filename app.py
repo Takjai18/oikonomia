@@ -4767,15 +4767,82 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <!-- Squad 五維 -->
-                    <div class="cartoon-box p-5">
-                        <h3 class="font-bold mb-4 flex items-center gap-2 theme-card-title"><i class="fa-solid fa-shield-halved theme-accent-text"></i> 玩家狀態</h3>
-                        <div class="space-y-3">
-                            <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span title="小隊整體體力">❤️ 生命值</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="hp-bar" class="h-2.5 rounded-full status-bar" style="width:100%;background:var(--progress-color)"></div></div></div>
-                            <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span title="使用 Zoo 能力後的清醒度">🧠 神智</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 stat-track rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
-                            <div class="stat-row" data-stat="power"><div class="flex justify-between text-sm mb-1"><span title="行動與影響力">⚡ 力量</span><span id="power-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="intellect"><div class="flex justify-between text-sm mb-1"><span title="理解與推理能力">📖 智力</span><span id="intellect-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="resilience"><div class="flex justify-between text-sm mb-1"><span title="承受壓力與恢復能力">🛡️ 韌性</span><span id="resilience-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                    <!-- 玩家狀態（同戰鬥畫面風格） -->
+                    <div id="player-status-card" class="cartoon-box p-5 bg-zinc-900/50 border border-zinc-700">
+                        <div class="flex items-center gap-3 mb-5 pb-4 border-b border-zinc-700/80">
+                            <img id="dashboard-player-avatar"
+                                 src="/static/avatars/default.png"
+                                 class="w-14 h-14 rounded-2xl object-cover border-2 border-amber-500 shrink-0 cursor-pointer"
+                                 onclick="showAvatarModal()" alt="玩家頭像">
+                            <div class="min-w-0">
+                                <div id="dashboard-player-name" class="font-semibold text-lg truncate">—</div>
+                                <div id="dashboard-attack-hint" class="text-xs text-amber-400/90 mt-0.5">攻擊力：—</div>
+                            </div>
+                        </div>
+                        <h3 class="font-bold mb-3 flex items-center gap-2 text-sm text-zinc-400 uppercase tracking-wide">
+                            <i class="fa-solid fa-shield-halved theme-accent-text"></i> 能力狀態
+                        </h3>
+                        <div class="space-y-3.5">
+                            <div class="dashboard-stat-row" data-stat="hp">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="flex items-center gap-2"><span>❤️</span><span class="font-medium text-zinc-200">生命值</span></span>
+                                    <span class="flex items-center gap-2">
+                                        <span id="hp-value" class="font-mono text-red-400">— / 100</span>
+                                        <span id="hp-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    </span>
+                                </div>
+                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div id="hp-bar" class="h-2.5 bg-red-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div class="dashboard-stat-row" data-stat="sanity">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="flex items-center gap-2"><span>🧠</span><span class="font-medium text-zinc-200">神智</span></span>
+                                    <span class="flex items-center gap-2">
+                                        <span id="sanity-value" class="font-mono text-purple-400">— / 100</span>
+                                        <span id="sanity-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    </span>
+                                </div>
+                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div class="dashboard-stat-row" data-stat="power">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="flex items-center gap-2"><span>💪</span><span class="font-medium text-zinc-200">力量</span></span>
+                                    <span class="flex items-center gap-2">
+                                        <span id="power-value" class="font-mono text-orange-400">— / 100</span>
+                                        <span id="power-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    </span>
+                                </div>
+                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div id="power-bar" class="h-2.5 bg-orange-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div class="dashboard-stat-row" data-stat="intellect">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="flex items-center gap-2"><span>📘</span><span class="font-medium text-zinc-200">智力</span></span>
+                                    <span class="flex items-center gap-2">
+                                        <span id="intellect-value" class="font-mono text-blue-400">— / 100</span>
+                                        <span id="intellect-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    </span>
+                                </div>
+                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div class="dashboard-stat-row" data-stat="resilience">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="flex items-center gap-2"><span>🛡️</span><span class="font-medium text-zinc-200">韌性</span></span>
+                                    <span class="flex items-center gap-2">
+                                        <span id="resilience-value" class="font-mono text-emerald-400">— / 100</span>
+                                        <span id="resilience-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    </span>
+                                </div>
+                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="mt-4 pt-3 border-t border-zinc-700 space-y-2 text-sm">
                             <div class="flex justify-between">
@@ -6486,11 +6553,44 @@ HTML_TEMPLATE = """
             if (modal) modal.remove();
         }
 
+        const SQUAD_STAT_MAX = 100;
+        const DASHBOARD_STAT_META = {
+            hp: { text: 'text-red-400', bar: 'bg-red-500' },
+            sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
+            power: { text: 'text-orange-400', bar: 'bg-orange-500' },
+            intellect: { text: 'text-blue-400', bar: 'bg-blue-500' },
+            resilience: { text: 'text-emerald-400', bar: 'bg-emerald-500' },
+        };
+
         function setStatBar(prefix, stat, value) {
+            const max = SQUAD_STAT_MAX;
+            const v = Math.max(0, Math.min(max, Number(value) || 0));
+            const pct = Math.round((v / max) * 100);
+            const meta = DASHBOARD_STAT_META[stat] || {};
             const el = document.getElementById(prefix + stat + '-value');
             const bar = document.getElementById(prefix + stat + '-bar');
-            if (el) el.textContent = value;
-            if (bar) bar.style.width = value + '%';
+            const pctEl = document.getElementById(prefix + stat + '-pct');
+            if (el) {
+                if (!prefix) {
+                    el.textContent = `${v} / ${max}`;
+                    el.className = `font-mono ${meta.text || 'text-zinc-300'}`;
+                } else {
+                    el.textContent = String(v);
+                }
+            }
+            if (pctEl) pctEl.textContent = `${pct}%`;
+            if (bar) bar.style.width = `${pct}%`;
+        }
+
+        function updateDashboardAttackHint(squad) {
+            const hint = document.getElementById('dashboard-attack-hint');
+            if (!hint) return;
+            const power = Number(squad?.power) || 0;
+            const intellect = Number(squad?.intellect) || 0;
+            const attack = Math.max(power, intellect);
+            if (power > intellect) hint.textContent = `攻擊力：力量 ${attack}`;
+            else if (intellect > power) hint.textContent = `攻擊力：智力 ${attack}`;
+            else hint.textContent = `攻擊力：${attack}（力量／智力相同）`;
         }
 
         function setText(id, value) {
@@ -6733,7 +6833,11 @@ HTML_TEMPLATE = """
             document.getElementById('resource-value').textContent = squad.resources || 0;
             const insightEl = document.getElementById('insight-value');
             if (insightEl) insightEl.textContent = squad.insight_fragments || 0;
-            document.getElementById('squad-name').textContent = squad.display_name || squad.squad_id;
+            const displayName = squad.display_name || squad.squad_id;
+            document.getElementById('squad-name').textContent = displayName;
+            const dashName = document.getElementById('dashboard-player-name');
+            if (dashName) dashName.textContent = displayName;
+            updateDashboardAttackHint(squad);
 
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');
@@ -8020,7 +8124,7 @@ HTML_TEMPLATE = """
         function initPlayerAvatar() {
             const filename = currentSquad?.avatar || null;
             currentAvatar = filename;
-            ['player-avatar', 'log-player-avatar', 'combat-player-avatar'].forEach(id => {
+            ['player-avatar', 'log-player-avatar', 'combat-player-avatar', 'dashboard-player-avatar'].forEach(id => {
                 setAvatarImage(document.getElementById(id), filename);
             });
         }
