@@ -1048,6 +1048,8 @@ def available_teams():
 
     squad = get_squad(session["squad_id"])
     current_team_id = squad.get("team_id") if squad else None
+    has_team = bool(current_team_id and str(current_team_id).strip())
+    clean_current_id = normalize_team_id(current_team_id) if has_team else None
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -1059,18 +1061,26 @@ def available_teams():
             "SELECT COUNT(*) FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))", (row["team_id"],)
         ).fetchone()[0]
 
-        is_joined = (row["team_id"] == current_team_id)
+        is_joined = bool(
+            clean_current_id
+            and normalize_team_id(row["team_id"]) == clean_current_id
+        )
 
         teams.append({
             "team_id": row["team_id"],
             "team_name": row["team_name"],
             "route": row["route"],
             "member_count": member_count,
-            "is_joined": is_joined
+            "is_joined": is_joined,
         })
 
     conn.close()
-    return jsonify({"teams": teams})
+    return jsonify({
+        "success": True,
+        "has_team": has_team,
+        "current_team_id": clean_current_id,
+        "teams": teams,
+    })
 
 @app.route("/team/join", methods=["POST"])
 def join_team():
@@ -2895,13 +2905,16 @@ HTML_TEMPLATE = """
                 }
 
                 container.innerHTML = '';
+                const hasTeam = Boolean(data.has_team);
                 data.teams.forEach(team => {
                     const el = document.createElement('div');
                     el.className = 'flex items-center justify-between bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-2xl px-4 py-3';
 
                     let actionBtn = '';
                     if (team.is_joined) {
-                        actionBtn = `<span class="px-4 py-1 text-xs bg-zinc-600 text-zinc-300 rounded-xl">已加入</span>`;
+                        actionBtn = `<span class="px-4 py-1 text-xs bg-emerald-900/50 text-emerald-300 rounded-xl">已加入</span>`;
+                    } else if (hasTeam) {
+                        actionBtn = `<span class="px-4 py-1 text-xs bg-zinc-600 text-zinc-400 rounded-xl">已加入其他隊</span>`;
                     } else {
                         actionBtn = `<button class="px-4 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 font-medium rounded-xl">加入</button>`;
                     }
