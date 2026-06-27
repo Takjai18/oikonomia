@@ -2576,8 +2576,15 @@ HTML_TEMPLATE = """
                             <span>持有物品</span>
                             <span id="items-slot-label" class="text-xs font-normal theme-muted-text">(0/5)</span>
                         </h3>
-                        <button onclick="loadMyItems()"
-                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">刷新</button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="startQRScanner()"
+                                    class="text-xs px-3 py-1.5 theme-btn-primary rounded-xl flex items-center gap-x-1 font-medium">
+                                <i class="fa-solid fa-qrcode"></i>
+                                <span>掃描 QR</span>
+                            </button>
+                            <button onclick="loadMyItems()"
+                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">刷新</button>
+                        </div>
                     </div>
                     <div id="my-items-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div class="text-sm text-zinc-400 col-span-full text-center py-4">載入中...</div>
@@ -4208,20 +4215,134 @@ HTML_TEMPLATE = """
         }
 
         async function claimItemFromQR(itemId, source = 'qr') {
-            const res = await fetch('/add_item', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ item_id: itemId, source })
-            });
-            const result = await res.json();
-            if (result.success) {
-                alert(result.message || '成功獲得物品！');
-                loadMyItems();
-                return true;
+            try {
+                const res = await fetch('/add_item', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ item_id: itemId, source })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert(result.message || '成功獲得物品！');
+                    loadMyItems();
+                    return true;
+                }
+                alert(result.error || '獲取失敗');
+                return false;
+            } catch (err) {
+                alert('網絡錯誤，請稍後再試');
+                return false;
             }
-            alert(result.error || '獲取失敗');
-            return false;
+        }
+
+        let html5QrCode = null;
+        let qrScannerRunning = false;
+        let qrClaimInProgress = false;
+
+        function parseQrItemId(decodedText) {
+            const text = (decodedText || '').trim();
+            if (!text) return null;
+
+            const claimMatch = text.match(/\/claim_item\/(\d+)/i);
+            if (claimMatch) return parseInt(claimMatch[1], 10);
+
+            const queryMatch = text.match(/[?&]item_id=(\d+)/i);
+            if (queryMatch) return parseInt(queryMatch[1], 10);
+
+            const prefixMatch = text.match(/^oiko-item-(\d+)$/i);
+            if (prefixMatch) return parseInt(prefixMatch[1], 10);
+
+            if (text.startsWith('{')) {
+                try {
+                    const obj = JSON.parse(text);
+                    if (obj.type === 'item' && obj.id != null) return parseInt(obj.id, 10);
+                    if (obj.item_id != null) return parseInt(obj.item_id, 10);
+                } catch (e) {}
+            }
+
+            if (/^\d+$/.test(text)) return parseInt(text, 10);
+            return null;
+        }
+
+        async function stopQRScanner() {
+            const modal = document.getElementById('qr-scanner-modal');
+            if (modal) {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }
+            if (html5QrCode && qrScannerRunning) {
+                try {
+                    await html5QrCode.stop();
+                    html5QrCode.clear();
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+            html5QrCode = null;
+            qrScannerRunning = false;
+        }
+
+        async function startQRScanner() {
+            if (typeof Html5Qrcode === 'undefined') {
+                alert('QR 掃描庫載入失敗，請重新整理頁面');
+                return;
+            }
+
+            const modal = document.getElementById('qr-scanner-modal');
+            const status = document.getElementById('qr-status');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            if (status) status.textContent = '正在啟動相機...';
+
+            await stopQRScanner();
+            html5QrCode = new Html5Qrcode('qr-reader');
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            const onScanFailure = () => {};
+
+            async function tryStartCamera(facingMode, label) {
+                await html5QrCode.start(
+                    { facingMode },
+                    config,
+                    onScanSuccess,
+                    onScanFailure
+                );
+                qrScannerRunning = true;
+                if (status) status.textContent = label;
+            }
+
+            try {
+                await tryStartCamera('environment', '請對準 QR Code');
+            } catch (err) {
+                console.error('後置相機失敗:', err);
+                try {
+                    html5QrCode = new Html5Qrcode('qr-reader');
+                    await tryStartCamera('user', '請對準 QR Code（前鏡頭）');
+                } catch (err2) {
+                    console.error('前鏡頭失敗:', err2);
+                    if (status) status.textContent = '無法啟動相機，請檢查瀏覽器權限';
+                }
+            }
+        }
+
+        async function onScanSuccess(decodedText) {
+            if (qrClaimInProgress) return;
+
+            const itemId = parseQrItemId(decodedText);
+            if (!itemId || Number.isNaN(itemId)) {
+                const status = document.getElementById('qr-status');
+                if (status) status.textContent = 'QR Code 格式不正確';
+                return;
+            }
+
+            qrClaimInProgress = true;
+            const status = document.getElementById('qr-status');
+            if (status) status.textContent = '掃描成功，正在領取物品...';
+
+            await stopQRScanner();
+            await claimItemFromQR(itemId);
+            qrClaimInProgress = false;
         }
 
         function avatarSrc(filename) {
@@ -4330,6 +4451,26 @@ HTML_TEMPLATE = """
                         class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl text-sm">
                     確認轉讓
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 掃描 QR Code Modal -->
+    <div id="qr-scanner-modal" onclick="if (event.target.id === 'qr-scanner-modal') stopQRScanner()"
+         class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[100]">
+        <div onclick="event.stopImmediatePropagation()"
+             class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl overflow-hidden border border-zinc-700">
+            <div class="flex justify-between items-center p-4 border-b border-zinc-700">
+                <h3 class="text-lg font-bold">掃描 QR Code 獲得物品</h3>
+                <button onclick="stopQRScanner()" class="text-2xl leading-none text-zinc-400 hover:text-white px-2">×</button>
+            </div>
+            <div class="p-4">
+                <div id="qr-reader" class="w-full rounded-xl overflow-hidden border border-zinc-700"></div>
+                <p id="qr-status" class="text-center text-sm mt-3 text-zinc-400">請對準 QR Code</p>
+            </div>
+            <div class="p-4 border-t border-zinc-700">
+                <button onclick="stopQRScanner()"
+                        class="w-full py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">取消</button>
             </div>
         </div>
     </div>
