@@ -862,9 +862,18 @@ def build_combat_status_response(combat, encounter, squad_id):
         }
 
     logs = combat.get("logs") or []
+    recent_logs = logs[-20:]
     log_messages = [
         entry.get("message") if isinstance(entry, dict) else str(entry)
-        for entry in logs[-20:]
+        for entry in recent_logs
+    ]
+    log_entries = [
+        {
+            "type": entry.get("type", "event"),
+            "message": entry.get("message", str(entry)),
+        }
+        if isinstance(entry, dict) else {"type": "event", "message": str(entry)}
+        for entry in recent_logs
     ]
 
     return {
@@ -894,6 +903,7 @@ def build_combat_status_response(combat, encounter, squad_id):
         "berserk_warning": berserk_hint,
         "berserk_chance": round(berserk_probability(me.get("sanity", 50)) * 100),
         "log": log_messages,
+        "log_entries": log_entries,
         "reflection_prompt": (encounter or {}).get("reflection_prompt"),
         "combat_settings": settings,
         "available_actions": list(COMBAT_ACTION_TYPES),
@@ -4219,6 +4229,33 @@ HTML_TEMPLATE = """
             border-color: #facc15 !important;
             box-shadow: 0 0 28px rgba(234, 179, 8, 0.55);
         }
+        .damage-number {
+            position: absolute;
+            font-weight: 700;
+            font-size: 2rem;
+            color: #f87171;
+            text-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
+            pointer-events: none;
+            z-index: 50;
+            animation: damagePop 1.1s ease-out forwards;
+            transform: translateX(-50%);
+        }
+        .damage-number.crit {
+            color: #fbbf24;
+            font-size: 2.5rem;
+            text-shadow: 0 0 12px rgba(251, 191, 36, 0.8);
+            animation: damagePopCrit 1.3s ease-out forwards;
+        }
+        @keyframes damagePop {
+            0% { transform: translateX(-50%) translateY(0) scale(0.6); opacity: 1; }
+            30% { transform: translateX(-50%) translateY(-25px) scale(1.1); }
+            100% { transform: translateX(-50%) translateY(-60px) scale(0.9); opacity: 0; }
+        }
+        @keyframes damagePopCrit {
+            0% { transform: translateX(-50%) translateY(0) scale(0.5); opacity: 1; }
+            25% { transform: translateX(-50%) translateY(-35px) scale(1.3); }
+            100% { transform: translateX(-50%) translateY(-75px) scale(0.85); opacity: 0; }
+        }
         #combat-berserk-bar { background: linear-gradient(90deg, #9a3412, #ea580c); }
         #combat-berserk-bar.berserk-critical { background: linear-gradient(90deg, #7f1d1d, #dc2626); animation: combat-pulse 1s ease-in-out infinite; }
         #combat-near-death-overlay { background: rgba(69, 10, 10, 0.92); backdrop-filter: blur(4px); }
@@ -4583,7 +4620,7 @@ HTML_TEMPLATE = """
 
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <!-- 左欄：玩家 -->
-                        <div id="combat-action-container" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 relative">
+                        <div id="player-panel" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 relative overflow-hidden">
                             <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-3xl flex items-center justify-center bg-zinc-950/80">
                                 <div class="text-center text-red-200 font-bold text-lg px-4">神智不清，能力失控</div>
                             </div>
@@ -4640,7 +4677,7 @@ HTML_TEMPLATE = """
                         </div>
 
                         <!-- 右欄：敵人 -->
-                        <div class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6">
+                        <div id="enemy-panel" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 relative overflow-hidden">
                             <div class="flex items-center gap-x-4 mb-5">
                                 <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
                                      class="w-20 h-20 rounded-2xl border-2 border-red-500 object-cover bg-zinc-950" alt="敵人">
@@ -4863,6 +4900,7 @@ HTML_TEMPLATE = """
         let diceRolling = false;
         let combatItemsLoaded = false;
         let lastDicePhase = 0;
+        let lastCombatLogCount = 0;
         let lastCombatStatus = null;
         const COMBAT_ACTION_LABELS = {
             attack_physical: '物理攻擊',
@@ -4923,6 +4961,76 @@ HTML_TEMPLATE = """
             if (route === 'iggy') screen.classList.add('combat-accent-oikos');
             else if (route === 'marah') screen.classList.add('combat-accent-polis');
             else screen.classList.add('combat-accent-default');
+        }
+
+        function showDamageNumber(targetId, amount, isCrit = false) {
+            const target = document.getElementById(targetId);
+            if (!target || !amount) return;
+
+            const damageEl = document.createElement('div');
+            damageEl.className = `damage-number${isCrit ? ' crit' : ''}`;
+            damageEl.textContent = `-${amount}`;
+
+            const offsetX = Math.random() * 40 - 20;
+            damageEl.style.left = `calc(50% + ${offsetX}px)`;
+            damageEl.style.top = '30%';
+
+            target.appendChild(damageEl);
+            setTimeout(() => damageEl.remove(), isCrit ? 1300 : 1100);
+        }
+
+        function parseLogDamageEvent(entry, myDisplayName) {
+            const msg = entry.message || '';
+            const type = entry.type || 'event';
+            const dmgMatch = msg.match(/造成\s*(\d+)\s*點傷害/);
+            if (!dmgMatch) return null;
+            const amount = parseInt(dmgMatch[1], 10);
+            const crit = /骰\s*3[）)]/.test(msg);
+
+            if (type === 'damage') {
+                return { target: 'enemy-panel', amount, crit };
+            }
+            if (type === 'summary' && msg.includes('受到共')) {
+                return { target: 'enemy-panel', amount, crit: false, total: true };
+            }
+            if (type === 'enemy_attack' && myDisplayName && msg.includes(myDisplayName)) {
+                return { target: 'player-panel', amount, crit: false };
+            }
+            if (type === 'berserk' && msg.includes('攻擊自己')) {
+                return { target: 'player-panel', amount, crit: false };
+            }
+            return null;
+        }
+
+        function processCombatDamageAnimations(data, delayMs = 300, initOnly = false) {
+            const entries = data.log_entries || [];
+            if (entries.length < lastCombatLogCount) lastCombatLogCount = 0;
+            if (initOnly) {
+                lastCombatLogCount = entries.length;
+                return;
+            }
+            const newEntries = entries.slice(lastCombatLogCount);
+            lastCombatLogCount = entries.length;
+            if (!newEntries.length) return;
+
+            const myName = currentSquad?.display_name || data.my_state?.display_name || '';
+            const hasDamageLine = newEntries.some(e => e.type === 'damage');
+
+            newEntries.forEach((entry, index) => {
+                const hit = parseLogDamageEvent(entry, myName);
+                if (!hit) return;
+                if (hit.total && hasDamageLine) return;
+                setTimeout(() => {
+                    showDamageNumber(hit.target, hit.amount, hit.crit);
+                }, delayMs + index * 180);
+            });
+        }
+
+        function flashEnemyHpBar() {
+            const bar = document.getElementById('enemy-hp-bar');
+            if (!bar) return;
+            bar.classList.add('brightness-150');
+            setTimeout(() => bar.classList.remove('brightness-150'), 400);
         }
 
         function highlightCombatAction(action, opts = {}) {
@@ -5103,6 +5211,7 @@ HTML_TEMPLATE = """
             stopCombatPolling();
             resetCombatDiceUi();
             lastDicePhase = 0;
+            lastCombatLogCount = 0;
             loadEncounters();
         }
 
@@ -5275,7 +5384,7 @@ HTML_TEMPLATE = """
             }
         }
 
-        function updateCombatUI(data) {
+        function updateCombatUI(data, options = {}) {
             if (!data) return;
             lastCombatStatus = data;
             setVisible(document.getElementById('combat-result-panel'), false);
@@ -5318,8 +5427,15 @@ HTML_TEMPLATE = """
             document.getElementById('enemy-resilience').textContent = enemy.resilience ?? 0;
             document.getElementById('enemy-sanity').textContent = enemy.sanity ?? 0;
             const maxHp = enemy.max_hp || enemy.hp || 1;
-            document.getElementById('enemy-hp-bar').style.width =
-                `${Math.max(0, Math.min(100, Math.round((enemy.hp || 0) / maxHp * 100)))}%`;
+            const prevEnemyHp = lastCombatStatus?.enemy?.hp;
+            const enemyHpBar = document.getElementById('enemy-hp-bar');
+            if (enemyHpBar) {
+                enemyHpBar.style.width =
+                    `${Math.max(0, Math.min(100, Math.round((enemy.hp || 0) / maxHp * 100)))}%`;
+                if (prevEnemyHp != null && enemy.hp != null && enemy.hp < prevEnemyHp) {
+                    flashEnemyHpBar();
+                }
+            }
 
             const me = data.my_state || {};
             const squad = currentSquad || {};
@@ -5402,13 +5518,18 @@ HTML_TEMPLATE = """
             logEl.innerHTML = (data.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
                 || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
             logEl.scrollTop = logEl.scrollHeight;
+            processCombatDamageAnimations(
+                data,
+                options.damageDelay ?? 0,
+                !!options.initLogsOnly,
+            );
 
             const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
             updateNearDeathOverlay(me);
 
             const submitBtn = document.getElementById('combat-submit-btn');
             const hintEl = document.getElementById('combat-submit-hint');
-            const actionContainer = document.getElementById('combat-action-container');
+            const actionContainer = document.getElementById('player-panel');
             const canAct = data.status === 'player_phase' && !inNearDeath && !me.submitted;
             if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.55';
             document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
@@ -5462,7 +5583,7 @@ HTML_TEMPLATE = """
                 if (data.active) {
                     setVisible(document.getElementById('combat-lobby'), false);
                 }
-                updateCombatUI(data);
+                updateCombatUI(data, showLoading ? { initLogsOnly: true } : {});
                 if (data.active || data.in_precheck) startCombatPolling();
                 else stopCombatPolling();
             } catch (e) {
@@ -5516,6 +5637,9 @@ HTML_TEMPLATE = """
                 return;
             }
             if (data.outcome) {
+                if (data.log_entries?.length) {
+                    processCombatDamageAnimations(data, 200);
+                }
                 showCombatResult(data);
                 const statusRes = await fetch('/status', { credentials: 'same-origin' });
                 updateDashboard(await statusRes.json());
@@ -5524,7 +5648,7 @@ HTML_TEMPLATE = """
             }
             resetCombatDiceUi();
             lastDicePhase = 0;
-            updateCombatUI({ ...data, active: true });
+            updateCombatUI({ ...data, active: true }, { damageDelay: 350 });
         }
 
         async function rescueNearDeath() {
