@@ -2055,6 +2055,42 @@ def build_teams_overview():
     conn.close()
     return {"teams": teams, "solo_players": solo_players}
 
+def build_active_combats_overview():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM combats WHERE status NOT IN ('ended') ORDER BY id DESC"
+    ).fetchall()
+    conn.close()
+
+    combats = []
+    for row in rows:
+        combat = row_to_combat(row)
+        encounter = load_encounter(combat["encounter_id"])
+        squad = get_squad(combat["squad_id"])
+        team_id = squad.get("team_id") if squad else None
+        team = get_team_by_id(team_id) if team_id else None
+        participants = get_combat_participants(combat)
+        phase_actions = combat.get("phase_actions") or {}
+
+        combats.append({
+            "combat_id": combat["id"],
+            "encounter_id": combat["encounter_id"],
+            "title": (encounter or {}).get("title", combat["encounter_id"]),
+            "status": combat.get("status"),
+            "current_phase": combat.get("current_phase", 0),
+            "enemy_name": combat.get("enemy_name"),
+            "enemy_hp": combat.get("enemy_hp"),
+            "enemy_max_hp": combat.get("enemy_max_hp"),
+            "team_id": team_id,
+            "team_name": (team or {}).get("team_name"),
+            "submitted_count": len(phase_actions),
+            "participant_count": len(participants),
+            "can_resolve": combat.get("status") == "player_phase",
+            "phase_deadline": combat.get("phase_deadline"),
+        })
+    return combats
+
 # ==================== Routes ====================
 @app.before_request
 def refresh_player_session():
@@ -3540,6 +3576,61 @@ def gm_teams_overview():
 
     overview = build_teams_overview()
     return jsonify({"success": True, **overview})
+
+@app.route("/gm/active_combats")
+def gm_active_combats():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    return jsonify({"success": True, "combats": build_active_combats_overview()})
+
+@app.route("/gm/combat/resolve_phase", methods=["POST"])
+def gm_combat_resolve_phase():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    body = request.json if request.is_json else request.form
+    combat_id = body.get("combat_id")
+    if not combat_id:
+        return jsonify({"success": False, "error": "缺少 combat_id"}), 400
+
+    combat = get_combat(int(combat_id))
+    if not combat:
+        return jsonify({"success": False, "error": "戰鬥不存在"}), 404
+    if combat.get("status") != "player_phase":
+        return jsonify({
+            "success": False,
+            "error": f"目前狀態為 {combat.get('status')}，只能強制結算 player_phase",
+        }), 400
+
+    combat, winner = resolve_player_phase(int(combat_id))
+    encounter = load_encounter(combat["encounter_id"]) if combat else None
+
+    if winner == "squad":
+        return jsonify({
+            "success": True,
+            "outcome": "victory",
+            "winner": "squad",
+            "combat_id": int(combat_id),
+            "narrative": (encounter or {}).get("success", {}).get("narrative"),
+        })
+    if winner == "enemy":
+        return jsonify({
+            "success": True,
+            "outcome": "defeat",
+            "winner": "enemy",
+            "combat_id": int(combat_id),
+            "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+        })
+
+    return jsonify({
+        "success": True,
+        "combat_id": int(combat_id),
+        "status": combat.get("status") if combat else None,
+        "current_phase": combat.get("current_phase") if combat else None,
+        "enemy_hp": combat.get("enemy_hp") if combat else None,
+        "message": "Phase 已強制結算，戰鬥繼續",
+    })
 
 @app.route("/gm/download_team_images/<team_id>")
 def gm_download_team_images(team_id):
@@ -7235,6 +7326,8 @@ GM_DASHBOARD_HTML = """
                     class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">Team 管理</button>
             <button onclick="switchGMTab('overview')" id="tab-overview"
                     class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">進度總覽</button>
+            <button onclick="switchGMTab('combat')" id="tab-combat"
+                    class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">戰鬥監控</button>
         </div>
 
         <div id="gm-squads-tab">
@@ -7465,6 +7558,20 @@ GM_DASHBOARD_HTML = """
                 </button>
             </div>
             <div id="gm-overview-content" class="text-zinc-400 text-center py-8">載入中...</div>
+        </div>
+        </div>
+
+        <div id="gm-combat-tab" class="hidden">
+        <div class="bg-zinc-900 rounded-3xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold">進行中戰鬥</h2>
+                <button onclick="loadActiveCombats()"
+                        class="px-4 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm flex items-center gap-x-2">
+                    <i class="fa-solid fa-sync"></i>
+                    <span>刷新</span>
+                </button>
+            </div>
+            <div id="gm-combat-content" class="text-zinc-400 text-center py-8">載入中...</div>
         </div>
         </div>
 
@@ -8135,15 +8242,100 @@ GM_DASHBOARD_HTML = """
             }
         }
 
+        async function loadActiveCombats() {
+            const container = document.getElementById('gm-combat-content');
+            container.innerHTML = '<div class="text-zinc-400 text-center py-8">載入中...</div>';
+
+            try {
+                const res = await fetch('/gm/active_combats', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    container.innerHTML = '<div class="text-red-400 text-center py-8">載入失敗</div>';
+                    return;
+                }
+
+                const combats = data.combats || [];
+                if (combats.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 text-center py-8">目前沒有進行中的戰鬥</div>';
+                    return;
+                }
+
+                container.innerHTML = '<div class="space-y-4">' + combats.map(c => `
+                    <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-5 text-left">
+                        <div class="flex flex-wrap justify-between items-start gap-3 mb-3">
+                            <div>
+                                <div class="text-lg font-semibold text-red-400">${c.title || c.encounter_id}</div>
+                                <div class="text-xs text-zinc-500 font-mono mt-0.5">Combat #${c.combat_id} · ${c.encounter_id}</div>
+                                <div class="text-sm text-zinc-300 mt-1">${c.team_name || '未知隊伍'} (${c.team_id || '—'})</div>
+                            </div>
+                            <span class="text-xs px-3 py-1 rounded-full bg-amber-900/40 text-amber-300">${c.status}</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs mb-4">
+                            <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-red-400 font-mono text-base">${c.enemy_hp}/${c.enemy_max_hp}</div><div class="text-zinc-500">敵人 HP</div></div>
+                            <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-amber-400 font-mono text-base">Phase ${c.current_phase || 0}</div><div class="text-zinc-500">回合</div></div>
+                            <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-emerald-400 font-mono text-base">${c.submitted_count}/${c.participant_count}</div><div class="text-zinc-500">已提交行動</div></div>
+                            <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-zinc-200 font-mono text-xs">${formatOverviewTime(c.phase_deadline)}</div><div class="text-zinc-500">Phase 截止</div></div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            ${c.can_resolve ? `
+                                <button onclick="gmResolveCombatPhase(${c.combat_id}, '${(c.title || c.encounter_id).replace(/'/g, '')}')"
+                                        class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded-xl flex items-center gap-x-2">
+                                    <i class="fa-solid fa-gavel"></i>
+                                    <span>強制結算 Phase</span>
+                                </button>
+                            ` : `
+                                <span class="text-xs text-zinc-500 py-2">非 player_phase，無法強制結算</span>
+                            `}
+                        </div>
+                    </div>
+                `).join('') + '</div>';
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400 text-center py-8">載入失敗</div>';
+            }
+        }
+
+        async function gmResolveCombatPhase(combatId, title) {
+            if (!confirm(`確定要強制結算「${title}」(Combat #${combatId}) 的 Player Phase？\\n未提交行動的隊員將視為未行動。`)) return;
+
+            try {
+                const res = await fetch('/gm/combat/resolve_phase', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ combat_id: combatId }),
+                });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    alert(data.error || '結算失敗');
+                    return;
+                }
+
+                if (data.outcome === 'victory') {
+                    alert('戰鬥結束：隊伍勝利！');
+                } else if (data.outcome === 'defeat') {
+                    alert('戰鬥結束：隊伍落敗。');
+                } else {
+                    alert(data.message || 'Phase 已強制結算');
+                }
+                loadActiveCombats();
+            } catch (e) {
+                alert('結算失敗：' + e.message);
+            }
+        }
+
         function switchGMTab(tab) {
             const squadsTab = document.getElementById('gm-squads-tab');
             const teamsTab = document.getElementById('gm-teams-tab');
             const overviewTab = document.getElementById('gm-overview-tab');
+            const combatTab = document.getElementById('gm-combat-tab');
             const btnSquads = document.getElementById('tab-squads');
             const btnTeams = document.getElementById('tab-teams');
             const btnOverview = document.getElementById('tab-overview');
-            const allTabs = [squadsTab, teamsTab, overviewTab];
-            const allBtns = [btnSquads, btnTeams, btnOverview];
+            const btnCombat = document.getElementById('tab-combat');
+            const allTabs = [squadsTab, teamsTab, overviewTab, combatTab];
+            const allBtns = [btnSquads, btnTeams, btnOverview, btnCombat];
 
             allTabs.forEach(el => el.classList.add('hidden'));
             allBtns.forEach(btn => btn.classList.remove('active', 'bg-amber-500', 'text-zinc-950'));
@@ -8156,6 +8348,10 @@ GM_DASHBOARD_HTML = """
                 overviewTab.classList.remove('hidden');
                 btnOverview.classList.add('active', 'bg-amber-500', 'text-zinc-950');
                 loadTeamsOverview();
+            } else if (tab === 'combat') {
+                combatTab.classList.remove('hidden');
+                btnCombat.classList.add('active', 'bg-amber-500', 'text-zinc-950');
+                loadActiveCombats();
             } else {
                 squadsTab.classList.remove('hidden');
                 btnSquads.classList.add('active', 'bg-amber-500', 'text-zinc-950');
