@@ -1031,11 +1031,18 @@ def my_team():
         })
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT * FROM squads WHERE team_id = ? ORDER BY squad_id", (clean_team_id,)
-    ).fetchall()
+    rows = conn.execute("""
+        SELECT * FROM squads
+        WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+        ORDER BY is_team_leader DESC, COALESCE(display_name, squad_id), squad_id
+    """, (clean_team_id,)).fetchall()
     conn.close()
-    members = [get_squad(r["squad_id"]) for r in rows]
+    members = []
+    for row in rows:
+        member = get_squad(row["squad_id"])
+        if member:
+            member["is_leader"] = member.get("is_team_leader") == 1
+            members.append(member)
     protagonists = get_team_protagonists(squad["team_id"])
     return jsonify({
         "success": True,
@@ -1044,6 +1051,7 @@ def my_team():
         "route": team.get("route"),
         "members": members,
         "is_team_leader": squad.get("is_team_leader", 0),
+        "current_squad_id": session["squad_id"],
         "protagonists": protagonists,
     })
 
@@ -1160,6 +1168,52 @@ def team_update_name():
     conn.close()
 
     return jsonify({"success": True, "team_name": new_name})
+
+@app.route("/team/transfer_leadership", methods=["POST"])
+def transfer_leadership():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    data = request.get_json(silent=True) or {}
+    target_squad_id = (data.get("target_squad_id") or "").strip()
+    if not target_squad_id:
+        return jsonify({"success": False, "error": "請選擇目標隊員"}), 400
+
+    if target_squad_id == session["squad_id"]:
+        return jsonify({"success": False, "error": "不能轉讓畀自己"}), 400
+
+    current_squad = get_squad(session["squad_id"])
+    if not current_squad or current_squad.get("is_team_leader") != 1:
+        return jsonify({"success": False, "error": "只有隊長可以轉讓"}), 403
+
+    team_id = normalize_team_id(current_squad.get("team_id"))
+    if not team_id:
+        return jsonify({"success": False, "error": "你未有隊伍"}), 400
+
+    target_squad = get_squad(target_squad_id)
+    if not target_squad:
+        return jsonify({"success": False, "error": "找不到目標隊員"}), 404
+
+    if normalize_team_id(target_squad.get("team_id")) != team_id:
+        return jsonify({"success": False, "error": "目標隊員唔係同一個隊"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE squads SET is_team_leader = 0 WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+        (team_id,),
+    )
+    c.execute("UPDATE squads SET is_team_leader = 1 WHERE squad_id = ?", (target_squad_id,))
+    c.execute("UPDATE teams SET leader_squad_id = ? WHERE team_id = ?", (target_squad_id, team_id))
+    conn.commit()
+    conn.close()
+
+    updated = get_squad(session["squad_id"])
+    return jsonify({
+        "success": True,
+        "message": "隊長已成功轉讓",
+        "is_team_leader": updated.get("is_team_leader", 0),
+    })
 
 @app.route("/set_team_route_by_leader", methods=["POST"])
 def set_team_route_by_leader():
@@ -2882,8 +2936,10 @@ HTML_TEMPLATE = """
                 }
 
                 const team = data.team;
-                const isLeader = currentSquad && currentSquad.is_team_leader === 1;
+                const isLeader = data.is_team_leader === 1;
+                if (currentSquad) currentSquad.is_team_leader = data.is_team_leader;
                 const safeTeamName = (team.team_name || '').replace(/'/g, "\\'");
+                const currentSquadId = data.current_squad_id;
 
                 let teamNameHTML = `
                     <div class="flex items-center gap-x-2">
@@ -2931,22 +2987,34 @@ HTML_TEMPLATE = """
                     list.innerHTML = '<div class="text-zinc-400 col-span-2 text-center py-6">暫無隊友</div>';
                 } else {
                 members.forEach(m => {
-                    const isYou = currentSquad && m.squad_id === currentSquad.squad_id;
+                    const isYou = currentSquadId && m.squad_id === currentSquadId;
+                    const isMemberLeader = m.is_leader || m.is_team_leader === 1;
                     const el = document.createElement('div');
                     el.className = 'cartoon-box p-4' + (isYou ? ' ring-2 ring-amber-500/50' : '');
 
                     const displayName = m.display_name || m.squad_id;
+                    const leaderBadge = isMemberLeader
+                        ? '<span class="ml-2 text-xs px-2 py-0.5 bg-amber-500 text-zinc-950 rounded-full font-medium">👑 隊長</span>'
+                        : '';
+                    const transferBtn = (isYou && isMemberLeader && isLeader)
+                        ? `<button onclick="showTransferModal()"
+                                   class="text-xs px-3 py-1 bg-amber-600 hover:bg-amber-700 text-zinc-950 rounded-xl font-medium shrink-0">
+                               轉讓隊長
+                           </button>`
+                        : '';
 
                     el.innerHTML = `
                         <div class="flex items-center gap-x-3">
                             <img src="${avatarSrc(m.avatar)}"
                                  class="w-12 h-12 rounded-full object-cover border border-zinc-600 shrink-0">
-                            <div class="flex-1">
-                                <div class="font-semibold text-lg">
-                                    ${displayName}
-                                    ${isYou ? '<span class="text-xs text-amber-400 ml-1">(你)</span>' : ''}
+                            <div class="flex-1 min-w-0">
+                                <div class="font-semibold text-lg flex flex-wrap items-center gap-x-1">
+                                    <span>${displayName}</span>
+                                    ${leaderBadge}
+                                    ${isYou ? '<span class="text-xs text-amber-400">(你)</span>' : ''}
                                 </div>
                             </div>
+                            ${transferBtn}
                         </div>
 
                         <div class="grid grid-cols-5 gap-1 mt-3 text-center text-xs">
@@ -2982,6 +3050,84 @@ HTML_TEMPLATE = """
                 setVisible(noBox, true);
                 setVisible(hasBox, false);
                 loadAvailableTeams();
+            }
+        }
+
+        async function showTransferModal() {
+            const modal = document.getElementById('transfer-modal');
+            const select = document.getElementById('transfer-target');
+            if (!modal || !select) return;
+
+            select.innerHTML = '<option value="">載入中...</option>';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            try {
+                const res = await fetch('/my_team', { credentials: 'same-origin' });
+                const data = await res.json();
+                select.innerHTML = '';
+
+                const currentId = data.current_squad_id;
+                const others = (data.members || []).filter(m => m.squad_id !== currentId);
+
+                if (others.length === 0) {
+                    select.innerHTML = '<option value="">（隊內無其他隊員）</option>';
+                    return;
+                }
+
+                others.forEach(member => {
+                    const option = document.createElement('option');
+                    option.value = member.squad_id;
+                    option.textContent = member.display_name || member.squad_id;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                select.innerHTML = '<option value="">載入失敗</option>';
+            }
+        }
+
+        function hideTransferModal() {
+            const modal = document.getElementById('transfer-modal');
+            if (!modal) return;
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+            const select = document.getElementById('transfer-target');
+            if (select) select.innerHTML = '';
+        }
+
+        async function transferLeadership() {
+            const select = document.getElementById('transfer-target');
+            const targetSquadId = select ? select.value : '';
+            if (!targetSquadId) {
+                alert('請選擇要轉讓的隊員');
+                return;
+            }
+
+            if (!confirm('確定要將隊長轉讓畀呢位隊員嗎？')) return;
+
+            try {
+                const res = await fetch('/team/transfer_leadership', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ target_squad_id: targetSquadId })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    alert(result.message || '隊長已成功轉讓！');
+                    hideTransferModal();
+                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    if (statusRes.ok) {
+                        currentSquad = await statusRes.json();
+                        updateDashboard(currentSquad);
+                    }
+                    loadMyTeam();
+                } else {
+                    alert(result.error || '轉讓失敗');
+                }
+            } catch (e) {
+                alert('轉讓失敗，請重試');
             }
         }
 
@@ -3688,6 +3834,27 @@ HTML_TEMPLATE = """
         // 頁面載入時還原登入狀態（Render 冷啟動會重試）
         restoreSession();
     </script>
+
+    <!-- 轉讓隊長 Modal -->
+    <div id="transfer-modal" onclick="if (event.target.id === 'transfer-modal') hideTransferModal()"
+         class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[100]">
+        <div onclick="event.stopImmediatePropagation()"
+             class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-6 border border-zinc-700">
+            <div class="text-xl font-bold mb-1">轉讓隊長</div>
+            <div class="text-sm text-zinc-400 mb-4">選擇隊內另一位隊員成為新隊長</div>
+            <select id="transfer-target"
+                    class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-sm mb-4">
+            </select>
+            <div class="flex gap-x-3">
+                <button onclick="hideTransferModal()"
+                        class="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">取消</button>
+                <button onclick="transferLeadership()"
+                        class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl text-sm">
+                    確認轉讓
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- 選擇頭像 Modal -->
     <div id="avatar-modal" class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[100]">
