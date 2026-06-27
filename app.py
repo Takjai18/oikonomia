@@ -925,9 +925,47 @@ def apply_precheck_skip(team_id, encounter):
         narrative=skip.get("narrative"),
     )
 
+def build_enemy_combat_stats(combat, encounter=None):
+    """敵人 5 維數值（同玩家：生命值／神智／力量／智力／韌性）。"""
+    enemy_def = (encounter or {}).get("enemy", {}) if encounter else {}
+    hp = int(combat.get("enemy_hp") if combat.get("enemy_hp") is not None else enemy_def.get("hp") or 0)
+    max_hp = int(combat.get("enemy_max_hp") if combat.get("enemy_max_hp") is not None else enemy_def.get("hp") or hp)
+    sanity = int(
+        combat.get("enemy_sanity") if combat.get("enemy_sanity") is not None
+        else enemy_def.get("sanity") or 0
+    )
+    resilience = int(
+        combat.get("enemy_resilience") if combat.get("enemy_resilience") is not None
+        else enemy_def.get("resilience") or 0
+    )
+    base_damage = int(
+        combat.get("enemy_base_damage") if combat.get("enemy_base_damage") is not None
+        else enemy_def.get("base_damage") or 0
+    )
+    power = int(
+        combat.get("enemy_power") if combat.get("enemy_power") is not None
+        else enemy_def.get("power") or base_damage or max(resilience, 10)
+    )
+    intellect = int(
+        combat.get("enemy_intellect") if combat.get("enemy_intellect") is not None
+        else enemy_def.get("intellect") or sanity or max(int(resilience * 0.8), 10)
+    )
+    return {
+        "name": combat.get("enemy_name") or enemy_def.get("name", "敵人"),
+        "hp": hp,
+        "max_hp": max_hp,
+        "sanity": sanity,
+        "power": power,
+        "intellect": intellect,
+        "resilience": resilience,
+        "base_damage": base_damage,
+    }
+
+
 def build_combat_status_response(combat, encounter, squad_id):
     settings = (encounter or {}).get("combat_settings", {})
     me = get_squad(squad_id) or {}
+    protagonists = get_team_protagonists(me["team_id"]) if me.get("team_id") else {}
     participants = get_combat_participants(combat) if combat else []
     phase_actions = (combat or {}).get("phase_actions") or {}
     berserk_hint = berserk_probability(me.get("sanity", 50)) > 0
@@ -979,15 +1017,9 @@ def build_combat_status_response(combat, encounter, squad_id):
             0,
             int((datetime.fromisoformat(combat["phase_deadline"]) - datetime.now()).total_seconds())
         ) if combat.get("phase_deadline") else None,
-        "enemy": {
-            "name": combat.get("enemy_name"),
-            "hp": combat.get("enemy_hp"),
-            "max_hp": combat.get("enemy_max_hp"),
-            "resilience": combat.get("enemy_resilience"),
-            "sanity": combat.get("enemy_sanity"),
-            "base_damage": combat.get("enemy_base_damage"),
-        },
+        "enemy": build_enemy_combat_stats(combat, encounter),
         "member_states": member_states,
+        "protagonists": protagonists,
         "my_state": {
             **member_states.get(squad_id, {}),
             "avatar": me.get("avatar"),
@@ -1555,6 +1587,18 @@ def migrate_db():
             winner TEXT,
             FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
         )''')
+
+    c.execute("PRAGMA table_info(combats)")
+    combat_cols = {row[1] for row in c.fetchall()}
+    for col, typedef in {
+        "enemy_power": "INTEGER",
+        "enemy_intellect": "INTEGER",
+    }.items():
+        if col not in combat_cols:
+            try:
+                c.execute(f"ALTER TABLE combats ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass
 
     item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
     if item_count == 0:
@@ -2776,6 +2820,19 @@ def get_encounter_api(encounter_id):
 
 def _create_combat_record(squad_id, encounter_id, encounter, initial_status="precheck"):
     enemy = encounter.get("enemy", {})
+    enemy_stats = build_enemy_combat_stats(
+        {
+            "enemy_name": enemy.get("name", "敵人"),
+            "enemy_hp": enemy.get("hp", 100),
+            "enemy_max_hp": enemy.get("hp", 100),
+            "enemy_resilience": enemy.get("resilience", 0),
+            "enemy_sanity": enemy.get("sanity", 0),
+            "enemy_base_damage": enemy.get("base_damage", 10),
+            "enemy_power": enemy.get("power"),
+            "enemy_intellect": enemy.get("intellect"),
+        },
+        encounter,
+    )
     settings = encounter.get("combat_settings", {})
     now = datetime.now().isoformat()
     logs = [{"at": now, "message": f"遭遇戰開始：{encounter.get('title', encounter_id)}"}]
@@ -2789,19 +2846,21 @@ def _create_combat_record(squad_id, encounter_id, encounter, initial_status="pre
     c.execute(
         """INSERT INTO combats
            (squad_id, encounter_id, status, current_phase, enemy_name, enemy_hp, enemy_max_hp,
-            enemy_resilience, enemy_sanity, enemy_base_damage, phase_actions, logs,
-            phase_started_at, phase_deadline, started_at)
-           VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)""",
+            enemy_resilience, enemy_sanity, enemy_base_damage, enemy_power, enemy_intellect,
+            phase_actions, logs, phase_started_at, phase_deadline, started_at)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)""",
         (
             squad_id,
             encounter_id,
             initial_status,
-            enemy.get("name", "敵人"),
-            enemy.get("hp", 100),
-            enemy.get("hp", 100),
-            enemy.get("resilience", 0),
-            enemy.get("sanity", 0),
-            enemy.get("base_damage", 10),
+            enemy_stats["name"],
+            enemy_stats["hp"],
+            enemy_stats["max_hp"],
+            enemy_stats["resilience"],
+            enemy_stats["sanity"],
+            enemy_stats["base_damage"],
+            enemy_stats["power"],
+            enemy_stats["intellect"],
             json.dumps(logs, ensure_ascii=False),
             phase_started,
             phase_deadline,
@@ -2893,7 +2952,6 @@ def combat_start_api(encounter_id=None):
             )
             combat = get_combat(combat["id"])
 
-    enemy = encounter.get("enemy", {})
     return jsonify({
         "success": True,
         "combat_id": combat["id"],
@@ -2901,14 +2959,7 @@ def combat_start_api(encounter_id=None):
         "precheck_passed": precheck_passed,
         "can_skip": precheck_passed,
         "precheck_text": precheck.get("success_text") if precheck_passed else None,
-        "enemy": {
-            "name": enemy.get("name"),
-            "hp": enemy.get("hp"),
-            "max_hp": enemy.get("hp"),
-            "resilience": enemy.get("resilience"),
-            "sanity": enemy.get("sanity"),
-            "base_damage": enemy.get("base_damage"),
-        },
+        "enemy": build_enemy_combat_stats(combat, encounter),
         "encounter": {
             "encounter_id": encounter_id,
             "title": encounter.get("title"),
@@ -5058,11 +5109,11 @@ HTML_TEMPLATE = """
                     </div>
 
                     <div class="flex flex-col lg:grid lg:grid-cols-2 gap-3 lg:gap-6">
-                        <!-- 敵人（手機 order-1 置頂） -->
+                        <!-- 敵人（手機 order-1 置頂；5 維同玩家） -->
                         <div id="enemy-panel" class="order-1 lg:order-2 bg-zinc-900 border border-red-500/40 lg:border-zinc-700 rounded-2xl lg:rounded-3xl p-3 lg:p-6 relative overflow-hidden">
-                            <div class="flex items-center gap-x-3 lg:gap-x-4">
+                            <div class="flex items-center gap-x-3 mb-3">
                                 <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
-                                     class="w-12 h-12 lg:w-20 lg:h-20 rounded-xl lg:rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
+                                     class="w-11 h-11 lg:w-20 lg:h-20 rounded-xl lg:rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
                                 <div class="flex-1 min-w-0">
                                     <div id="enemy-name" class="font-semibold lg:text-xl text-red-400 truncate">敵人</div>
                                     <div class="hidden lg:block text-sm text-zinc-400">Enemy</div>
@@ -5071,23 +5122,31 @@ HTML_TEMPLATE = """
                                             <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
                                         </div>
                                         <div class="font-mono text-xs lg:text-sm text-red-400 whitespace-nowrap">
-                                            <span id="enemy-hp">0</span>/<span id="enemy-max-hp">0</span>
+                                            <span id="enemy-hp-current">0</span>/<span id="enemy-hp-max">0</span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-3 gap-2 lg:gap-4 text-center mt-3 lg:mt-6">
+                            <div class="grid grid-cols-5 gap-1 text-center">
                                 <div>
-                                    <div class="text-[10px] lg:text-xs text-zinc-400">防禦</div>
-                                    <div id="enemy-resilience" class="font-mono text-base lg:text-3xl font-bold text-emerald-400">0</div>
+                                    <div class="text-red-400 text-[10px] lg:text-xs">生命值</div>
+                                    <div id="enemy-stat-hp" class="font-mono text-sm lg:text-lg text-red-400">—</div>
                                 </div>
                                 <div>
-                                    <div class="text-[10px] lg:text-xs text-zinc-400">精神防禦</div>
-                                    <div id="enemy-sanity" class="font-mono text-base lg:text-3xl font-bold text-purple-400">0</div>
+                                    <div class="text-purple-400 text-[10px] lg:text-xs">神智</div>
+                                    <div id="enemy-stat-sanity" class="font-mono text-sm lg:text-lg text-purple-400">—</div>
                                 </div>
                                 <div>
-                                    <div class="text-[10px] lg:text-xs text-zinc-400">傷害</div>
-                                    <div id="enemy-damage" class="font-mono text-base lg:text-3xl font-bold text-orange-400">0</div>
+                                    <div class="text-orange-400 text-[10px] lg:text-xs">力量</div>
+                                    <div id="enemy-stat-power" class="font-mono text-sm lg:text-lg text-orange-400">—</div>
+                                </div>
+                                <div>
+                                    <div class="text-blue-400 text-[10px] lg:text-xs">智力</div>
+                                    <div id="enemy-stat-intellect" class="font-mono text-sm lg:text-lg text-blue-400">—</div>
+                                </div>
+                                <div>
+                                    <div class="text-emerald-400 text-[10px] lg:text-xs">韌性</div>
+                                    <div id="enemy-stat-resilience" class="font-mono text-sm lg:text-lg text-emerald-400">—</div>
                                 </div>
                             </div>
                             <div id="enemy-quote" class="hidden lg:block text-sm text-zinc-300 leading-relaxed mt-4"></div>
@@ -5109,14 +5168,14 @@ HTML_TEMPLATE = """
                                         <div id="combat-player-team" class="hidden lg:block text-sm text-zinc-400 truncate">—</div>
                                     </div>
                                 </div>
-                                <div class="lg:hidden flex items-center gap-x-3 text-sm shrink-0">
+                                <div class="lg:hidden flex items-center gap-x-4 text-sm shrink-0">
                                     <div class="flex items-center gap-x-1">
                                         <span class="text-red-400">❤️</span>
-                                        <span class="font-mono" id="combat-mobile-hp">—</span>
+                                        <span class="font-mono" id="combat-player-hp">—</span>
                                     </div>
                                     <div class="flex items-center gap-x-1">
                                         <span class="text-purple-400">🧠</span>
-                                        <span class="font-mono" id="combat-mobile-sanity">—</span>
+                                        <span class="font-mono" id="combat-player-sanity">—</span>
                                     </div>
                                 </div>
                             </div>
@@ -5207,11 +5266,10 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- 隊友 + 主角（手機水平 scroll） -->
-                    <div id="combat-team-strip" class="hidden mt-3 lg:mt-4 bg-zinc-900 border border-zinc-700 rounded-2xl lg:rounded-3xl p-3">
-                        <div class="text-xs text-zinc-400 mb-2 px-1">隊友狀態</div>
-                        <div class="flex gap-x-3 overflow-x-auto combat-team-scroll pb-1 lg:grid lg:grid-cols-4 lg:gap-2 lg:overflow-visible" id="team-status"></div>
-                        <div id="combat-protagonist-strip" class="hidden flex gap-x-3 overflow-x-auto combat-team-scroll mt-2 pt-2 border-t border-zinc-700/80"></div>
+                    <!-- 隊友 + 主角（水平 scroll） -->
+                    <div id="combat-team-strip" class="mt-3 lg:mt-4 bg-zinc-900 border border-zinc-700 rounded-2xl lg:rounded-3xl p-3">
+                        <div class="text-xs text-zinc-400 mb-2 px-1">隊友與主角狀態</div>
+                        <div id="team-status-row" class="flex gap-x-4 overflow-x-auto combat-team-scroll pb-1"></div>
                     </div>
 
                     <p id="combat-submit-hint" class="text-[10px] lg:text-xs text-zinc-500 text-center mt-3 lg:mt-4"></p>
@@ -6172,7 +6230,9 @@ HTML_TEMPLATE = """
                 return;
             }
 
-            if (!data.active) {
+            const combatLive = data.active === true
+                || ['player_phase', 'enemy_phase'].includes(data.status);
+            if (!combatLive) {
                 if (data.outcome) showCombatResult(data);
                 return;
             }
@@ -6197,25 +6257,7 @@ HTML_TEMPLATE = """
             phaseLabelEl.textContent = pl.text;
             phaseLabelEl.className = `text-xs ${pl.color}`;
 
-            const enemy = data.enemy || {};
-            document.getElementById('enemy-name').textContent = enemy.name || '敵人';
-            document.getElementById('enemy-quote').textContent = data.enemy_description || '';
-            document.getElementById('enemy-hp').textContent = enemy.hp ?? 0;
-            document.getElementById('enemy-max-hp').textContent = enemy.max_hp || enemy.hp || 0;
-            document.getElementById('enemy-resilience').textContent = enemy.resilience ?? 0;
-            document.getElementById('enemy-sanity').textContent = enemy.sanity ?? 0;
-            const enemyDamageEl = document.getElementById('enemy-damage');
-            if (enemyDamageEl) enemyDamageEl.textContent = enemy.base_damage ?? 0;
-            const maxHp = enemy.max_hp || enemy.hp || 1;
-            const prevEnemyHp = lastCombatStatus?.enemy?.hp;
-            const enemyHpBar = document.getElementById('enemy-hp-bar');
-            if (enemyHpBar) {
-                enemyHpBar.style.width =
-                    `${Math.max(0, Math.min(100, Math.round((enemy.hp || 0) / maxHp * 100)))}%`;
-                if (prevEnemyHp != null && enemy.hp != null && enemy.hp < prevEnemyHp) {
-                    flashEnemyHpBar();
-                }
-            }
+            updateEnemyCombatStats(data.enemy || {}, data.enemy_description || '');
 
             const me = data.my_state || {};
             const squad = currentSquad || {};
@@ -6225,38 +6267,7 @@ HTML_TEMPLATE = """
             document.getElementById('combat-player-team').textContent = squad.team?.team_name || squad.team_name || '單人';
             updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
-
-            const myId = data.my_squad_id || currentSquad?.squad_id;
-            const teamEl = document.getElementById('team-status');
-            const teamStrip = document.getElementById('combat-team-strip');
-            const members = data.member_states || {};
-            const memberCount = Object.keys(members).length;
-            const protagonists = currentSquad?.protagonists || squad.protagonists;
-            const combatRoute = data.route || squad.route || currentSquad?.route;
-            const showTeamStrip = memberCount > 1 || !!(protagonists && combatRoute);
-            setVisible(teamStrip, showTeamStrip);
-            teamEl.innerHTML = Object.entries(members).map(([sid, m]) => {
-                const isMe = sid === myId;
-                const label = isMe ? '你' : (m.display_name || sid);
-                const nearDeath = m.near_death_until && new Date(m.near_death_until) > new Date();
-                const mSanity = m.sanity ?? 100;
-                const berserkRisk = mSanity < 40;
-                const berserkCritical = mSanity < 10;
-                const avatarSrc = m.avatar ? `/static/avatars/${m.avatar}` : '/static/avatars/default.png';
-                const acted = m.submitted
-                    ? '<span class="text-emerald-400">✓</span>'
-                    : '<span class="text-amber-400">…</span>';
-                const statusText = m.submitted
-                    ? (COMBAT_ACTION_LABELS[m.action_type] || '已行動')
-                    : (isMe ? '行動中' : '等待');
-                return `<div class="combat-team-chip lg:min-w-0 text-center lg:text-left bg-zinc-950/60 lg:bg-zinc-900 border border-zinc-700 rounded-xl lg:rounded-2xl p-2 lg:p-3 text-xs ${isMe ? 'team-card-me' : ''} ${berserkRisk ? 'team-card-berserk' : ''}">
-                    <img src="${avatarSrc}" class="w-8 h-8 lg:hidden rounded-full border border-zinc-600 mx-auto mb-0.5 object-cover" alt="">
-                    <div class="font-medium truncate text-[10px] lg:text-xs">${label}${nearDeath ? ' 💔' : ''}${berserkCritical ? ' 🔥' : berserkRisk ? ' ⚠️' : ''}</div>
-                    <div class="text-[10px] lg:text-xs text-zinc-400 mt-0.5 lg:mt-1 font-mono">❤️${m.hp ?? '?'} 🧠${m.sanity ?? '?'}</div>
-                    <div class="text-[10px] lg:text-xs mt-0.5 lg:mt-1 hidden lg:block">${acted} · ${statusText}</div>
-                </div>`;
-            }).join('');
-            renderCombatProtagonistStrip(combatRoute, protagonists);
+            renderCombatTeamRow(data);
 
             const sanity = me.sanity ?? 100;
             const berserkBar = document.getElementById('combat-berserk-bar');
@@ -6716,35 +6727,87 @@ HTML_TEMPLATE = """
             });
             const setTextIf = (id, value) => {
                 const el = document.getElementById(id);
-                if (el) el.textContent = value;
+                if (el) el.textContent = value ?? '—';
             };
-            setTextIf('combat-mobile-hp', stats.hp);
-            setTextIf('combat-mobile-sanity', stats.sanity);
+            setTextIf('combat-player-hp', stats.hp);
+            setTextIf('combat-player-sanity', stats.sanity);
             setTextIf('combat-m-power', stats.power);
             setTextIf('combat-m-intellect', stats.intellect);
             setTextIf('combat-m-resilience', stats.resilience);
         }
 
-        function renderCombatProtagonistStrip(route, protagonists) {
-            const strip = document.getElementById('combat-protagonist-strip');
-            if (!strip || !protagonists) {
-                if (strip) setVisible(strip, false);
-                return;
+        function updateEnemyCombatStats(enemy, description) {
+            const setTextIf = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value ?? '—';
+            };
+            setTextIf('enemy-name', enemy.name || '敵人');
+            const quoteEl = document.getElementById('enemy-quote');
+            if (quoteEl) quoteEl.textContent = description || '';
+            const hp = enemy.hp ?? 0;
+            const maxHp = enemy.max_hp || enemy.hp || 1;
+            setTextIf('enemy-hp-current', hp);
+            setTextIf('enemy-hp-max', maxHp);
+            setTextIf('enemy-stat-hp', hp);
+            setTextIf('enemy-stat-sanity', enemy.sanity);
+            setTextIf('enemy-stat-power', enemy.power);
+            setTextIf('enemy-stat-intellect', enemy.intellect);
+            setTextIf('enemy-stat-resilience', enemy.resilience);
+            const enemyHpBar = document.getElementById('enemy-hp-bar');
+            const prevEnemyHp = lastCombatStatus?.enemy?.hp;
+            if (enemyHpBar) {
+                enemyHpBar.style.width =
+                    `${Math.max(0, Math.min(100, Math.round((hp || 0) / maxHp * 100)))}%`;
+                if (prevEnemyHp != null && hp != null && hp < prevEnemyHp) {
+                    flashEnemyHpBar();
+                }
             }
-            const cards = [
+        }
+
+        function renderCombatTeamRow(data) {
+            const container = document.getElementById('team-status-row');
+            const teamStrip = document.getElementById('combat-team-strip');
+            if (!container) return;
+
+            const myId = data.my_squad_id || currentSquad?.squad_id;
+            const members = data.member_states || {};
+            const route = data.route || currentSquad?.route;
+            const protagonists = data.protagonists || currentSquad?.protagonists || {};
+            const chips = [];
+
+            Object.entries(members).forEach(([sid, m]) => {
+                const isMe = sid === myId;
+                const label = isMe ? '你' : (m.display_name || sid);
+                const avatarSrc = m.avatar ? `/static/avatars/${m.avatar}` : '/static/avatars/default.png';
+                chips.push(`
+                    <div class="combat-team-chip flex-shrink-0 text-center min-w-[52px] ${isMe ? 'team-card-me rounded-xl px-1' : ''}">
+                        <img src="${avatarSrc}" class="w-8 h-8 rounded-full border border-zinc-600 mx-auto mb-0.5 object-cover" alt="">
+                        <div class="text-[10px] text-zinc-300 truncate max-w-[64px]">${label}</div>
+                        <div class="text-[10px] font-mono text-zinc-400">❤️${m.hp ?? '?'} 🧠${m.sanity ?? '?'}</div>
+                    </div>
+                `);
+            });
+
+            [
                 { key: 'iggy', label: '🔥 Iggy', accent: 'text-red-400' },
                 { key: 'marah', label: '🌊 Marah', accent: 'text-blue-400' },
-            ];
-            const html = cards.map(({ key, label, accent }) => {
-                const p = protagonists[key] || {};
+            ].forEach(({ key, label, accent }) => {
+                const p = protagonists[key];
+                if (!p) return;
                 const active = route === key;
-                return `<div class="combat-team-chip text-center px-2 ${active ? 'opacity-100' : 'opacity-60'}">
-                    <div class="text-[10px] ${accent} mb-0.5">${label}${active ? '（主角）' : ''}</div>
-                    <div class="text-[10px] font-mono text-zinc-300">❤️${p.hp ?? '?'} 🧠${p.sanity ?? '?'}</div>
-                </div>`;
-            }).join('');
-            strip.innerHTML = html;
-            setVisible(strip, true);
+                chips.push(`
+                    <div class="combat-team-chip flex-shrink-0 text-center min-w-[52px] border-l border-zinc-700 pl-3 ${active ? '' : 'opacity-60'}">
+                        <div class="w-8 h-8 rounded-full border border-amber-600/50 mx-auto mb-0.5 flex items-center justify-center text-xs">${key === 'iggy' ? '🔥' : '🌊'}</div>
+                        <div class="text-[10px] ${accent}">${label}${active ? '（主角）' : ''}</div>
+                        <div class="text-[10px] font-mono text-zinc-400">❤️${p.hp ?? '?'} 🧠${p.sanity ?? '?'}</div>
+                    </div>
+                `);
+            });
+
+            container.innerHTML = chips.length
+                ? chips.join('')
+                : '<div class="text-[10px] text-zinc-500 py-1">暫無隊友資料</div>';
+            if (teamStrip) setVisible(teamStrip, true);
         }
 
         function updateDashboardAttackHint(squad) {

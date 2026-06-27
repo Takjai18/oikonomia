@@ -19,8 +19,10 @@
   "enemy": {
     "name": "情緒寄生影",
     "hp": 110,
-    "resilience": 22,
     "sanity": 38,
+    "power": 35,
+    "intellect": 28,
+    "resilience": 22,
     "base_damage": 17,
     "description": "一個扭曲嘅人形影子，身上長滿黑色吸盤，正不斷試圖將他人嘅情緒同責任吸進自己體內。它代表 Iggy 過去最深嘅模式——用『愛』嘅名義，剝奪別人承擔自己後果嘅權利。"
   },
