@@ -1,0 +1,42 @@
+{
+  "encounter_id": "test_combat_01",
+  "title": "測試用戰鬥：情緒寄生影",
+  "route": "iggy",
+  "story_stage": 0,
+  "trigger_type": "test",
+  "location_hint": "測試區（開發用）",
+  "description": "GM／開發測試用 Encounter。無需故事進度，設定 Iggy 路線即可開始。",
+
+  "enemy": {
+    "name": "測試用情緒寄生影",
+    "hp": 55,
+    "resilience": 18,
+    "sanity": 30,
+    "base_damage": 12,
+    "description": "測試用敵人，HP 較低方便快速驗證戰鬥流程。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 0,
+    "narrative": "測試戰鬥勝利！戰鬥系統運作正常。",
+    "next_story_unlock": null
+  },
+
+  "failure": {
+    "trauma": { "stat": "resilience", "amount": 3 },
+    "narrative": "測試戰鬥落敗。",
+    "debuff": null
+  },
+
+  "reflection_prompt": {
+    "title": "測試反思",
+    "questions": ["這是一場測試戰鬥，你有成功提交行動嗎？"],
+    "theological_tie": "測試用，可略過。"
+  }
+}

@@ -2334,7 +2334,10 @@ def list_encounters_api():
         session["squad_id"], team_id
     )
     stage = resolve_story_stage(completed_count, completed_task_ids)
-    active_session = get_active_combat_for_team(team_id) if team_id else None
+    if team_id:
+        active_session = get_active_combat_for_team(team_id)
+    else:
+        active_session = get_combat_by_squad(session["squad_id"])
 
     encounters = []
     for enc in load_all_encounters():
