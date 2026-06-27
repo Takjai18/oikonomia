@@ -34,6 +34,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 DB_PATH = os.path.join(DATA_DIR, "oikonomia.db")
 
+def read_deploy_version():
+    version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".deploy-version")
+    if os.path.isfile(version_file):
+        with open(version_file, encoding="utf-8") as f:
+            return f.read().strip()
+    return "unknown"
+
 DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
 SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
 
@@ -602,6 +609,17 @@ def get_all_teams_with_stats():
 def refresh_player_session():
     if "squad_id" in session:
         session.permanent = True
+
+@app.route("/api/version")
+def api_version():
+    return jsonify({
+        "success": True,
+        "version": read_deploy_version(),
+        "markers": {
+            "iggy_card": "iggy-card",
+            "show_only_protagonist": "showOnlyProtagonistCard",
+        },
+    })
 
 @app.route("/")
 def index():
