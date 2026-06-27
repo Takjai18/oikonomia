@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-28 · local/GitHub：`3e84702`
+> 最後更新：2026-06-28 · local/GitHub：`a70e07a`（功能 commit `3e84702`）
 
 ---
 
@@ -10,9 +10,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `3e84702` | ✅ 最新 |
-| **GitHub `main`** | `3e84702` | ✅ 已 push |
-| **PythonAnywhere** | `722f81d` | ⚠️ **落後 1 commit** — 需部署 |
+| **Local** | `a70e07a` | ✅ 最新 |
+| **GitHub `main`** | `a70e07a` | ✅ 已 push |
+| **PythonAnywhere** | `722f81d` | ⚠️ **落後** — 需部署（缺戰鬥玩家卡片等） |
 
 ```bash
 # 本地
@@ -22,7 +22,7 @@ cd /Users/mingtakyau/Documents/oikonomia && git rev-parse --short HEAD
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ```
 
-兩邊 `version` 必須相同才算部署完成。PA 目前缺：`3e84702`（戰鬥畫面玩家卡片完整數值顯示）。
+兩邊 `version` 必須相同才算部署完成。PA 目前仍係 `722f81d`，缺 `3e84702` 起嘅戰鬥玩家卡片數值等功能。
 
 ---
 
@@ -272,7 +272,7 @@ bb22794 ui(dashboard): 玩家狀態卡片對齊戰鬥畫面風格
 2. 確保 GitHub 同 PythonAnywhere 版本同 local 一致
 
 開工前先核對版本：
-- local: git rev-parse --short HEAD（應為 3e84702）
+- local: git rev-parse --short HEAD（應為 a70e07a）
 - PA: curl https://takjai.pythonanywhere.com/api/version（目前可能仍係 722f81d）
 
 若 PA 落後，請 push 後請我喺 PA Bash 跑 deploy/pa-update.sh + Web Reload，你再 curl 確認。
