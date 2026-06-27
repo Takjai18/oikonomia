@@ -32,10 +32,26 @@ app.config.update(
 RESTORE_TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
 _restore_serializer = None
 
-_default_data_dir = "."
-if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
-    _default_data_dir = "/data"
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def get_data_dir():
+    """每個部署環境用獨立 SQLite；PA 由 wsgi.py 設 DATA_DIR=data/。"""
+    if os.environ.get("DATA_DIR"):
+        return os.environ["DATA_DIR"]
+    if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
+        return "/data"
+    return os.path.join(PROJECT_DIR, "local_data")
+
+def migrate_legacy_db(target_dir):
+    """首次改用 local_data/ 時，從舊路徑複製 oikonomia.db。"""
+    target_db = os.path.join(target_dir, "oikonomia.db")
+    if os.path.isfile(target_db):
+        return
+    for legacy_dir in (PROJECT_DIR, os.path.join(PROJECT_DIR, "data")):
+        legacy_db = os.path.join(legacy_dir, "oikonomia.db")
+        if os.path.isfile(legacy_db):
+            shutil.copy2(legacy_db, target_db)
+            break
 app.static_folder = os.path.join(PROJECT_DIR, "static")
 AVATAR_DIR = os.path.join(app.static_folder, "avatars")
 PORTRAIT_DIR = os.path.join(app.static_folder, "portraits")
@@ -60,8 +76,10 @@ def portrait_static_path(filename):
     if not safe:
         return "/static/avatars/default.png"
     return f"/static/portraits/{safe}"
-DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
+DATA_DIR = get_data_dir()
 os.makedirs(DATA_DIR, exist_ok=True)
+if not os.environ.get("DATA_DIR"):
+    migrate_legacy_db(DATA_DIR)
 
 # 上傳圖片固定放喺 project/uploads（PA 同 local 路徑一致，避免 data/uploads 分裂）
 UPLOAD_FOLDER = os.path.join(PROJECT_DIR, "uploads")
@@ -2536,6 +2554,8 @@ def api_version():
             "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
             "combat_ui_safe": "safeSetText" in HTML_TEMPLATE,
         },
+        "data_dir": DATA_DIR,
+        "db_path": DB_PATH,
         "upload_folder": UPLOAD_FOLDER,
         "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,
         "upload_file_count": upload_count,
@@ -5145,7 +5165,7 @@ HTML_TEMPLATE = """
                     <div class="flex justify-between items-center mb-3 lg:mb-4 gap-2">
                         <div class="min-w-0">
                             <h1 id="combat-title" class="combat-title text-lg lg:text-3xl font-bold truncate">戰鬥中</h1>
-                            <p id="combat-subtitle" class="text-xs lg:text-sm text-zinc-400">第 <span id="current-phase">1</span> 回合</p>
+                            <p id="combat-subtitle" class="text-xs lg:text-sm text-zinc-400">第 1 回合</p>
                         </div>
                         <div class="text-right shrink-0">
                             <div id="phase-timer" class="text-2xl lg:text-4xl font-mono font-bold text-emerald-400">--:--</div>
@@ -6365,7 +6385,6 @@ HTML_TEMPLATE = """
             const routeLabel = ROUTE_SUBTITLES[data.route] || 'Encounter';
             const phaseNum = data.current_phase || 1;
             safeSetText('combat-subtitle', `${routeLabel} · 第 ${phaseNum} 回合`);
-            safeSetText('current-phase', phaseNum);
             safeSetText('max-phase', data.max_phases || 5);
 
             const phaseLabels = {
@@ -7695,9 +7714,11 @@ HTML_TEMPLATE = """
         }
 
         async function resumeActiveCombatAfterRestore(squad) {
-            if (squad?.current_combat_id) {
-                currentCombatId = squad.current_combat_id;
-            }
+            if (!squad?.current_combat_id) return;
+            currentCombatId = squad.current_combat_id;
+            showSection('combat');
+            await showCombatScreen();
+            await loadCombatStatus(true);
         }
 
         async function restoreSession() {

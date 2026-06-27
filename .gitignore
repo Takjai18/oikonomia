@@ -13,6 +13,7 @@ uploads/
 
 # Database
 *.db
+local_data/
 instance/
 
 # IDE / OS
