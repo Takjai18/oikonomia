@@ -91,7 +91,7 @@ def main():
     # --- 兩玩家提交行動 ---
     r1 = client.post(
         "/combat/submit_action",
-        json={"combat_id": combat_id, "action_type": "attack_physical", "dice_result": 3},
+        json={"combat_id": combat_id, "action_type": "attack", "dice_result": 3},
         content_type="application/json",
     )
     act1 = r1.get_json()
@@ -99,7 +99,7 @@ def main():
 
     r2 = client2.post(
         "/combat/submit_action",
-        json={"combat_id": combat_id, "action_type": "attack_nonphysical", "dice_result": 3},
+        json={"combat_id": combat_id, "action_type": "attack", "dice_result": 3},
         content_type="application/json",
     )
     act2 = r2.get_json()

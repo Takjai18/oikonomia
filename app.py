@@ -185,8 +185,13 @@ ITEM_EFFECT_LABELS = {
 ENCOUNTERS_DIR = os.path.join(PROJECT_DIR, "encounters")
 NEAR_DEATH_MINUTES = 15
 COMBAT_ACTION_TYPES = (
-    "attack_physical", "attack_nonphysical", "defend", "use_item", "use_zoo", "pass",
+    "attack", "attack_physical", "attack_nonphysical",
+    "defend", "use_item", "use_zoo", "pass",
 )
+COMBAT_ATTACK_BASE_DAMAGE = 10
+ATTACK_ACTION_TYPES = frozenset({
+    "attack", "attack_physical", "attack_nonphysical", "use_zoo",
+})
 DICE_MULTIPLIERS = {0: 0.0, 1: 1.0, 2: 1.5, 3: 2.0}
 _encounter_cache = {}
 
@@ -422,7 +427,31 @@ def get_effective_stat(squad, stat):
     trauma = int(squad.get(trauma_key) or 0) if trauma_key else 0
     return max(0, base - trauma)
 
+def get_effective_attack_stat(squad):
+    return max(
+        get_effective_stat(squad, "power"),
+        get_effective_stat(squad, "intellect"),
+    )
+
+def describe_attack_stat(squad):
+    power = get_effective_stat(squad, "power")
+    intellect = get_effective_stat(squad, "intellect")
+    if power > intellect:
+        return {"stat": "power", "value": power, "label": "力量"}
+    if intellect > power:
+        return {"stat": "intellect", "value": intellect, "label": "智力"}
+    return {"stat": "power", "value": power, "label": "力量/智力"}
+
+def calculate_attack_damage(player, enemy_resilience, multiplier=1.0, item_bonus=0,
+                            base_damage=COMBAT_ATTACK_BASE_DAMAGE):
+    if multiplier <= 0:
+        return 0
+    attack_stat = get_effective_attack_stat(player)
+    raw = ((attack_stat * 1.5) + base_damage + item_bonus) * multiplier - (enemy_resilience * 0.8)
+    return max(1, int(raw))
+
 def calculate_damage(attacker_stat, multiplier, enemy_armor, item_bonus=0):
+    """Legacy helper（暴走自傷等）；一般攻擊請用 calculate_attack_damage。"""
     base = (attacker_stat * 2.0) + item_bonus
     damage = math.floor(base * multiplier) - enemy_armor
     return max(0, damage)
@@ -544,7 +573,7 @@ def get_lowest_resilience_player(participants):
 def resolve_player_phase(combat_id):
     """
     完整解析 Player Phase：
-    - Physical / Non-Physical 傷害 + dice multiplier
+    - 攻擊傷害（max(力量, 智力)）+ dice multiplier
     - Zoo 加成（70/80/90/100 → 1.3x–1.8x）
     - 暴走（指定機率 + 30% 自傷）
     - 敵人反擊（韌性最低者，Defend 減傷 50%）
@@ -579,8 +608,7 @@ def resolve_player_phase(combat_id):
         if is_berserk(sanity):
             berserk_players.append(player_squad_id)
             if random.random() < 0.30:
-                power = get_effective_stat(player, "power")
-                self_dmg = calculate_damage(power, 0.3, 0)
+                self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
                 apply_damage_to_player(player_squad_id, self_dmg)
                 combat = append_combat_log(
                     combat,
@@ -615,22 +643,17 @@ def resolve_player_phase(combat_id):
                     log_type="zoo",
                 )
 
-        if action_type in ("attack_physical", "use_zoo"):
-            stat = get_effective_stat(player, "power")
-            dmg = calculate_damage(stat, multiplier, enemy_resilience, item_bonus)
-            total_damage_to_enemy += dmg
-            combat = append_combat_log(
-                combat,
-                f"{display} 對{enemy_name}造成 {dmg} 點傷害（骰 {dice}）",
-                log_type="damage",
+        if action_type in ATTACK_ACTION_TYPES:
+            stat_info = describe_attack_stat(player)
+            dmg = calculate_attack_damage(
+                player, enemy_resilience, multiplier=multiplier, item_bonus=item_bonus,
             )
-        elif action_type == "attack_nonphysical":
-            stat = get_effective_stat(player, "intellect")
-            dmg = calculate_damage(stat, multiplier, enemy_sanity, item_bonus)
             total_damage_to_enemy += dmg
+            action_label = "Zoo 能力" if action_type == "use_zoo" else "攻擊"
             combat = append_combat_log(
                 combat,
-                f"{display} 精神攻擊造成 {dmg} 點傷害（骰 {dice}）",
+                f"{display} {action_label}對{enemy_name}造成 {dmg} 點傷害"
+                f"（{stat_info['label']} {stat_info['value']} · 骰 {dice}）",
                 log_type="damage",
             )
         elif action_type == "defend":
@@ -945,16 +968,16 @@ def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enem
         if item and item.get("effect_type") == "power_up":
             item_bonus = abs(int(item.get("effect_value") or 0))
 
-    if action_type == "use_zoo":
-        multiplier *= zoo_bonus_multiplier(sanity)
-        stat = get_effective_stat(player, "power")
-        dmg = calculate_damage(stat, multiplier, enemy_resilience, item_bonus)
-    elif action_type == "attack_physical":
-        stat = get_effective_stat(player, "power")
-        dmg = calculate_damage(stat, multiplier, enemy_resilience, item_bonus)
-    elif action_type == "attack_nonphysical":
-        stat = get_effective_stat(player, "intellect")
-        dmg = calculate_damage(stat, multiplier, enemy_sanity, item_bonus)
+    if action_type in ATTACK_ACTION_TYPES:
+        if action_type == "use_zoo":
+            multiplier *= zoo_bonus_multiplier(sanity)
+        stat_info = describe_attack_stat(player)
+        meta["attack_stat"] = stat_info["stat"]
+        meta["attack_stat_value"] = stat_info["value"]
+        meta["attack_stat_label"] = stat_info["label"]
+        dmg = calculate_attack_damage(
+            player, enemy_resilience, multiplier=multiplier, item_bonus=item_bonus,
+        )
     else:
         dmg = 0
 
@@ -1077,8 +1100,9 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
             })
 
     action_labels = {
-        "attack_physical": "物理攻擊",
-        "attack_nonphysical": "精神攻擊",
+        "attack": "攻擊",
+        "attack_physical": "攻擊",
+        "attack_nonphysical": "攻擊",
         "defend": "堅守界線",
         "use_zoo": "Zoo 能力",
         "use_item": "使用物品",
@@ -1100,6 +1124,8 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
         "phase_resolves_now": all_submitted or len(active_participants) <= 1,
         "berserk_risk": my_meta.get("berserk_risk", False),
         "damage_if_normal": my_meta.get("damage_if_normal", my_dmg),
+        "attack_stat_label": my_meta.get("attack_stat_label"),
+        "attack_stat_value": my_meta.get("attack_stat_value"),
         "risks": risks,
     }
 
@@ -4881,13 +4907,13 @@ HTML_TEMPLATE = """
                                 <div><div class="text-xs text-zinc-400">韌性</div><div id="player-resilience" class="text-xl md:text-2xl font-bold text-emerald-400">—</div></div>
                             </div>
                             <div class="space-y-3" id="combat-action-buttons">
-                                <button type="button" data-action="attack_physical"
-                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
-                                    <span>⚔️</span><span>Physical Attack（力量）</span>
-                                </button>
-                                <button type="button" data-action="attack_nonphysical"
-                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
-                                    <span>🧠</span><span>Non-Physical Attack（智力）</span>
+                                <button type="button" data-action="attack" id="attack-action-btn"
+                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-3">
+                                    <span class="text-xl">⚔️</span>
+                                    <span class="flex flex-col items-start leading-tight">
+                                        <span>攻擊</span>
+                                        <span id="attack-stat-hint" class="text-[10px] text-amber-400 font-normal">自動取力量／智力較高者</span>
+                                    </span>
                                 </button>
                                 <button type="button" data-action="defend"
                                         class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
@@ -5117,7 +5143,7 @@ HTML_TEMPLATE = """
         let combatPhaseTimer = null;
         let currentCombatId = null;
         let pendingEncounterId = null;
-        let selectedAction = 'attack_physical';
+        let selectedAction = 'attack';
         let selectedItemId = null;
         let selectedDice = null;
         let actionModalRolling = false;
@@ -5127,15 +5153,17 @@ HTML_TEMPLATE = """
         let lastCombatLogCount = 0;
         let lastCombatStatus = null;
         const COMBAT_ACTION_LABELS = {
-            attack_physical: '物理攻擊',
-            attack_nonphysical: '精神攻擊',
+            attack: '攻擊',
+            attack_physical: '攻擊',
+            attack_nonphysical: '攻擊',
             defend: '堅守界線',
             use_zoo: 'Zoo 能力',
             use_item: '使用物品',
             pass: '觀望',
         };
         const ROUTE_SUBTITLES = { iggy: 'Iggy 線', marah: 'Marah 線' };
-        const COMBAT_DICE_ACTIONS = new Set(['attack_physical', 'attack_nonphysical', 'use_zoo']);
+        const COMBAT_DICE_ACTIONS = new Set(['attack', 'use_zoo']);
+        const COMBAT_ATTACK_BASE_DAMAGE = 10;
         const COMBAT_DICE_MULTIPLIERS = {0: 0, 1: 1, 2: 1.5, 3: 2};
 
         function stopCombatPolling() {
@@ -5271,6 +5299,34 @@ HTML_TEMPLATE = """
 
         function getActionDisplayName(type) {
             return COMBAT_ACTION_LABELS[type] || type;
+        }
+
+        function getEffectiveAttackStatFromUi() {
+            const power = parseStatText('player-power', currentSquad?.power);
+            const intellect = parseStatText('player-intellect', currentSquad?.intellect);
+            return { power, intellect, value: Math.max(power, intellect) };
+        }
+
+        function describeAttackStatFromUi() {
+            const { power, intellect, value } = getEffectiveAttackStatFromUi();
+            if (power > intellect) return { label: '力量', value, stat: 'power' };
+            if (intellect > power) return { label: '智力', value, stat: 'intellect' };
+            return { label: '力量/智力', value, stat: 'power' };
+        }
+
+        function updateAttackButtonHint() {
+            const hint = document.getElementById('attack-stat-hint');
+            if (!hint) return;
+            const info = describeAttackStatFromUi();
+            hint.textContent = `使用${info.label} ${info.value}（自動取較高屬性）`;
+        }
+
+        function calcClientAttackDamage(multiplier, itemBonus = 0) {
+            const info = describeAttackStatFromUi();
+            const enemyRes = lastCombatStatus?.enemy?.resilience || 0;
+            if (multiplier <= 0) return 0;
+            const raw = ((info.value * 1.5) + COMBAT_ATTACK_BASE_DAMAGE + itemBonus) * multiplier - (enemyRes * 0.8);
+            return Math.max(1, Math.floor(raw));
         }
 
         function isCombatModalOpen() {
@@ -5420,21 +5476,15 @@ HTML_TEMPLATE = """
             const enemy = lastCombatStatus?.enemy || {};
             const squad = currentSquad || {};
             const sanity = me.sanity ?? squad.sanity ?? 50;
-            let stat = 0;
-            let armor = 0;
 
-            if (selectedAction === 'attack_physical' || selectedAction === 'use_zoo') {
-                stat = parseStatText('player-power', squad.power);
-                armor = enemy.resilience || 0;
-                if (selectedAction === 'use_zoo') multiplier *= zooBonusMultiplier(sanity);
-            } else if (selectedAction === 'attack_nonphysical') {
-                stat = parseStatText('player-intellect', squad.intellect);
-                armor = enemy.sanity || 0;
+            if (selectedAction === 'use_zoo') {
+                multiplier *= zooBonusMultiplier(sanity);
             }
 
-            const myDmg = ['attack_physical', 'attack_nonphysical', 'use_zoo'].includes(selectedAction)
-                ? Math.max(0, Math.floor((stat * 2) * multiplier) - (armor || 0))
+            const myDmg = ['attack', 'attack_physical', 'attack_nonphysical', 'use_zoo'].includes(selectedAction)
+                ? calcClientAttackDamage(multiplier)
                 : 0;
+            const attackInfo = describeAttackStatFromUi();
             const resilience = me.resilience ?? parseStatText('player-resilience', squad.resilience);
             const defending = selectedAction === 'defend';
             let counter = Math.max(0, (enemy.base_damage || 0) - Math.floor(resilience * 0.6));
@@ -5460,6 +5510,8 @@ HTML_TEMPLATE = """
             return {
                 action_label: getActionDisplayName(selectedAction),
                 dice_result: dice,
+                attack_stat_label: attackInfo.label,
+                attack_stat_value: attackInfo.value,
                 my_damage_to_enemy: myDmg,
                 ally_damage_to_enemy: 0,
                 total_damage_to_enemy: myDmg,
@@ -5511,6 +5563,9 @@ HTML_TEMPLATE = """
             const myNote = document.getElementById('modal-my-damage-note');
             if (myNote) {
                 let note = `你造成 ${preview.my_damage_to_enemy ?? 0}`;
+                if (preview.attack_stat_label && preview.attack_stat_value != null) {
+                    note += `（${preview.attack_stat_label} ${preview.attack_stat_value}）`;
+                }
                 if (preview.ally_damage_to_enemy > 0) note += `，隊友已提交 ${preview.ally_damage_to_enemy}`;
                 if (preview.berserk_risk) note += `（正常 ${preview.damage_if_normal ?? 0}；暴走可能 0）`;
                 myNote.textContent = note;
@@ -5905,6 +5960,7 @@ HTML_TEMPLATE = """
             document.getElementById('player-power').textContent = squad.power ?? '—';
             document.getElementById('player-intellect').textContent = squad.intellect ?? '—';
             document.getElementById('player-resilience').textContent = me.resilience ?? squad.resilience ?? '—';
+            updateAttackButtonHint();
 
             const myId = data.my_squad_id || currentSquad?.squad_id;
             const teamEl = document.getElementById('team-status');
