@@ -316,16 +316,21 @@ STORY_CONTENT = {
 def count_team_distinct_tasks(squad_id, team_id):
     conn = sqlite3.connect(DB_PATH)
     if team_id:
+        clean_team_id = normalize_team_id(team_id)
         count = conn.execute("""
             SELECT COUNT(DISTINCT task_id)
             FROM submissions
-            WHERE squad_id IN (SELECT squad_id FROM squads WHERE team_id = ?)
-        """, (team_id,)).fetchone()[0]
+            WHERE squad_id IN (
+                SELECT squad_id FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+            )
+        """, (clean_team_id,)).fetchone()[0]
         rows = conn.execute("""
             SELECT DISTINCT task_id
             FROM submissions
-            WHERE squad_id IN (SELECT squad_id FROM squads WHERE team_id = ?)
-        """, (team_id,)).fetchall()
+            WHERE squad_id IN (
+                SELECT squad_id FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+            )
+        """, (clean_team_id,)).fetchall()
     else:
         count = conn.execute(
             "SELECT COUNT(DISTINCT task_id) FROM submissions WHERE squad_id = ?",
@@ -651,6 +656,112 @@ def query_teams_list(current_team_id=None):
 
 def get_all_teams_with_stats():
     return query_teams_list()
+
+def build_teams_overview():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    team_rows = conn.execute("SELECT * FROM teams ORDER BY created_at DESC").fetchall()
+
+    teams = []
+    for team_row in team_rows:
+        team_id = team_row["team_id"]
+        clean_id = normalize_team_id(team_id)
+        members = conn.execute(
+            "SELECT * FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+            (clean_id,),
+        ).fetchall()
+
+        member_count = len(members)
+        stat_fields = ["hp", "sanity", "power", "intellect", "resilience", "resources"]
+
+        def team_avg(field):
+            if not members:
+                return 0
+            return round(sum((m[field] or 0) for m in members) / member_count)
+
+        leader_name = None
+        leader_id = team_row["leader_squad_id"]
+        if leader_id:
+            leader = get_squad(leader_id)
+            if leader:
+                leader_name = leader.get("display_name") or leader["squad_id"]
+
+        distinct_tasks, task_ids = count_team_distinct_tasks(None, clean_id)
+        story_stage = resolve_story_stage(distinct_tasks, task_ids)
+
+        sub_row = conn.execute("""
+            SELECT COUNT(*) AS total, MAX(timestamp) AS last_ts
+            FROM submissions
+            WHERE squad_id IN (
+                SELECT squad_id FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+            )
+        """, (clean_id,)).fetchone()
+
+        route = team_row["route"]
+        teams.append({
+            "team_id": team_id,
+            "team_name": team_row["team_name"],
+            "route": route,
+            "route_label": {"iggy": "🔥 Iggy", "marah": "🌊 Marah"}.get(route, "未選路線"),
+            "leader_squad_id": leader_id,
+            "leader_name": leader_name or "未設定",
+            "member_count": member_count,
+            "avg_hp": team_avg("hp"),
+            "avg_sanity": team_avg("sanity"),
+            "avg_power": team_avg("power"),
+            "avg_intellect": team_avg("intellect"),
+            "avg_resilience": team_avg("resilience"),
+            "avg_resources": team_avg("resources"),
+            "distinct_tasks": distinct_tasks,
+            "story_stage": story_stage,
+            "submission_count": sub_row["total"] if sub_row else 0,
+            "last_submission": sub_row["last_ts"] if sub_row else None,
+            "members": [
+                {
+                    "squad_id": m["squad_id"],
+                    "display_name": m["display_name"] or m["squad_id"],
+                    "hp": m["hp"],
+                    "sanity": m["sanity"],
+                    "power": m["power"],
+                    "intellect": m["intellect"],
+                    "resilience": m["resilience"],
+                    "is_leader": 1 if leader_id and m["squad_id"] == leader_id else 0,
+                }
+                for m in members
+            ],
+        })
+
+    solo_players = []
+    unassigned_rows = conn.execute("""
+        SELECT * FROM squads
+        WHERE team_id IS NULL OR TRIM(team_id) = ''
+        ORDER BY COALESCE(display_name, squad_id)
+    """).fetchall()
+    for row in unassigned_rows:
+        distinct_tasks, task_ids = count_team_distinct_tasks(row["squad_id"], None)
+        sub_row = conn.execute(
+            "SELECT COUNT(*) AS total, MAX(timestamp) AS last_ts FROM submissions WHERE squad_id = ?",
+            (row["squad_id"],),
+        ).fetchone()
+        solo_players.append({
+            "squad_id": row["squad_id"],
+            "display_name": row["display_name"] or row["squad_id"],
+            "route": row["route"],
+            "route_label": {"iggy": "🔥 Iggy", "marah": "🌊 Marah"}.get(row["route"], "未選路線"),
+            "hp": row["hp"],
+            "sanity": row["sanity"],
+            "power": row["power"],
+            "intellect": row["intellect"],
+            "resilience": row["resilience"],
+            "resources": row["resources"],
+            "distinct_tasks": distinct_tasks,
+            "story_stage": resolve_story_stage(distinct_tasks, task_ids),
+            "submission_count": sub_row["total"] if sub_row else 0,
+            "last_submission": sub_row["last_ts"] if sub_row else None,
+        })
+
+    conn.close()
+    return {"teams": teams, "solo_players": solo_players}
 
 # ==================== Routes ====================
 @app.before_request
@@ -1407,6 +1518,58 @@ def gm_reset_game():
         "success": True,
         "message": "遊戲已完全重置（所有玩家ID、Team、提交記錄已清空）",
     })
+
+@app.route("/gm/clear_all_images", methods=["POST"])
+def gm_clear_all_images():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未登入"}), 403
+
+    data = request.get_json(silent=True) or {}
+    confirm = data.get("confirm", "")
+    if confirm != "CLEAR_IMAGES":
+        return jsonify({"success": False, "error": "確認碼錯誤"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT id, photo_path FROM submissions
+        WHERE photo_path IS NOT NULL AND TRIM(photo_path) != ''
+    """)
+    submissions = c.fetchall()
+
+    deleted_count = 0
+    cleared_count = 0
+    for row in submissions:
+        photo_path = row["photo_path"]
+        disk_path = resolve_upload_disk_path(photo_path)
+        if disk_path and os.path.isfile(disk_path):
+            try:
+                os.remove(disk_path)
+                deleted_count += 1
+            except OSError as e:
+                print(f"刪除圖片失敗: {disk_path}, {e}")
+
+        c.execute("UPDATE submissions SET photo_path = NULL WHERE id = ?", (row["id"],))
+        cleared_count += 1
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": f"已成功刪除 {deleted_count} 張圖片（清空 {cleared_count} 筆提交記錄中的圖片欄位）",
+        "deleted_files": deleted_count,
+        "cleared_records": cleared_count,
+    })
+
+@app.route("/gm/teams_overview")
+def gm_teams_overview():
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    overview = build_teams_overview()
+    return jsonify({"success": True, **overview})
 
 # 公告歷史記錄（每條包含訊息 + 時間）
 ANNOUNCEMENTS = []   # 格式: [{"message": "...", "timestamp": "..."}]
@@ -3425,6 +3588,8 @@ GM_DASHBOARD_HTML = """
                     class="gm-tab active px-6 py-2 rounded-2xl text-sm font-medium">玩家狀態</button>
             <button onclick="switchGMTab('teams')" id="tab-teams"
                     class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">Team 管理</button>
+            <button onclick="switchGMTab('overview')" id="tab-overview"
+                    class="gm-tab px-6 py-2 rounded-2xl text-sm font-medium">進度總覽</button>
         </div>
 
         <div id="gm-squads-tab">
@@ -3581,6 +3746,17 @@ GM_DASHBOARD_HTML = """
                 <h2 class="text-lg font-semibold text-red-400">Danger Zone</h2>
             </div>
             
+            <div class="flex items-center justify-between mb-4 pb-4 border-b border-red-500/20">
+                <div>
+                    <div class="font-medium">清空所有玩家上傳圖片</div>
+                    <div class="text-xs text-zinc-400">刪除 uploads 資料夾內嘅圖片檔案，並清空提交記錄中的圖片欄位（可減少 Storage）</div>
+                </div>
+                <button onclick="showClearImagesModal()"
+                        class="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-2xl text-sm font-medium">
+                    清空圖片
+                </button>
+            </div>
+
             <div class="flex items-center justify-between">
                 <div>
                     <div class="font-medium">重置整個遊戲</div>
@@ -3621,6 +3797,20 @@ GM_DASHBOARD_HTML = """
 
             <!-- Teams 列表 -->
             <div id="gm-teams-list" class="space-y-4"></div>
+        </div>
+        </div>
+
+        <div id="gm-overview-tab" class="hidden">
+        <div class="bg-zinc-900 rounded-3xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold">隊伍 / 玩家進度總覽</h2>
+                <button onclick="loadTeamsOverview()"
+                        class="px-4 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm flex items-center gap-x-2">
+                    <i class="fa-solid fa-sync"></i>
+                    <span>刷新</span>
+                </button>
+            </div>
+            <div id="gm-overview-content" class="text-zinc-400 text-center py-8">載入中...</div>
         </div>
         </div>
 
@@ -4064,23 +4254,145 @@ GM_DASHBOARD_HTML = """
             }
         }
 
+        function formatOverviewTime(ts) {
+            if (!ts) return '—';
+            try {
+                const d = new Date(ts);
+                if (isNaN(d.getTime())) return ts;
+                return d.toLocaleString('zh-HK', { hour12: false });
+            } catch (e) {
+                return ts;
+            }
+        }
+
+        async function loadTeamsOverview() {
+            const container = document.getElementById('gm-overview-content');
+            container.innerHTML = '<div class="text-zinc-400 text-center py-8">載入中...</div>';
+
+            try {
+                const res = await fetch('/gm/teams_overview', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    container.innerHTML = '<div class="text-red-400 text-center py-8">載入失敗</div>';
+                    return;
+                }
+
+                const teams = data.teams || [];
+                const solo = data.solo_players || [];
+
+                if (teams.length === 0 && solo.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 text-center py-8">暫無隊伍或玩家資料</div>';
+                    return;
+                }
+
+                let html = '';
+
+                if (teams.length > 0) {
+                    html += '<div class="space-y-4">';
+                    teams.forEach(team => {
+                        const routeClass = team.route === 'iggy'
+                            ? 'bg-red-900/40 text-red-300'
+                            : team.route === 'marah'
+                                ? 'bg-blue-900/40 text-blue-300'
+                                : 'bg-zinc-700 text-zinc-300';
+                        html += `
+                            <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-5 text-left">
+                                <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
+                                    <div>
+                                        <div class="text-lg font-semibold text-emerald-400">${team.team_name}</div>
+                                        <div class="text-xs text-zinc-500 font-mono mt-0.5">${team.team_id}</div>
+                                        <div class="text-sm text-zinc-300 mt-1">隊長：${team.leader_name} · ${team.member_count} 位成員</div>
+                                    </div>
+                                    <span class="text-xs px-3 py-1 rounded-full ${routeClass}">${team.route_label}</span>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-center text-xs mb-4">
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-red-400 font-mono text-base">${team.avg_hp}</div><div class="text-zinc-500">平均 HP</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-purple-400 font-mono text-base">${team.avg_sanity}</div><div class="text-zinc-500">平均 San</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-orange-400 font-mono text-base">${team.avg_power}</div><div class="text-zinc-500">平均 Pow</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-blue-400 font-mono text-base">${team.avg_intellect}</div><div class="text-zinc-500">平均 Int</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-emerald-400 font-mono text-base">${team.avg_resilience}</div><div class="text-zinc-500">平均 Res</div></div>
+                                </div>
+                                <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-400">
+                                    <span>已完成任務：<strong class="text-amber-400">${team.distinct_tasks}</strong></span>
+                                    <span>劇情階段：<strong class="text-zinc-200">Stage ${team.story_stage}</strong></span>
+                                    <span>提交次數：<strong class="text-zinc-200">${team.submission_count}</strong></span>
+                                    <span>最近提交：<strong class="text-zinc-200">${formatOverviewTime(team.last_submission)}</strong></span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                }
+
+                if (solo.length > 0) {
+                    html += `
+                        <div class="mt-8">
+                            <h3 class="text-lg font-semibold text-left mb-3 text-zinc-300">未加入隊伍的玩家</h3>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm text-left">
+                                    <thead>
+                                        <tr class="border-b border-zinc-700 text-zinc-400">
+                                            <th class="py-2 pr-4">玩家</th>
+                                            <th class="py-2 pr-4">路線</th>
+                                            <th class="py-2 pr-4">HP/San/Pow/Int/Res</th>
+                                            <th class="py-2 pr-4">任務</th>
+                                            <th class="py-2 pr-4">階段</th>
+                                            <th class="py-2 pr-4">提交</th>
+                                            <th class="py-2">最近提交</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-zinc-800">
+                    `;
+                    solo.forEach(p => {
+                        html += `
+                            <tr class="hover:bg-zinc-800/50">
+                                <td class="py-3 pr-4">
+                                    <a href="/gm/squad/${p.squad_id}" class="text-amber-400 hover:underline">${p.display_name}</a>
+                                    <div class="text-xs text-zinc-500 font-mono">${p.squad_id}</div>
+                                </td>
+                                <td class="py-3 pr-4 text-xs">${p.route_label}</td>
+                                <td class="py-3 pr-4 font-mono text-xs">${p.hp}/${p.sanity}/${p.power}/${p.intellect}/${p.resilience}</td>
+                                <td class="py-3 pr-4">${p.distinct_tasks}</td>
+                                <td class="py-3 pr-4">Stage ${p.story_stage}</td>
+                                <td class="py-3 pr-4">${p.submission_count}</td>
+                                <td class="py-3 text-xs text-zinc-400">${formatOverviewTime(p.last_submission)}</td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table></div></div>';
+                }
+
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400 text-center py-8">載入失敗</div>';
+            }
+        }
+
         function switchGMTab(tab) {
             const squadsTab = document.getElementById('gm-squads-tab');
             const teamsTab = document.getElementById('gm-teams-tab');
+            const overviewTab = document.getElementById('gm-overview-tab');
             const btnSquads = document.getElementById('tab-squads');
             const btnTeams = document.getElementById('tab-teams');
+            const btnOverview = document.getElementById('tab-overview');
+            const allTabs = [squadsTab, teamsTab, overviewTab];
+            const allBtns = [btnSquads, btnTeams, btnOverview];
 
-            if (tab === 'squads') {
-                squadsTab.classList.remove('hidden');
-                teamsTab.classList.add('hidden');
-                btnSquads.classList.add('active', 'bg-amber-500', 'text-zinc-950');
-                btnTeams.classList.remove('active', 'bg-amber-500', 'text-zinc-950');
-            } else {
-                squadsTab.classList.add('hidden');
+            allTabs.forEach(el => el.classList.add('hidden'));
+            allBtns.forEach(btn => btn.classList.remove('active', 'bg-amber-500', 'text-zinc-950'));
+
+            if (tab === 'teams') {
                 teamsTab.classList.remove('hidden');
                 btnTeams.classList.add('active', 'bg-amber-500', 'text-zinc-950');
-                btnSquads.classList.remove('active', 'bg-amber-500', 'text-zinc-950');
                 loadGMTeams();
+            } else if (tab === 'overview') {
+                overviewTab.classList.remove('hidden');
+                btnOverview.classList.add('active', 'bg-amber-500', 'text-zinc-950');
+                loadTeamsOverview();
+            } else {
+                squadsTab.classList.remove('hidden');
+                btnSquads.classList.add('active', 'bg-amber-500', 'text-zinc-950');
             }
         }
 
@@ -4089,6 +4401,27 @@ GM_DASHBOARD_HTML = """
             if (btn) btn.classList.add('active', 'bg-amber-500', 'text-zinc-950');
         }, 300);
         </script>
+
+        <!-- 清空圖片確認 Modal -->
+        <div id="clear-images-modal" onclick="if (event.target.id === 'clear-images-modal') hideClearImagesModal()"
+             class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-[60]">
+            <div onclick="event.stopImmediatePropagation()"
+                 class="bg-zinc-900 w-full max-w-md mx-4 rounded-3xl p-6 border border-red-500/30">
+
+                <div class="text-red-400 font-semibold text-xl mb-2">⚠️ 確認清空所有上傳圖片</div>
+                <div class="text-zinc-300 mb-6">此操作無法復原。請輸入 <span class="font-mono text-amber-400">CLEAR_IMAGES</span> 確認。</div>
+
+                <input type="text" id="clear-images-confirm" placeholder="輸入 CLEAR_IMAGES"
+                       class="w-full bg-zinc-800 border border-zinc-700 focus:border-red-500 rounded-2xl px-5 py-3 mb-4">
+
+                <div class="flex gap-x-3">
+                    <button onclick="hideClearImagesModal()"
+                            class="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">取消</button>
+                    <button onclick="confirmClearAllImages()"
+                            class="flex-1 py-3 bg-red-600 hover:bg-red-700 rounded-2xl font-medium">確認刪除</button>
+                </div>
+            </div>
+        </div>
 
         <!-- 重置確認 Modal -->
         <div id="reset-modal" onclick="if (event.target.id === 'reset-modal') hideResetModal()" 
@@ -4112,6 +4445,50 @@ GM_DASHBOARD_HTML = """
         </div>
 
         <script>
+        function showClearImagesModal() {
+            document.getElementById('clear-images-modal').classList.remove('hidden');
+            document.getElementById('clear-images-modal').classList.add('flex');
+            document.getElementById('clear-images-confirm').focus();
+        }
+
+        function hideClearImagesModal() {
+            document.getElementById('clear-images-modal').classList.remove('flex');
+            document.getElementById('clear-images-modal').classList.add('hidden');
+            document.getElementById('clear-images-confirm').value = '';
+        }
+
+        async function confirmClearAllImages() {
+            const confirmText = document.getElementById('clear-images-confirm').value.trim();
+
+            if (confirmText !== 'CLEAR_IMAGES') {
+                alert('確認碼錯誤！請輸入 CLEAR_IMAGES');
+                return;
+            }
+
+            if (!confirm('確定要刪除所有玩家上傳過的圖片嗎？此操作不可恢復！')) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/gm/clear_all_images', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ confirm: confirmText })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    alert(data.message || '圖片已清空');
+                    hideClearImagesModal();
+                } else {
+                    alert(data.error || '清空失敗');
+                }
+            } catch (e) {
+                alert('發生錯誤，請重試');
+            }
+        }
+
         function showResetModal() {
             document.getElementById('reset-modal').classList.remove('hidden');
             document.getElementById('reset-modal').classList.add('flex');
