@@ -5424,7 +5424,7 @@ HTML_TEMPLATE = """
             document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
 
             let rollCount = 0;
-            const maxRolls = 18;
+            const maxRolls = 22;
             clearActionModalRollTimer();
             actionModalRollTimer = setInterval(() => {
                 diceValue.textContent = String(Math.floor(Math.random() * 4));
@@ -5451,7 +5451,7 @@ HTML_TEMPLATE = """
                     el.disabled = !canAct;
                 });
                 fetchAndShowCombatPreview();
-            }, 70);
+            }, 95);
         }
 
         function zooBonusMultiplier(sanity) {
