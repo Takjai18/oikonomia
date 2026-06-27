@@ -4521,14 +4521,34 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oikonomia • 原型</title>
+    <script>
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) return;
+          originalWarn.apply(console, args);
+        };
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      const originalWarn = console.warn;
-      console.warn = function(...args) {
-        const msg = args.join(' ');
-        if (msg.includes('tailwindcss.com should not be used in production')) return;
-        originalWarn.apply(console, args);
-      };
+      setTimeout(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+      body::before { display: none !important; }
+    `;
+        document.head.appendChild(style);
+
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }, 100);
     </script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -8959,14 +8979,34 @@ CLAIM_ITEM_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>獲得物品 • Oikonomia</title>
+    <script>
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) return;
+          originalWarn.apply(console, args);
+        };
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      const originalWarn = console.warn;
-      console.warn = function(...args) {
-        const msg = args.join(' ');
-        if (msg.includes('tailwindcss.com should not be used in production')) return;
-        originalWarn.apply(console, args);
-      };
+      setTimeout(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+      body::before { display: none !important; }
+    `;
+        document.head.appendChild(style);
+
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }, 100);
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
@@ -9061,14 +9101,34 @@ GM_LOGIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <title>GM Login • Oikonomia</title>
+    <script>
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) return;
+          originalWarn.apply(console, args);
+        };
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      const originalWarn = console.warn;
-      console.warn = function(...args) {
-        const msg = args.join(' ');
-        if (msg.includes('tailwindcss.com should not be used in production')) return;
-        originalWarn.apply(console, args);
-      };
+      setTimeout(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+      body::before { display: none !important; }
+    `;
+        document.head.appendChild(style);
+
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }, 100);
     </script>
 </head>
 <body class="bg-zinc-950 text-white flex items-center justify-center min-h-screen">
@@ -9117,14 +9177,34 @@ GM_DASHBOARD_HTML = """
 <head>
     <meta charset="UTF-8">
     <title>GM Dashboard • Oikonomia</title>
+    <script>
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) return;
+          originalWarn.apply(console, args);
+        };
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      const originalWarn = console.warn;
-      console.warn = function(...args) {
-        const msg = args.join(' ');
-        if (msg.includes('tailwindcss.com should not be used in production')) return;
-        originalWarn.apply(console, args);
-      };
+      setTimeout(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+      body::before { display: none !important; }
+    `;
+        document.head.appendChild(style);
+
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }, 100);
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
@@ -10359,14 +10439,34 @@ GM_SQUAD_DETAIL_HTML = """
 <head>
     <meta charset="UTF-8">
     <title>{{ squad.display_name or squad.squad_id }} 詳情 • GM</title>
+    <script>
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) return;
+          originalWarn.apply(console, args);
+        };
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      const originalWarn = console.warn;
-      console.warn = function(...args) {
-        const msg = args.join(' ');
-        if (msg.includes('tailwindcss.com should not be used in production')) return;
-        originalWarn.apply(console, args);
-      };
+      setTimeout(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+      body::before { display: none !important; }
+    `;
+        document.head.appendChild(style);
+
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }, 100);
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
