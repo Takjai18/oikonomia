@@ -886,8 +886,11 @@ def build_combat_status_response(combat, encounter, squad_id):
         submitted = phase_actions.get(sid)
         member_states[sid] = {
             "display_name": p.get("display_name") or sid,
+            "avatar": p.get("avatar"),
             "hp": p.get("hp"),
             "sanity": p.get("sanity"),
+            "power": p.get("power"),
+            "intellect": p.get("intellect"),
             "resilience": get_effective_stat(p, "resilience"),
             "near_death_until": p.get("near_death_until"),
             "submitted": bool(submitted),
@@ -933,7 +936,17 @@ def build_combat_status_response(combat, encounter, squad_id):
             "base_damage": combat.get("enemy_base_damage"),
         },
         "member_states": member_states,
-        "my_state": member_states.get(squad_id, {}),
+        "my_state": {
+            **member_states.get(squad_id, {}),
+            "avatar": me.get("avatar"),
+            "display_name": me.get("display_name") or squad_id,
+            "power": me.get("power"),
+            "intellect": me.get("intellect"),
+            "hp": me.get("hp"),
+            "sanity": me.get("sanity"),
+            "resilience": get_effective_stat(me, "resilience"),
+            "near_death_until": me.get("near_death_until"),
+        },
         "berserk_warning": berserk_hint,
         "berserk_chance": round(berserk_probability(me.get("sanity", 50)) * 100),
         "log": log_messages,
@@ -5764,10 +5777,25 @@ HTML_TEMPLATE = """
             }
         }
 
+        async function ensureCurrentSquadProfile() {
+            if (currentSquad?.avatar) return;
+            try {
+                const res = await fetch('/status', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (data && data.success !== false && data.squad_id) {
+                    currentSquad = data;
+                    initPlayerAvatar();
+                }
+            } catch (e) {
+                console.warn('無法載入玩家資料', e);
+            }
+        }
+
         async function loadCombatPage() {
             stopCombatPolling();
             setVisible(document.getElementById('combat-lobby'), true);
             setVisible(document.getElementById('combat-screen'), false);
+            await ensureCurrentSquadProfile();
             await loadEncounters();
             await loadCombatStatus(true);
         }
@@ -5969,14 +5997,14 @@ HTML_TEMPLATE = """
 
             const me = data.my_state || {};
             const squad = currentSquad || {};
-            const avatar = squad.avatar || 'default.png';
-            document.getElementById('combat-player-avatar').src = `/static/avatars/${avatar}`;
-            document.getElementById('combat-player-name').textContent = squad.display_name || me.display_name || '你';
+            updateCombatPlayerAvatar(me);
+            document.getElementById('combat-player-name').textContent =
+                me.display_name || squad.display_name || '你';
             document.getElementById('combat-player-team').textContent = squad.team?.team_name || squad.team_name || '單人';
             document.getElementById('player-hp').textContent = me.hp ?? squad.hp ?? '—';
             document.getElementById('player-sanity').textContent = me.sanity ?? squad.sanity ?? '—';
-            document.getElementById('player-power').textContent = squad.power ?? '—';
-            document.getElementById('player-intellect').textContent = squad.intellect ?? '—';
+            document.getElementById('player-power').textContent = me.power ?? squad.power ?? '—';
+            document.getElementById('player-intellect').textContent = me.intellect ?? squad.intellect ?? '—';
             document.getElementById('player-resilience').textContent = me.resilience ?? squad.resilience ?? '—';
             updateAttackButtonHint();
 
@@ -7858,6 +7886,20 @@ HTML_TEMPLATE = """
             return `/static/avatars/${filename || 'default.png'}`;
         }
 
+        function setAvatarImage(img, filename) {
+            if (!img) return;
+            img.onerror = () => {
+                img.onerror = null;
+                img.src = avatarSrc(null);
+            };
+            img.src = avatarSrc(filename);
+        }
+
+        function updateCombatPlayerAvatar(info) {
+            const filename = info?.avatar || currentSquad?.avatar || null;
+            setAvatarImage(document.getElementById('combat-player-avatar'), filename);
+        }
+
         function showAvatarModal() {
             const modal = document.getElementById('avatar-modal');
             const grid = document.getElementById('avatar-grid');
@@ -7933,9 +7975,8 @@ HTML_TEMPLATE = """
         function initPlayerAvatar() {
             const filename = currentSquad?.avatar || null;
             currentAvatar = filename;
-            ['player-avatar', 'log-player-avatar'].forEach(id => {
-                const img = document.getElementById(id);
-                if (img) img.src = avatarSrc(filename);
+            ['player-avatar', 'log-player-avatar', 'combat-player-avatar'].forEach(id => {
+                setAvatarImage(document.getElementById(id), filename);
             });
         }
 
