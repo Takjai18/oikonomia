@@ -4334,10 +4334,10 @@ GM_SQUAD_DETAIL_HTML = """
                         <div class="text-zinc-300 mb-3">{{ sub.content }}</div>
                         {% endif %}
                         
-                        {% if sub.photo_path %}
+                        {% if sub.photo_url or sub.photo_path %}
                         <div>
                             <div class="text-xs text-zinc-400 mb-1">上傳相片：</div>
-                            <img src="/{{ sub.photo_path }}" class="max-h-64 rounded-xl border border-zinc-700">
+                            <img src="{{ sub.photo_url or '/' + sub.photo_path }}" class="max-h-64 rounded-xl border border-zinc-700">
                         </div>
                         {% endif %}
                     </div>
