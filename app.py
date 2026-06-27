@@ -4214,6 +4214,12 @@ HTML_TEMPLATE = """
             100% { box-shadow: 0 0 24px 8px rgba(251, 146, 60, 0); }
         }
         .zoo-flash { animation: zoo-flash 0.6s ease-out; }
+        .combat-action-btn.selected { border-color: var(--combat-accent, #f59e0b) !important; background: var(--combat-accent-soft, rgba(245, 158, 11, 0.15)); }
+        #dice-result.dice-rolling { animation: dice-shake 0.12s ease-in-out infinite; color: #a1a1aa; }
+        @keyframes dice-shake {
+            0%, 100% { transform: rotate(-6deg) scale(1.02); }
+            50% { transform: rotate(6deg) scale(0.98); }
+        }
         #combat-berserk-bar { background: linear-gradient(90deg, #9a3412, #ea580c); }
         #combat-berserk-bar.berserk-critical { background: linear-gradient(90deg, #7f1d1d, #dc2626); animation: combat-pulse 1s ease-in-out infinite; }
         #combat-near-death-overlay { background: rgba(69, 10, 10, 0.92); backdrop-filter: blur(4px); }
@@ -4555,127 +4561,139 @@ HTML_TEMPLATE = """
                     <div id="encounter-list" class="space-y-4 mb-8"></div>
                 </div>
 
-                <!-- 戰鬥主畫面 -->
-                <div id="combat-screen" class="hidden max-w-4xl mx-auto combat-accent-default relative">
+                <!-- 戰鬥主畫面（雙欄：玩家 vs 敵人） -->
+                <div id="combat-screen" class="hidden max-w-6xl mx-auto combat-accent-default relative">
                     <button onclick="exitCombatScreen()" class="mb-3 text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1">
                         <i class="fa-solid fa-arrow-left"></i> 返回遭遇列表
                     </button>
 
-                    <!-- Header -->
-                    <div class="flex items-center justify-between mb-4 gap-3">
+                    <div class="flex justify-between items-center mb-4 gap-3">
                         <div class="min-w-0">
-                            <h1 id="combat-title" class="combat-title text-xl md:text-2xl font-bold truncate">戰鬥中</h1>
-                            <p id="combat-subtitle" class="text-sm text-zinc-400"></p>
+                            <h1 id="combat-title" class="combat-title text-2xl md:text-3xl font-bold truncate">戰鬥中</h1>
+                            <p id="combat-subtitle" class="text-sm text-zinc-400">第 <span id="current-phase">1</span> 回合</p>
                         </div>
                         <div class="text-right shrink-0">
-                            <div class="text-xs text-zinc-500">Phase <span id="current-phase">1</span>/<span id="max-phase">5</span></div>
-                            <div id="phase-timer" class="text-2xl md:text-3xl font-mono font-bold text-emerald-400">--:--</div>
+                            <div id="phase-timer" class="text-3xl md:text-4xl font-mono font-bold text-emerald-400">--:--</div>
                             <div id="phase-status-label" class="text-xs text-emerald-400">Player Phase</div>
                         </div>
                     </div>
 
-                    <!-- 暴走警告 bar -->
                     <div id="combat-berserk-bar" class="hidden mb-4 px-4 py-2 rounded-xl text-sm text-orange-100 font-medium">
                         ⚠️ <span id="combat-berserk-bar-text">神智偏低，暴走風險上升</span>
                     </div>
 
-                    <!-- Enemy Panel -->
-                    <div class="bg-zinc-900 border border-zinc-700 rounded-3xl p-5 mb-5">
-                        <div class="flex justify-between items-start gap-3">
-                            <div class="min-w-0">
-                                <div id="enemy-name" class="text-xl font-semibold text-red-300">敵人</div>
-                                <div id="enemy-quote" class="text-sm text-zinc-400 mt-1 max-w-md line-clamp-3"></div>
-                                <div class="flex gap-3 mt-2 text-[10px] text-zinc-500">
-                                    <span>韌性 <span id="enemy-resilience" class="font-mono">0</span></span>
-                                    <span>神智 <span id="enemy-sanity" class="font-mono">0</span></span>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- 左欄：玩家 -->
+                        <div id="combat-action-container" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 relative">
+                            <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-3xl flex items-center justify-center bg-zinc-950/80">
+                                <div class="text-center text-red-200 font-bold text-lg px-4">神智不清，能力失控</div>
+                            </div>
+                            <div class="flex items-center gap-x-4 mb-5">
+                                <img id="combat-player-avatar" src="/static/avatars/default.png"
+                                     class="w-20 h-20 rounded-2xl border-2 border-amber-500 object-cover" alt="玩家">
+                                <div class="min-w-0">
+                                    <div id="combat-player-name" class="text-xl font-semibold truncate">你</div>
+                                    <div id="combat-player-team" class="text-sm text-zinc-400 truncate">—</div>
                                 </div>
                             </div>
-                            <div class="text-right shrink-0">
-                                <div class="text-xs text-zinc-400">HP</div>
-                                <div class="font-mono text-2xl font-bold text-red-400">
-                                    <span id="enemy-hp">0</span>/<span id="enemy-max-hp">0</span>
+                            <div class="grid grid-cols-5 gap-2 text-center mb-6">
+                                <div><div class="text-xs text-zinc-400">生命值</div><div id="player-hp" class="text-xl md:text-2xl font-bold text-red-400">—</div></div>
+                                <div><div class="text-xs text-zinc-400">神智</div><div id="player-sanity" class="text-xl md:text-2xl font-bold text-purple-400">—</div></div>
+                                <div><div class="text-xs text-zinc-400">力量</div><div id="player-power" class="text-xl md:text-2xl font-bold text-orange-400">—</div></div>
+                                <div><div class="text-xs text-zinc-400">智力</div><div id="player-intellect" class="text-xl md:text-2xl font-bold text-blue-400">—</div></div>
+                                <div><div class="text-xs text-zinc-400">韌性</div><div id="player-resilience" class="text-xl md:text-2xl font-bold text-emerald-400">—</div></div>
+                            </div>
+                            <div class="space-y-3" id="combat-action-buttons">
+                                <button type="button" data-action="attack_physical"
+                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
+                                    <span>⚔️</span><span>Physical Attack（力量）</span>
+                                </button>
+                                <button type="button" data-action="attack_nonphysical"
+                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
+                                    <span>🧠</span><span>Non-Physical Attack（智力）</span>
+                                </button>
+                                <button type="button" data-action="defend"
+                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
+                                    <span>🛡️</span><span>Defend（堅守界線）</span>
+                                </button>
+                                <div>
+                                    <div class="text-xs text-zinc-400 mb-1 px-1">可用物品</div>
+                                    <div id="combat-item-list" class="space-y-2">
+                                        <div class="text-xs text-zinc-500 py-2 text-center">載入物品中…</div>
+                                    </div>
                                 </div>
+                                <button type="button" data-action="use_zoo" id="zoo-action-btn"
+                                        class="combat-action-btn w-full py-3 bg-orange-900/30 hover:bg-orange-900/50 border border-orange-700 rounded-2xl flex flex-col items-center justify-center gap-y-0.5">
+                                    <span class="flex items-center gap-x-2"><span>🔥</span><span>Use Zoo（高神智有加成）</span></span>
+                                    <span id="zoo-hint" class="text-[10px] text-orange-400">神智 ≥70 有加成</span>
+                                </button>
+                                <button type="button" data-action="pass"
+                                        class="combat-action-btn w-full py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-400">
+                                    ⏭️ 觀望
+                                </button>
+                            </div>
+                            <div class="mt-4 flex justify-end">
+                                <button type="button" onclick="rescueNearDeath()"
+                                        class="text-xs px-4 py-2 bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-700 rounded-xl">
+                                    🤝 禱告救援瀕死隊友
+                                </button>
                             </div>
                         </div>
-                        <div class="mt-3 h-3 bg-zinc-800 rounded-full overflow-hidden">
-                            <div id="enemy-hp-bar" class="h-3 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
+
+                        <!-- 右欄：敵人 -->
+                        <div class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6">
+                            <div class="flex items-center gap-x-4 mb-5">
+                                <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
+                                     class="w-20 h-20 rounded-2xl border-2 border-red-500 object-cover bg-zinc-950" alt="敵人">
+                                <div class="min-w-0">
+                                    <div id="enemy-name" class="text-xl font-semibold text-red-400 truncate">敵人</div>
+                                    <div class="text-sm text-zinc-400">Enemy</div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-4 text-center mb-6">
+                                <div>
+                                    <div class="text-xs text-zinc-400">生命值</div>
+                                    <div id="enemy-hp" class="text-2xl md:text-3xl font-bold text-red-400">0</div>
+                                    <div class="text-xs text-zinc-500">/ <span id="enemy-max-hp">0</span></div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-zinc-400">防禦（韌性）</div>
+                                    <div id="enemy-resilience" class="text-2xl md:text-3xl font-bold text-emerald-400">0</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-zinc-400">精神防禦（神智）</div>
+                                    <div id="enemy-sanity" class="text-2xl md:text-3xl font-bold text-purple-400">0</div>
+                                </div>
+                            </div>
+                            <div class="mb-3 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
+                            </div>
+                            <div id="enemy-quote" class="text-sm text-zinc-300 leading-relaxed"></div>
                         </div>
                     </div>
 
-                    <!-- Team Status -->
-                    <div class="mb-5">
+                    <div id="combat-team-strip" class="hidden mt-4">
                         <div class="text-xs text-zinc-400 mb-2 px-1">隊伍狀態</div>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="team-status"></div>
                     </div>
 
-                    <!-- Action Panel -->
-                    <div id="combat-action-container" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-5 mb-5 relative">
-                        <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-3xl flex items-center justify-center">
-                            <div class="text-center text-red-200 font-bold text-lg px-4">神智不清，能力失控</div>
-                        </div>
-                        <div class="text-sm font-medium mb-3 text-amber-400">選擇行動</div>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" id="combat-action-buttons">
-                            <button type="button" data-action="attack_physical"
-                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-amber-500 active:bg-zinc-800">
-                                <span class="text-lg">⚔️</span>
-                                <span class="font-medium text-sm">物理攻擊</span>
-                                <span class="text-[10px] text-zinc-400">力量輸出</span>
-                            </button>
-                            <button type="button" data-action="attack_nonphysical"
-                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-amber-500">
-                                <span class="text-lg">🧠</span>
-                                <span class="font-medium text-sm">精神攻擊</span>
-                                <span class="text-[10px] text-zinc-400">智力輸出</span>
-                            </button>
-                            <button type="button" data-action="defend"
-                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-emerald-500">
-                                <span class="text-lg">🛡️</span>
-                                <span class="font-medium text-sm">堅守界線</span>
-                                <span class="text-[10px] text-zinc-400">減少所受傷害</span>
-                            </button>
-                            <button type="button" data-action="use_item"
-                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-purple-500">
-                                <span class="text-lg">🎒</span>
-                                <span class="font-medium text-sm">使用物品</span>
-                            </button>
-                            <button type="button" data-action="use_zoo" id="zoo-action-btn"
-                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-orange-500 relative">
-                                <span class="text-lg">🔥</span>
-                                <span class="font-medium text-sm">Zoo 能力</span>
-                                <span id="zoo-hint" class="text-[10px] text-orange-400">神智 ≥70 有加成</span>
-                            </button>
-                            <button type="button" data-action="pass"
-                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-zinc-400">
-                                <span class="text-lg">⏭️</span>
-                                <span class="font-medium text-sm">觀望</span>
-                            </button>
-                        </div>
-                        <div class="mt-4 flex justify-end">
-                            <button type="button" onclick="rescueNearDeath()"
-                                    class="text-xs px-4 py-2 bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-700 rounded-xl">
-                                🤝 禱告救援瀕死隊友
-                            </button>
-                        </div>
-                        <div class="mt-5">
-                            <div class="text-xs text-zinc-400 mb-2">撕 Dice（0-3）</div>
-                            <div class="flex gap-2 flex-wrap" id="dice-buttons">
-                                <button type="button" data-dice="0" class="dice-btn px-5 py-2 rounded-xl border border-zinc-600 hover:bg-zinc-800">0</button>
-                                <button type="button" data-dice="1" class="dice-btn px-5 py-2 rounded-xl border border-zinc-600 hover:bg-zinc-800">1</button>
-                                <button type="button" data-dice="2" class="dice-btn selected px-5 py-2 rounded-xl border border-amber-500 bg-amber-500/10 text-amber-400">2 ★</button>
-                                <button type="button" data-dice="3" class="dice-btn px-5 py-2 rounded-xl border border-zinc-600 hover:bg-zinc-800">3</button>
-                                <button type="button" onclick="rollRandomDice()" class="px-4 py-2 rounded-xl border border-zinc-600 text-xs text-zinc-400 hover:bg-zinc-800">🎲 隨機</button>
-                            </div>
-                            <div class="text-[10px] text-zinc-500 mt-1">0 = 失手　｜　3 = 爆擊</div>
-                        </div>
+                    <div class="mt-6 flex flex-col items-center" id="combat-dice-area">
+                        <div id="dice-status-text" class="text-xs text-zinc-400 mb-2">系統自動擲骰</div>
+                        <div id="dice-result"
+                             class="w-20 h-20 flex items-center justify-center text-5xl font-bold border-4 border-amber-500 rounded-2xl bg-zinc-950 text-amber-400">?</div>
+                        <div class="text-[10px] text-zinc-500 mt-2">0 = 失手　｜　3 = 爆擊（每回合自動隨機）</div>
+                    </div>
+
+                    <div class="mt-6">
                         <button type="button" id="combat-submit-btn" onclick="submitAction()"
-                                class="mt-5 w-full py-3.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 font-semibold rounded-2xl transition">
-                            提交行動
+                                class="w-full py-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-xl font-semibold text-zinc-950 rounded-3xl transition">
+                            確認行動並結束回合
                         </button>
                         <p id="combat-submit-hint" class="text-xs text-zinc-500 text-center mt-2"></p>
                     </div>
 
-                    <!-- Combat Log -->
-                    <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-4 max-h-[220px] overflow-y-auto text-sm text-zinc-300" id="combat-log"></div>
+                    <div class="mt-6 bg-zinc-950 border border-zinc-800 rounded-3xl p-4 max-h-48 overflow-y-auto text-sm text-zinc-300" id="combat-log"></div>
+                    <span id="max-phase" class="hidden"></span>
                 </div>
 
                 <!-- 瀕死全屏 -->
@@ -4836,7 +4854,11 @@ HTML_TEMPLATE = """
         let currentCombatId = null;
         let pendingEncounterId = null;
         let selectedAction = 'attack_physical';
-        let selectedDice = 2;
+        let selectedItemId = null;
+        let selectedDice = null;
+        let diceRolling = false;
+        let combatItemsLoaded = false;
+        let lastDicePhase = 0;
         let lastCombatStatus = null;
         const COMBAT_ACTION_LABELS = {
             attack_physical: '物理攻擊',
@@ -4898,10 +4920,21 @@ HTML_TEMPLATE = """
             else screen.classList.add('combat-accent-default');
         }
 
-        function selectAction(action) {
+        function performAction(action, opts = {}) {
+            if (diceRolling) return;
             selectedAction = action;
-            document.querySelectorAll('.action-btn').forEach(btn => {
-                btn.classList.toggle('selected', btn.dataset.action === action);
+            if (action === 'use_item') {
+                selectedItemId = opts.item_id != null ? opts.item_id : null;
+            } else {
+                selectedItemId = null;
+            }
+            document.querySelectorAll('.combat-action-btn').forEach(btn => {
+                const match = btn.dataset.action === action
+                    && (action !== 'use_item' || String(btn.dataset.itemId) === String(selectedItemId));
+                btn.classList.toggle('selected', match);
+            });
+            document.querySelectorAll('.combat-item-btn').forEach(btn => {
+                btn.classList.toggle('selected', String(btn.dataset.itemId) === String(selectedItemId));
             });
             if (action === 'use_zoo') {
                 const zooBtn = document.getElementById('zoo-action-btn');
@@ -4910,19 +4943,75 @@ HTML_TEMPLATE = """
             }
         }
 
-        function selectDice(value) {
-            selectedDice = value;
-            document.querySelectorAll('.dice-btn').forEach(btn => {
-                const isSel = parseInt(btn.dataset.dice, 10) === value;
-                btn.classList.toggle('selected', isSel);
-                if (btn.dataset.dice !== undefined) {
-                    btn.textContent = isSel && value === 2 ? '2 ★' : String(btn.dataset.dice);
-                }
+        function setDiceDisplay(value, rolling) {
+            const diceEl = document.getElementById('dice-result');
+            const statusEl = document.getElementById('dice-status-text');
+            if (!diceEl) return;
+            diceEl.classList.toggle('dice-rolling', !!rolling);
+            if (rolling) {
+                diceEl.textContent = '🎲';
+                if (statusEl) statusEl.textContent = '系統正在擲骰…';
+            } else if (value === null || value === undefined) {
+                diceEl.textContent = '?';
+                if (statusEl) statusEl.textContent = '系統自動擲骰';
+            } else {
+                diceEl.textContent = String(value);
+                const labels = ['失手', '普通', '良好', '爆擊'];
+                if (statusEl) statusEl.textContent = `骰子結果：${value}（${labels[value] || ''}）`;
+            }
+        }
+
+        function rollDice(autoOnly) {
+            if (diceRolling) return Promise.resolve(selectedDice);
+            diceRolling = true;
+            setDiceDisplay(null, true);
+            const submitBtn = document.getElementById('combat-submit-btn');
+            if (submitBtn) submitBtn.disabled = true;
+            return new Promise(resolve => {
+                let ticks = 0;
+                const interval = setInterval(() => {
+                    const face = document.getElementById('dice-result');
+                    if (face) face.textContent = String(Math.floor(Math.random() * 4));
+                    ticks += 1;
+                    if (ticks >= 10) {
+                        clearInterval(interval);
+                        selectedDice = Math.floor(Math.random() * 4);
+                        diceRolling = false;
+                        setDiceDisplay(selectedDice, false);
+                        const submitBtn = document.getElementById('combat-submit-btn');
+                        if (submitBtn && lastCombatStatus?.status === 'player_phase' && !lastCombatStatus?.my_state?.submitted) {
+                            submitBtn.disabled = false;
+                        }
+                        resolve(selectedDice);
+                    }
+                }, autoOnly ? 70 : 90);
             });
         }
 
-        function rollRandomDice() {
-            selectDice(Math.floor(Math.random() * 4));
+        async function loadCombatItems() {
+            const listEl = document.getElementById('combat-item-list');
+            if (!listEl) return;
+            try {
+                const res = await fetch('/my_items', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.success || !data.items || data.items.length === 0) {
+                    listEl.innerHTML = '<div class="text-xs text-zinc-500 py-2 text-center">暫無可用物品</div>';
+                    return;
+                }
+                listEl.innerHTML = data.items.map(item => `
+                    <button type="button"
+                            class="combat-item-btn combat-action-btn w-full py-2.5 bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700 rounded-2xl text-sm text-left px-4 flex items-center gap-3"
+                            data-action="use_item"
+                            data-item-id="${item.item_id}"
+                            onclick="performAction('use_item', {item_id: ${item.item_id}})">
+                        <img src="${item.image_path || '/static/images/default-item.svg'}" class="w-8 h-8 rounded-lg object-cover shrink-0" alt="">
+                        <span>使用「${escapeHtml(item.name)}」${item.effect_text ? `<span class="text-zinc-500 text-xs">（${escapeHtml(item.effect_text)}）</span>` : ''}</span>
+                    </button>
+                `).join('');
+                combatItemsLoaded = true;
+            } catch (e) {
+                listEl.innerHTML = '<div class="text-xs text-red-400 py-2 text-center">物品載入失敗</div>';
+            }
         }
 
         function exitCombatScreen() {
@@ -4932,21 +5021,27 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById('combat-near-death-overlay'), false);
             setVisible(document.getElementById('combat-lobby'), true);
             stopCombatPolling();
+            selectedDice = null;
+            lastDicePhase = 0;
             loadEncounters();
         }
 
-        function showCombatScreen() {
+        async function showCombatScreen() {
             setVisible(document.getElementById('combat-lobby'), false);
             setVisible(document.getElementById('combat-screen'), true);
             setVisible(document.getElementById('combat-result-panel'), false);
-            document.querySelectorAll('.action-btn').forEach(btn => {
-                btn.onclick = () => selectAction(btn.dataset.action);
+            document.querySelectorAll('.combat-action-btn[data-action]').forEach(btn => {
+                if (btn.dataset.action !== 'use_item') {
+                    btn.onclick = () => performAction(btn.dataset.action);
+                }
             });
-            document.querySelectorAll('.dice-btn[data-dice]').forEach(btn => {
-                btn.onclick = () => selectDice(parseInt(btn.dataset.dice, 10));
-            });
-            selectAction(selectedAction);
-            selectDice(selectedDice);
+            if (!combatItemsLoaded) await loadCombatItems();
+            performAction(selectedAction);
+            const me = lastCombatStatus?.my_state;
+            const canRoll = lastCombatStatus?.status === 'player_phase'
+                && !(me?.near_death_until && new Date(me.near_death_until) > new Date())
+                && !me?.submitted;
+            if (canRoll && selectedDice === null) await rollDice(true);
         }
 
         async function loadCombatPage() {
@@ -5119,10 +5214,10 @@ HTML_TEMPLATE = """
             applyCombatAccent(data.route);
 
             document.getElementById('combat-title').textContent = data.title || '戰鬥中';
-            const routeLabel = ROUTE_SUBTITLES[data.route] || '';
-            document.getElementById('combat-subtitle').textContent = routeLabel ? `${routeLabel} · Encounter` : '';
-
-            document.getElementById('current-phase').textContent = data.current_phase || 1;
+            const routeLabel = ROUTE_SUBTITLES[data.route] || 'Encounter';
+            const phaseNum = data.current_phase || 1;
+            document.getElementById('combat-subtitle').textContent = `${routeLabel} · 第 ${phaseNum} 回合`;
+            document.getElementById('current-phase').textContent = phaseNum;
             document.getElementById('max-phase').textContent = data.max_phases || 5;
 
             const phaseLabels = {
@@ -5136,9 +5231,7 @@ HTML_TEMPLATE = """
 
             const enemy = data.enemy || {};
             document.getElementById('enemy-name').textContent = enemy.name || '敵人';
-            const quote = data.enemy_description || '';
-            document.getElementById('enemy-quote').textContent =
-                quote.length > 80 ? `「${quote.slice(0, 80)}…」` : (quote ? `「${quote}」` : '');
+            document.getElementById('enemy-quote').textContent = data.enemy_description || '';
             document.getElementById('enemy-hp').textContent = enemy.hp ?? 0;
             document.getElementById('enemy-max-hp').textContent = enemy.max_hp || enemy.hp || 0;
             document.getElementById('enemy-resilience').textContent = enemy.resilience ?? 0;
@@ -5148,9 +5241,23 @@ HTML_TEMPLATE = """
                 `${Math.max(0, Math.min(100, Math.round((enemy.hp || 0) / maxHp * 100)))}%`;
 
             const me = data.my_state || {};
+            const squad = currentSquad || {};
+            const avatar = squad.avatar || 'default.png';
+            document.getElementById('combat-player-avatar').src = `/static/avatars/${avatar}`;
+            document.getElementById('combat-player-name').textContent = squad.display_name || me.display_name || '你';
+            document.getElementById('combat-player-team').textContent = squad.team?.team_name || squad.team_name || '單人';
+            document.getElementById('player-hp').textContent = me.hp ?? squad.hp ?? '—';
+            document.getElementById('player-sanity').textContent = me.sanity ?? squad.sanity ?? '—';
+            document.getElementById('player-power').textContent = squad.power ?? '—';
+            document.getElementById('player-intellect').textContent = squad.intellect ?? '—';
+            document.getElementById('player-resilience').textContent = me.resilience ?? squad.resilience ?? '—';
+
             const myId = data.my_squad_id || currentSquad?.squad_id;
             const teamEl = document.getElementById('team-status');
+            const teamStrip = document.getElementById('combat-team-strip');
             const members = data.member_states || {};
+            const memberCount = Object.keys(members).length;
+            setVisible(teamStrip, memberCount > 1);
             teamEl.innerHTML = Object.entries(members).map(([sid, m]) => {
                 const isMe = sid === myId;
                 const label = isMe ? '你' : (m.display_name || sid);
@@ -5221,15 +5328,31 @@ HTML_TEMPLATE = """
             const submitBtn = document.getElementById('combat-submit-btn');
             const hintEl = document.getElementById('combat-submit-hint');
             const actionContainer = document.getElementById('combat-action-container');
+            const diceArea = document.getElementById('combat-dice-area');
             const canAct = data.status === 'player_phase' && !inNearDeath && !me.submitted;
-            if (submitBtn) submitBtn.disabled = !canAct;
             if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.55';
-            document.querySelectorAll('.action-btn, .dice-btn[data-dice]').forEach(el => { el.disabled = !canAct; });
+            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
+                el.disabled = !canAct || diceRolling;
+            });
+            if (canAct && phaseNum !== lastDicePhase) {
+                lastDicePhase = phaseNum;
+                selectedDice = null;
+                rollDice(true).then(() => {
+                    if (submitBtn && canAct) submitBtn.disabled = false;
+                });
+            } else if (me.submitted && me.dice_result !== undefined && me.dice_result !== null) {
+                selectedDice = me.dice_result;
+                setDiceDisplay(me.dice_result, false);
+            }
+            if (submitBtn) submitBtn.disabled = !canAct || diceRolling || selectedDice === null;
+            setVisible(diceArea, canAct || !!(me.submitted && me.dice_result !== undefined));
             if (hintEl) {
                 if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
-                else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}，等待隊友…`;
+                else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
                 else if (data.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
-                else hintEl.textContent = '選擇行動與骰子後提交';
+                else if (diceRolling) hintEl.textContent = '系統擲骰中，請稍候…';
+                else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
+                else hintEl.textContent = '選擇行動後確認提交（骰子已自動擲好）';
             }
         }
 
@@ -5259,32 +5382,40 @@ HTML_TEMPLATE = """
         }
 
         async function submitAction() {
+            if (selectedAction === 'use_item' && !selectedItemId) {
+                alert('請先選擇要使用的物品');
+                return;
+            }
+            if (selectedDice === null) await rollDice(true);
             const labels = {
-                attack_physical: '物理攻擊（力量×2 − 敵人韌性）',
-                attack_nonphysical: '精神攻擊（智力×2 − 敵人神智）',
-                defend: '堅守界線（減傷 50%）',
-                use_zoo: 'Zoo 能力（神智 ≥70 有加成）',
+                attack_physical: 'Physical Attack（力量）',
+                attack_nonphysical: 'Non-Physical Attack（智力）',
+                defend: 'Defend（堅守界線）',
+                use_zoo: 'Use Zoo',
                 use_item: '使用物品',
                 pass: '觀望',
             };
             const me = lastCombatStatus?.my_state || {};
             const sanity = me.sanity ?? 100;
-            let confirmMsg = `確定提交？\n行動：${labels[selectedAction] || selectedAction}\n骰子：${selectedDice}`;
+            let confirmMsg = `確定提交？\n行動：${labels[selectedAction] || selectedAction}\n骰子：${selectedDice}（系統隨機）`;
             const berserkPct = lastCombatStatus?.berserk_chance || 0;
             if (sanity < 10) confirmMsg += `\n\n⚠️ 神智崩潰邊緣，暴走機率約 ${berserkPct}%！`;
             else if (sanity < 20) confirmMsg += `\n\n⚠️ 神智極低，暴走機率約 ${berserkPct}%！`;
             else if (sanity < 40) confirmMsg += `\n\n⚠️ 神智偏低，暴走風險約 ${berserkPct}%。`;
             if (!confirm(confirmMsg)) return;
 
+            const payload = {
+                combat_id: currentCombatId,
+                action_type: selectedAction,
+                dice_result: selectedDice,
+            };
+            if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
+
             const res = await fetch('/combat/submit_action', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    combat_id: currentCombatId,
-                    action_type: selectedAction,
-                    dice_result: selectedDice,
-                }),
+                body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (!data.success && data.error) {
@@ -5295,8 +5426,10 @@ HTML_TEMPLATE = """
                 showCombatResult(data);
                 const statusRes = await fetch('/status', { credentials: 'same-origin' });
                 updateDashboard(await statusRes.json());
+                combatItemsLoaded = false;
                 return;
             }
+            selectedDice = null;
             updateCombatUI({ ...data, active: true });
         }
 
