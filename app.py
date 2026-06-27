@@ -6,6 +6,7 @@ Priority: Beautiful Dashboard + GPS + Photo Upload
 """
 
 from flask import Flask, render_template_string, request, jsonify, session, redirect, send_from_directory, send_file, abort
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import sqlite3
 import json
 import os
@@ -24,8 +25,11 @@ app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") == "production",
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
-    PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+    SESSION_COOKIE_PATH="/",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
+RESTORE_TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
+_restore_serializer = None
 
 _default_data_dir = "."
 if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
@@ -2416,6 +2420,41 @@ def build_active_combats_overview():
         })
     return combats
 
+def get_restore_serializer():
+    global _restore_serializer
+    if _restore_serializer is None:
+        _restore_serializer = URLSafeTimedSerializer(
+            app.secret_key, salt="oikonomia-session-restore"
+        )
+    return _restore_serializer
+
+
+def make_restore_token(squad_id):
+    return get_restore_serializer().dumps({"sid": squad_id})
+
+
+def verify_restore_token(token):
+    if not token:
+        return None
+    try:
+        payload = get_restore_serializer().loads(token, max_age=RESTORE_TOKEN_MAX_AGE)
+        return payload.get("sid")
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return None
+
+
+def attach_restore_token(status_dict, squad_id):
+    if status_dict and squad_id:
+        status_dict["restore_token"] = make_restore_token(squad_id)
+    return status_dict
+
+
+def establish_player_session(squad_id):
+    session.permanent = True
+    session["squad_id"] = squad_id
+    session.modified = True
+
+
 # ==================== Routes ====================
 @app.before_request
 def refresh_player_session():
@@ -2465,7 +2504,7 @@ def login():
     conn.row_factory = sqlite3.Row
 
     row = conn.execute(
-        "SELECT * FROM squads WHERE display_name = ? OR squad_id = ?",
+        "SELECT * FROM squads WHERE squad_id = ? OR LOWER(TRIM(display_name)) = LOWER(TRIM(?))",
         (name, name),
     ).fetchone()
 
@@ -2498,14 +2537,34 @@ def login():
                 "error": "PIN 錯誤",
             })
 
-    session.permanent = True
-    session["squad_id"] = row["squad_id"]
+    establish_player_session(row["squad_id"])
     conn.close()
 
     squad = get_squad(row["squad_id"])
     status = build_player_status(squad)
     status["require_set_pin"] = not has_pin
+    attach_restore_token(status, row["squad_id"])
     return jsonify(status)
+
+
+@app.route("/session/restore", methods=["POST"])
+def session_restore():
+    """手機 Cookie 遺失時，用 localStorage 內嘅 restore_token 還原登入。"""
+    body = request.json if request.is_json else {}
+    token = (body.get("restore_token") or request.form.get("restore_token") or "").strip()
+    squad_id = verify_restore_token(token)
+    if not squad_id:
+        return jsonify({"success": False, "error": "無效或已過期的裝置憑證"}), 401
+
+    squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({"success": False, "error": "帳號不存在"}), 401
+
+    establish_player_session(squad_id)
+    status = build_player_status(squad)
+    attach_restore_token(status, squad_id)
+    return jsonify(status)
+
 
 @app.route("/set_pin", methods=["POST"])
 def set_pin():
@@ -3166,7 +3225,9 @@ def get_status():
         session.clear()
         return jsonify({"success": False, "error": "未登入"}), 401
 
-    return jsonify(build_player_status(squad))
+    status = build_player_status(squad)
+    attach_restore_token(status, session["squad_id"])
+    return jsonify(status)
 
 @app.route("/team")
 def get_team():
@@ -4696,12 +4757,14 @@ HTML_TEMPLATE = """
                 <i class="fa-solid fa-user-secret text-6xl theme-accent-text mb-4"></i>
                 <h1 class="text-3xl font-bold">歡迎進入Oikonomia的世界</h1>
                 <p class="text-zinc-400 mt-2">輸入名稱登入（首次無需 PIN）</p>
+                <p id="login-restore-hint" class="hidden text-sm text-amber-400/90 mt-3"></p>
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
-                <input type="text" id="squad_id" placeholder="輸入你的名稱" 
+                <input type="text" id="squad_id" name="squad_id" placeholder="輸入你的名稱"
+                       autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"
                        class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl mb-3">
-                <input type="password" id="login_pin" placeholder="輸入 PIN（第一次登入可留空）" maxlength="4"
-                       inputmode="numeric" pattern="[0-9]*"
+                <input type="password" id="login_pin" name="login_pin" placeholder="輸入 PIN（第一次登入可留空）" maxlength="4"
+                       inputmode="numeric" pattern="[0-9]*" autocomplete="current-password"
                        class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl tracking-widest text-center font-mono">
                 <button type="submit" 
                         class="w-full theme-btn-primary font-semibold py-4 rounded-2xl">
@@ -7312,6 +7375,53 @@ HTML_TEMPLATE = """
             }
         }
 
+        const OIKONOMIA_STORAGE_KEY = 'oikonomia_session_v1';
+
+        function saveLocalSession(data) {
+            if (!data?.squad_id) return;
+            try {
+                localStorage.setItem(OIKONOMIA_STORAGE_KEY, JSON.stringify({
+                    squad_id: data.squad_id,
+                    display_name: data.display_name || data.squad_id,
+                    restore_token: data.restore_token || null,
+                    has_pin: !!data.has_pin,
+                    saved_at: Date.now(),
+                }));
+            } catch (e) {
+                console.warn('localStorage save failed', e);
+            }
+        }
+
+        function loadLocalSession() {
+            try {
+                const raw = localStorage.getItem(OIKONOMIA_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearLocalSession() {
+            try { localStorage.removeItem(OIKONOMIA_STORAGE_KEY); } catch (e) { /* ignore */ }
+        }
+
+        async function tryRestoreWithToken(stored) {
+            if (!stored?.restore_token) return null;
+            const res = await fetch('/session/restore', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ restore_token: stored.restore_token }),
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data?.success && data.squad_id) {
+                saveLocalSession(data);
+                return data;
+            }
+            return null;
+        }
+
         async function restoreSession() {
             const loading = document.getElementById('session-loading');
             const loginScreen = document.getElementById('login-screen');
@@ -7322,6 +7432,7 @@ HTML_TEMPLATE = """
                     if (res.ok) {
                         const squad = await res.json();
                         if (squad && squad.squad_id && squad.success !== false && !squad.error) {
+                            saveLocalSession(squad);
                             if (loading) setVisible(loading, false);
                             await completeLogin({ ...squad, require_set_pin: false, skip_team_prompt: true });
                             return;
@@ -7335,12 +7446,41 @@ HTML_TEMPLATE = """
                 }
             }
 
+            const stored = loadLocalSession();
+            if (stored) {
+                try {
+                    const restored = await tryRestoreWithToken(stored);
+                    if (restored) {
+                        if (loading) setVisible(loading, false);
+                        await completeLogin({ ...restored, require_set_pin: false, skip_team_prompt: true });
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('token restore failed', e);
+                }
+            }
+
             if (loading) setVisible(loading, false);
             if (loginScreen) setVisible(loginScreen, true);
+            const nameEl = document.getElementById('squad_id');
+            if (nameEl && stored?.display_name && !nameEl.value) {
+                nameEl.value = stored.display_name;
+            }
+            if (stored?.has_pin) {
+                const hint = document.getElementById('login-restore-hint');
+                if (hint) {
+                    hint.textContent = '偵測到先前帳號，請輸入 PIN 登入（進度已保存）';
+                    setVisible(hint, true);
+                }
+            }
         }
 
         async function completeLogin(data) {
             currentSquad = data.squad_id ? data : (data.squad || data);
+            saveLocalSession({
+                ...currentSquad,
+                restore_token: data.restore_token || currentSquad.restore_token,
+            });
             setVisible(document.getElementById('login-screen'), false);
             setVisible(document.getElementById('game-content'), true);
             showNavAfterLogin();
