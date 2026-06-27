@@ -2534,6 +2534,7 @@ def api_version():
             "combat_modal": "combat-action-modal" in HTML_TEMPLATE,
             "session_restore_v2": "tryLoginWithStoredSquad" in HTML_TEMPLATE,
             "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
+            "combat_ui_safe": "safeSetText" in HTML_TEMPLATE,
         },
         "upload_folder": UPLOAD_FOLDER,
         "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,
@@ -5457,6 +5458,23 @@ HTML_TEMPLATE = """
             el.style.display = visible ? '' : 'none';
         }
 
+        function safeSetText(id, value, fallback = '—') {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = value ?? fallback;
+            } else {
+                console.warn(`Element not found: #${id}`);
+            }
+            return el;
+        }
+
+        function safeSetClass(id, className) {
+            const el = document.getElementById(id);
+            if (el) el.className = className;
+            else console.warn(`Element not found: #${id}`);
+            return el;
+        }
+
         function toggleMobileMenu() {
             const menu = document.getElementById('mobile-menu');
             if (menu) menu.classList.toggle('menu-open');
@@ -6321,6 +6339,9 @@ HTML_TEMPLATE = """
 
         function updateCombatUI(data, options = {}) {
             if (!data) return;
+            if (!data.my_state && (data.active || data.status === 'player_phase' || data.status === 'enemy_phase')) {
+                console.warn('Combat data missing my_state');
+            }
             lastCombatStatus = data;
             setVisible(document.getElementById('combat-result-panel'), false);
 
@@ -6340,21 +6361,20 @@ HTML_TEMPLATE = """
             showCombatScreen();
             applyCombatAccent(data.route);
 
-            document.getElementById('combat-title').textContent = data.title || '戰鬥中';
+            safeSetText('combat-title', data.title || '戰鬥中');
             const routeLabel = ROUTE_SUBTITLES[data.route] || 'Encounter';
             const phaseNum = data.current_phase || 1;
-            document.getElementById('combat-subtitle').textContent = `${routeLabel} · 第 ${phaseNum} 回合`;
-            document.getElementById('current-phase').textContent = phaseNum;
-            document.getElementById('max-phase').textContent = data.max_phases || 5;
+            safeSetText('combat-subtitle', `${routeLabel} · 第 ${phaseNum} 回合`);
+            safeSetText('current-phase', phaseNum);
+            safeSetText('max-phase', data.max_phases || 5);
 
             const phaseLabels = {
                 player_phase: { text: 'Player Phase', color: 'text-emerald-400' },
                 enemy_phase: { text: 'Enemy Phase', color: 'text-red-400' },
             };
             const pl = phaseLabels[data.status] || { text: data.status, color: 'text-zinc-400' };
-            const phaseLabelEl = document.getElementById('phase-status-label');
-            phaseLabelEl.textContent = pl.text;
-            phaseLabelEl.className = `text-xs ${pl.color}`;
+            safeSetText('phase-status-label', pl.text);
+            safeSetClass('phase-status-label', `text-xs ${pl.color}`);
 
             const squad = currentSquad || {};
             const me = buildCombatMyState(data);
@@ -6362,9 +6382,8 @@ HTML_TEMPLATE = """
 
             updateEnemyCombatStats(enemy, data.enemy_description || '');
             updateCombatPlayerAvatar(me);
-            document.getElementById('combat-player-name').textContent = me.display_name || '你';
-            document.getElementById('combat-player-team').textContent =
-                squad.team?.team_name || squad.team_name || '單人';
+            safeSetText('combat-player-name', me.display_name || '你');
+            safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
             updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
 
@@ -6388,11 +6407,11 @@ HTML_TEMPLATE = """
                 } else {
                     berserkMsg = `神智偏低（${sanity}），暴走風險 ${berserkChance}%`;
                 }
-                document.getElementById('combat-berserk-bar-text').textContent = berserkMsg;
-                berserkBar.classList.toggle('berserk-critical', sanity < 10);
+                safeSetText('combat-berserk-bar-text', berserkMsg);
+                if (berserkBar) berserkBar.classList.toggle('berserk-critical', sanity < 10);
             } else {
                 setVisible(berserkBar, false);
-                berserkBar.classList.remove('berserk-critical');
+                if (berserkBar) berserkBar.classList.remove('berserk-critical');
             }
 
             setVisible(document.getElementById('combat-berserk-overlay'),
@@ -6411,13 +6430,15 @@ HTML_TEMPLATE = """
             if (data.phase_deadline && data.status === 'player_phase') {
                 startPhaseCountdown(data.phase_deadline);
             } else if (data.phase_expired) {
-                document.getElementById('phase-timer').textContent = '0:00';
+                safeSetText('phase-timer', '0:00');
             }
 
             const logEl = document.getElementById('combat-log');
-            logEl.innerHTML = (data.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
-                || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
-            logEl.scrollTop = logEl.scrollHeight;
+            if (logEl) {
+                logEl.innerHTML = (data.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
+                    || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
+                logEl.scrollTop = logEl.scrollHeight;
+            }
             processCombatDamageAnimations(
                 data,
                 options.damageDelay ?? 0,
@@ -6469,7 +6490,13 @@ HTML_TEMPLATE = """
                 if (data.active) {
                     setVisible(document.getElementById('combat-lobby'), false);
                 }
-                updateCombatUI(data, showLoading ? { initLogsOnly: true } : {});
+                const uiOptions = showLoading ? { initLogsOnly: true } : {};
+                const applyCombatUi = () => updateCombatUI(data, uiOptions);
+                if (data.active || data.in_precheck) {
+                    setTimeout(applyCombatUi, 50);
+                } else {
+                    applyCombatUi();
+                }
                 if (data.active || data.in_precheck) startCombatPolling();
                 else stopCombatPolling();
             } catch (e) {
@@ -6832,34 +6859,26 @@ HTML_TEMPLATE = """
             ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
                 setStatBar('combat-', s, stats[s], { showRatio: true });
             });
-            const setTextIf = (id, value) => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = value ?? '—';
-            };
-            setTextIf('combat-player-hp', stats.hp);
-            setTextIf('combat-player-sanity', stats.sanity);
-            setTextIf('combat-m-power', stats.power);
-            setTextIf('combat-m-intellect', stats.intellect);
-            setTextIf('combat-m-resilience', stats.resilience);
+            safeSetText('combat-player-hp', stats.hp);
+            safeSetText('combat-player-sanity', stats.sanity);
+            safeSetText('combat-m-power', stats.power);
+            safeSetText('combat-m-intellect', stats.intellect);
+            safeSetText('combat-m-resilience', stats.resilience);
         }
 
         function updateEnemyCombatStats(enemy, description) {
-            const setTextIf = (id, value) => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = value ?? '—';
-            };
-            setTextIf('enemy-name', enemy.name || '敵人');
+            safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
             const hp = enemy.hp ?? 0;
             const maxHp = enemy.max_hp || enemy.hp || 1;
-            setTextIf('enemy-hp-current', hp);
-            setTextIf('enemy-hp-max', maxHp);
-            setTextIf('enemy-stat-hp', hp);
-            setTextIf('enemy-stat-sanity', enemy.sanity);
-            setTextIf('enemy-stat-power', enemy.power);
-            setTextIf('enemy-stat-intellect', enemy.intellect);
-            setTextIf('enemy-stat-resilience', enemy.resilience);
+            safeSetText('enemy-hp-current', hp);
+            safeSetText('enemy-hp-max', maxHp);
+            safeSetText('enemy-stat-hp', hp);
+            safeSetText('enemy-stat-sanity', enemy.sanity);
+            safeSetText('enemy-stat-power', enemy.power);
+            safeSetText('enemy-stat-intellect', enemy.intellect);
+            safeSetText('enemy-stat-resilience', enemy.resilience);
             const enemyHpBar = document.getElementById('enemy-hp-bar');
             const prevEnemyHp = lastCombatStatus?.enemy?.hp;
             if (enemyHpBar) {
