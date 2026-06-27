@@ -71,6 +71,15 @@ fi
 echo "uploads count: $(ls -1 uploads 2>/dev/null | wc -l | tr -d ' ')"
 
 echo ""
+echo "--- Avatar images (static/avatars) ---"
+AVATAR_COUNT=$(find static/avatars -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) ! -iname 'default.png' 2>/dev/null | wc -l | tr -d ' ')
+echo "Selectable avatars: $AVATAR_COUNT"
+ls -1 static/avatars 2>/dev/null | grep -viE '^default\.png$' | head -20 || true
+if [ "$AVATAR_COUNT" = "0" ]; then
+    echo "WARNING: No avatar images found. Add PNG/JPG to static/avatars/ and git push."
+fi
+
+echo ""
 echo "Done. Now go to PythonAnywhere Web tab → Reload takjai.pythonanywhere.com"
 echo "Then verify: curl https://takjai.pythonanywhere.com/api/version"
 echo "Expected version: $NEW_COMMIT"

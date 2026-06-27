@@ -31,6 +31,8 @@ _default_data_dir = "."
 if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
     _default_data_dir = "/data"
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+app.static_folder = os.path.join(PROJECT_DIR, "static")
+AVATAR_DIR = os.path.join(app.static_folder, "avatars")
 DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -787,6 +789,12 @@ def api_version():
         name for name in os.listdir(UPLOAD_FOLDER)
         if os.path.isfile(os.path.join(UPLOAD_FOLDER, name))
     ]) if os.path.isdir(UPLOAD_FOLDER) else 0
+    avatar_count = 0
+    if os.path.isdir(AVATAR_DIR):
+        avatar_count = len([
+            name for name in os.listdir(AVATAR_DIR)
+            if name.lower().endswith((".png", ".jpg", ".jpeg")) and name != "default.png"
+        ])
     return jsonify({
         "success": True,
         "version": read_deploy_version(),
@@ -797,6 +805,8 @@ def api_version():
         "upload_folder": UPLOAD_FOLDER,
         "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,
         "upload_file_count": upload_count,
+        "avatar_dir": AVATAR_DIR,
+        "avatar_count": avatar_count,
     })
 
 @app.route("/")
@@ -1365,11 +1375,10 @@ def update_display_name():
 
 @app.route("/available_avatars")
 def available_avatars():
-    avatar_dir = os.path.join(app.static_folder, "avatars")
-    if not os.path.exists(avatar_dir):
-        return jsonify({"avatars": []})
+    if not os.path.isdir(AVATAR_DIR):
+        return jsonify({"avatars": [], "avatar_dir": AVATAR_DIR})
     files = [
-        filename for filename in os.listdir(avatar_dir)
+        filename for filename in os.listdir(AVATAR_DIR)
         if filename.lower().endswith((".png", ".jpg", ".jpeg")) and filename != "default.png"
     ]
     return jsonify({"avatars": sorted(files)})
@@ -1383,7 +1392,7 @@ def set_avatar():
     if not avatar_filename:
         return jsonify({"success": False, "error": "請選擇頭像"}), 400
 
-    avatar_path = os.path.join(app.static_folder, "avatars", avatar_filename)
+    avatar_path = os.path.join(AVATAR_DIR, avatar_filename)
     if not os.path.exists(avatar_path):
         return jsonify({"success": False, "error": "頭像不存在"}), 400
 
