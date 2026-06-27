@@ -984,7 +984,15 @@ def build_enemy_combat_stats(combat, encounter=None):
 def build_combat_status_response(combat, encounter, squad_id):
     settings = (encounter or {}).get("combat_settings", {})
     me = get_squad(squad_id) or {}
-    protagonists = get_team_protagonists(me["team_id"]) if me.get("team_id") else {}
+    team_id = me.get("team_id")
+    if not team_id and combat:
+        starter = get_squad(combat.get("squad_id"))
+        team_id = starter.get("team_id") if starter else None
+    protagonists = get_team_protagonists(team_id) if team_id else {}
+    team_route = protagonists.get("active_route") or me.get("route")
+    if not team_route and team_id:
+        team_row = get_team_by_id(team_id)
+        team_route = (team_row or {}).get("route")
     participants = get_combat_participants(combat) if combat else []
     phase_actions = (combat or {}).get("phase_actions") or {}
     berserk_hint = berserk_probability(me.get("sanity", 50)) > 0
@@ -1059,7 +1067,7 @@ def build_combat_status_response(combat, encounter, squad_id):
         "available_actions": list(COMBAT_ACTION_TYPES),
         "winner": combat.get("winner"),
         "enemy_description": (encounter or {}).get("enemy", {}).get("description"),
-        "route": (encounter or {}).get("route"),
+        "route": team_route or (encounter or {}).get("route"),
         "max_phases": settings.get("max_phases", 5),
         "my_squad_id": squad_id,
     }
@@ -6428,9 +6436,12 @@ HTML_TEMPLATE = """
             updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
 
+            const protagonists = data.protagonists || squad.protagonists || {};
             const teamData = {
                 ...data,
-                protagonists: data.protagonists || squad.protagonists,
+                my_squad_id: data.my_squad_id || squad.squad_id,
+                route: data.route || protagonists.active_route || squad.route,
+                protagonists,
                 member_states: data.member_states || {},
             };
             renderCombatTeamRow(teamData);
@@ -6940,7 +6951,10 @@ HTML_TEMPLATE = """
             const myId = data.my_squad_id || currentSquad?.squad_id;
             const members = data.member_states || {};
             const protagonists = data.protagonists || currentSquad?.protagonists || {};
-            const route = data.route || data.my_state?.route || currentSquad?.route;
+            const route = data.route
+                || data.my_state?.route
+                || protagonists.active_route
+                || currentSquad?.route;
 
             Object.keys(members).forEach(sid => {
                 if (sid === myId) return;
@@ -6957,27 +6971,20 @@ HTML_TEMPLATE = """
                 container.appendChild(div);
             });
 
-            let activeProtagonist = null;
-            let protagonistLabel = '';
-            let protagonistAccent = 'text-amber-400';
+            let activeKey = null;
+            if (route === 'iggy' && protagonists.iggy) activeKey = 'iggy';
+            if (route === 'marah' && protagonists.marah) activeKey = 'marah';
 
-            if (route === 'iggy' && protagonists.iggy) {
-                activeProtagonist = protagonists.iggy;
-                protagonistLabel = '🔥 Iggy';
-                protagonistAccent = 'text-red-400';
-            } else if (route === 'marah' && protagonists.marah) {
-                activeProtagonist = protagonists.marah;
-                protagonistLabel = '🌊 Marah';
-                protagonistAccent = 'text-blue-400';
-            }
-
-            if (activeProtagonist) {
+            if (activeKey) {
+                const pro = protagonists[activeKey];
+                const label = activeKey === 'iggy' ? '🔥 Iggy' : '🌊 Marah';
+                const accent = activeKey === 'iggy' ? 'text-red-400' : 'text-blue-400';
                 const proDiv = document.createElement('div');
                 proDiv.className = 'combat-team-chip flex-shrink-0 text-center min-w-[56px] border-l border-zinc-700 pl-3';
                 proDiv.innerHTML = `
-                    <div class="w-8 h-8 rounded-full border border-amber-600/50 mx-auto mb-0.5 flex items-center justify-center text-xs">${route === 'iggy' ? '🔥' : '🌊'}</div>
-                    <div class="text-[10px] ${protagonistAccent}">${protagonistLabel}（主角）</div>
-                    <div class="text-[10px] font-mono text-zinc-400">❤️${activeProtagonist.hp ?? '-'} 🧠${activeProtagonist.sanity ?? '-'}</div>
+                    <div class="w-8 h-8 rounded-full border border-amber-600/50 mx-auto mb-0.5 flex items-center justify-center text-xs">${activeKey === 'iggy' ? '🔥' : '🌊'}</div>
+                    <div class="text-[10px] ${accent}">${label}（主角）</div>
+                    <div class="text-[10px] font-mono text-zinc-400">❤️${pro.hp ?? '-'} 🧠${pro.sanity ?? '-'}</div>
                 `;
                 container.appendChild(proDiv);
             }
