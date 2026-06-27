@@ -105,6 +105,15 @@ def resolve_upload_disk_path(filename):
 
 DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
 SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
+MAX_INVENTORY_SLOTS = 5
+
+SAMPLE_ITEMS = [
+    ("裂縫碎片", "來自界線的微小碎片，似乎還有溫度。", "🧩", "story"),
+    ("Judas 的信箋", "上面有模糊的字跡，閱讀時 Sanity 會微微波動。", "📜", "story"),
+    ("守護者徽章", "掃描營地 QR 後獲得的證物。", "🛡️", "qr"),
+    ("記憶之瓶", "裝住一段未完成的對話。", "🫙", "qr"),
+    ("界線之鑰", "據說可以打開某扇隱藏的門。", "🗝️", "special"),
+]
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -154,6 +163,26 @@ def init_db():
         effect_value INTEGER DEFAULT 0,
         created_by TEXT DEFAULT 'GM',
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        icon TEXT,
+        item_type TEXT DEFAULT 'normal',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS player_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        squad_id TEXT NOT NULL,
+        item_id INTEGER NOT NULL,
+        obtained_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        source TEXT,
+        FOREIGN KEY (squad_id) REFERENCES squads(squad_id),
+        FOREIGN KEY (item_id) REFERENCES items(id),
+        UNIQUE(squad_id, item_id)
     )''')
 
     conn.commit()
@@ -259,6 +288,39 @@ def migrate_db():
                 c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
             except sqlite3.OperationalError:
                 pass
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='items'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            icon TEXT,
+            item_type TEXT DEFAULT 'normal',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='player_items'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE player_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            squad_id TEXT NOT NULL,
+            item_id INTEGER NOT NULL,
+            obtained_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            source TEXT,
+            FOREIGN KEY (squad_id) REFERENCES squads(squad_id),
+            FOREIGN KEY (item_id) REFERENCES items(id),
+            UNIQUE(squad_id, item_id)
+        )''')
+
+    item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    if item_count == 0:
+        now = datetime.now().isoformat()
+        for name, description, icon, item_type in SAMPLE_ITEMS:
+            c.execute(
+                "INSERT INTO items (name, description, icon, item_type, created_at) VALUES (?, ?, ?, ?, ?)",
+                (name, description, icon, item_type, now),
+            )
 
     conn.commit()
     conn.close()
@@ -379,6 +441,67 @@ def get_story_for_route(route, stage):
 def next_stage_threshold(current_stage):
     next_stage = current_stage + 1
     return STORY_STAGE_THRESHOLDS.get(next_stage)
+
+def get_item_by_id(item_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def team_has_item(team_id, item_id):
+    if not team_id:
+        return False
+    clean_team_id = normalize_team_id(team_id)
+    conn = sqlite3.connect(DB_PATH)
+    count = conn.execute("""
+        SELECT COUNT(*) FROM player_items pi
+        JOIN squads s ON pi.squad_id = s.squad_id
+        WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
+    """, (clean_team_id, item_id)).fetchone()[0]
+    conn.close()
+    return count > 0
+
+def grant_item_to_squad(squad_id, item_id, source="story"):
+    squad = get_squad(squad_id)
+    if not squad:
+        return False, "找不到玩家"
+
+    item = get_item_by_id(item_id)
+    if not item:
+        return False, "物品不存在"
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    existing = c.execute(
+        "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
+        (squad_id, item_id),
+    ).fetchone()
+    if existing:
+        conn.close()
+        return False, "你已經擁有此物品"
+
+    team_id = squad.get("team_id")
+    if team_id and team_has_item(team_id, item_id):
+        conn.close()
+        return False, "同一隊內已經有人擁有此物品"
+
+    owned_count = c.execute(
+        "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
+        (squad_id,),
+    ).fetchone()[0]
+    if owned_count >= MAX_INVENTORY_SLOTS:
+        conn.close()
+        return False, f"你已經持有 {MAX_INVENTORY_SLOTS} 樣物品，請先丟棄"
+
+    c.execute(
+        "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
+        (squad_id, item_id, source, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return True, "成功獲得物品"
 
 def hkt_timestamp():
     return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
@@ -1399,6 +1522,90 @@ def set_avatar():
     update_squad(session["squad_id"], avatar=avatar_filename)
     return jsonify({"success": True, "avatar": avatar_filename})
 
+@app.route("/my_items")
+def my_items():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    squad_id = session["squad_id"]
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT pi.id, pi.item_id, i.name, i.description, i.icon, i.item_type,
+               pi.source, pi.obtained_at
+        FROM player_items pi
+        JOIN items i ON pi.item_id = i.id
+        WHERE pi.squad_id = ?
+        ORDER BY pi.obtained_at DESC
+    """, (squad_id,)).fetchall()
+    conn.close()
+
+    items = [dict(row) for row in rows]
+    return jsonify({
+        "success": True,
+        "items": items,
+        "max_slots": MAX_INVENTORY_SLOTS,
+        "current_count": len(items),
+    })
+
+@app.route("/add_item", methods=["POST"])
+def add_item():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    data = request.get_json(silent=True) or {}
+    item_id = data.get("item_id")
+    source = (data.get("source") or "story").strip() or "story"
+
+    try:
+        item_id = int(item_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "無效物品 ID"}), 400
+
+    success, message = grant_item_to_squad(session["squad_id"], item_id, source)
+    if not success:
+        return jsonify({"success": False, "error": message}), 400
+
+    return jsonify({"success": True, "message": message, "item_id": item_id})
+
+@app.route("/discard_item", methods=["POST"])
+def discard_item():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    data = request.get_json(silent=True) or {}
+    player_item_id = data.get("player_item_id")
+    try:
+        player_item_id = int(player_item_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "無效物品記錄"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "DELETE FROM player_items WHERE id = ? AND squad_id = ?",
+        (player_item_id, session["squad_id"]),
+    )
+    deleted = c.rowcount
+    conn.commit()
+    conn.close()
+
+    if deleted == 0:
+        return jsonify({"success": False, "error": "找不到物品或無權限丟棄"}), 404
+
+    return jsonify({"success": True, "message": "物品已丟棄"})
+
+@app.route("/claim_item/<int:item_id>")
+def claim_item_page(item_id):
+    if "squad_id" not in session:
+        return redirect(f"/?next=/claim_item/{item_id}")
+
+    item = get_item_by_id(item_id)
+    if not item:
+        return "找不到此物品", 404
+
+    return render_template_string(CLAIM_ITEM_HTML, item=item, item_id=item_id)
+
 # ==================== GM Routes ====================
 
 GM_PIN = "gm2026"  # GM 登入 PIN，你可以之後改
@@ -1592,6 +1799,9 @@ def gm_reset_game():
 
     # 1. 清空提交記錄
     c.execute("DELETE FROM submissions")
+
+    # 1b. 清空玩家物品
+    c.execute("DELETE FROM player_items")
 
     # 2. 清空所有 Team
     c.execute("DELETE FROM teams")
@@ -2358,10 +2568,26 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
+                <!-- 持有物品 -->
+                <div class="cartoon-box p-5 mb-8">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-lg flex items-center gap-x-2 theme-card-title">
+                            <i class="fa-solid fa-box-open theme-accent-text"></i>
+                            <span>持有物品</span>
+                            <span id="items-slot-label" class="text-xs font-normal theme-muted-text">(0/5)</span>
+                        </h3>
+                        <button onclick="loadMyItems()"
+                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">刷新</button>
+                    </div>
+                    <div id="my-items-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="text-sm text-zinc-400 col-span-full text-center py-4">載入中...</div>
+                    </div>
+                </div>
+
                 <!-- Zoo Skills -->
                 <div>
                     <div class="font-medium mb-3 flex items-center gap-x-2">
-                        <i class="fa-solid fa-magic text-amber-400"></i>
+                        <i class="fa-solid fa-magic theme-accent-text"></i>
                         <span>Zoo 能力</span>
                     </div>
                     <div class="grid grid-cols-2 gap-3" id="zoo-list">
@@ -2537,6 +2763,7 @@ HTML_TEMPLATE = """
             document.querySelectorAll('.section').forEach(s => setVisible(s, false));
             setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
+            if (id === 'dashboard') loadMyItems();
             if (id === 'team') loadMyTeam();
             if (id === 'log') {
                 loadStoryLog();
@@ -3432,6 +3659,7 @@ HTML_TEMPLATE = """
             showSection('dashboard');
             updateDashboard(currentSquad);
             initPlayerAvatar();
+            loadMyItems();
             loadAnnouncements();
 
             setTimeout(() => {
@@ -3900,6 +4128,102 @@ HTML_TEMPLATE = """
 
         let currentAvatar = null;
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text ?? '';
+            return div.innerHTML;
+        }
+
+        const ITEM_SOURCE_LABELS = { story: '劇情', qr: 'QR', event: '事件', special: '特殊' };
+
+        async function loadMyItems() {
+            const container = document.getElementById('my-items-list');
+            const slotLabel = document.getElementById('items-slot-label');
+            if (!container) return;
+
+            try {
+                const res = await fetch('/my_items', { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    container.innerHTML = '<div class="text-red-400 text-sm col-span-full text-center py-4">載入失敗</div>';
+                    return;
+                }
+
+                if (slotLabel) {
+                    slotLabel.textContent = `(${data.current_count || 0}/${data.max_slots || 5})`;
+                }
+
+                const items = data.items || [];
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="text-sm text-zinc-400 col-span-full text-center py-6">暫無物品 — 完成劇情或掃描 QR 可獲得</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-zinc-800/80 border border-zinc-700 rounded-2xl p-4';
+                    const sourceLabel = ITEM_SOURCE_LABELS[item.source] || item.source || '未知';
+                    const icon = item.icon
+                        ? (item.icon.includes('/') ? `<img src="${escapeHtml(item.icon)}" class="w-10 h-10 object-contain" alt="">` : `<span class="text-3xl">${escapeHtml(item.icon)}</span>`)
+                        : '<span class="text-3xl">📦</span>';
+                    div.innerHTML = `
+                        <div class="flex gap-3">
+                            <div class="shrink-0 w-10 flex items-center justify-center">${icon}</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-semibold">${escapeHtml(item.name)}</div>
+                                <div class="text-xs text-zinc-400 mt-0.5 line-clamp-2">${escapeHtml(item.description || '')}</div>
+                                <div class="text-xs text-zinc-500 mt-1">${escapeHtml(sourceLabel)}</div>
+                            </div>
+                            <button onclick="discardItem(${item.id})"
+                                    class="text-xs px-2 py-1 h-fit bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg shrink-0">
+                                丟棄
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400 text-sm col-span-full text-center py-4">載入失敗</div>';
+            }
+        }
+
+        async function discardItem(playerItemId) {
+            if (!confirm('確定要丟棄此物品嗎？')) return;
+
+            const res = await fetch('/discard_item', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ player_item_id: playerItemId })
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                loadMyItems();
+            } else {
+                alert(result.error || '丟棄失敗');
+            }
+        }
+
+        async function claimItemFromQR(itemId, source = 'qr') {
+            const res = await fetch('/add_item', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ item_id: itemId, source })
+            });
+            const result = await res.json();
+            if (result.success) {
+                alert(result.message || '成功獲得物品！');
+                loadMyItems();
+                return true;
+            }
+            alert(result.error || '獲取失敗');
+            return false;
+        }
+
         function avatarSrc(filename) {
             return `/static/avatars/${filename || 'default.png'}`;
         }
@@ -4026,6 +4350,61 @@ HTML_TEMPLATE = """
             </div>
         </div>
     </div>
+</body>
+</html>
+"""
+
+CLAIM_ITEM_HTML = """
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>獲得物品 • Oikonomia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-md w-full bg-zinc-900 border border-zinc-700 rounded-3xl p-8 text-center">
+        <div class="text-5xl mb-4">{{ item.icon or '📦' }}</div>
+        <h1 class="text-2xl font-bold mb-2">{{ item.name }}</h1>
+        <p class="text-zinc-400 text-sm mb-6">{{ item.description or '' }}</p>
+        <div id="claim-status" class="text-sm text-zinc-400 mb-4">正在領取物品...</div>
+        <button id="claim-btn" onclick="claimNow()"
+                class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl mb-3">
+            領取物品
+        </button>
+        <a href="/" class="text-sm text-amber-400 hover:underline">返回 Dashboard</a>
+    </div>
+    <script>
+        const itemId = {{ item_id }};
+
+        async function claimNow() {
+            const status = document.getElementById('claim-status');
+            const btn = document.getElementById('claim-btn');
+            btn.disabled = true;
+            status.textContent = '領取中...';
+
+            const res = await fetch('/add_item', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ item_id: itemId, source: 'qr' })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                status.textContent = data.message || '成功獲得物品！';
+                status.className = 'text-sm text-emerald-400 mb-4';
+                btn.classList.add('hidden');
+            } else {
+                status.textContent = data.error || '領取失敗';
+                status.className = 'text-sm text-red-400 mb-4';
+                btn.disabled = false;
+            }
+        }
+
+        claimNow();
+    </script>
 </body>
 </html>
 """
