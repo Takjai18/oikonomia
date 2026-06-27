@@ -173,7 +173,19 @@ def init_db():
         qr_code_value TEXT UNIQUE,
         item_type TEXT DEFAULT 'normal',
         is_active INTEGER DEFAULT 1,
+        is_one_time_use INTEGER DEFAULT 1,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS qr_code_uses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id INTEGER NOT NULL UNIQUE,
+        squad_id TEXT NOT NULL,
+        team_id TEXT,
+        used_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        source TEXT,
+        FOREIGN KEY (item_id) REFERENCES items(id),
+        FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS player_items (
@@ -301,6 +313,7 @@ def migrate_db():
             qr_code_value TEXT UNIQUE,
             item_type TEXT DEFAULT 'normal',
             is_active INTEGER DEFAULT 1,
+            is_one_time_use INTEGER DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )''')
 
@@ -309,6 +322,7 @@ def migrate_db():
     item_additions = {
         "qr_code_value": "TEXT",
         "is_active": "INTEGER DEFAULT 1",
+        "is_one_time_use": "INTEGER DEFAULT 1",
     }
     for col, typedef in item_additions.items():
         if col not in item_cols:
@@ -337,6 +351,21 @@ def migrate_db():
         pass
 
     c.execute("UPDATE items SET is_active = 1 WHERE is_active IS NULL")
+    c.execute("UPDATE items SET is_one_time_use = 1 WHERE is_one_time_use IS NULL")
+    c.execute("UPDATE items SET is_one_time_use = 0 WHERE item_type = 'story'")
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='qr_code_uses'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE qr_code_uses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL UNIQUE,
+            squad_id TEXT NOT NULL,
+            team_id TEXT,
+            used_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            source TEXT,
+            FOREIGN KEY (item_id) REFERENCES items(id),
+            FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
+        )''')
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='player_items'")
     if not c.fetchone():
@@ -355,11 +384,13 @@ def migrate_db():
     if item_count == 0:
         now = datetime.now().isoformat()
         for name, description, icon, item_type, qr_code_value in SAMPLE_ITEMS:
+            is_one_time = 0 if item_type == "story" else 1
             c.execute(
                 """INSERT INTO items
-                   (name, description, icon, item_type, qr_code_value, is_active, created_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?)""",
-                (name, description, icon, item_type, qr_code_value, now),
+                   (name, description, icon, item_type, qr_code_value, is_active,
+                    is_one_time_use, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                (name, description, icon, item_type, qr_code_value, is_one_time, now),
             )
 
     conn.commit()
@@ -574,6 +605,15 @@ def team_has_item(team_id, item_id):
     conn.close()
     return count > 0
 
+def qr_code_already_used(item_id):
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT squad_id, team_id, used_at FROM qr_code_uses WHERE item_id = ?",
+        (item_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
 def grant_item_to_squad(squad_id, item_id, source="story"):
     squad = get_squad(squad_id)
     if not squad:
@@ -581,38 +621,72 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
 
     item = get_item_by_id(item_id)
     if not item:
-        return False, "物品不存在"
+        return False, "物品不存在或已停用"
+
+    is_one_time = item.get("is_one_time_use", 1)
+    enforce_qr_once = source == "qr" and is_one_time
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    existing = c.execute(
-        "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
-        (squad_id, item_id),
-    ).fetchone()
-    if existing:
-        conn.close()
-        return False, "你已經擁有此物品"
+    try:
+        if enforce_qr_once:
+            used = c.execute(
+                "SELECT squad_id FROM qr_code_uses WHERE item_id = ?",
+                (item_id,),
+            ).fetchone()
+            if used:
+                return False, "此 QR Code 已經被使用"
 
-    team_id = squad.get("team_id")
-    if team_id and team_has_item(team_id, item_id):
-        conn.close()
-        return False, "同一隊內已經有人擁有此物品"
+        existing = c.execute(
+            "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
+            (squad_id, item_id),
+        ).fetchone()
+        if existing:
+            return False, "你已經擁有此物品"
 
-    owned_count = c.execute(
-        "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
-        (squad_id,),
-    ).fetchone()[0]
-    if owned_count >= MAX_INVENTORY_SLOTS:
-        conn.close()
-        return False, f"你已經持有 {MAX_INVENTORY_SLOTS} 樣物品，請先丟棄"
+        team_id = squad.get("team_id")
+        if team_id:
+            clean_team_id = normalize_team_id(team_id)
+            team_dup = c.execute("""
+                SELECT COUNT(*) FROM player_items pi
+                JOIN squads s ON pi.squad_id = s.squad_id
+                WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
+            """, (clean_team_id, item_id)).fetchone()[0]
+            if team_dup > 0:
+                return False, "同一隊內已經有人擁有此物品"
 
-    c.execute(
-        "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
-        (squad_id, item_id, source, datetime.now().isoformat()),
-    )
-    conn.commit()
-    conn.close()
+        owned_count = c.execute(
+            "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
+            (squad_id,),
+        ).fetchone()[0]
+        if owned_count >= MAX_INVENTORY_SLOTS:
+            return False, f"你已經持有 {MAX_INVENTORY_SLOTS} 樣物品，請先丟棄"
+
+        now = datetime.now().isoformat()
+        c.execute(
+            "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
+            (squad_id, item_id, source, now),
+        )
+        if enforce_qr_once:
+            c.execute(
+                """INSERT INTO qr_code_uses (item_id, squad_id, team_id, source, used_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    item_id,
+                    squad_id,
+                    normalize_team_id(team_id) if team_id else None,
+                    source,
+                    now,
+                ),
+            )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False, "此 QR Code 已經被使用"
+    finally:
+        conn.close()
+
     return True, f"成功獲得物品：{item['name']}"
 
 def hkt_timestamp():
@@ -1951,6 +2025,9 @@ def gm_reset_game():
 
     # 1b. 清空玩家物品
     c.execute("DELETE FROM player_items")
+
+    # 1c. 清空 QR Code 使用記錄
+    c.execute("DELETE FROM qr_code_uses")
 
     # 2. 清空所有 Team
     c.execute("DELETE FROM teams")
