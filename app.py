@@ -5,11 +5,14 @@ Built by Grok Build
 Priority: Beautiful Dashboard + GPS + Photo Upload
 """
 
-from flask import Flask, render_template_string, request, jsonify, session, redirect, send_from_directory, abort
+from flask import Flask, render_template_string, request, jsonify, session, redirect, send_from_directory, send_file, abort
 import sqlite3
 import json
 import os
 import shutil
+import zipfile
+import io
+import re
 from datetime import datetime, timedelta
 import math
 import time
@@ -76,6 +79,15 @@ def normalize_photo_url(photo_path):
 def photo_public_url(photo_path):
     normalized = normalize_photo_url(photo_path)
     return f"/{normalized}" if normalized else None
+
+def task_display_name(task_id):
+    if not task_id:
+        return "未知任務"
+    return LOCATIONS.get(task_id, {}).get("name", task_id)
+
+def safe_zip_arcname(*parts):
+    name = "_".join(str(p or "unknown") for p in parts)
+    return re.sub(r"[^\w\-.]", "_", name)
 
 def resolve_upload_disk_path(filename):
     basename = os.path.basename(str(filename).replace("\\", "/"))
@@ -1570,6 +1582,109 @@ def gm_teams_overview():
 
     overview = build_teams_overview()
     return jsonify({"success": True, **overview})
+
+@app.route("/gm/download_team_images/<team_id>")
+def gm_download_team_images(team_id):
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    clean_id = normalize_team_id(team_id)
+    team = get_team_by_id(clean_id)
+    if not team:
+        return jsonify({"success": False, "error": "找不到該隊伍"}), 404
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT s.id, s.photo_path, s.task_id, sq.display_name, sq.squad_id
+        FROM submissions s
+        JOIN squads sq ON s.squad_id = sq.squad_id
+        WHERE UPPER(TRIM(sq.team_id)) = UPPER(TRIM(?))
+          AND s.photo_path IS NOT NULL AND TRIM(s.photo_path) != ''
+        ORDER BY s.timestamp
+    """, (clean_id,)).fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({"success": False, "error": "該隊伍冇上傳過圖片"}), 404
+
+    memory_file = io.BytesIO()
+    added = 0
+    with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
+        for row in rows:
+            disk_path = resolve_upload_disk_path(row["photo_path"])
+            if not disk_path or not os.path.isfile(disk_path):
+                continue
+            display_name = row["display_name"] or row["squad_id"]
+            task_name = task_display_name(row["task_id"])
+            filename = os.path.basename(disk_path)
+            arcname = safe_zip_arcname(display_name, task_name, row["id"], filename)
+            zf.write(disk_path, arcname=arcname)
+            added += 1
+
+    if added == 0:
+        return jsonify({"success": False, "error": "圖片檔案已不存在於伺服器"}), 404
+
+    memory_file.seek(0)
+    zip_name = safe_zip_arcname(team.get("team_name") or clean_id, "images") + ".zip"
+    return send_file(
+        memory_file,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=zip_name,
+    )
+
+@app.route("/gm/player_logs/<squad_id>")
+def gm_player_logs(squad_id):
+    if not session.get("is_gm"):
+        return jsonify({"success": False, "error": "未授權"}), 403
+
+    squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({"success": False, "error": "找不到玩家"}), 404
+
+    team_info = get_team_by_id(squad.get("team_id")) if squad.get("team_id") else None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT s.id, s.task_id, s.content, s.photo_path, s.timestamp,
+               sq.display_name, sq.squad_id, sq.team_id,
+               t.team_name
+        FROM submissions s
+        JOIN squads sq ON s.squad_id = sq.squad_id
+        LEFT JOIN teams t ON UPPER(TRIM(t.team_id)) = UPPER(TRIM(sq.team_id))
+        WHERE s.squad_id = ?
+        ORDER BY s.timestamp DESC
+    """, (squad_id,)).fetchall()
+    conn.close()
+
+    logs = []
+    for row in rows:
+        task_id = row["task_id"]
+        logs.append({
+            "id": row["id"],
+            "task_id": task_id,
+            "task_name": task_display_name(task_id),
+            "description": row["content"],
+            "photo_path": normalize_photo_url(row["photo_path"]),
+            "photo_url": photo_public_url(row["photo_path"]),
+            "timestamp": row["timestamp"],
+            "status": "已完成",
+            "display_name": row["display_name"] or row["squad_id"],
+            "team_name": row["team_name"],
+        })
+
+    return jsonify({
+        "success": True,
+        "player": {
+            "squad_id": squad_id,
+            "display_name": squad.get("display_name") or squad_id,
+            "team_id": squad.get("team_id"),
+            "team_name": team_info["team_name"] if team_info else None,
+        },
+        "logs": logs,
+    })
 
 # 公告歷史記錄（每條包含訊息 + 時間）
 ANNOUNCEMENTS = []   # 格式: [{"message": "...", "timestamp": "..."}]
@@ -3609,6 +3724,7 @@ GM_DASHBOARD_HTML = """
                         <th class="py-3">Sanity</th>
                         <th class="py-3">Pow/Int/Res</th>
                         <th class="py-3">提交次數</th>
+                        <th class="py-3">操作</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-800">
@@ -3644,11 +3760,19 @@ GM_DASHBOARD_HTML = """
                         <td class="py-4">
                             <span class="px-3 py-1 bg-zinc-700 rounded-full text-xs">{{ squad.submission_count }} 次</span>
                             
+                        </td>
+                        <td class="py-4">
                             {% if squad.submission_count > 0 %}
+                            <button onclick="viewPlayerLogs('{{ squad.squad_id }}')"
+                                    class="px-3 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-full mr-2">
+                                任務 Log
+                            </button>
                             <a href="/gm/squad/{{ squad.squad_id }}" 
-                               class="ml-3 px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-full">
-                                查看詳情
+                               class="px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-full">
+                                詳情
                             </a>
+                            {% else %}
+                            <span class="text-xs text-zinc-500">—</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -4254,6 +4378,91 @@ GM_DASHBOARD_HTML = """
             }
         }
 
+        async function downloadTeamImages(teamId) {
+            try {
+                const res = await fetch(`/gm/download_team_images/${encodeURIComponent(teamId)}`, { credentials: 'same-origin' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    alert(data.error || '下載失敗');
+                    return;
+                }
+                const blob = await res.blob();
+                const disposition = res.headers.get('Content-Disposition') || '';
+                let filename = `team_${teamId}_images.zip`;
+                const match = disposition.match(/filename="?([^";]+)"?/);
+                if (match) filename = match[1];
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                link.click();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('下載失敗');
+            }
+        }
+
+        async function viewPlayerLogs(squadId) {
+            const modal = document.getElementById('player-log-modal');
+            const titleEl = document.getElementById('player-log-modal-title');
+            const contentEl = document.getElementById('player-log-modal-content');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            titleEl.textContent = '載入中...';
+            contentEl.innerHTML = '<div class="text-zinc-400 text-center py-8">載入中...</div>';
+
+            try {
+                const res = await fetch(`/gm/player_logs/${encodeURIComponent(squadId)}`, { credentials: 'same-origin' });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    titleEl.textContent = '載入失敗';
+                    contentEl.innerHTML = `<div class="text-red-400 text-center py-8">${data.error || '載入失敗'}</div>`;
+                    return;
+                }
+
+                const player = data.player || {};
+                const teamLabel = player.team_name || player.team_id || '未入隊';
+                titleEl.textContent = `${player.display_name || squadId} · ${teamLabel}`;
+
+                const logs = data.logs || [];
+                if (logs.length === 0) {
+                    contentEl.innerHTML = '<div class="text-zinc-400 text-center py-8">暫無任務記錄</div>';
+                    return;
+                }
+
+                contentEl.innerHTML = '';
+                logs.forEach(log => {
+                    const div = document.createElement('div');
+                    div.className = 'border border-zinc-700 rounded-2xl p-4 mb-3';
+                    div.innerHTML = `
+                        <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
+                            <div>
+                                <div class="font-semibold text-amber-400">${log.task_name}</div>
+                                <div class="text-xs text-zinc-500 font-mono">${log.task_id || ''}</div>
+                            </div>
+                            <span class="text-xs px-2 py-0.5 bg-emerald-900/50 text-emerald-300 rounded-full">${log.status}</span>
+                        </div>
+                        <div class="text-xs text-zinc-500 mb-2">${log.timestamp || ''}</div>
+                        ${log.description ? `<div class="text-zinc-300 text-sm mb-3 whitespace-pre-wrap">${log.description}</div>` : ''}
+                        ${(log.photo_url || log.photo_path) ? `
+                            <img src="${log.photo_url || '/' + log.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
+                        ` : ''}
+                    `;
+                    contentEl.appendChild(div);
+                });
+            } catch (e) {
+                titleEl.textContent = '載入失敗';
+                contentEl.innerHTML = '<div class="text-red-400 text-center py-8">載入失敗</div>';
+            }
+        }
+
+        function hidePlayerLogModal() {
+            const modal = document.getElementById('player-log-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
         function formatOverviewTime(ts) {
             if (!ts) return '—';
             try {
@@ -4313,12 +4522,32 @@ GM_DASHBOARD_HTML = """
                                     <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-blue-400 font-mono text-base">${team.avg_intellect}</div><div class="text-zinc-500">平均 Int</div></div>
                                     <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-emerald-400 font-mono text-base">${team.avg_resilience}</div><div class="text-zinc-500">平均 Res</div></div>
                                 </div>
-                                <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-400">
+                                <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-400 mb-4">
                                     <span>已完成任務：<strong class="text-amber-400">${team.distinct_tasks}</strong></span>
                                     <span>劇情階段：<strong class="text-zinc-200">Stage ${team.story_stage}</strong></span>
                                     <span>提交次數：<strong class="text-zinc-200">${team.submission_count}</strong></span>
                                     <span>最近提交：<strong class="text-zinc-200">${formatOverviewTime(team.last_submission)}</strong></span>
                                 </div>
+                                <div class="flex flex-wrap gap-2 mb-4">
+                                    <button onclick="downloadTeamImages('${team.team_id}')"
+                                            class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-x-1">
+                                        <i class="fa-solid fa-download"></i>
+                                        <span>下載該隊圖片 (ZIP)</span>
+                                    </button>
+                                </div>
+                                ${(team.members && team.members.length) ? `
+                                    <div class="border-t border-zinc-700 pt-3">
+                                        <div class="text-xs text-zinc-500 mb-2">隊員任務記錄</div>
+                                        <div class="flex flex-wrap gap-2">
+                                            ${team.members.map(m => `
+                                                <button onclick="viewPlayerLogs('${m.squad_id}')"
+                                                        class="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-lg">
+                                                    ${m.is_leader ? '👑 ' : ''}${m.display_name}
+                                                </button>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
                             </div>
                         `;
                     });
@@ -4339,7 +4568,8 @@ GM_DASHBOARD_HTML = """
                                             <th class="py-2 pr-4">任務</th>
                                             <th class="py-2 pr-4">階段</th>
                                             <th class="py-2 pr-4">提交</th>
-                                            <th class="py-2">最近提交</th>
+                                            <th class="py-2 pr-4">最近提交</th>
+                                            <th class="py-2">操作</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-zinc-800">
@@ -4357,6 +4587,12 @@ GM_DASHBOARD_HTML = """
                                 <td class="py-3 pr-4">Stage ${p.story_stage}</td>
                                 <td class="py-3 pr-4">${p.submission_count}</td>
                                 <td class="py-3 text-xs text-zinc-400">${formatOverviewTime(p.last_submission)}</td>
+                                <td class="py-3">
+                                    ${p.submission_count > 0 ? `
+                                        <button onclick="viewPlayerLogs('${p.squad_id}')"
+                                                class="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded-lg">任務 Log</button>
+                                    ` : '<span class="text-zinc-500">—</span>'}
+                                </td>
                             </tr>
                         `;
                     });
@@ -4401,6 +4637,22 @@ GM_DASHBOARD_HTML = """
             if (btn) btn.classList.add('active', 'bg-amber-500', 'text-zinc-950');
         }, 300);
         </script>
+
+        <!-- 玩家任務 Log Modal -->
+        <div id="player-log-modal" onclick="if (event.target.id === 'player-log-modal') hidePlayerLogModal()"
+             class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[60]">
+            <div onclick="event.stopImmediatePropagation()"
+                 class="bg-zinc-900 w-full max-w-2xl mx-4 rounded-3xl p-6 border border-zinc-700 max-h-[85vh] flex flex-col">
+                <div class="flex justify-between items-start mb-4 shrink-0">
+                    <div>
+                        <div class="text-lg font-bold" id="player-log-modal-title">任務 Log</div>
+                        <div class="text-xs text-zinc-500 mt-0.5">玩家過往提交記錄</div>
+                    </div>
+                    <button onclick="hidePlayerLogModal()" class="text-3xl leading-none text-zinc-400 hover:text-white">×</button>
+                </div>
+                <div id="player-log-modal-content" class="overflow-y-auto flex-1"></div>
+            </div>
+        </div>
 
         <!-- 清空圖片確認 Modal -->
         <div id="clear-images-modal" onclick="if (event.target.id === 'clear-images-modal') hideClearImagesModal()"
