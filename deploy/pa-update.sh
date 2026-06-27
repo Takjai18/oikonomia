@@ -62,6 +62,17 @@ else
 fi
 
 echo ""
+echo "--- Upload folders ---"
+mkdir -p uploads data/uploads
+if [ -d data/uploads ]; then
+    cp -n data/uploads/* uploads/ 2>/dev/null || true
+    echo "Synced data/uploads -> uploads/ (if any legacy files)"
+fi
+echo "uploads count: $(ls -1 uploads 2>/dev/null | wc -l | tr -d ' ')"
+
+echo ""
 echo "Done. Now go to PythonAnywhere Web tab → Reload takjai.pythonanywhere.com"
 echo "Then verify: curl https://takjai.pythonanywhere.com/api/version"
 echo "Expected version: $NEW_COMMIT"
+echo ""
+echo "NOTE: Web tab → Static files 唔好 map /uploads/，交俾 Flask route 處理。"

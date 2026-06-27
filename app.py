@@ -5,10 +5,11 @@ Built by Grok Build
 Priority: Beautiful Dashboard + GPS + Photo Upload
 """
 
-from flask import Flask, render_template_string, request, jsonify, session, redirect, send_from_directory
+from flask import Flask, render_template_string, request, jsonify, session, redirect, send_from_directory, abort
 import sqlite3
 import json
 import os
+import shutil
 from datetime import datetime, timedelta
 import math
 import time
@@ -26,13 +27,35 @@ app.config.update(
 _default_data_dir = "."
 if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
     _default_data_dir = "/data"
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
+# 上傳圖片固定放喺 project/uploads（PA 同 local 路徑一致，避免 data/uploads 分裂）
+UPLOAD_FOLDER = os.path.join(PROJECT_DIR, "uploads")
+LEGACY_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 DB_PATH = os.path.join(DATA_DIR, "oikonomia.db")
+
+def migrate_upload_files():
+    """把舊版 data/uploads 的檔案搬到 project/uploads"""
+    if not os.path.isdir(LEGACY_UPLOAD_FOLDER):
+        return 0
+    if os.path.abspath(LEGACY_UPLOAD_FOLDER) == os.path.abspath(UPLOAD_FOLDER):
+        return 0
+    moved = 0
+    for name in os.listdir(LEGACY_UPLOAD_FOLDER):
+        src = os.path.join(LEGACY_UPLOAD_FOLDER, name)
+        dst = os.path.join(UPLOAD_FOLDER, name)
+        if not os.path.isfile(src):
+            continue
+        if not os.path.exists(dst):
+            shutil.copy2(src, dst)
+            moved += 1
+    return moved
+
+migrate_upload_files()
 
 def read_deploy_version():
     version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".deploy-version")
@@ -49,6 +72,22 @@ def normalize_photo_url(photo_path):
     if path.startswith("uploads/"):
         return path
     return f"uploads/{os.path.basename(path)}"
+
+def photo_public_url(photo_path):
+    normalized = normalize_photo_url(photo_path)
+    return f"/{normalized}" if normalized else None
+
+def resolve_upload_disk_path(filename):
+    basename = os.path.basename(str(filename).replace("\\", "/"))
+    if not basename:
+        return None
+    for folder in (UPLOAD_FOLDER, LEGACY_UPLOAD_FOLDER):
+        if not folder or not os.path.isdir(folder):
+            continue
+        path = os.path.join(folder, basename)
+        if os.path.isfile(path):
+            return path
+    return None
 
 DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
 SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
@@ -621,6 +660,10 @@ def refresh_player_session():
 
 @app.route("/api/version")
 def api_version():
+    upload_count = len([
+        name for name in os.listdir(UPLOAD_FOLDER)
+        if os.path.isfile(os.path.join(UPLOAD_FOLDER, name))
+    ]) if os.path.isdir(UPLOAD_FOLDER) else 0
     return jsonify({
         "success": True,
         "version": read_deploy_version(),
@@ -628,6 +671,9 @@ def api_version():
             "iggy_card": "iggy-card",
             "show_only_protagonist": "showOnlyProtagonistCard",
         },
+        "upload_folder": UPLOAD_FOLDER,
+        "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,
+        "upload_file_count": upload_count,
     })
 
 @app.route("/")
@@ -723,6 +769,7 @@ def my_submissions():
             "task_id": row["task_id"],
             "content": row["content"],
             "photo_path": normalize_photo_url(row["photo_path"]),
+            "photo_url": photo_public_url(row["photo_path"]),
             "timestamp": row["timestamp"],
         })
 
@@ -778,6 +825,7 @@ def team_task_logs():
         entry["status"] = "已完成"
         entry["display_name"] = entry.get("display_name") or entry.get("squad_id")
         entry["photo_path"] = normalize_photo_url(entry.get("photo_path"))
+        entry["photo_url"] = photo_public_url(entry.get("photo_path"))
         logs.append(entry)
 
     return jsonify({"success": True, "logs": logs, "has_team": has_team})
@@ -1219,6 +1267,7 @@ def gm_squad_detail(squad_id):
             "task_id": sub[0],
             "content": sub[1],
             "photo_path": normalize_photo_url(sub[2]),
+            "photo_url": photo_public_url(sub[2]),
             "timestamp": sub[3]
         })
     
@@ -1569,7 +1618,10 @@ def get_announcements():
 
 @app.route("/uploads/<path:filename>")
 def serve_upload(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    disk_path = resolve_upload_disk_path(filename)
+    if not disk_path:
+        abort(404)
+    return send_from_directory(os.path.dirname(disk_path), os.path.basename(disk_path))
 
 # ==================== 漂亮嘅 HTML ====================
 HTML_TEMPLATE = """
@@ -2079,9 +2131,9 @@ HTML_TEMPLATE = """
                         <span class="font-mono text-amber-400">${taskName}</span>
                     </div>
                     ${description ? `<div class="text-zinc-400 text-sm mt-1">${description}</div>` : ''}
-                    ${log.photo_path ? `
+                    ${(log.photo_url || log.photo_path) ? `
                         <div class="mt-2">
-                            <img src="/${log.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
+                            <img src="${log.photo_url || '/' + log.photo_path}" class="max-h-48 rounded-xl border border-zinc-700">
                         </div>
                     ` : ''}
                 `;
@@ -3376,7 +3428,7 @@ GM_DASHBOARD_HTML = """
                 <thead>
                     <tr class="border-b border-zinc-700 text-left text-sm text-zinc-400">
                         <th class="py-3 pl-2 w-12"></th>
-                        <th class="py-3">Player ID</th>
+                        <th class="py-3">玩家名稱</th>
                         <th class="py-3">路線</th>
                         <th class="py-3">HP</th>
                         <th class="py-3">Sanity</th>
@@ -4096,12 +4148,6 @@ GM_SQUAD_DETAIL_HTML = """
                      class="w-16 h-16 rounded-full object-cover border-2 border-zinc-600">
                 <div class="flex items-end gap-x-3">
                     <h1 class="text-3xl font-bold">{{ squad.display_name or squad.squad_id }}</h1>
-
-                    {% if squad.display_name %}
-                    <div class="text-xs text-zinc-500 pb-1 font-mono">
-                        {{ squad.squad_id }}
-                    </div>
-                    {% endif %}
                 </div>
             </div>
             
