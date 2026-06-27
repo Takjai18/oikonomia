@@ -4786,9 +4786,9 @@ HTML_TEMPLATE = """
                             <div class="dashboard-stat-row" data-stat="hp">
                                 <div class="flex justify-between text-sm mb-1">
                                     <span class="flex items-center gap-2"><span>❤️</span><span class="font-medium text-zinc-200">生命值</span></span>
-                                    <span class="flex items-center gap-2">
-                                        <span id="hp-value" class="font-mono text-red-400">— / 100</span>
-                                        <span id="hp-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    <span class="font-mono text-red-400">
+                                        <span id="hp-value">— / 100</span>
+                                        <span id="hp-pct" class="text-xs text-zinc-500 ml-1">(—)</span>
                                     </span>
                                 </div>
                                 <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
@@ -4798,50 +4798,26 @@ HTML_TEMPLATE = """
                             <div class="dashboard-stat-row" data-stat="sanity">
                                 <div class="flex justify-between text-sm mb-1">
                                     <span class="flex items-center gap-2"><span>🧠</span><span class="font-medium text-zinc-200">神智</span></span>
-                                    <span class="flex items-center gap-2">
-                                        <span id="sanity-value" class="font-mono text-purple-400">— / 100</span>
-                                        <span id="sanity-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
+                                    <span class="font-mono text-purple-400">
+                                        <span id="sanity-value">— / 100</span>
+                                        <span id="sanity-pct" class="text-xs text-zinc-500 ml-1">(—)</span>
                                     </span>
                                 </div>
                                 <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
                                     <div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full transition-all duration-500" style="width:0%"></div>
                                 </div>
                             </div>
-                            <div class="dashboard-stat-row" data-stat="power">
-                                <div class="flex justify-between text-sm mb-1">
-                                    <span class="flex items-center gap-2"><span>💪</span><span class="font-medium text-zinc-200">力量</span></span>
-                                    <span class="flex items-center gap-2">
-                                        <span id="power-value" class="font-mono text-orange-400">— / 100</span>
-                                        <span id="power-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
-                                    </span>
-                                </div>
-                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                    <div id="power-bar" class="h-2.5 bg-orange-500 rounded-full transition-all duration-500" style="width:0%"></div>
-                                </div>
+                            <div class="flex justify-between items-center py-1.5 border-t border-zinc-800/80 mt-1 pt-3">
+                                <span class="flex items-center gap-2 text-sm"><span>💪</span><span class="font-medium text-zinc-200">力量</span></span>
+                                <span id="power-value" class="font-mono text-lg font-bold text-orange-400">—</span>
                             </div>
-                            <div class="dashboard-stat-row" data-stat="intellect">
-                                <div class="flex justify-between text-sm mb-1">
-                                    <span class="flex items-center gap-2"><span>📘</span><span class="font-medium text-zinc-200">智力</span></span>
-                                    <span class="flex items-center gap-2">
-                                        <span id="intellect-value" class="font-mono text-blue-400">— / 100</span>
-                                        <span id="intellect-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
-                                    </span>
-                                </div>
-                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                    <div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full transition-all duration-500" style="width:0%"></div>
-                                </div>
+                            <div class="flex justify-between items-center py-1.5">
+                                <span class="flex items-center gap-2 text-sm"><span>📘</span><span class="font-medium text-zinc-200">智力</span></span>
+                                <span id="intellect-value" class="font-mono text-lg font-bold text-blue-400">—</span>
                             </div>
-                            <div class="dashboard-stat-row" data-stat="resilience">
-                                <div class="flex justify-between text-sm mb-1">
-                                    <span class="flex items-center gap-2"><span>🛡️</span><span class="font-medium text-zinc-200">韌性</span></span>
-                                    <span class="flex items-center gap-2">
-                                        <span id="resilience-value" class="font-mono text-emerald-400">— / 100</span>
-                                        <span id="resilience-pct" class="text-xs text-zinc-500 w-10 text-right">—</span>
-                                    </span>
-                                </div>
-                                <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                    <div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full transition-all duration-500" style="width:0%"></div>
-                                </div>
+                            <div class="flex justify-between items-center py-1.5">
+                                <span class="flex items-center gap-2 text-sm"><span>🛡️</span><span class="font-medium text-zinc-200">韌性</span></span>
+                                <span id="resilience-value" class="font-mono text-lg font-bold text-emerald-400">—</span>
                             </div>
                         </div>
                         <div class="mt-4 pt-3 border-t border-zinc-700 space-y-2 text-sm">
@@ -6553,32 +6529,42 @@ HTML_TEMPLATE = """
             if (modal) modal.remove();
         }
 
-        const SQUAD_STAT_MAX = 100;
+        const CAPPED_SQUAD_STATS = new Set(['hp', 'sanity']);
+        const SQUAD_CAP_MAX = { hp: 100, sanity: 100 };
         const DASHBOARD_STAT_META = {
             hp: { text: 'text-red-400', bar: 'bg-red-500' },
             sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
-            power: { text: 'text-orange-400', bar: 'bg-orange-500' },
-            intellect: { text: 'text-blue-400', bar: 'bg-blue-500' },
-            resilience: { text: 'text-emerald-400', bar: 'bg-emerald-500' },
+            power: { text: 'text-orange-400' },
+            intellect: { text: 'text-blue-400' },
+            resilience: { text: 'text-emerald-400' },
         };
 
         function setStatBar(prefix, stat, value) {
-            const max = SQUAD_STAT_MAX;
-            const v = Math.max(0, Math.min(max, Number(value) || 0));
-            const pct = Math.round((v / max) * 100);
             const meta = DASHBOARD_STAT_META[stat] || {};
             const el = document.getElementById(prefix + stat + '-value');
+            const raw = Number(value) || 0;
+
+            if (!prefix && !CAPPED_SQUAD_STATS.has(stat)) {
+                if (el) {
+                    el.textContent = String(raw);
+                    el.className = `font-mono text-lg font-bold ${meta.text || 'text-zinc-300'}`;
+                }
+                return;
+            }
+
+            const max = SQUAD_CAP_MAX[stat] || 100;
+            const v = Math.max(0, Math.min(max, raw));
+            const pct = Math.round((v / max) * 100);
             const bar = document.getElementById(prefix + stat + '-bar');
             const pctEl = document.getElementById(prefix + stat + '-pct');
             if (el) {
                 if (!prefix) {
                     el.textContent = `${v} / ${max}`;
-                    el.className = `font-mono ${meta.text || 'text-zinc-300'}`;
                 } else {
                     el.textContent = String(v);
                 }
             }
-            if (pctEl) pctEl.textContent = `${pct}%`;
+            if (pctEl) pctEl.textContent = `(${pct}%)`;
             if (bar) bar.style.width = `${pct}%`;
         }
 
