@@ -5162,7 +5162,7 @@ HTML_TEMPLATE = """
         let actionModalRolling = false;
         let actionModalRollTimer = null;
         let actionModalPauseTimer = null;
-        const DICE_RESULT_PAUSE_MS = 1350;
+        const DICE_RESULT_PAUSE_MS = 1400;
         let combatItemsLoaded = false;
         let lastDicePhase = 0;
         let lastCombatLogCount = 0;
@@ -5383,7 +5383,6 @@ HTML_TEMPLATE = """
             setCombatModalControlsLocked(false);
             showCombatModalPanel('modal-dice-area', true);
             showCombatModalPanel('modal-preview-area', false);
-            showCombatModalPanel('modal-preview-loading', false);
             showCombatModalPanel('modal-confirm-btn', false);
             const diceValue = document.getElementById('modal-dice-value');
             const diceBox = document.getElementById('modal-dice-box');
@@ -5405,6 +5404,7 @@ HTML_TEMPLATE = """
             modal.classList.remove('hidden');
             modal.classList.add('flex', 'items-center', 'justify-center');
             document.getElementById('modal-action-title').textContent = getActionDisplayName(selectedAction);
+            document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
         }
 
         function hideCombatModal() {
@@ -5477,7 +5477,7 @@ HTML_TEMPLATE = """
                     el.disabled = !canAct;
                 });
 
-                const pauseMs = result === 3 ? 1600 : DICE_RESULT_PAUSE_MS;
+                const pauseMs = result === 3 ? 1800 : DICE_RESULT_PAUSE_MS;
                 actionModalPauseTimer = setTimeout(() => {
                     actionModalPauseTimer = null;
                     fetchAndShowCombatPreview();
@@ -5614,7 +5614,6 @@ HTML_TEMPLATE = """
             }
 
             renderPreviewWarnings(preview.risks);
-            showCombatModalPanel('modal-preview-loading', false);
             if (COMBAT_DICE_ACTIONS.has(selectedAction)) {
                 showCombatModalPanel('modal-dice-area', false);
             }
@@ -5628,7 +5627,7 @@ HTML_TEMPLATE = """
         async function fetchAndShowCombatPreview() {
             showCombatModalPanel('modal-preview-area', false);
             showCombatModalPanel('modal-confirm-btn', false);
-            showCombatModalPanel('modal-preview-loading', true);
+            document.getElementById('modal-status-hint').textContent = '計算戰況預覽中…';
 
             const combatId = currentCombatId || lastCombatStatus?.combat_id;
             const payload = {
@@ -8055,13 +8054,12 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
-    <!-- 選擇頭像 Modal -->
-    <!-- 戰鬥行動 Modal（置於 body 層級，避免被 combat-screen 隱藏） -->
+    <!-- 戰鬥行動 Modal（置於 body 層級） -->
     <div id="combat-action-modal"
          onclick="if (event.target.id === 'combat-action-modal') closeCombatModal()"
-         class="hidden fixed inset-0 bg-black/80 z-[68] p-4">
-        <div class="bg-zinc-900 w-full max-w-md mx-auto rounded-3xl border border-zinc-700 overflow-hidden shadow-2xl"
-             onclick="event.stopPropagation()">
+         class="hidden fixed inset-0 bg-black/85 z-[70] p-4">
+        <div onclick="event.stopPropagation()"
+             class="bg-zinc-900 w-full max-w-md mx-auto rounded-3xl border border-zinc-700 overflow-hidden shadow-2xl">
             <div class="px-5 py-4 border-b border-zinc-700 flex justify-between items-center">
                 <div>
                     <div id="modal-action-title" class="font-semibold text-lg text-amber-400"></div>
@@ -8080,14 +8078,9 @@ HTML_TEMPLATE = """
                 <div id="modal-dice-final" class="text-sm text-zinc-400 hidden">
                     擲出：<span id="modal-dice-number" class="text-2xl font-bold text-amber-400"></span>
                 </div>
-                <div class="text-[10px] text-zinc-500">0 = 失手　｜　3 = 爆擊</div>
             </div>
 
-            <div id="modal-preview-loading" class="hidden px-6 py-6 text-center text-sm text-zinc-400">
-                計算戰況預覽中…
-            </div>
-
-            <div id="modal-preview-area" class="hidden px-6 pb-4">
+            <div id="modal-preview-area" class="hidden px-6 pb-5">
                 <div class="border-t border-zinc-700 pt-4">
                     <div class="text-sm font-medium text-amber-400 mb-1">本回合預計結果</div>
                     <div id="modal-preview-summary" class="text-xs text-zinc-400 mb-3"></div>
@@ -8103,7 +8096,7 @@ HTML_TEMPLATE = """
                             <div id="modal-counter-note" class="text-[10px] text-zinc-500 mt-1"></div>
                         </div>
                     </div>
-                    <div id="preview-warning" class="text-xs space-y-1"></div>
+                    <div id="preview-warning" class="text-xs space-y-1 mb-4"></div>
                 </div>
             </div>
 
