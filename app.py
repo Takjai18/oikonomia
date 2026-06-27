@@ -108,11 +108,11 @@ SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
 MAX_INVENTORY_SLOTS = 5
 
 SAMPLE_ITEMS = [
-    ("裂縫碎片", "來自界線的微小碎片，似乎還有溫度。", "🧩", "story"),
-    ("Judas 的信箋", "上面有模糊的字跡，閱讀時 Sanity 會微微波動。", "📜", "story"),
-    ("守護者徽章", "掃描營地 QR 後獲得的證物。", "🛡️", "qr"),
-    ("記憶之瓶", "裝住一段未完成的對話。", "🫙", "qr"),
-    ("界線之鑰", "據說可以打開某扇隱藏的門。", "🗝️", "special"),
+    ("裂縫碎片", "來自界線的微小碎片，似乎還有溫度。", "🧩", "story", "item-001"),
+    ("Judas 的信箋", "上面有模糊的字跡，閱讀時 Sanity 會微微波動。", "📜", "story", "item-002"),
+    ("守護者徽章", "掃描營地 QR 後獲得的證物。", "🛡️", "qr", "item-003"),
+    ("記憶之瓶", "裝住一段未完成的對話。", "🫙", "qr", "item-004"),
+    ("界線之鑰", "據說可以打開某扇隱藏的門。", "🗝️", "special", "item-005"),
 ]
 
 def init_db():
@@ -170,7 +170,9 @@ def init_db():
         name TEXT NOT NULL,
         description TEXT,
         icon TEXT,
+        qr_code_value TEXT UNIQUE,
         item_type TEXT DEFAULT 'normal',
+        is_active INTEGER DEFAULT 1,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
 
@@ -296,9 +298,45 @@ def migrate_db():
             name TEXT NOT NULL,
             description TEXT,
             icon TEXT,
+            qr_code_value TEXT UNIQUE,
             item_type TEXT DEFAULT 'normal',
+            is_active INTEGER DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )''')
+
+    c.execute("PRAGMA table_info(items)")
+    item_cols = {row[1] for row in c.fetchall()}
+    item_additions = {
+        "qr_code_value": "TEXT",
+        "is_active": "INTEGER DEFAULT 1",
+    }
+    for col, typedef in item_additions.items():
+        if col not in item_cols:
+            try:
+                c.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass
+
+    missing_qr_rows = c.execute("""
+        SELECT id FROM items
+        WHERE qr_code_value IS NULL OR TRIM(qr_code_value) = ''
+    """).fetchall()
+    for row in missing_qr_rows:
+        c.execute(
+            "UPDATE items SET qr_code_value = ? WHERE id = ?",
+            (f"item-{row[0]:03d}", row[0]),
+        )
+
+    try:
+        c.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_items_qr_code_value
+            ON items(qr_code_value)
+            WHERE qr_code_value IS NOT NULL AND TRIM(qr_code_value) != ''
+        """)
+    except sqlite3.OperationalError:
+        pass
+
+    c.execute("UPDATE items SET is_active = 1 WHERE is_active IS NULL")
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='player_items'")
     if not c.fetchone():
@@ -316,10 +354,12 @@ def migrate_db():
     item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
     if item_count == 0:
         now = datetime.now().isoformat()
-        for name, description, icon, item_type in SAMPLE_ITEMS:
+        for name, description, icon, item_type, qr_code_value in SAMPLE_ITEMS:
             c.execute(
-                "INSERT INTO items (name, description, icon, item_type, created_at) VALUES (?, ?, ?, ?, ?)",
-                (name, description, icon, item_type, now),
+                """INSERT INTO items
+                   (name, description, icon, item_type, qr_code_value, is_active, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?)""",
+                (name, description, icon, item_type, qr_code_value, now),
             )
 
     conn.commit()
@@ -445,9 +485,81 @@ def next_stage_threshold(current_stage):
 def get_item_by_id(item_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    row = conn.execute(
+        "SELECT * FROM items WHERE id = ? AND COALESCE(is_active, 1) = 1",
+        (item_id,),
+    ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+def get_item_by_qr_code_value(qr_code_value):
+    if not qr_code_value:
+        return None
+    clean_value = str(qr_code_value).strip()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM items WHERE qr_code_value = ? AND COALESCE(is_active, 1) = 1",
+        (clean_value,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def build_item_qr_payload(item):
+    if not item:
+        return None
+    return json.dumps({
+        "type": "item",
+        "id": item["id"],
+        "qr": item.get("qr_code_value"),
+        "v": 1,
+    }, ensure_ascii=False)
+
+def resolve_item_from_qr_payload(raw_payload):
+    text = (raw_payload or "").strip()
+    if not text:
+        return None
+
+    if text.startswith("{"):
+        try:
+            obj = json.loads(text)
+            if obj.get("type") == "item":
+                if obj.get("qr"):
+                    item = get_item_by_qr_code_value(obj["qr"])
+                    if item:
+                        return item
+                if obj.get("id") is not None:
+                    return get_item_by_id(int(obj["id"]))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    claim_qr_match = re.search(r"/claim_qr/([^/?#]+)", text, re.I)
+    if claim_qr_match:
+        item = get_item_by_qr_code_value(claim_qr_match.group(1))
+        if item:
+            return item
+
+    claim_id_match = re.search(r"/claim_item/(\d+)", text, re.I)
+    if claim_id_match:
+        return get_item_by_id(int(claim_id_match.group(1)))
+
+    if re.match(r"^item-\d{3}$", text, re.I):
+        return get_item_by_qr_code_value(text.lower())
+
+    if text.lower().startswith("oiko-item-"):
+        suffix = text.lower().replace("oiko-item-", "", 1)
+        if suffix.isdigit():
+            return get_item_by_qr_code_value(f"item-{int(suffix):03d}")
+        return get_item_by_qr_code_value(text)
+
+    direct = get_item_by_qr_code_value(text)
+    if direct:
+        return direct
+
+    if text.isdigit():
+        return get_item_by_id(int(text))
+
+    return None
 
 def team_has_item(team_id, item_id):
     if not team_id:
@@ -501,7 +613,7 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
     )
     conn.commit()
     conn.close()
-    return True, "成功獲得物品"
+    return True, f"成功獲得物品：{item['name']}"
 
 def hkt_timestamp():
     return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
@@ -1554,19 +1666,37 @@ def add_item():
         return jsonify({"success": False, "error": "未登入"}), 401
 
     data = request.get_json(silent=True) or {}
-    item_id = data.get("item_id")
-    source = (data.get("source") or "story").strip() or "story"
+    source = (data.get("source") or "story").strip().lower() or "story"
+    item = None
 
-    try:
-        item_id = int(item_id)
-    except (TypeError, ValueError):
-        return jsonify({"success": False, "error": "無效物品 ID"}), 400
+    if source == "qr":
+        qr_payload = data.get("qr_payload") or data.get("qr_code_value") or ""
+        if not str(qr_payload).strip():
+            return jsonify({"success": False, "error": "無效的 QR Code"}), 400
+        item = resolve_item_from_qr_payload(qr_payload)
+        if not item:
+            return jsonify({"success": False, "error": "QR Code 無效或物品已停用"}), 400
+        item_id = item["id"]
+    else:
+        try:
+            item_id = int(data.get("item_id"))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "無效物品 ID"}), 400
+        item = get_item_by_id(item_id)
+        if not item:
+            return jsonify({"success": False, "error": "物品不存在或已停用"}), 400
 
     success, message = grant_item_to_squad(session["squad_id"], item_id, source)
     if not success:
         return jsonify({"success": False, "error": message}), 400
 
-    return jsonify({"success": True, "message": message, "item_id": item_id})
+    return jsonify({
+        "success": True,
+        "message": message,
+        "item_id": item_id,
+        "item_name": item.get("name"),
+        "qr_code_value": item.get("qr_code_value"),
+    })
 
 @app.route("/discard_item", methods=["POST"])
 def discard_item():
@@ -1604,7 +1734,26 @@ def claim_item_page(item_id):
     if not item:
         return "找不到此物品", 404
 
-    return render_template_string(CLAIM_ITEM_HTML, item=item, item_id=item_id)
+    return render_template_string(
+        CLAIM_ITEM_HTML,
+        item=item,
+        qr_payload=build_item_qr_payload(item),
+    )
+
+@app.route("/claim_qr/<path:qr_value>")
+def claim_qr_page(qr_value):
+    if "squad_id" not in session:
+        return redirect(f"/?next=/claim_qr/{qr_value}")
+
+    item = get_item_by_qr_code_value(qr_value)
+    if not item:
+        return "找不到此物品", 404
+
+    return render_template_string(
+        CLAIM_ITEM_HTML,
+        item=item,
+        qr_payload=build_item_qr_payload(item),
+    )
 
 # ==================== GM Routes ====================
 
@@ -4217,13 +4366,35 @@ HTML_TEMPLATE = """
             }
         }
 
-        async function claimItemFromQR(itemId, source = 'qr') {
+        async function claimItemFromStory(itemId) {
             try {
                 const res = await fetch('/add_item', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ item_id: itemId, source })
+                    body: JSON.stringify({ item_id: itemId, source: 'story' })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert(result.message || '成功獲得物品！');
+                    loadMyItems();
+                    return true;
+                }
+                alert(result.error || '獲取失敗');
+                return false;
+            } catch (err) {
+                alert('網絡錯誤，請稍後再試');
+                return false;
+            }
+        }
+
+        async function claimItemFromQrPayload(qrPayload) {
+            try {
+                const res = await fetch('/add_item', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ qr_payload: qrPayload, source: 'qr' })
                 });
                 const result = await res.json();
                 if (result.success) {
@@ -4242,31 +4413,6 @@ HTML_TEMPLATE = """
         let html5QrCode = null;
         let qrScannerRunning = false;
         let qrClaimInProgress = false;
-
-        function parseQrItemId(decodedText) {
-            const text = (decodedText || '').trim();
-            if (!text) return null;
-
-            const claimMatch = text.match(/[/]claim_item[/](\\d+)/i);
-            if (claimMatch) return parseInt(claimMatch[1], 10);
-
-            const queryMatch = text.match(/[?&]item_id=(\\d+)/i);
-            if (queryMatch) return parseInt(queryMatch[1], 10);
-
-            const prefixMatch = text.match(/^oiko-item-(\\d+)$/i);
-            if (prefixMatch) return parseInt(prefixMatch[1], 10);
-
-            if (text.startsWith('{')) {
-                try {
-                    const obj = JSON.parse(text);
-                    if (obj.type === 'item' && obj.id != null) return parseInt(obj.id, 10);
-                    if (obj.item_id != null) return parseInt(obj.item_id, 10);
-                } catch (e) {}
-            }
-
-            if (/^\\d+$/.test(text)) return parseInt(text, 10);
-            return null;
-        }
 
         async function stopQRScanner() {
             const modal = document.getElementById('qr-scanner-modal');
@@ -4331,11 +4477,10 @@ HTML_TEMPLATE = """
 
         async function onScanSuccess(decodedText) {
             if (qrClaimInProgress) return;
-
-            const itemId = parseQrItemId(decodedText);
-            if (!itemId || Number.isNaN(itemId)) {
+            const payload = (decodedText || '').trim();
+            if (!payload) {
                 const status = document.getElementById('qr-status');
-                if (status) status.textContent = 'QR Code 格式不正確';
+                if (status) status.textContent = 'QR Code 內容為空';
                 return;
             }
 
@@ -4344,7 +4489,7 @@ HTML_TEMPLATE = """
             if (status) status.textContent = '掃描成功，正在領取物品...';
 
             await stopQRScanner();
-            await claimItemFromQR(itemId);
+            await claimItemFromQrPayload(payload);
             qrClaimInProgress = false;
         }
 
@@ -4520,7 +4665,7 @@ CLAIM_ITEM_HTML = """
         <a href="/" class="text-sm text-amber-400 hover:underline">返回 Dashboard</a>
     </div>
     <script>
-        const itemId = {{ item_id }};
+        const qrPayload = {{ qr_payload|tojson }};
 
         async function claimNow() {
             const status = document.getElementById('claim-status');
@@ -4532,7 +4677,7 @@ CLAIM_ITEM_HTML = """
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ item_id: itemId, source: 'qr' })
+                body: JSON.stringify({ qr_payload: qrPayload, source: 'qr' })
             });
             const data = await res.json();
 
