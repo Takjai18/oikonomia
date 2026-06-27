@@ -4247,13 +4247,13 @@ HTML_TEMPLATE = """
             const text = (decodedText || '').trim();
             if (!text) return null;
 
-            const claimMatch = text.match(/[/]claim_item[/](\d+)/i);
+            const claimMatch = text.match(/[/]claim_item[/](\\d+)/i);
             if (claimMatch) return parseInt(claimMatch[1], 10);
 
-            const queryMatch = text.match(/[?&]item_id=(\d+)/i);
+            const queryMatch = text.match(/[?&]item_id=(\\d+)/i);
             if (queryMatch) return parseInt(queryMatch[1], 10);
 
-            const prefixMatch = text.match(/^oiko-item-(\d+)$/i);
+            const prefixMatch = text.match(/^oiko-item-(\\d+)$/i);
             if (prefixMatch) return parseInt(prefixMatch[1], 10);
 
             if (text.startsWith('{')) {
@@ -4264,7 +4264,7 @@ HTML_TEMPLATE = """
                 } catch (e) {}
             }
 
-            if (/^\d+$/.test(text)) return parseInt(text, 10);
+            if (/^\\d+$/.test(text)) return parseInt(text, 10);
             return null;
         }
 
