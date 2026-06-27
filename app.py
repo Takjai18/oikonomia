@@ -2564,7 +2564,9 @@ def login():
         conn.commit()
         row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (internal_id,)).fetchone()
 
-    has_pin = bool(row["pin"])
+    stored_pin = str(row["pin"] or "").strip()
+    input_pin = re.sub(r"\D", "", input_pin)[:4]
+    has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
 
     if has_pin:
         if not input_pin:
@@ -2574,7 +2576,13 @@ def login():
                 "require_pin": True,
                 "message": "請輸入 PIN",
             })
-        if input_pin != row["pin"]:
+        if len(input_pin) != 4:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "error": "PIN 必須為 4 位數字",
+            })
+        if input_pin != stored_pin:
             conn.close()
             return jsonify({
                 "success": False,
@@ -6109,17 +6117,27 @@ HTML_TEMPLATE = """
         }
 
         async function ensureCurrentSquadProfile() {
-            if (currentSquad?.avatar) return;
-            try {
-                const res = await fetch('/status', { credentials: 'same-origin' });
-                const data = await res.json();
-                if (data && data.success !== false && data.squad_id) {
-                    currentSquad = data;
-                    initPlayerAvatar();
-                }
-            } catch (e) {
-                console.warn('無法載入玩家資料', e);
+            const fresh = await refreshSquadFromServer();
+            if (fresh) {
+                initPlayerAvatar();
+                updateDashboard(fresh);
             }
+        }
+
+        function buildCombatMyState(data) {
+            const squad = currentSquad || {};
+            const ms = data?.my_state || {};
+            return {
+                ...ms,
+                display_name: ms.display_name || squad.display_name || squad.squad_id || '你',
+                avatar: ms.avatar ?? squad.avatar,
+                hp: ms.hp ?? squad.hp,
+                sanity: ms.sanity ?? squad.sanity,
+                power: ms.power ?? squad.power,
+                intellect: ms.intellect ?? squad.intellect,
+                resilience: ms.resilience ?? squad.resilience,
+                near_death_until: ms.near_death_until ?? squad.near_death_until,
+            };
         }
 
         async function loadCombatPage() {
@@ -6206,7 +6224,6 @@ HTML_TEMPLATE = """
                 return;
             }
             showCombatScreen();
-            updateCombatUI(data);
             await loadCombatStatus(true);
         }
 
@@ -6310,17 +6327,24 @@ HTML_TEMPLATE = """
             phaseLabelEl.textContent = pl.text;
             phaseLabelEl.className = `text-xs ${pl.color}`;
 
-            updateEnemyCombatStats(data.enemy || {}, data.enemy_description || '');
-
-            const me = data.my_state || {};
             const squad = currentSquad || {};
+            const me = buildCombatMyState(data);
+            const enemy = data.enemy || {};
+
+            updateEnemyCombatStats(enemy, data.enemy_description || '');
             updateCombatPlayerAvatar(me);
-            document.getElementById('combat-player-name').textContent =
-                me.display_name || squad.display_name || '你';
-            document.getElementById('combat-player-team').textContent = squad.team?.team_name || squad.team_name || '單人';
+            document.getElementById('combat-player-name').textContent = me.display_name || '你';
+            document.getElementById('combat-player-team').textContent =
+                squad.team?.team_name || squad.team_name || '單人';
             updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
-            renderCombatTeamRow(data);
+
+            const teamData = {
+                ...data,
+                protagonists: data.protagonists || squad.protagonists,
+                member_states: data.member_states || {},
+            };
+            renderCombatTeamRow(teamData);
 
             const sanity = me.sanity ?? 100;
             const berserkBar = document.getElementById('combat-berserk-bar');
@@ -7513,14 +7537,18 @@ HTML_TEMPLATE = """
 
         function saveLocalSession(data) {
             if (!data?.squad_id) return;
+            const token = data.restore_token || null;
             try {
                 localStorage.setItem(OIKONOMIA_STORAGE_KEY, JSON.stringify({
                     squad_id: data.squad_id,
                     display_name: data.display_name || data.squad_id,
-                    restore_token: data.restore_token || null,
+                    restore_token: token,
                     has_pin: !!data.has_pin,
                     saved_at: Date.now(),
                 }));
+                if (token) {
+                    localStorage.setItem('oikonomia_restore_token', token);
+                }
             } catch (e) {
                 console.warn('localStorage save failed', e);
             }
@@ -7529,7 +7557,12 @@ HTML_TEMPLATE = """
         function loadLocalSession() {
             try {
                 const raw = localStorage.getItem(OIKONOMIA_STORAGE_KEY);
-                return raw ? JSON.parse(raw) : null;
+                const parsed = raw ? JSON.parse(raw) : null;
+                if (parsed && !parsed.restore_token) {
+                    const legacy = localStorage.getItem('oikonomia_restore_token');
+                    if (legacy) parsed.restore_token = legacy;
+                }
+                return parsed;
             } catch (e) {
                 return null;
             }
@@ -7540,12 +7573,14 @@ HTML_TEMPLATE = """
         }
 
         async function tryRestoreWithToken(stored) {
-            if (!stored?.restore_token) return null;
+            const token = stored?.restore_token
+                || localStorage.getItem('oikonomia_restore_token');
+            if (!token) return null;
             const res = await fetch('/session/restore', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ restore_token: stored.restore_token }),
+                body: JSON.stringify({ restore_token: token }),
             });
             if (!res.ok) return null;
             const data = await res.json();
@@ -7556,41 +7591,64 @@ HTML_TEMPLATE = """
             return null;
         }
 
+        async function refreshSquadFromServer() {
+            try {
+                const res = await fetch('/status', { credentials: 'same-origin' });
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (data?.squad_id && data.success !== false && !data.error) {
+                    currentSquad = data;
+                    saveLocalSession(data);
+                    return data;
+                }
+            } catch (e) {
+                console.warn('refreshSquadFromServer failed', e);
+            }
+            return null;
+        }
+
+        async function resumeActiveCombatAfterRestore(squad) {
+            if (squad?.current_combat_id) {
+                currentCombatId = squad.current_combat_id;
+            }
+        }
+
         async function restoreSession() {
             const loading = document.getElementById('session-loading');
             const loginScreen = document.getElementById('login-screen');
+            const stored = loadLocalSession();
 
+            // 1. 優先用 restore_token（手機 reload / Cookie 遺失）
+            if (stored?.restore_token || localStorage.getItem('oikonomia_restore_token')) {
+                try {
+                    const restored = await tryRestoreWithToken(stored || {});
+                    if (restored) {
+                        const fresh = await refreshSquadFromServer() || restored;
+                        if (loading) setVisible(loading, false);
+                        await completeLogin({ ...fresh, require_set_pin: false, skip_team_prompt: true });
+                        await resumeActiveCombatAfterRestore(fresh);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('token restore failed', e);
+                }
+            }
+
+            // 2. Cookie session（含 Render 冷啟動重試）
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const res = await fetch('/status', { credentials: 'same-origin' });
-                    if (res.ok) {
-                        const squad = await res.json();
-                        if (squad && squad.squad_id && squad.success !== false && !squad.error) {
-                            saveLocalSession(squad);
-                            if (loading) setVisible(loading, false);
-                            await completeLogin({ ...squad, require_set_pin: false, skip_team_prompt: true });
-                            return;
-                        }
+                    const squad = await refreshSquadFromServer();
+                    if (squad) {
+                        if (loading) setVisible(loading, false);
+                        await completeLogin({ ...squad, require_set_pin: false, skip_team_prompt: true });
+                        await resumeActiveCombatAfterRestore(squad);
+                        return;
                     }
                 } catch (e) {
                     console.log('session restore attempt failed', attempt + 1);
                 }
                 if (attempt < 2) {
-                    await new Promise(r => setTimeout(r, 1200));
-                }
-            }
-
-            const stored = loadLocalSession();
-            if (stored) {
-                try {
-                    const restored = await tryRestoreWithToken(stored);
-                    if (restored) {
-                        if (loading) setVisible(loading, false);
-                        await completeLogin({ ...restored, require_set_pin: false, skip_team_prompt: true });
-                        return;
-                    }
-                } catch (e) {
-                    console.warn('token restore failed', e);
+                    await new Promise(r => setTimeout(r, 800));
                 }
             }
 
@@ -7611,6 +7669,8 @@ HTML_TEMPLATE = """
 
         async function completeLogin(data) {
             currentSquad = data.squad_id ? data : (data.squad || data);
+            const fresh = await refreshSquadFromServer();
+            if (fresh) currentSquad = fresh;
             saveLocalSession({
                 ...currentSquad,
                 restore_token: data.restore_token || currentSquad.restore_token,
@@ -7623,23 +7683,30 @@ HTML_TEMPLATE = """
                 currentSquad.display_name || currentSquad.squad_id;
 
             if (data.require_set_pin) {
-                setTimeout(() => {
+                setTimeout(async () => {
                     const pin = prompt('請設定你的 4 位數 PIN（之後登入要用）');
-                    if (pin && pin.length === 4 && /^\\d+$/.test(pin)) {
-                        fetch('/set_pin', {
+                    const cleanPin = (pin || '').trim().replace(/\\D/g, '').slice(0, 4);
+                    if (cleanPin.length === 4) {
+                        const res = await fetch('/set_pin', {
                             method: 'POST',
                             credentials: 'same-origin',
-                            body: new URLSearchParams({pin: pin})
-                        }).then(r => r.json()).then(res => {
-                            if (res.success) {
-                                alert('PIN 設定成功！請記住。');
-                                currentSquad.has_pin = true;
-                            } else {
-                                alert(res.error || 'PIN 設定失敗');
-                            }
+                            body: new URLSearchParams({pin: cleanPin})
                         });
+                        const result = await res.json();
+                        if (result.success) {
+                            alert('PIN 設定成功！請記住。');
+                            const fresh = await refreshSquadFromServer();
+                            if (fresh) {
+                                currentSquad = fresh;
+                                updateDashboard(fresh);
+                            } else {
+                                currentSquad.has_pin = true;
+                            }
+                        } else {
+                            alert(result.error || 'PIN 設定失敗');
+                        }
                     } else if (pin) {
-                        alert('PIN 設定失敗，請之後再設定。');
+                        alert('PIN 必須為 4 位數字');
                     }
                 }, 800);
             }
@@ -7677,17 +7744,26 @@ HTML_TEMPLATE = """
             }
         }
 
+        function normalizeLoginPin(raw) {
+            return String(raw || '').trim().replace(/\\D/g, '').slice(0, 4);
+        }
+
         async function loginWithPin(name, pin) {
+            const cleanPin = normalizeLoginPin(pin);
+            if (cleanPin.length !== 4) {
+                alert('請輸入 4 位數字 PIN');
+                return;
+            }
             const res = await fetch('/login', {
                 method: 'POST',
                 credentials: 'same-origin',
-                body: new URLSearchParams({squad_id: name, pin: pin})
+                body: new URLSearchParams({squad_id: name, pin: cleanPin})
             });
             const data = await res.json();
-            if (data.success) {
+            if (data.success !== false && data.squad_id) {
                 await completeLogin(data);
             } else {
-                alert(data.error || 'PIN 錯誤');
+                alert(data.error || data.message || 'PIN 錯誤');
             }
         }
 
@@ -7695,7 +7771,13 @@ HTML_TEMPLATE = """
             e.preventDefault();
             try {
                 const name = document.getElementById('squad_id').value.trim();
-                const pin = document.getElementById('login_pin').value.trim();
+                const pin = normalizeLoginPin(document.getElementById('login_pin').value);
+                const stored = loadLocalSession();
+                if (stored?.has_pin && stored.display_name === name && !pin) {
+                    alert('請輸入 4 位數字 PIN');
+                    document.getElementById('login_pin')?.focus();
+                    return;
+                }
                 const res = await fetch('/login', {
                     method: 'POST',
                     credentials: 'same-origin',
@@ -7703,10 +7785,15 @@ HTML_TEMPLATE = """
                 });
                 const data = await res.json();
 
-                if (data.success) {
+                if (data.success !== false && data.squad_id) {
                     await completeLogin(data);
                 } else {
                     if (data.require_pin) {
+                        if (!pin) {
+                            alert('此帳號需要 PIN，請在下方輸入 4 位數字');
+                            document.getElementById('login_pin')?.focus();
+                            return;
+                        }
                         const inputPin = prompt('請輸入你的 4 位數 PIN');
                         if (inputPin) {
                             await loginWithPin(name, inputPin);
