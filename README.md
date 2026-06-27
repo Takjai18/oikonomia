@@ -18,9 +18,15 @@ pip install -r requirements.txt
 python3 app.py
 ```
 
-然後用瀏覽器打開 http://localhost:5001
-
 （macOS 預設 5000 port 常被系統佔用，所以本地用 5001）
+
+## 本地開發網址
+
+| 用途 | 網址 |
+|------|------|
+| 玩家端 | http://localhost:5001 |
+| GM 後台 | http://localhost:5001/gm |
+| GM PIN | `gm2026` |
 
 ## 正式環境（PythonAnywhere）
 
