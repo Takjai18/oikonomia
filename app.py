@@ -1753,7 +1753,7 @@ HTML_TEMPLATE = """
         <div id="login-screen" class="hidden max-w-md mx-auto px-6 py-16">
             <div class="text-center mb-8">
                 <i class="fa-solid fa-user-secret text-6xl text-amber-400 mb-4"></i>
-                <h1 class="text-3xl font-bold">你已從臍帶中斷裂</h1>
+                <h1 class="text-3xl font-bold">歡迎進入Oikonomia的世界</h1>
                 <p class="text-zinc-400 mt-2">輸入名稱登入（首次無需 PIN）</p>
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
@@ -1803,7 +1803,6 @@ HTML_TEMPLATE = """
                          onclick="showAvatarModal()">
 
                     <div>
-                        <div class="text-sm text-amber-400">FRAGMENT</div>
                         <div class="flex items-center gap-x-2">
                             <div id="squad-name" class="text-4xl font-semibold"></div>
                             <button onclick="editDisplayName()"
@@ -1836,7 +1835,7 @@ HTML_TEMPLATE = """
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <!-- Squad 五維 -->
                     <div class="cartoon-box p-5">
-                        <h3 class="font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Squad Status</h3>
+                        <h3 class="font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Player Status</h3>
                         <div class="space-y-3">
                             <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
