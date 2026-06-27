@@ -1,0 +1,54 @@
+{
+  "encounter_id": "test_hard_win_item",
+  "title": "【測試】堅韌的情緒寄生者",
+  "route": "test",
+  "story_stage": 0,
+  "trigger_type": "test",
+  "location_hint": "測試區（開發用）",
+  "description": "這是一個需要打幾個回合先可以贏的測試戰鬥。敵人防禦力較高，但只要你持續輸出，最終可以擊敗。贏了會獲得測試物品。",
+
+  "enemy": {
+    "name": "測試用・堅韌寄生影",
+    "hp": 220,
+    "resilience": 28,
+    "sanity": 42,
+    "base_damage": 15,
+    "description": "防禦力不低，需要多輪攻擊才能擊敗。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 300,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 1,
+    "rewards": [
+      {
+        "type": "item",
+        "item_id": "item-005",
+        "chance": 1.0
+      }
+    ],
+    "narrative": "你成功擊敗了堅韌的寄生影，獲得了「界線之鑰」。",
+    "next_story_unlock": null
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 5
+    },
+    "narrative": "你未能完全擊敗對手，受到一定程度的創傷。",
+    "debuff": "resilience_-5_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "測試用反思",
+    "questions": [
+      "這場戰鬥需要打幾輪，你覺得策略上有什麼可以改進的地方？",
+      "贏得物品後，你會如何使用它？"
+    ]
+  }
+}

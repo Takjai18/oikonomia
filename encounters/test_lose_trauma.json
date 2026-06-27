@@ -1,0 +1,47 @@
+{
+  "encounter_id": "test_lose_trauma",
+  "title": "【測試】壓倒性情緒崩壞",
+  "route": "test",
+  "story_stage": 0,
+  "trigger_type": "test",
+  "location_hint": "測試區（開發用）",
+  "description": "這是一個專為測試而設的戰鬥。你會面對一個極度強大的情緒怪物，正常情況下幾乎無法擊敗。用嚟測試失敗後的 Trauma 機制。",
+
+  "enemy": {
+    "name": "測試用・壓倒性崩壞影",
+    "hp": 800,
+    "resilience": 45,
+    "sanity": 60,
+    "base_damage": 22,
+    "description": "一個極度扭曲的影子，防禦力極高，幾乎無法造成有效傷害。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 300,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 0,
+    "rewards": [],
+    "narrative": "（測試用）你竟然贏了？這不應該發生。"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 10
+    },
+    "narrative": "你被壓倒性的情緒完全吞沒，界線嚴重受損。",
+    "debuff": "resilience_-10_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "測試用反思",
+    "questions": [
+      "當你明顯打唔贏的時候，你有冇即時感受到壓力？",
+      "這次失敗後你獲得了 Trauma，這對之後的戰鬥有什麼影響？"
+    ]
+  }
+}

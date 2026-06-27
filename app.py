@@ -212,6 +212,14 @@ def list_encounter_ids():
 def load_all_encounters():
     return [load_encounter(eid) for eid in list_encounter_ids() if load_encounter(eid)]
 
+def encounter_route_matches(encounter_route, squad_route):
+    """route=test 的 encounter 對所有已選路線可見"""
+    if not encounter_route or encounter_route == "test":
+        return True
+    if not squad_route:
+        return False
+    return encounter_route == squad_route
+
 def get_team_members(team_id):
     if not team_id:
         return []
@@ -732,12 +740,21 @@ def _end_combat(combat_id, winner, encounter):
         ended_at=datetime.now().isoformat(),
         logs=combat.get("logs"),
     )
+    starter_id = combat.get("squad_id")
     if team_id:
         clear_team_combat_id(team_id)
-    if winner == "squad" and team_id and encounter:
-        apply_encounter_success(team_id, encounter, combat.get("squad_id"))
-    elif winner == "enemy" and team_id and encounter:
-        apply_encounter_failure(team_id, encounter)
+    elif starter_id:
+        update_squad(starter_id, current_combat_id=None)
+    if winner == "squad" and encounter:
+        if team_id:
+            apply_encounter_success(team_id, encounter, starter_id)
+        elif starter_id:
+            apply_encounter_success_solo(starter_id, encounter)
+    elif winner == "enemy" and encounter:
+        if team_id:
+            apply_encounter_failure(team_id, encounter)
+        elif starter_id:
+            apply_encounter_failure_solo(starter_id, encounter)
     return get_combat(combat_id)
 
 def apply_trauma_on_failure(squad_id, stat, amount):
@@ -789,6 +806,28 @@ def apply_encounter_failure(team_id, encounter):
         "failure",
         narrative=failure.get("narrative"),
     )
+
+def apply_encounter_success_solo(squad_id, encounter):
+    success = encounter.get("success", {})
+    squad = get_squad(squad_id)
+    if squad:
+        fragments = int(squad.get("insight_fragments") or 0) + int(success.get("insight_fragment", 0))
+        update_squad(squad_id, insight_fragments=fragments)
+    for reward in success.get("rewards", []):
+        if reward.get("type") == "item" and random.random() <= float(reward.get("chance", 1)):
+            item = get_item_by_qr_code_value(reward.get("item_id"))
+            if item:
+                grant_item_to_squad(squad_id, item["id"], source="encounter")
+
+def apply_encounter_failure_solo(squad_id, encounter):
+    failure = encounter.get("failure", {})
+    trauma = failure.get("trauma", {})
+    stat = trauma.get("stat", "resilience")
+    amount = int(trauma.get("amount", 0))
+    if amount:
+        apply_trauma_on_failure(squad_id, stat, amount)
+    if failure.get("debuff"):
+        apply_status_debuff(squad_id, failure["debuff"])
 
 def apply_precheck_skip(team_id, encounter):
     skip = encounter.get("precheck", {}).get("skip_reward", {})
@@ -2341,7 +2380,7 @@ def list_encounters_api():
 
     encounters = []
     for enc in load_all_encounters():
-        if enc.get("route") and route and enc["route"] != route:
+        if not encounter_route_matches(enc.get("route"), route):
             continue
         if enc.get("story_stage", 0) > stage:
             continue
@@ -2470,7 +2509,7 @@ def combat_start_api(encounter_id=None):
             return jsonify({"success": False, "error": "已有進行中的戰鬥", "combat_id": existing["id"]}), 400
 
     route = squad.get("route")
-    if encounter.get("route") and route and encounter["route"] != route:
+    if not encounter_route_matches(encounter.get("route"), route):
         return jsonify({"success": False, "error": "此 Encounter 不屬於你嘅路線"}), 400
 
     precheck = encounter.get("precheck", {})
