@@ -4522,6 +4522,14 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oikonomia • 原型</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      const originalWarn = console.warn;
+      console.warn = function(...args) {
+        const msg = args.join(' ');
+        if (msg.includes('tailwindcss.com should not be used in production')) return;
+        originalWarn.apply(console, args);
+      };
+    </script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
@@ -7753,75 +7761,52 @@ HTML_TEMPLATE = """
             return null;
         }
 
-        async function resumeActiveCombatAfterRestore(squad) {
-            if (!squad?.current_combat_id) return;
-            currentCombatId = squad.current_combat_id;
-            showSection('combat');
-            await showCombatScreen();
-            await loadCombatStatus(true);
+        async function finishSessionRestore(data) {
+            const loading = document.getElementById('session-loading');
+            persistRestoreToken(data);
+            if (loading) setVisible(loading, false);
+            await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
+            if (data.current_combat_id) {
+                setTimeout(() => {
+                    if (typeof loadCombatPage === 'function') {
+                        loadCombatPage(data.current_combat_id);
+                    }
+                }, 400);
+            }
+            return true;
         }
 
-        async function restoreSession() {
+        async function fallbackToNormalSession() {
             const loading = document.getElementById('session-loading');
             const loginScreen = document.getElementById('login-screen');
             const stored = loadLocalSession();
-            const token = stored?.restore_token || localStorage.getItem('oikonomia_restore_token');
 
-            const finishRestore = async (data) => {
-                persistRestoreToken(data);
-                if (loading) setVisible(loading, false);
-                await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
-                if (data.current_combat_id) {
-                    setTimeout(() => loadCombatPage(data.current_combat_id), 300);
-                }
-            };
-
-            // 1. restore_token（手機 reload / Cookie 遺失）
-            if (token) {
-                try {
-                    const res = await fetch('/session/restore', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ restore_token: token }),
-                    });
-                    const data = await res.json();
-                    if (data.success && data.squad_id) {
-                        const fresh = await refreshSquadFromServer() || data;
-                        await finishRestore(fresh);
-                        return;
-                    }
-                } catch (e) {
-                    console.error('Restore with token failed', e);
-                }
-            }
-
-            // 2. Cookie session（含冷啟動重試）
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const squad = await refreshSquadFromServer();
-                    if (squad) {
-                        persistRestoreToken(squad);
-                        await finishRestore(squad);
-                        return;
+                    const res = await fetch('/status', { credentials: 'same-origin' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data?.squad_id && data.success !== false && !data.error) {
+                            const fresh = await refreshSquadFromServer() || data;
+                            persistRestoreToken(fresh);
+                            return await finishSessionRestore(fresh);
+                        }
                     }
                 } catch (e) {
-                    console.log('session restore attempt failed', attempt + 1);
+                    console.log('fallbackToNormalSession attempt failed', attempt + 1);
                 }
                 if (attempt < 2) {
                     await new Promise(r => setTimeout(r, 800));
                 }
             }
 
-            // 3. 靜默 squad_id 登入（無 PIN 帳號）
             if (stored?.squad_id && !stored?.has_pin) {
                 try {
                     const relogin = await tryLoginWithStoredSquad(stored);
                     if (relogin) {
                         const fresh = await refreshSquadFromServer() || relogin;
                         persistRestoreToken(fresh);
-                        await finishRestore(fresh);
-                        return;
+                        return await finishSessionRestore(fresh);
                     }
                 } catch (e) {
                     console.warn('silent squad relogin failed', e);
@@ -7841,6 +7826,37 @@ HTML_TEMPLATE = """
                     setVisible(hint, true);
                 }
             }
+            return false;
+        }
+
+        async function restoreSession() {
+            const token = loadLocalSession()?.restore_token
+                || localStorage.getItem('oikonomia_restore_token');
+
+            if (!token) {
+                await fallbackToNormalSession();
+                return;
+            }
+
+            try {
+                const res = await fetch('/session/restore', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ restore_token: token }),
+                });
+                const data = await res.json();
+
+                if (data.success && data.squad_id) {
+                    const fresh = await refreshSquadFromServer() || data;
+                    await finishSessionRestore(fresh);
+                    return;
+                }
+            } catch (e) {
+                console.error('restoreSession with token failed', e);
+            }
+
+            await fallbackToNormalSession();
         }
 
         async function completeLogin(data) {
@@ -7880,11 +7896,13 @@ HTML_TEMPLATE = """
                     if (result.success) {
                         persistRestoreToken(result);
                         alert('PIN 設定成功！請記住。');
-                        const fresh = await refreshSquadFromServer();
-                        if (fresh) {
-                            currentSquad = fresh;
-                            saveLocalSession(fresh);
-                            updateDashboard(fresh);
+                        const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                        const statusData = await statusRes.json();
+                        persistRestoreToken(statusData);
+                        if (statusData?.squad_id && statusData.success !== false) {
+                            currentSquad = statusData;
+                            saveLocalSession(statusData);
+                            updateDashboard(statusData);
                         } else {
                             currentSquad.has_pin = true;
                             saveLocalSession({ ...currentSquad, restore_token: result.restore_token });
@@ -8942,6 +8960,14 @@ CLAIM_ITEM_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>獲得物品 • Oikonomia</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      const originalWarn = console.warn;
+      console.warn = function(...args) {
+        const msg = args.join(' ');
+        if (msg.includes('tailwindcss.com should not be used in production')) return;
+        originalWarn.apply(console, args);
+      };
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-6">
@@ -9036,6 +9062,14 @@ GM_LOGIN_HTML = """
     <meta charset="UTF-8">
     <title>GM Login • Oikonomia</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      const originalWarn = console.warn;
+      console.warn = function(...args) {
+        const msg = args.join(' ');
+        if (msg.includes('tailwindcss.com should not be used in production')) return;
+        originalWarn.apply(console, args);
+      };
+    </script>
 </head>
 <body class="bg-zinc-950 text-white flex items-center justify-center min-h-screen">
     <div class="w-full max-w-sm">
@@ -9084,6 +9118,14 @@ GM_DASHBOARD_HTML = """
     <meta charset="UTF-8">
     <title>GM Dashboard • Oikonomia</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      const originalWarn = console.warn;
+      console.warn = function(...args) {
+        const msg = args.join(' ');
+        if (msg.includes('tailwindcss.com should not be used in production')) return;
+        originalWarn.apply(console, args);
+      };
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         .hidden { display: none !important; }
@@ -10318,6 +10360,14 @@ GM_SQUAD_DETAIL_HTML = """
     <meta charset="UTF-8">
     <title>{{ squad.display_name or squad.squad_id }} 詳情 • GM</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      const originalWarn = console.warn;
+      console.warn = function(...args) {
+        const msg = args.join(' ');
+        if (msg.includes('tailwindcss.com should not be used in production')) return;
+        originalWarn.apply(console, args);
+      };
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body class="bg-zinc-950 text-white p-8">
