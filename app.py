@@ -5148,6 +5148,8 @@ HTML_TEMPLATE = """
         let selectedDice = null;
         let actionModalRolling = false;
         let actionModalRollTimer = null;
+        let actionModalPauseTimer = null;
+        const DICE_RESULT_PAUSE_MS = 1350;
         let combatItemsLoaded = false;
         let lastDicePhase = 0;
         let lastCombatLogCount = 0;
@@ -5339,6 +5341,10 @@ HTML_TEMPLATE = """
                 clearInterval(actionModalRollTimer);
                 actionModalRollTimer = null;
             }
+            if (actionModalPauseTimer) {
+                clearTimeout(actionModalPauseTimer);
+                actionModalPauseTimer = null;
+            }
         }
 
         function setCombatModalControlsLocked(locked) {
@@ -5424,7 +5430,7 @@ HTML_TEMPLATE = """
             document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
 
             let rollCount = 0;
-            const maxRolls = 22;
+            const maxRolls = 14;
             clearActionModalRollTimer();
             actionModalRollTimer = setInterval(() => {
                 diceValue.textContent = String(Math.floor(Math.random() * 4));
@@ -5432,17 +5438,24 @@ HTML_TEMPLATE = """
                 rollCount += 1;
                 if (rollCount < maxRolls) return;
 
-                clearActionModalRollTimer();
+                clearInterval(actionModalRollTimer);
+                actionModalRollTimer = null;
+
                 const result = Math.floor(Math.random() * 4);
                 selectedDice = result;
                 diceValue.textContent = String(result);
                 diceBox.style.transform = 'scale(1)';
                 diceBox.classList.remove('animate-pulse');
+                diceBox.classList.remove('dice-crit');
                 if (result === 3) diceBox.classList.add('dice-crit');
 
                 const diceNumber = document.getElementById('modal-dice-number');
                 if (diceNumber) diceNumber.textContent = String(result);
                 document.getElementById('modal-dice-final')?.classList.remove('hidden');
+
+                const diceLabels = ['失手', '普通', '良好', '爆擊'];
+                document.getElementById('modal-status-hint').textContent =
+                    `擲出 ${result}（${diceLabels[result] || ''}）`;
 
                 actionModalRolling = false;
                 setCombatModalControlsLocked(false);
@@ -5450,8 +5463,13 @@ HTML_TEMPLATE = """
                     const canAct = lastCombatStatus?.status === 'player_phase' && !lastCombatStatus?.my_state?.submitted;
                     el.disabled = !canAct;
                 });
-                fetchAndShowCombatPreview();
-            }, 95);
+
+                const pauseMs = result === 3 ? 1600 : DICE_RESULT_PAUSE_MS;
+                actionModalPauseTimer = setTimeout(() => {
+                    actionModalPauseTimer = null;
+                    fetchAndShowCombatPreview();
+                }, pauseMs);
+            }, 75);
         }
 
         function zooBonusMultiplier(sanity) {
