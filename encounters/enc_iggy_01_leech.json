@@ -1,0 +1,71 @@
+{
+  "encounter_id": "enc_iggy_01_leech",
+  "title": "巨嬰之影：情緒勒索",
+  "route": "iggy",
+  "story_stage": 1,
+  "trigger_type": "story",
+  "location_hint": "營地邊緣安靜位置（痛楚回音區域）",
+  "description": "你進入 Iggy 的第一段記憶。一個曾經被他不斷「醫治」嘅 Oikos 成員，此刻正用強烈嘅罪疚感同情緒勒索，將自己嘅痛苦強行推畀你。舊日嘅模式再次出現：你越係想幫手，佢就越係覺得「你應該為佢做更多」。",
+
+  "precheck": {
+    "condition": "average_intellect >= 50 OR has_item '裂縫碎片'",
+    "success_text": "你們一眼看穿這是情緒勒索的扭曲模式，成功以理服人，避開正面衝突。",
+    "skip_reward": {
+      "insight_fragment": 1,
+      "narrative": "雖然避開戰鬥，但你們仍然從這段記憶中取得重要洞見。"
+    }
+  },
+
+  "enemy": {
+    "name": "情緒寄生影",
+    "hp": 110,
+    "resilience": 22,
+    "sanity": 38,
+    "base_damage": 17,
+    "description": "一個扭曲嘅人形影子，身上長滿黑色吸盤，正不斷試圖將他人嘅情緒同責任吸進自己體內。它代表 Iggy 過去最深嘅模式——用『愛』嘅名義，剝奪別人承擔自己後果嘅權利。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 1,
+    "rewards": [
+      {
+        "type": "item",
+        "item_id": "item-001",
+        "chance": 0.6
+      }
+    ],
+    "narrative": "情緒寄生影在你們堅定的界線面前崩解。Iggy 的第一段記憶碎片緩緩浮現——他終於意識到，自己過去以為的『無私付出』，其實正在製造更多依賴同痛苦。",
+    "next_story_unlock": "iggy_memory_02"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 8
+    },
+    "narrative": "你們未能守住界線，情緒寄生影成功將大量毒性情緒注入你們體內。Iggy 的舊傷再次裂開……",
+    "debuff": "resilience_-8_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "界線反思",
+    "questions": [
+      "在這場對峙中，你傾向用什麼方式面對情緒勒索？是吸收、逃避，還是劃清界線？",
+      "這是否反映你現實生活中，當別人用『你如果愛我，就應該……』時，你通常會點做？",
+      "Iggy 過去以為『為他人承擔一切』是愛，但結果製造了更多巨嬰。這給你什麼提醒？"
+    ],
+    "theological_tie": "《界線》核心：我們不能代替別人承擔他們必須自己面對的後果。真正的愛，尊重對方承擔責任的權利（Law of Responsibility）。"
+  },
+
+  "notes_for_gm": {
+    "theological_focus": "People-pleasing 與情緒勒索的代價",
+    "debrief_tips": "引導青年討論：『我曾經有冇為咗維持『和平』而吞落本來唔係自己嘅情緒？』",
+    "physical_integration": "可要求玩家在戰鬥前後影一張『界線』相關嘅相（例如寫低一條界線、或象徵性拉開距離）"
+  }
+}

@@ -47,3 +47,14 @@ bash ~/oikonomia/deploy/pa-update.sh
 ```
 
 然後到 **Web** tab 按 **Reload**。
+
+驗證部署：
+
+```bash
+curl https://takjai.pythonanywhere.com/api/version
+# markers.combat_system 應為 true（戰鬥系統已上線）
+```
+
+## AI Agent 交接
+
+新 tab 繼續開發請先讀 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**（專案狀態、Combat 系統、待辦、Deploy 流程）。

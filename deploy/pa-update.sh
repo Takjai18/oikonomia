@@ -31,10 +31,12 @@ echo ""
 echo "--- Before update ---"
 echo "Path: $(pwd)"
 echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-if grep -q "showOnlyProtagonistCard" app.py 2>/dev/null; then
-    echo "Code marker: NEW (showOnlyProtagonistCard found)"
+if grep -q "def resolve_player_phase" app.py 2>/dev/null; then
+    echo "Code marker: COMBAT (resolve_player_phase found)"
+elif grep -q "showOnlyProtagonistCard" app.py 2>/dev/null; then
+    echo "Code marker: PARTIAL (no combat, has showOnlyProtagonistCard)"
 else
-    echo "Code marker: OLD (showOnlyProtagonistCard missing)"
+    echo "Code marker: OLD"
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then

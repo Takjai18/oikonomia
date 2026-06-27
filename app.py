@@ -108,12 +108,762 @@ SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
 MAX_INVENTORY_SLOTS = 5
 
 SAMPLE_ITEMS = [
-    ("裂縫碎片", "來自界線的微小碎片，似乎還有溫度。", "🧩", "story", "item-001"),
-    ("Judas 的信箋", "上面有模糊的字跡，閱讀時 Sanity 會微微波動。", "📜", "story", "item-002"),
-    ("守護者徽章", "掃描營地 QR 後獲得的證物。", "🛡️", "qr", "item-003"),
-    ("記憶之瓶", "裝住一段未完成的對話。", "🫙", "qr", "item-004"),
-    ("界線之鑰", "據說可以打開某扇隱藏的門。", "🗝️", "special", "item-005"),
+    {
+        "name": "裂縫碎片",
+        "description": "來自界線的微小碎片，似乎還有溫度。",
+        "icon": "🧩",
+        "item_type": "story",
+        "qr_code_value": "item-001",
+        "has_ability": 0,
+        "effect_type": None,
+        "effect_value": 0,
+        "image_path": "/static/images/items/item-001.svg",
+    },
+    {
+        "name": "Judas 的信箋",
+        "description": "上面有模糊的字跡，閱讀時 Sanity 會微微波動。",
+        "icon": "📜",
+        "item_type": "story",
+        "qr_code_value": "item-002",
+        "has_ability": 1,
+        "effect_type": "sanity_up",
+        "effect_value": -5,
+        "image_path": "/static/images/items/item-002.svg",
+    },
+    {
+        "name": "守護者徽章",
+        "description": "掃描營地 QR 後獲得的證物，能強化你的 Resilience。",
+        "icon": "🛡️",
+        "item_type": "qr",
+        "qr_code_value": "item-003",
+        "has_ability": 1,
+        "effect_type": "resilience_up",
+        "effect_value": 8,
+        "image_path": "/static/images/items/item-003.svg",
+    },
+    {
+        "name": "記憶之瓶",
+        "description": "裝住一段未完成的對話，觸碰時 Sanity 會回復。",
+        "icon": "🫙",
+        "item_type": "qr",
+        "qr_code_value": "item-004",
+        "has_ability": 1,
+        "effect_type": "sanity_up",
+        "effect_value": 5,
+        "image_path": "/static/images/items/item-004.svg",
+    },
+    {
+        "name": "界線之鑰",
+        "description": "據說可以打開某扇隱藏的門，蘊含強大 Power。",
+        "icon": "🗝️",
+        "item_type": "special",
+        "qr_code_value": "item-005",
+        "has_ability": 1,
+        "effect_type": "power_up",
+        "effect_value": 10,
+        "image_path": "/static/images/items/item-005.svg",
+    },
 ]
+
+ITEM_EFFECT_STAT_MAP = {
+    "power_up": "power",
+    "sanity_up": "sanity",
+    "resilience_up": "resilience",
+    "hp_up": "hp",
+    "intellect_up": "intellect",
+}
+
+ITEM_EFFECT_LABELS = {
+    "power_up": "力量",
+    "sanity_up": "神智",
+    "resilience_up": "韌性",
+    "hp_up": "生命值",
+    "intellect_up": "智力",
+}
+
+# ==================== Encounter / Combat ====================
+ENCOUNTERS_DIR = os.path.join(PROJECT_DIR, "encounters")
+NEAR_DEATH_MINUTES = 15
+COMBAT_ACTION_TYPES = (
+    "attack_physical", "attack_nonphysical", "defend", "use_item", "use_zoo", "pass",
+)
+DICE_MULTIPLIERS = {0: 0.0, 1: 1.0, 2: 1.5, 3: 2.0}
+_encounter_cache = {}
+
+def load_encounter(encounter_id):
+    if encounter_id in _encounter_cache:
+        return _encounter_cache[encounter_id]
+    path = os.path.join(ENCOUNTERS_DIR, f"{encounter_id}.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    _encounter_cache[encounter_id] = data
+    return data
+
+def list_encounter_ids():
+    if not os.path.isdir(ENCOUNTERS_DIR):
+        return []
+    return sorted(
+        name[:-5] for name in os.listdir(ENCOUNTERS_DIR)
+        if name.endswith(".json")
+    )
+
+def load_all_encounters():
+    return [load_encounter(eid) for eid in list_encounter_ids() if load_encounter(eid)]
+
+def get_team_members(team_id):
+    if not team_id:
+        return []
+    clean_team_id = normalize_team_id(team_id)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+        (clean_team_id,),
+    ).fetchall()
+    conn.close()
+    return [row_to_squad(r) for r in rows]
+
+def get_team_average_stat(team_id, stat):
+    members = get_team_members(team_id)
+    if not members:
+        return 0
+    values = [int(m.get(stat) or 0) for m in members]
+    return sum(values) / len(values)
+
+def team_has_item_by_name(team_id, item_name):
+    if not team_id or not item_name:
+        return False
+    clean_team_id = normalize_team_id(team_id)
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute("""
+        SELECT COUNT(*) FROM player_items pi
+        JOIN squads s ON pi.squad_id = s.squad_id
+        JOIN items i ON pi.item_id = i.id
+        WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND i.name = ?
+    """, (clean_team_id, item_name)).fetchone()
+    conn.close()
+    return row[0] > 0
+
+def evaluate_precheck_condition(condition, team_id):
+    if not condition:
+        return False
+    cond = condition.strip()
+    parts = re.split(r"\s+OR\s+", cond, flags=re.I)
+    return any(_evaluate_precheck_clause(p.strip(), team_id) for p in parts if p.strip())
+
+def _evaluate_precheck_clause(clause, team_id):
+    item_match = re.match(r"has_item\s+'([^']+)'", clause, re.I)
+    if item_match:
+        return team_has_item_by_name(team_id, item_match.group(1))
+    stat_match = re.match(r"average_(\w+)\s*>=\s*(\d+)", clause, re.I)
+    if stat_match:
+        stat = stat_match.group(1).lower()
+        threshold = int(stat_match.group(2))
+        if stat not in SQUAD_ATTRIBUTES:
+            return False
+        return get_team_average_stat(team_id, stat) >= threshold
+    return False
+
+def parse_status_effects(raw):
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+def serialize_status_effects(effects):
+    return json.dumps(effects or {}, ensure_ascii=False)
+
+def apply_status_debuff(squad_id, debuff_key):
+    squad = get_squad(squad_id)
+    if not squad:
+        return
+    effects = parse_status_effects(squad.get("status_effects"))
+    effects[debuff_key] = {"applied_at": datetime.now().isoformat()}
+    update_squad(squad_id, status_effects=serialize_status_effects(effects))
+    if debuff_key == "resilience_-8_until_healed":
+        apply_trauma_on_failure(squad_id, "resilience", 8)
+
+def add_insight_fragments(team_id, amount):
+    if not team_id or amount <= 0:
+        return
+    for member in get_team_members(team_id):
+        squad = get_squad(member["squad_id"])
+        if squad:
+            update_squad(
+                member["squad_id"],
+                insight_fragments=int(squad.get("insight_fragments") or 0) + amount,
+            )
+
+def encounter_already_completed(team_id, encounter_id):
+    if not team_id:
+        return False
+    clean_team_id = normalize_team_id(team_id)
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT id FROM encounter_completions WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?",
+        (clean_team_id, encounter_id),
+    ).fetchone()
+    conn.close()
+    return bool(row)
+
+def record_encounter_completion(team_id, encounter_id, outcome, unlocks=None, narrative=None):
+    clean_team_id = normalize_team_id(team_id)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        """INSERT OR REPLACE INTO encounter_completions
+           (team_id, encounter_id, outcome, unlocks, narrative, completed_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            clean_team_id,
+            encounter_id,
+            outcome,
+            json.dumps(unlocks or [], ensure_ascii=False),
+            narrative,
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+def row_to_combat(row):
+    data = dict(row)
+    for field in ("phase_actions", "logs"):
+        try:
+            data[field] = json.loads(data.get(field) or ({} if field == "phase_actions" else []))
+        except (json.JSONDecodeError, TypeError):
+            data[field] = {} if field == "phase_actions" else []
+    return data
+
+def get_combat(combat_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM combats WHERE id = ?", (combat_id,)).fetchone()
+    conn.close()
+    return row_to_combat(row) if row else None
+
+def get_combat_by_squad(squad_id):
+    squad = get_squad(squad_id)
+    if not squad:
+        return None
+    combat_id = squad.get("current_combat_id")
+    if combat_id:
+        combat = get_combat(combat_id)
+        if combat and combat.get("status") not in ("ended",):
+            return combat
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """SELECT * FROM combats
+           WHERE squad_id = ? AND status NOT IN ('ended')
+           ORDER BY started_at DESC LIMIT 1""",
+        (squad_id,),
+    ).fetchone()
+    conn.close()
+    return row_to_combat(row) if row else None
+
+def get_active_combat_for_team(team_id):
+    if not team_id:
+        return None
+    for member in get_team_members(team_id):
+        combat = get_combat_by_squad(member["squad_id"])
+        if combat:
+            return combat
+    return None
+
+def save_combat(combat_id, **fields):
+    allowed = {
+        "status", "current_phase", "enemy_hp", "phase_actions", "logs",
+        "phase_started_at", "phase_deadline", "ended_at", "winner",
+    }
+    updates, params = [], []
+    for key, val in fields.items():
+        if key not in allowed:
+            continue
+        if key in ("phase_actions", "logs"):
+            val = json.dumps(val, ensure_ascii=False)
+        updates.append(f"{key} = ?")
+        params.append(val)
+    if not updates:
+        return
+    params.append(combat_id)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(f"UPDATE combats SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+
+def set_team_combat_id(team_id, combat_id):
+    for member in get_team_members(team_id):
+        update_squad(member["squad_id"], current_combat_id=combat_id)
+
+def clear_team_combat_id(team_id):
+    for member in get_team_members(team_id):
+        update_squad(member["squad_id"], current_combat_id=None)
+
+def get_effective_stat(squad, stat):
+    base = int(squad.get(stat) or 0)
+    trauma_key = {
+        "power": "trauma_power",
+        "intellect": "trauma_intellect",
+        "resilience": "trauma_resilience",
+    }.get(stat)
+    trauma = int(squad.get(trauma_key) or 0) if trauma_key else 0
+    return max(0, base - trauma)
+
+def calculate_damage(attacker_stat, multiplier, enemy_armor, item_bonus=0):
+    base = (attacker_stat * 2.0) + item_bonus
+    damage = math.floor(base * multiplier) - enemy_armor
+    return max(0, damage)
+
+def calculate_incoming_damage(enemy_base_damage, player_resilience, defending=False):
+    reduction = math.floor(player_resilience * 0.6)
+    damage = max(0, enemy_base_damage - reduction)
+    if defending:
+        damage = max(0, math.floor(damage * 0.5))
+    return damage
+
+def dice_multiplier(dice_result):
+    try:
+        dice = int(dice_result)
+    except (TypeError, ValueError):
+        dice = 2
+    return DICE_MULTIPLIERS.get(max(0, min(3, dice)), 1.0)
+
+def zoo_bonus_multiplier(sanity):
+    sanity = int(sanity or 0)
+    if sanity >= 100:
+        return 1.8
+    if sanity >= 90:
+        return 1.5
+    if sanity >= 80:
+        return 1.4
+    if sanity >= 70:
+        return 1.3
+    return 1.0
+
+def berserk_probability(sanity):
+    sanity = int(sanity or 0)
+    if sanity < 10:
+        return 0.90
+    if sanity < 20:
+        return 0.50
+    if sanity < 40:
+        return 0.20
+    return 0.0
+
+def is_berserk(sanity):
+    sanity = int(sanity if isinstance(sanity, (int, float)) else (sanity or {}).get("sanity", 50))
+    prob = berserk_probability(sanity)
+    return prob > 0 and random.random() < prob
+
+def combat_phase_deadline(phase_started_at, limit_seconds):
+    started = datetime.fromisoformat(phase_started_at)
+    return (started + timedelta(seconds=limit_seconds)).isoformat()
+
+def combat_phase_expired(combat, settings):
+    deadline = combat.get("phase_deadline")
+    if not deadline:
+        return False
+    return datetime.now() >= datetime.fromisoformat(deadline)
+
+def get_combat_participants(combat):
+    squad = get_squad(combat["squad_id"])
+    if squad and squad.get("team_id"):
+        return get_team_members(squad["team_id"])
+    s = get_squad(combat["squad_id"])
+    return [s] if s else []
+
+def all_phase_actions_submitted(combat, participants):
+    actions = combat.get("phase_actions") or {}
+    active = []
+    for p in participants:
+        sid = p["squad_id"]
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() >= datetime.fromisoformat(p["near_death_until"]):
+                    continue
+            except ValueError:
+                pass
+        active.append(sid)
+    if not active:
+        return True
+    return all(sid in actions for sid in active)
+
+def append_combat_log(combat, message, log_type="event"):
+    logs = list(combat.get("logs") or [])
+    now = datetime.now().isoformat()
+    logs.append({
+        "type": log_type,
+        "message": message,
+        "timestamp": now,
+        "at": now,
+    })
+    combat["logs"] = logs[-50:]
+    return combat
+
+def apply_damage_to_player(squad_id, damage):
+    squad = get_squad(squad_id)
+    if not squad:
+        return
+    new_hp = max(0, int(squad.get("hp") or 0) - damage)
+    updates = {"hp": new_hp}
+    if new_hp <= 0:
+        updates["near_death_until"] = (
+            datetime.now() + timedelta(minutes=NEAR_DEATH_MINUTES)
+        ).isoformat()
+    update_squad(squad_id, **updates)
+
+def get_lowest_resilience_player(participants):
+    best = None
+    best_res = 999
+    for p in participants:
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
+                    continue
+            except ValueError:
+                pass
+        eff = get_effective_stat(p, "resilience")
+        if eff < best_res:
+            best_res = eff
+            best = p
+    return best or (participants[0] if participants else None)
+
+def resolve_player_phase(combat_id):
+    """
+    完整解析 Player Phase：
+    - Physical / Non-Physical 傷害 + dice multiplier
+    - Zoo 加成（70/80/90/100 → 1.3x–1.8x）
+    - 暴走（指定機率 + 30% 自傷）
+    - 敵人反擊（韌性最低者，Defend 減傷 50%）
+    - 瀕死檢查、日誌、Phase 狀態更新
+    回傳 (combat, winner)；winner 為 'squad' | 'enemy' | None
+    """
+    combat = get_combat(combat_id)
+    if not combat or combat.get("status") != "player_phase":
+        return combat, None
+
+    encounter = load_encounter(combat["encounter_id"])
+    settings = (encounter or {}).get("combat_settings", {})
+    participants = get_combat_participants(combat)
+    actions = combat.get("phase_actions") or {}
+
+    enemy_hp = int(combat.get("enemy_hp") or 0)
+    enemy_resilience = int(combat.get("enemy_resilience") or 0)
+    enemy_sanity = int(combat.get("enemy_sanity") or 0)
+    enemy_base_damage = int(combat.get("enemy_base_damage") or 0)
+    enemy_name = combat.get("enemy_name") or "敵人"
+
+    total_damage_to_enemy = 0
+    berserk_players = []
+
+    for player_squad_id, action_data in actions.items():
+        player = get_squad(player_squad_id)
+        if not player:
+            continue
+        display = player.get("display_name") or player_squad_id
+        sanity = int(player.get("sanity") or 0)
+
+        if is_berserk(sanity):
+            berserk_players.append(player_squad_id)
+            if random.random() < 0.30:
+                power = get_effective_stat(player, "power")
+                self_dmg = calculate_damage(power, 0.3, 0)
+                apply_damage_to_player(player_squad_id, self_dmg)
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
+                    log_type="berserk",
+                )
+            else:
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 神智不清，行動失控",
+                    log_type="berserk",
+                )
+            continue
+
+        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
+        dice = action_data.get("dice_result", action_data.get("dice", 1))
+        multiplier = dice_multiplier(dice)
+        item_bonus = int(action_data.get("item_bonus") or 0)
+
+        if not item_bonus and action_type == "use_item" and action_data.get("item_id"):
+            item = get_item_by_id(int(action_data["item_id"]))
+            if item and item.get("effect_type") == "power_up":
+                item_bonus = abs(int(item.get("effect_value") or 0))
+
+        if action_type == "use_zoo":
+            zoo_mult = zoo_bonus_multiplier(sanity)
+            multiplier *= zoo_mult
+            if zoo_mult > 1.0:
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 發動 Zoo 能力（×{zoo_mult}）",
+                    log_type="zoo",
+                )
+
+        if action_type in ("attack_physical", "use_zoo"):
+            stat = get_effective_stat(player, "power")
+            dmg = calculate_damage(stat, multiplier, enemy_resilience, item_bonus)
+            total_damage_to_enemy += dmg
+            combat = append_combat_log(
+                combat,
+                f"{display} 對{enemy_name}造成 {dmg} 點傷害（骰 {dice}）",
+                log_type="damage",
+            )
+        elif action_type == "attack_nonphysical":
+            stat = get_effective_stat(player, "intellect")
+            dmg = calculate_damage(stat, multiplier, enemy_sanity, item_bonus)
+            total_damage_to_enemy += dmg
+            combat = append_combat_log(
+                combat,
+                f"{display} 精神攻擊造成 {dmg} 點傷害（骰 {dice}）",
+                log_type="damage",
+            )
+        elif action_type == "defend":
+            combat = append_combat_log(
+                combat,
+                f"{display} 進入防禦姿態",
+                log_type="defend",
+            )
+        elif action_type == "pass":
+            combat = append_combat_log(
+                combat,
+                f"{display} 選擇觀望",
+                log_type="pass",
+            )
+
+    new_enemy_hp = max(0, enemy_hp - total_damage_to_enemy)
+    if total_damage_to_enemy:
+        combat = append_combat_log(
+            combat,
+            f"{enemy_name} 受到共 {total_damage_to_enemy} 點傷害，剩餘 HP {new_enemy_hp}",
+            log_type="summary",
+        )
+
+    combat["enemy_hp"] = new_enemy_hp
+    combat["phase_actions"] = {}
+
+    if new_enemy_hp <= 0:
+        save_combat(combat_id, enemy_hp=new_enemy_hp, logs=combat.get("logs"), phase_actions={})
+        return _end_combat(combat_id, "squad", encounter), "squad"
+
+    save_combat(
+        combat_id,
+        enemy_hp=new_enemy_hp,
+        logs=combat.get("logs"),
+        status="enemy_phase",
+        phase_actions={},
+    )
+    combat["status"] = "enemy_phase"
+
+    target = get_lowest_resilience_player(
+        [get_squad(p["squad_id"]) or p for p in participants]
+    )
+    if target:
+        target_id = target["squad_id"]
+        defending = (actions.get(target_id) or {}).get("action_type") == "defend"
+        incoming = calculate_incoming_damage(
+            enemy_base_damage,
+            get_effective_stat(target, "resilience"),
+            defending=defending,
+        )
+        if incoming > 0:
+            apply_damage_to_player(target_id, incoming)
+            refreshed = get_squad(target_id)
+            combat = append_combat_log(
+                combat,
+                f"{enemy_name} 反擊 {target.get('display_name', target_id)}，造成 {incoming} 點傷害"
+                + ("（防禦減半）" if defending else ""),
+                log_type="enemy_attack",
+            )
+            if refreshed and refreshed.get("near_death_until"):
+                combat = append_combat_log(
+                    combat,
+                    f"{target.get('display_name', target_id)} 陷入瀕死！{NEAR_DEATH_MINUTES} 分鐘內需救援",
+                    log_type="near_death",
+                )
+
+    if _team_combat_defeated(combat):
+        save_combat(combat_id, logs=combat.get("logs"))
+        return _end_combat(combat_id, "enemy", encounter), "enemy"
+
+    now = datetime.now().isoformat()
+    limit = settings.get("phase_time_limit_seconds", 180)
+    save_combat(
+        combat_id,
+        status="player_phase",
+        current_phase=int(combat.get("current_phase") or 0) + 1,
+        logs=combat.get("logs"),
+        phase_started_at=now,
+        phase_deadline=combat_phase_deadline(now, limit),
+        phase_actions={},
+    )
+    return get_combat(combat_id), None
+
+def _team_combat_defeated(combat):
+    participants = get_combat_participants(combat)
+    alive = 0
+    for p in participants:
+        if int(p.get("hp") or 0) > 0:
+            alive += 1
+            continue
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
+                    alive += 1
+            except ValueError:
+                pass
+    return alive == 0
+
+def _end_combat(combat_id, winner, encounter):
+    combat = get_combat(combat_id)
+    squad = get_squad(combat["squad_id"])
+    team_id = squad.get("team_id") if squad else None
+    save_combat(
+        combat_id,
+        status="ended",
+        winner=winner,
+        ended_at=datetime.now().isoformat(),
+        logs=combat.get("logs"),
+    )
+    if team_id:
+        clear_team_combat_id(team_id)
+    if winner == "squad" and team_id and encounter:
+        apply_encounter_success(team_id, encounter, combat.get("squad_id"))
+    elif winner == "enemy" and team_id and encounter:
+        apply_encounter_failure(team_id, encounter)
+    return get_combat(combat_id)
+
+def apply_trauma_on_failure(squad_id, stat, amount):
+    trauma_key = {
+        "resilience": "trauma_resilience",
+        "power": "trauma_power",
+        "intellect": "trauma_intellect",
+    }.get(stat)
+    if not trauma_key:
+        return
+    squad = get_squad(squad_id)
+    if not squad:
+        return
+    new_trauma = int(squad.get(trauma_key) or 0) + amount
+    update_squad(squad_id, **{trauma_key: new_trauma})
+
+def apply_encounter_success(team_id, encounter, started_by):
+    success = encounter.get("success", {})
+    add_insight_fragments(team_id, success.get("insight_fragment", 0))
+    unlocks = []
+    if success.get("next_story_unlock"):
+        unlocks.append(success["next_story_unlock"])
+    for reward in success.get("rewards", []):
+        if reward.get("type") == "item" and random.random() <= float(reward.get("chance", 1)):
+            item = get_item_by_qr_code_value(reward.get("item_id"))
+            if item and started_by:
+                grant_item_to_squad(started_by, item["id"], source="encounter")
+    record_encounter_completion(
+        team_id,
+        encounter["encounter_id"],
+        "success",
+        unlocks=unlocks,
+        narrative=success.get("narrative"),
+    )
+
+def apply_encounter_failure(team_id, encounter):
+    failure = encounter.get("failure", {})
+    trauma = failure.get("trauma", {})
+    stat = trauma.get("stat", "resilience")
+    amount = int(trauma.get("amount", 0))
+    for member in get_team_members(team_id):
+        if amount:
+            apply_trauma_on_failure(member["squad_id"], stat, amount)
+        if failure.get("debuff"):
+            apply_status_debuff(member["squad_id"], failure["debuff"])
+    record_encounter_completion(
+        team_id,
+        encounter["encounter_id"],
+        "failure",
+        narrative=failure.get("narrative"),
+    )
+
+def apply_precheck_skip(team_id, encounter):
+    skip = encounter.get("precheck", {}).get("skip_reward", {})
+    add_insight_fragments(team_id, skip.get("insight_fragment", 0))
+    record_encounter_completion(
+        team_id,
+        encounter["encounter_id"],
+        "skipped_precheck",
+        narrative=skip.get("narrative"),
+    )
+
+def build_combat_status_response(combat, encounter, squad_id):
+    settings = (encounter or {}).get("combat_settings", {})
+    me = get_squad(squad_id) or {}
+    participants = get_combat_participants(combat) if combat else []
+    phase_actions = (combat or {}).get("phase_actions") or {}
+    berserk_hint = berserk_probability(me.get("sanity", 50)) > 0
+
+    member_states = {}
+    for p in participants:
+        sid = p["squad_id"]
+        submitted = phase_actions.get(sid)
+        member_states[sid] = {
+            "display_name": p.get("display_name") or sid,
+            "hp": p.get("hp"),
+            "sanity": p.get("sanity"),
+            "resilience": get_effective_stat(p, "resilience"),
+            "near_death_until": p.get("near_death_until"),
+            "submitted": bool(submitted),
+            "action_type": (submitted or {}).get("action_type"),
+            "dice_result": (submitted or {}).get("dice_result"),
+        }
+
+    logs = combat.get("logs") or []
+    log_messages = [
+        entry.get("message") if isinstance(entry, dict) else str(entry)
+        for entry in logs[-20:]
+    ]
+
+    return {
+        "success": True,
+        "combat_id": combat["id"],
+        "encounter_id": combat["encounter_id"],
+        "title": (encounter or {}).get("title"),
+        "status": combat.get("status"),
+        "current_phase": combat.get("current_phase", 0),
+        "phase_started_at": combat.get("phase_started_at"),
+        "phase_deadline": combat.get("phase_deadline"),
+        "phase_expired": combat_phase_expired(combat, settings),
+        "remaining_seconds": max(
+            0,
+            int((datetime.fromisoformat(combat["phase_deadline"]) - datetime.now()).total_seconds())
+        ) if combat.get("phase_deadline") else None,
+        "enemy": {
+            "name": combat.get("enemy_name"),
+            "hp": combat.get("enemy_hp"),
+            "max_hp": combat.get("enemy_max_hp"),
+            "resilience": combat.get("enemy_resilience"),
+            "sanity": combat.get("enemy_sanity"),
+            "base_damage": combat.get("enemy_base_damage"),
+        },
+        "member_states": member_states,
+        "my_state": member_states.get(squad_id, {}),
+        "berserk_warning": berserk_hint,
+        "berserk_chance": round(berserk_probability(me.get("sanity", 50)) * 100),
+        "log": log_messages,
+        "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+        "combat_settings": settings,
+        "available_actions": list(COMBAT_ACTION_TYPES),
+        "winner": combat.get("winner"),
+        "enemy_description": (encounter or {}).get("enemy", {}).get("description"),
+        "route": (encounter or {}).get("route"),
+        "max_phases": settings.get("max_phases", 5),
+        "my_squad_id": squad_id,
+    }
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -199,6 +949,39 @@ def init_db():
         UNIQUE(squad_id, item_id)
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS encounter_completions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        team_id TEXT NOT NULL,
+        encounter_id TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        unlocks TEXT DEFAULT '[]',
+        narrative TEXT,
+        completed_at TEXT,
+        UNIQUE(team_id, encounter_id)
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS combats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        squad_id TEXT NOT NULL,
+        encounter_id TEXT NOT NULL,
+        status TEXT DEFAULT 'precheck',
+        current_phase INTEGER DEFAULT 0,
+        enemy_name TEXT,
+        enemy_hp INTEGER,
+        enemy_max_hp INTEGER,
+        enemy_resilience INTEGER,
+        enemy_sanity INTEGER,
+        enemy_base_damage INTEGER,
+        phase_actions TEXT DEFAULT '{}',
+        logs TEXT DEFAULT '[]',
+        phase_started_at TEXT,
+        phase_deadline TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        winner TEXT,
+        FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
+    )''')
+
     conn.commit()
     conn.close()
     migrate_db()
@@ -240,6 +1023,29 @@ def migrate_db():
             c.execute("ALTER TABLE squads ADD COLUMN avatar TEXT")
         except sqlite3.OperationalError:
             pass
+    if "insight_fragments" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN insight_fragments INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    if "status_effects" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN status_effects TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass
+    squad_trauma_cols = {
+        "trauma_resilience": "INTEGER DEFAULT 0",
+        "trauma_power": "INTEGER DEFAULT 0",
+        "trauma_intellect": "INTEGER DEFAULT 0",
+        "near_death_until": "TEXT",
+        "current_combat_id": "INTEGER",
+    }
+    for col, typedef in squad_trauma_cols.items():
+        if col not in cols:
+            try:
+                c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
@@ -323,6 +1129,10 @@ def migrate_db():
         "qr_code_value": "TEXT",
         "is_active": "INTEGER DEFAULT 1",
         "is_one_time_use": "INTEGER DEFAULT 1",
+        "effect_type": "TEXT",
+        "effect_value": "INTEGER DEFAULT 0",
+        "has_ability": "INTEGER DEFAULT 0",
+        "image_path": "TEXT",
     }
     for col, typedef in item_additions.items():
         if col not in item_cols:
@@ -380,17 +1190,84 @@ def migrate_db():
             UNIQUE(squad_id, item_id)
         )''')
 
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='encounter_completions'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE encounter_completions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id TEXT NOT NULL,
+            encounter_id TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            unlocks TEXT DEFAULT '[]',
+            narrative TEXT,
+            completed_at TEXT,
+            UNIQUE(team_id, encounter_id)
+        )''')
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='combats'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE combats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            squad_id TEXT NOT NULL,
+            encounter_id TEXT NOT NULL,
+            status TEXT DEFAULT 'precheck',
+            current_phase INTEGER DEFAULT 0,
+            enemy_name TEXT,
+            enemy_hp INTEGER,
+            enemy_max_hp INTEGER,
+            enemy_resilience INTEGER,
+            enemy_sanity INTEGER,
+            enemy_base_damage INTEGER,
+            phase_actions TEXT DEFAULT '{}',
+            logs TEXT DEFAULT '[]',
+            phase_started_at TEXT,
+            phase_deadline TEXT,
+            started_at TEXT,
+            ended_at TEXT,
+            winner TEXT,
+            FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
+        )''')
+
     item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
     if item_count == 0:
         now = datetime.now().isoformat()
-        for name, description, icon, item_type, qr_code_value in SAMPLE_ITEMS:
-            is_one_time = 0 if item_type == "story" else 1
+        for entry in SAMPLE_ITEMS:
+            is_one_time = 0 if entry["item_type"] == "story" else 1
             c.execute(
                 """INSERT INTO items
                    (name, description, icon, item_type, qr_code_value, is_active,
-                    is_one_time_use, created_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-                (name, description, icon, item_type, qr_code_value, is_one_time, now),
+                    is_one_time_use, has_ability, effect_type, effect_value,
+                    image_path, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
+                (
+                    entry["name"],
+                    entry["description"],
+                    entry["icon"],
+                    entry["item_type"],
+                    entry["qr_code_value"],
+                    is_one_time,
+                    entry.get("has_ability", 0),
+                    entry.get("effect_type"),
+                    entry.get("effect_value", 0),
+                    entry.get("image_path"),
+                    now,
+                ),
+            )
+    else:
+        for entry in SAMPLE_ITEMS:
+            c.execute(
+                """UPDATE items
+                   SET has_ability = ?, effect_type = ?, effect_value = ?,
+                       image_path = COALESCE(NULLIF(image_path, ''), ?),
+                       description = ?
+                   WHERE qr_code_value = ?""",
+                (
+                    entry.get("has_ability", 0),
+                    entry.get("effect_type"),
+                    entry.get("effect_value", 0),
+                    entry.get("image_path"),
+                    entry["description"],
+                    entry["qr_code_value"],
+                ),
             )
 
     conn.commit()
@@ -536,6 +1413,84 @@ def get_item_by_qr_code_value(qr_code_value):
     conn.close()
     return dict(row) if row else None
 
+def format_item_effect_text(effect_type, effect_value):
+    if not effect_type or effect_type == "mixed":
+        return None
+    label = ITEM_EFFECT_LABELS.get(effect_type)
+    if not label:
+        return None
+    try:
+        value = int(effect_value)
+    except (TypeError, ValueError):
+        return None
+    sign = "+" if value >= 0 else ""
+    return f"{sign}{value} {label}"
+
+def serialize_item_for_client(item):
+    if not item:
+        return None
+    has_ability = bool(item.get("has_ability"))
+    effect_type = item.get("effect_type")
+    effect_value = item.get("effect_value")
+    image_path = item.get("image_path") or "/static/images/default-item.svg"
+    return {
+        "id": item["id"],
+        "name": item.get("name"),
+        "description": item.get("description"),
+        "icon": item.get("icon"),
+        "image_path": image_path,
+        "item_type": item.get("item_type"),
+        "qr_code_value": item.get("qr_code_value"),
+        "has_ability": has_ability,
+        "effect_type": effect_type,
+        "effect_value": effect_value,
+        "effect_text": format_item_effect_text(effect_type, effect_value) if has_ability else None,
+    }
+
+def apply_item_effect_to_squad(squad_id, item):
+    if not item or not item.get("has_ability") or not item.get("effect_type"):
+        return None
+
+    effect_type = item.get("effect_type")
+    if effect_type == "mixed":
+        return None
+
+    stat = ITEM_EFFECT_STAT_MAP.get(effect_type)
+    if not stat or stat not in SQUAD_ATTRIBUTES:
+        return None
+
+    try:
+        delta = int(item.get("effect_value") or 0)
+    except (TypeError, ValueError):
+        return None
+    if delta == 0:
+        return None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        f"UPDATE squads SET {stat} = MAX(0, MIN(100, {stat} + ?)) WHERE squad_id = ?",
+        (delta, squad_id),
+    )
+    row = c.execute(
+        "SELECT hp, sanity, power, intellect, resilience FROM squads WHERE squad_id = ?",
+        (squad_id,),
+    ).fetchone()
+    conn.commit()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {
+        "effect_type": effect_type,
+        "effect_value": delta,
+        "effect_text": format_item_effect_text(effect_type, delta),
+        "stat": stat,
+        "stats": dict(row),
+    }
+
 def build_item_qr_payload(item):
     if not item:
         return None
@@ -617,11 +1572,11 @@ def qr_code_already_used(item_id):
 def grant_item_to_squad(squad_id, item_id, source="story"):
     squad = get_squad(squad_id)
     if not squad:
-        return False, "找不到玩家"
+        return False, "找不到玩家", None
 
     item = get_item_by_id(item_id)
     if not item:
-        return False, "物品不存在或已停用"
+        return False, "物品不存在或已停用", None
 
     is_one_time = item.get("is_one_time_use", 1)
     enforce_qr_once = source == "qr" and is_one_time
@@ -636,14 +1591,14 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
                 (item_id,),
             ).fetchone()
             if used:
-                return False, "此 QR Code 已經被使用"
+                return False, "此 QR Code 已經被使用", None
 
         existing = c.execute(
             "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
             (squad_id, item_id),
         ).fetchone()
         if existing:
-            return False, "你已經擁有此物品"
+            return False, "你已經擁有此物品", None
 
         team_id = squad.get("team_id")
         if team_id:
@@ -654,14 +1609,14 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
                 WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
             """, (clean_team_id, item_id)).fetchone()[0]
             if team_dup > 0:
-                return False, "同一隊內已經有人擁有此物品"
+                return False, "同一隊內已經有人擁有此物品", None
 
         owned_count = c.execute(
             "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
             (squad_id,),
         ).fetchone()[0]
         if owned_count >= MAX_INVENTORY_SLOTS:
-            return False, f"你已經持有 {MAX_INVENTORY_SLOTS} 樣物品，請先丟棄"
+            return False, f"你已經持有 {MAX_INVENTORY_SLOTS} 樣物品，請先丟棄", None
 
         now = datetime.now().isoformat()
         c.execute(
@@ -683,11 +1638,12 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
         conn.commit()
     except sqlite3.IntegrityError:
         conn.rollback()
-        return False, "此 QR Code 已經被使用"
+        return False, "此 QR Code 已經被使用", None
     finally:
         conn.close()
 
-    return True, f"成功獲得物品：{item['name']}"
+    applied_effect = apply_item_effect_to_squad(squad_id, item)
+    return True, f"成功獲得物品：{item['name']}", applied_effect
 
 def hkt_timestamp():
     return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
@@ -802,6 +1758,13 @@ def row_to_squad(row):
         "is_team_leader": 1 if d.get("is_team_leader") else 0,
         "has_pin": bool(d.get("pin")),
         "avatar": d.get("avatar"),
+        "insight_fragments": d.get("insight_fragments") or 0,
+        "status_effects": parse_status_effects(d.get("status_effects")),
+        "trauma_resilience": d.get("trauma_resilience") or 0,
+        "trauma_power": d.get("trauma_power") or 0,
+        "trauma_intellect": d.get("trauma_intellect") or 0,
+        "near_death_until": d.get("near_death_until"),
+        "current_combat_id": d.get("current_combat_id"),
         "protagonist": protagonist,
     }
 
@@ -893,7 +1856,13 @@ def get_all_squads():
     return [row_to_squad(r) for r in rows]
 
 def update_squad(squad_id, **kwargs):
-    allowed = {"sanity", "hp", "power", "intellect", "resilience", "resources", "route", "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin", "avatar"}
+    allowed = {
+        "sanity", "hp", "power", "intellect", "resilience", "resources", "route",
+        "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin",
+        "avatar", "insight_fragments", "status_effects",
+        "trauma_resilience", "trauma_power", "trauma_intellect",
+        "near_death_until", "current_combat_id",
+    }
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     updates = []
@@ -1110,6 +2079,7 @@ def api_version():
         "markers": {
             "iggy_card": "iggy-card",
             "show_only_protagonist": "showOnlyProtagonistCard",
+            "combat_system": callable(globals().get("resolve_player_phase")),
         },
         "upload_folder": UPLOAD_FOLDER,
         "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,
@@ -1311,6 +2281,452 @@ def story_progress():
         "next_stage_at": next_stage_threshold(stage),
         "stage_thresholds": STORY_STAGE_THRESHOLDS,
         "story": story,
+    })
+
+@app.route("/encounters")
+def list_encounters_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+
+    team_id = squad.get("team_id")
+    route = squad.get("route")
+    completed_count, completed_task_ids = count_team_distinct_tasks(
+        session["squad_id"], team_id
+    )
+    stage = resolve_story_stage(completed_count, completed_task_ids)
+    active_session = get_active_combat_for_team(team_id) if team_id else None
+
+    encounters = []
+    for enc in load_all_encounters():
+        if enc.get("route") and route and enc["route"] != route:
+            continue
+        if enc.get("story_stage", 0) > stage:
+            continue
+        completed = encounter_already_completed(team_id, enc["encounter_id"]) if team_id else False
+        encounters.append({
+            "encounter_id": enc["encounter_id"],
+            "title": enc.get("title"),
+            "description": enc.get("description"),
+            "location_hint": enc.get("location_hint"),
+            "story_stage": enc.get("story_stage"),
+            "trigger_type": enc.get("trigger_type"),
+            "completed": completed,
+            "enemy_name": (enc.get("enemy") or {}).get("name"),
+        })
+
+    return jsonify({
+        "success": True,
+        "encounters": encounters,
+        "active_combat": bool(active_session),
+        "active_combat_id": active_session["id"] if active_session else None,
+        "active_encounter_id": active_session["encounter_id"] if active_session else None,
+    })
+
+@app.route("/encounters/<encounter_id>")
+def get_encounter_api(encounter_id):
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    encounter = load_encounter(encounter_id)
+    if not encounter:
+        return jsonify({"error": "Encounter 不存在"}), 404
+
+    squad = get_squad(session["squad_id"])
+    team_id = squad.get("team_id") if squad else None
+    return jsonify({
+        "success": True,
+        "encounter": {
+            "encounter_id": encounter["encounter_id"],
+            "title": encounter.get("title"),
+            "description": encounter.get("description"),
+            "location_hint": encounter.get("location_hint"),
+            "enemy": encounter.get("enemy"),
+            "combat_settings": encounter.get("combat_settings"),
+            "reflection_prompt": encounter.get("reflection_prompt"),
+            "completed": encounter_already_completed(team_id, encounter_id) if team_id else False,
+        },
+    })
+
+def _create_combat_record(squad_id, encounter_id, encounter, initial_status="precheck"):
+    enemy = encounter.get("enemy", {})
+    settings = encounter.get("combat_settings", {})
+    now = datetime.now().isoformat()
+    logs = [{"at": now, "message": f"遭遇戰開始：{encounter.get('title', encounter_id)}"}]
+    phase_started = now if initial_status == "player_phase" else None
+    phase_deadline = (
+        combat_phase_deadline(now, settings.get("phase_time_limit_seconds", 180))
+        if initial_status == "player_phase" else None
+    )
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """INSERT INTO combats
+           (squad_id, encounter_id, status, current_phase, enemy_name, enemy_hp, enemy_max_hp,
+            enemy_resilience, enemy_sanity, enemy_base_damage, phase_actions, logs,
+            phase_started_at, phase_deadline, started_at)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)""",
+        (
+            squad_id,
+            encounter_id,
+            initial_status,
+            enemy.get("name", "敵人"),
+            enemy.get("hp", 100),
+            enemy.get("hp", 100),
+            enemy.get("resilience", 0),
+            enemy.get("sanity", 0),
+            enemy.get("base_damage", 10),
+            json.dumps(logs, ensure_ascii=False),
+            phase_started,
+            phase_deadline,
+            now,
+        ),
+    )
+    combat_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    squad = get_squad(squad_id)
+    if squad and squad.get("team_id"):
+        set_team_combat_id(squad["team_id"], combat_id)
+    return get_combat(combat_id)
+
+@app.route("/encounters/<encounter_id>/start", methods=["POST"])
+def start_encounter_api(encounter_id):
+    """Legacy alias → POST /combat/start"""
+    return combat_start_api(encounter_id=encounter_id)
+
+@app.route("/combat/start", methods=["POST"])
+def combat_start_api(encounter_id=None):
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    body = request.json if request.is_json else {}
+    squad_id = (body.get("squad_id") or session["squad_id"]).strip()
+    encounter_id = encounter_id or body.get("encounter_id") or request.form.get("encounter_id")
+    confirm = body.get("confirm") or request.form.get("confirm")
+
+    if not encounter_id:
+        return jsonify({"success": False, "error": "缺少 encounter_id"}), 400
+
+    squad = get_squad(squad_id)
+    if not squad or not squad.get("team_id"):
+        return jsonify({"success": False, "error": "請先加入 Team 才能進行 Encounter"}), 400
+
+    encounter = load_encounter(encounter_id)
+    if not encounter:
+        return jsonify({"success": False, "error": "Encounter 不存在"}), 404
+
+    team_id = squad["team_id"]
+    if encounter_already_completed(team_id, encounter_id):
+        return jsonify({"success": False, "error": "此 Encounter 已完成"}), 400
+
+    existing = get_active_combat_for_team(team_id)
+    if existing:
+        if existing.get("status") == "precheck" and confirm in ("skip", "fight"):
+            pass
+        else:
+            return jsonify({"success": False, "error": "已有進行中的戰鬥", "combat_id": existing["id"]}), 400
+
+    route = squad.get("route")
+    if encounter.get("route") and route and encounter["route"] != route:
+        return jsonify({"success": False, "error": "此 Encounter 不屬於你嘅路線"}), 400
+
+    precheck = encounter.get("precheck", {})
+    precheck_passed = bool(
+        precheck.get("condition") and evaluate_precheck_condition(precheck["condition"], team_id)
+    )
+
+    if existing and existing.get("status") == "precheck":
+        combat = existing
+    else:
+        status = "precheck" if precheck_passed else "player_phase"
+        combat = _create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
+
+    if confirm == "skip" and precheck_passed:
+        apply_precheck_skip(team_id, encounter)
+        save_combat(combat["id"], status="ended", winner="squad", ended_at=datetime.now().isoformat())
+        clear_team_combat_id(team_id)
+        return jsonify({
+            "success": True,
+            "skipped": True,
+            "combat_id": combat["id"],
+            "message": precheck.get("success_text", "成功避開戰鬥"),
+            "narrative": precheck.get("skip_reward", {}).get("narrative"),
+        })
+
+    if confirm == "fight":
+        if combat.get("status") == "precheck":
+            now = datetime.now().isoformat()
+            settings = encounter.get("combat_settings", {})
+            save_combat(
+                combat["id"],
+                status="player_phase",
+                current_phase=1,
+                phase_started_at=now,
+                phase_deadline=combat_phase_deadline(now, settings.get("phase_time_limit_seconds", 180)),
+            )
+            combat = get_combat(combat["id"])
+
+    enemy = encounter.get("enemy", {})
+    return jsonify({
+        "success": True,
+        "combat_id": combat["id"],
+        "status": combat.get("status"),
+        "precheck_passed": precheck_passed,
+        "can_skip": precheck_passed,
+        "precheck_text": precheck.get("success_text") if precheck_passed else None,
+        "enemy": {
+            "name": enemy.get("name"),
+            "hp": enemy.get("hp"),
+            "max_hp": enemy.get("hp"),
+            "resilience": enemy.get("resilience"),
+            "sanity": enemy.get("sanity"),
+            "base_damage": enemy.get("base_damage"),
+        },
+        "encounter": {
+            "encounter_id": encounter_id,
+            "title": encounter.get("title"),
+            "description": encounter.get("description"),
+        },
+    })
+
+@app.route("/combat/status")
+def combat_status_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    combat_id = request.args.get("combat_id", type=int)
+    squad_id = request.args.get("squad_id") or session["squad_id"]
+
+    if combat_id:
+        combat = get_combat(combat_id)
+    else:
+        squad = get_squad(squad_id)
+        if squad and squad.get("team_id"):
+            combat = get_active_combat_for_team(squad["team_id"])
+        else:
+            combat = get_combat_by_squad(squad_id)
+
+    if not combat or combat.get("status") == "ended":
+        return jsonify({"success": True, "active": False})
+
+    encounter = load_encounter(combat["encounter_id"])
+    settings = (encounter or {}).get("combat_settings", {})
+
+    if combat.get("status") == "player_phase":
+        participants = get_combat_participants(combat)
+        should_resolve = (
+            all_phase_actions_submitted(combat, participants)
+            or combat_phase_expired(combat, settings)
+        )
+        if should_resolve:
+            combat, winner = resolve_player_phase(combat["id"])
+            if winner == "squad":
+                return jsonify({
+                    "success": True,
+                    "active": False,
+                    "outcome": "victory",
+                    "winner": "squad",
+                    "narrative": (encounter or {}).get("success", {}).get("narrative"),
+                    "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+                })
+            if winner == "enemy":
+                return jsonify({
+                    "success": True,
+                    "active": False,
+                    "outcome": "defeat",
+                    "winner": "enemy",
+                    "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+                })
+
+    payload = build_combat_status_response(combat, encounter, session["squad_id"])
+    payload["active"] = combat.get("status") not in ("ended", "precheck")
+    payload["in_precheck"] = combat.get("status") == "precheck"
+    return jsonify(payload)
+
+@app.route("/combat/submit_action", methods=["POST"])
+@app.route("/combat/action", methods=["POST"])
+def combat_submit_action_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    body = request.json if request.is_json else request.form.to_dict()
+    combat_id = body.get("combat_id")
+    try:
+        combat_id = int(combat_id) if combat_id else None
+    except (TypeError, ValueError):
+        combat_id = None
+
+    action_type = (body.get("action_type") or body.get("action") or "").strip()
+    if action_type not in COMBAT_ACTION_TYPES:
+        return jsonify({"success": False, "error": "無效行動"}), 400
+
+    try:
+        dice_result = int(body.get("dice_result", body.get("dice", 2)))
+    except (TypeError, ValueError):
+        dice_result = 2
+    dice_result = max(0, min(3, dice_result))
+
+    item_id = body.get("item_id")
+    squad = get_squad(session["squad_id"])
+    if not squad or not squad.get("team_id"):
+        return jsonify({"success": False, "error": "請先加入 Team"}), 400
+
+    if not combat_id:
+        active = get_active_combat_for_team(squad["team_id"])
+        combat_id = active["id"] if active else None
+    combat = get_combat(combat_id) if combat_id else None
+    if not combat or combat.get("status") != "player_phase":
+        return jsonify({"success": False, "error": "沒有進行中的 Player Phase"}), 400
+
+    if squad.get("near_death_until"):
+        try:
+            if datetime.now() < datetime.fromisoformat(squad["near_death_until"]):
+                return jsonify({"success": False, "error": "你已陷入瀕死，等待隊友救援"}), 400
+        except ValueError:
+            pass
+
+    encounter = load_encounter(combat["encounter_id"])
+    settings = (encounter or {}).get("combat_settings", {})
+    if action_type == "use_zoo" and not settings.get("allow_zoo", True):
+        return jsonify({"success": False, "error": "此戰鬥不允許 Zoo 能力"}), 400
+
+    phase_actions = dict(combat.get("phase_actions") or {})
+    if session["squad_id"] in phase_actions:
+        return jsonify({"success": False, "error": "你已提交本回合行動"}), 400
+
+    phase_actions[session["squad_id"]] = {
+        "action_type": action_type,
+        "dice_result": dice_result,
+        "item_id": item_id,
+    }
+    save_combat(combat_id, phase_actions=phase_actions)
+    combat["phase_actions"] = phase_actions
+
+    participants = get_combat_participants(combat)
+    winner = None
+    if all_phase_actions_submitted(combat, participants) or combat_phase_expired(combat, settings):
+        combat, winner = resolve_player_phase(combat_id)
+
+    if winner == "squad":
+        return jsonify({
+            "success": True,
+            "outcome": "victory",
+            "winner": "squad",
+            "narrative": (encounter or {}).get("success", {}).get("narrative"),
+            "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+        })
+    if winner == "enemy":
+        return jsonify({
+            "success": True,
+            "outcome": "defeat",
+            "winner": "enemy",
+            "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+        })
+
+    combat = get_combat(combat_id)
+    payload = build_combat_status_response(combat, encounter, session["squad_id"])
+    payload["active"] = True
+    payload["message"] = f"已提交行動：{action_type}（骰 {dice_result}）"
+    return jsonify(payload)
+
+@app.route("/combat/resolve_phase", methods=["POST"])
+def combat_resolve_phase_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    body = request.json if request.is_json else request.form
+    combat_id = body.get("combat_id")
+    if not combat_id:
+        return jsonify({"success": False, "error": "缺少 combat_id"}), 400
+
+    combat, winner = resolve_player_phase(int(combat_id))
+    encounter = load_encounter(combat["encounter_id"]) if combat else None
+
+    if winner == "squad":
+        return jsonify({
+            "success": True,
+            "outcome": "victory",
+            "narrative": (encounter or {}).get("success", {}).get("narrative"),
+            "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+        })
+    if winner == "enemy":
+        return jsonify({
+            "success": True,
+            "outcome": "defeat",
+            "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+        })
+
+    payload = build_combat_status_response(combat, encounter, session["squad_id"])
+    payload["active"] = True
+    return jsonify(payload)
+
+@app.route("/combat/rescue_near_death", methods=["POST"])
+def combat_rescue_near_death_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    body = request.json if request.is_json else request.form
+    combat_id = body.get("combat_id")
+    rescue_type = (body.get("rescue_type") or "prayer").strip()
+
+    squad = get_squad(session["squad_id"])
+    if not squad or not squad.get("team_id"):
+        return jsonify({"success": False, "error": "請先加入 Team"}), 400
+
+    participants = get_team_members(squad["team_id"])
+    target = None
+    for p in participants:
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
+                    target = p
+                    break
+            except ValueError:
+                continue
+
+    if not target:
+        return jsonify({"success": False, "error": "沒有需要救援的隊友"}), 400
+
+    if target["squad_id"] == session["squad_id"]:
+        return jsonify({"success": False, "error": "無法救援自己"}), 400
+
+    rescuer_name = squad.get("display_name") or session["squad_id"]
+    target_name = target.get("display_name") or target["squad_id"]
+
+    if rescue_type == "prayer":
+        try:
+            deadline = datetime.fromisoformat(target["near_death_until"])
+            new_deadline = deadline - timedelta(minutes=5)
+            if datetime.now() >= new_deadline:
+                update_squad(target["squad_id"], near_death_until=None, hp=25)
+                message = f"{rescuer_name} 禱告救援成功！{target_name} 恢復至 25 生命值。"
+                rescued = True
+            else:
+                update_squad(target["squad_id"], near_death_until=new_deadline.isoformat())
+                message = f"{rescuer_name} 為 {target_name} 禱告，瀕死時間縮短 5 分鐘。"
+                rescued = False
+        except ValueError:
+            return jsonify({"success": False, "error": "瀕死時間資料錯誤"}), 400
+    else:
+        update_squad(target["squad_id"], near_death_until=None, hp=25)
+        message = f"{rescuer_name} 使用道具救援 {target_name}，恢復至 25 生命值。"
+        rescued = True
+
+    if combat_id:
+        combat = get_combat(int(combat_id))
+        if combat:
+            combat = append_combat_log(combat, message)
+            save_combat(combat["id"], logs=combat.get("logs"))
+
+    return jsonify({
+        "success": True,
+        "rescued": rescued,
+        "message": message,
+        "target": target_name,
     })
 
 @app.route("/status")
@@ -1659,7 +3075,7 @@ def submit_task():
         conn.close()
         return jsonify({
             "success": True,
-            "message": "任務提交成功！+6 Sanity +1 Resource（第一次提交）"
+            "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）"
         })
     else:
         conn.close()
@@ -1718,6 +3134,7 @@ def my_items():
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
         SELECT pi.id, pi.item_id, i.name, i.description, i.icon, i.item_type,
+               i.image_path, i.has_ability, i.effect_type, i.effect_value,
                pi.source, pi.obtained_at
         FROM player_items pi
         JOIN items i ON pi.item_id = i.id
@@ -1726,7 +3143,16 @@ def my_items():
     """, (squad_id,)).fetchall()
     conn.close()
 
-    items = [dict(row) for row in rows]
+    items = []
+    for row in rows:
+        item = dict(row)
+        item["has_ability"] = bool(item.get("has_ability"))
+        item["image_path"] = item.get("image_path") or "/static/images/default-item.svg"
+        item["effect_text"] = (
+            format_item_effect_text(item.get("effect_type"), item.get("effect_value"))
+            if item.get("has_ability") else None
+        )
+        items.append(item)
     return jsonify({
         "success": True,
         "items": items,
@@ -1760,17 +3186,21 @@ def add_item():
         if not item:
             return jsonify({"success": False, "error": "物品不存在或已停用"}), 400
 
-    success, message = grant_item_to_squad(session["squad_id"], item_id, source)
+    success, message, applied_effect = grant_item_to_squad(session["squad_id"], item_id, source)
     if not success:
         return jsonify({"success": False, "error": message}), 400
 
-    return jsonify({
+    response = {
         "success": True,
         "message": message,
+        "item": serialize_item_for_client(item),
         "item_id": item_id,
         "item_name": item.get("name"),
         "qr_code_value": item.get("qr_code_value"),
-    })
+    }
+    if applied_effect:
+        response["applied_effect"] = applied_effect
+    return jsonify(response)
 
 @app.route("/discard_item", methods=["POST"])
 def discard_item():
@@ -2441,6 +3871,48 @@ HTML_TEMPLATE = """
     <style>
         #qr-reader { min-height: 280px; background: #09090b; }
         #qr-reader video { border-radius: 0.75rem; }
+        #item-reveal-modal { z-index: 110; }
+        #item-reveal-modal .reveal-card {
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.15);
+            animation: reveal-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #item-reveal-modal.reveal-ability .reveal-card {
+            border-color: #fbbf24;
+            box-shadow: 0 0 50px rgba(251, 191, 36, 0.35);
+        }
+        #item-reveal-modal .reveal-image-wrap {
+            position: relative;
+            background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.6) 100%);
+        }
+        #item-reveal-modal .reveal-ability-badge {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            color: #18181b;
+            box-shadow: 0 4px 14px rgba(251, 191, 36, 0.5);
+            animation: badge-pulse 2s ease-in-out infinite;
+        }
+        #item-reveal-modal .reveal-effect-box {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.35);
+        }
+        #item-reveal-modal .reveal-effect-text {
+            color: #fbbf24;
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+        }
+        @keyframes reveal-pop {
+            0% { opacity: 0; transform: scale(0.85) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes badge-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .inventory-ability-tag {
+            background: rgba(251, 191, 36, 0.15);
+            border: 1px solid rgba(251, 191, 36, 0.4);
+            color: #fbbf24;
+        }
         :root {
             --bg-main: #0D0D0D;
             --bg-color: #0D0D0D;
@@ -2578,6 +4050,29 @@ HTML_TEMPLATE = """
         .route-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0px rgba(44, 62, 80, 0.5); }
         .route-iggy { background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); }
         .route-marah { background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); }
+        /* Combat UI */
+        .combat-accent-oikos { --combat-accent: #be123c; --combat-accent-soft: rgba(190, 18, 60, 0.22); }
+        .combat-accent-polis { --combat-accent: #2563eb; --combat-accent-soft: rgba(37, 99, 235, 0.22); }
+        .combat-accent-default { --combat-accent: #d97706; --combat-accent-soft: rgba(217, 119, 6, 0.2); }
+        #combat-screen .combat-title { color: var(--combat-accent, #f59e0b); }
+        .action-btn.selected { border-color: var(--combat-accent, #f59e0b) !important; background: var(--combat-accent-soft, rgba(245, 158, 11, 0.15)); }
+        .dice-btn.selected { border-color: #f59e0b !important; background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .team-card-me { box-shadow: 0 0 0 2px var(--combat-accent, #f59e0b); }
+        .team-card-berserk { animation: combat-pulse 1.5s ease-in-out infinite; }
+        @keyframes combat-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); }
+        }
+        @keyframes zoo-flash {
+            0% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.8); }
+            100% { box-shadow: 0 0 24px 8px rgba(251, 146, 60, 0); }
+        }
+        .zoo-flash { animation: zoo-flash 0.6s ease-out; }
+        #combat-berserk-bar { background: linear-gradient(90deg, #9a3412, #ea580c); }
+        #combat-berserk-bar.berserk-critical { background: linear-gradient(90deg, #7f1d1d, #dc2626); animation: combat-pulse 1s ease-in-out infinite; }
+        #combat-near-death-overlay { background: rgba(69, 10, 10, 0.92); backdrop-filter: blur(4px); }
+        #combat-precheck-modal { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(6px); }
+        #combat-berserk-overlay { background: rgba(127, 29, 29, 0.55); backdrop-filter: blur(2px); pointer-events: none; }
         /* Fallback（Tailwind CDN 載入失敗時仍可用） */
         .hidden { display: none; }
         .fixed { position: fixed; }
@@ -2644,6 +4139,7 @@ HTML_TEMPLATE = """
             <div id="nav-desktop" class="items-center gap-x-1 text-sm">
                 <button onclick="showSection('dashboard')" class="px-5 py-2 nav-btn">Dashboard</button>
                 <button onclick="showSection('explore')" class="px-5 py-2 nav-btn">探索</button>
+                <button onclick="showSection('combat')" class="px-5 py-2 nav-btn">戰鬥</button>
                 <button onclick="showSection('team')" class="px-5 py-2 nav-btn">Team</button>
                 <button onclick="showSection('log')" class="px-5 py-2 nav-btn">日誌</button>
             </div>
@@ -2661,6 +4157,7 @@ HTML_TEMPLATE = """
             <div class="flex flex-col text-lg" onclick="event.stopPropagation()">
                 <button onclick="showSection('dashboard'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Dashboard</button>
                 <button onclick="showSection('explore'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">探索</button>
+                <button onclick="showSection('combat'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">戰鬥</button>
                 <button onclick="showSection('team'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Team</button>
                 <button onclick="showSection('log'); toggleMobileMenu()" class="py-4 text-left">日誌</button>
             </div>
@@ -2758,17 +4255,23 @@ HTML_TEMPLATE = """
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <!-- Squad 五維 -->
                     <div class="cartoon-box p-5">
-                        <h3 class="font-bold mb-4 flex items-center gap-2 theme-card-title"><i class="fa-solid fa-shield-halved theme-accent-text"></i> Player Status</h3>
+                        <h3 class="font-bold mb-4 flex items-center gap-2 theme-card-title"><i class="fa-solid fa-shield-halved theme-accent-text"></i> 玩家狀態</h3>
                         <div class="space-y-3">
-                            <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="hp-bar" class="h-2.5 rounded-full status-bar" style="width:100%;background:var(--progress-color)"></div></div></div>
-                            <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 stat-track rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
-                            <div class="stat-row" data-stat="power"><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="power-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="intellect"><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="intellect-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="resilience"><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="resilience-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span title="小隊整體體力">❤️ 生命值</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="hp-bar" class="h-2.5 rounded-full status-bar" style="width:100%;background:var(--progress-color)"></div></div></div>
+                            <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span title="使用 Zoo 能力後的清醒度">🧠 神智</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 stat-track rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
+                            <div class="stat-row" data-stat="power"><div class="flex justify-between text-sm mb-1"><span title="行動與影響力">⚡ 力量</span><span id="power-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div class="stat-row" data-stat="intellect"><div class="flex justify-between text-sm mb-1"><span title="理解與推理能力">📖 智力</span><span id="intellect-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div class="stat-row" data-stat="resilience"><div class="flex justify-between text-sm mb-1"><span title="承受壓力與恢復能力">🛡️ 韌性</span><span id="resilience-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
-                        <div class="mt-4 pt-3 border-t border-zinc-700 flex justify-between text-sm">
-                            <span><i class="fa-solid fa-gem text-purple-400 mr-1"></i>Resource</span>
-                            <span id="resource-value" class="font-mono text-purple-400">0</span>
+                        <div class="mt-4 pt-3 border-t border-zinc-700 space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span><i class="fa-solid fa-gem text-purple-400 mr-1"></i>Resource</span>
+                                <span id="resource-value" class="font-mono text-purple-400">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span><i class="fa-solid fa-lightbulb text-amber-400 mr-1"></i>洞見碎片</span>
+                                <span id="insight-value" class="font-mono text-amber-400">0</span>
+                            </div>
                         </div>
                     </div>
 
@@ -2776,11 +4279,11 @@ HTML_TEMPLATE = """
                     <div id="iggy-card" class="cartoon-box p-5" style="display:none">
                         <h3 class="font-bold mb-4">🔥 Iggy</h3>
                         <div class="space-y-3">
-                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="iggy-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="iggy-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="iggy-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="iggy-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="iggy-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ 生命值</span><span id="iggy-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 神智</span><span id="iggy-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ 力量</span><span id="iggy-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>📖 智力</span><span id="iggy-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ 韌性</span><span id="iggy-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
 
@@ -2788,11 +4291,11 @@ HTML_TEMPLATE = """
                     <div id="marah-card" class="cartoon-box p-5" style="display:none">
                         <h3 class="font-bold mb-4">🌊 Marah</h3>
                         <div class="space-y-3">
-                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="marah-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="marah-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="marah-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="marah-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="marah-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>❤️ 生命值</span><span id="marah-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🧠 神智</span><span id="marah-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>⚡ 力量</span><span id="marah-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>📖 智力</span><span id="marah-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div><div class="flex justify-between text-sm mb-1"><span>🛡️ 韌性</span><span id="marah-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
                 </div>
@@ -2893,6 +4396,179 @@ HTML_TEMPLATE = """
             <div id="explore" class="section hidden">
                 <h2 class="text-2xl font-semibold mb-4">探索地點</h2>
                 <div id="location-list" class="space-y-4"></div>
+            </div>
+
+            <!-- Combat -->
+            <div id="combat" class="section hidden">
+                <!-- Encounter 列表（大廳） -->
+                <div id="combat-lobby">
+                    <div class="mb-6">
+                        <div class="text-sm theme-accent-text">ENCOUNTER</div>
+                        <div class="text-3xl font-semibold">戰鬥遭遇</div>
+                    </div>
+                    <div id="encounter-list" class="space-y-4 mb-8"></div>
+                </div>
+
+                <!-- 戰鬥主畫面 -->
+                <div id="combat-screen" class="hidden max-w-4xl mx-auto combat-accent-default relative">
+                    <button onclick="exitCombatScreen()" class="mb-3 text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1">
+                        <i class="fa-solid fa-arrow-left"></i> 返回遭遇列表
+                    </button>
+
+                    <!-- Header -->
+                    <div class="flex items-center justify-between mb-4 gap-3">
+                        <div class="min-w-0">
+                            <h1 id="combat-title" class="combat-title text-xl md:text-2xl font-bold truncate">戰鬥中</h1>
+                            <p id="combat-subtitle" class="text-sm text-zinc-400"></p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-xs text-zinc-500">Phase <span id="current-phase">1</span>/<span id="max-phase">5</span></div>
+                            <div id="phase-timer" class="text-2xl md:text-3xl font-mono font-bold text-emerald-400">--:--</div>
+                            <div id="phase-status-label" class="text-xs text-emerald-400">Player Phase</div>
+                        </div>
+                    </div>
+
+                    <!-- 暴走警告 bar -->
+                    <div id="combat-berserk-bar" class="hidden mb-4 px-4 py-2 rounded-xl text-sm text-orange-100 font-medium">
+                        ⚠️ <span id="combat-berserk-bar-text">神智偏低，暴走風險上升</span>
+                    </div>
+
+                    <!-- Enemy Panel -->
+                    <div class="bg-zinc-900 border border-zinc-700 rounded-3xl p-5 mb-5">
+                        <div class="flex justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <div id="enemy-name" class="text-xl font-semibold text-red-300">敵人</div>
+                                <div id="enemy-quote" class="text-sm text-zinc-400 mt-1 max-w-md line-clamp-3"></div>
+                                <div class="flex gap-3 mt-2 text-[10px] text-zinc-500">
+                                    <span>韌性 <span id="enemy-resilience" class="font-mono">0</span></span>
+                                    <span>神智 <span id="enemy-sanity" class="font-mono">0</span></span>
+                                </div>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <div class="text-xs text-zinc-400">HP</div>
+                                <div class="font-mono text-2xl font-bold text-red-400">
+                                    <span id="enemy-hp">0</span>/<span id="enemy-max-hp">0</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3 h-3 bg-zinc-800 rounded-full overflow-hidden">
+                            <div id="enemy-hp-bar" class="h-3 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Team Status -->
+                    <div class="mb-5">
+                        <div class="text-xs text-zinc-400 mb-2 px-1">隊伍狀態</div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="team-status"></div>
+                    </div>
+
+                    <!-- Action Panel -->
+                    <div id="combat-action-container" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-5 mb-5 relative">
+                        <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-3xl flex items-center justify-center">
+                            <div class="text-center text-red-200 font-bold text-lg px-4">神智不清，能力失控</div>
+                        </div>
+                        <div class="text-sm font-medium mb-3 text-amber-400">選擇行動</div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" id="combat-action-buttons">
+                            <button type="button" data-action="attack_physical"
+                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-amber-500 active:bg-zinc-800">
+                                <span class="text-lg">⚔️</span>
+                                <span class="font-medium text-sm">物理攻擊</span>
+                                <span class="text-[10px] text-zinc-400">力量輸出</span>
+                            </button>
+                            <button type="button" data-action="attack_nonphysical"
+                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-amber-500">
+                                <span class="text-lg">🧠</span>
+                                <span class="font-medium text-sm">精神攻擊</span>
+                                <span class="text-[10px] text-zinc-400">智力輸出</span>
+                            </button>
+                            <button type="button" data-action="defend"
+                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-emerald-500">
+                                <span class="text-lg">🛡️</span>
+                                <span class="font-medium text-sm">堅守界線</span>
+                                <span class="text-[10px] text-zinc-400">減少所受傷害</span>
+                            </button>
+                            <button type="button" data-action="use_item"
+                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-purple-500">
+                                <span class="text-lg">🎒</span>
+                                <span class="font-medium text-sm">使用物品</span>
+                            </button>
+                            <button type="button" data-action="use_zoo" id="zoo-action-btn"
+                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-orange-500 relative">
+                                <span class="text-lg">🔥</span>
+                                <span class="font-medium text-sm">Zoo 能力</span>
+                                <span id="zoo-hint" class="text-[10px] text-orange-400">神智 ≥70 有加成</span>
+                            </button>
+                            <button type="button" data-action="pass"
+                                    class="action-btn flex flex-col items-center justify-center gap-y-1 py-4 rounded-2xl border border-zinc-600 hover:border-zinc-400">
+                                <span class="text-lg">⏭️</span>
+                                <span class="font-medium text-sm">觀望</span>
+                            </button>
+                        </div>
+                        <div class="mt-4 flex justify-end">
+                            <button type="button" onclick="rescueNearDeath()"
+                                    class="text-xs px-4 py-2 bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-700 rounded-xl">
+                                🤝 禱告救援瀕死隊友
+                            </button>
+                        </div>
+                        <div class="mt-5">
+                            <div class="text-xs text-zinc-400 mb-2">撕 Dice（0-3）</div>
+                            <div class="flex gap-2 flex-wrap" id="dice-buttons">
+                                <button type="button" data-dice="0" class="dice-btn px-5 py-2 rounded-xl border border-zinc-600 hover:bg-zinc-800">0</button>
+                                <button type="button" data-dice="1" class="dice-btn px-5 py-2 rounded-xl border border-zinc-600 hover:bg-zinc-800">1</button>
+                                <button type="button" data-dice="2" class="dice-btn selected px-5 py-2 rounded-xl border border-amber-500 bg-amber-500/10 text-amber-400">2 ★</button>
+                                <button type="button" data-dice="3" class="dice-btn px-5 py-2 rounded-xl border border-zinc-600 hover:bg-zinc-800">3</button>
+                                <button type="button" onclick="rollRandomDice()" class="px-4 py-2 rounded-xl border border-zinc-600 text-xs text-zinc-400 hover:bg-zinc-800">🎲 隨機</button>
+                            </div>
+                            <div class="text-[10px] text-zinc-500 mt-1">0 = 失手　｜　3 = 爆擊</div>
+                        </div>
+                        <button type="button" id="combat-submit-btn" onclick="submitAction()"
+                                class="mt-5 w-full py-3.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 font-semibold rounded-2xl transition">
+                            提交行動
+                        </button>
+                        <p id="combat-submit-hint" class="text-xs text-zinc-500 text-center mt-2"></p>
+                    </div>
+
+                    <!-- Combat Log -->
+                    <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-4 max-h-[220px] overflow-y-auto text-sm text-zinc-300" id="combat-log"></div>
+                </div>
+
+                <!-- 瀕死全屏 -->
+                <div id="combat-near-death-overlay" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-6">
+                    <div class="text-center max-w-sm">
+                        <div class="text-5xl mb-4">💔</div>
+                        <h2 class="text-2xl font-bold text-red-300 mb-2">正在癒合…</h2>
+                        <p id="near-death-countdown" class="text-4xl font-mono text-red-400 mb-4">15:00</p>
+                        <p class="text-sm text-zinc-300 mb-6">隊友可發起「界線重建」禱告救援</p>
+                        <button onclick="rescueNearDeath()" class="px-6 py-3 bg-emerald-700 hover:bg-emerald-600 rounded-2xl font-medium">
+                            🤝 為隊友禱告（非瀕死者）
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Precheck Modal -->
+                <div id="combat-precheck-modal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-6">
+                    <div class="bg-zinc-900 border border-amber-600/40 rounded-3xl p-6 max-w-md w-full shadow-2xl">
+                        <div class="text-amber-400 text-sm mb-1">洞察力判定</div>
+                        <h3 class="text-xl font-bold mb-3" id="precheck-modal-title">前置判定</h3>
+                        <p id="combat-precheck-text" class="text-zinc-300 text-sm leading-relaxed mb-6"></p>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <button onclick="confirmPrecheck('skip')" class="flex-1 py-3 bg-emerald-700 hover:bg-emerald-600 rounded-2xl font-medium">跳過戰鬥</button>
+                            <button onclick="confirmPrecheck('fight')" class="flex-1 py-3 bg-red-800 hover:bg-red-700 rounded-2xl font-medium">進入戰鬥</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 戰鬥結果 + 神學反思 -->
+                <div id="combat-result-panel" class="hidden cartoon-box p-6 max-w-4xl mx-auto">
+                    <h3 id="combat-result-title" class="text-xl font-bold mb-3"></h3>
+                    <p id="combat-result-narrative" class="text-zinc-300 mb-4 leading-relaxed"></p>
+                    <div id="combat-reflection" class="hidden border-t border-zinc-700 pt-4 mt-4">
+                        <h4 class="font-bold text-amber-400 mb-1" id="combat-reflection-title">界線反思</h4>
+                        <p id="combat-reflection-theology" class="text-xs text-zinc-500 mb-3 italic"></p>
+                        <ul id="combat-reflection-questions" class="text-sm text-zinc-300 space-y-3 list-none"></ul>
+                    </div>
+                    <button onclick="exitCombatScreen()" class="mt-6 px-5 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-xl text-sm">返回遭遇列表</button>
+                </div>
             </div>
 
             <!-- Team 區塊 -->
@@ -3000,12 +4676,507 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
             if (id === 'dashboard') loadMyItems();
+            if (id === 'combat') loadCombatPage();
             if (id === 'team') loadMyTeam();
             if (id === 'log') {
                 loadStoryLog();
                 loadTeamTaskLogs();
                 loadGlobalEvents();
             }
+        }
+
+        let combatPollTimer = null;
+        let combatPhaseTimer = null;
+        let currentCombatId = null;
+        let pendingEncounterId = null;
+        let selectedAction = 'attack_physical';
+        let selectedDice = 2;
+        let lastCombatStatus = null;
+        const COMBAT_ACTION_LABELS = {
+            attack_physical: '物理攻擊',
+            attack_nonphysical: '精神攻擊',
+            defend: '堅守界線',
+            use_zoo: 'Zoo 能力',
+            use_item: '使用物品',
+            pass: '觀望',
+        };
+        const ROUTE_SUBTITLES = { iggy: 'Iggy 線', marah: 'Marah 線' };
+
+        function stopCombatPolling() {
+            if (combatPollTimer) {
+                clearInterval(combatPollTimer);
+                combatPollTimer = null;
+            }
+            if (combatPhaseTimer) {
+                clearInterval(combatPhaseTimer);
+                combatPhaseTimer = null;
+            }
+        }
+
+        function startCombatPolling() {
+            stopCombatPolling();
+            combatPollTimer = setInterval(() => loadCombatStatus(false), 8000);
+        }
+
+        function formatTimerDisplay(totalSeconds) {
+            const s = Math.max(0, totalSeconds);
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${m}:${String(sec).padStart(2, '0')}`;
+        }
+
+        function startPhaseCountdown(deadlineIso) {
+            if (combatPhaseTimer) clearInterval(combatPhaseTimer);
+            const timerEl = document.getElementById('phase-timer');
+            if (!deadlineIso || !timerEl) return;
+            const tick = () => {
+                const remaining = Math.max(0, Math.floor((new Date(deadlineIso) - Date.now()) / 1000));
+                timerEl.textContent = formatTimerDisplay(remaining);
+                if (remaining <= 0 && combatPhaseTimer) {
+                    clearInterval(combatPhaseTimer);
+                    combatPhaseTimer = null;
+                    timerEl.textContent = '0:00';
+                    timerEl.classList.add('text-amber-400');
+                }
+            };
+            tick();
+            combatPhaseTimer = setInterval(tick, 1000);
+        }
+
+        function applyCombatAccent(route) {
+            const screen = document.getElementById('combat-screen');
+            if (!screen) return;
+            screen.classList.remove('combat-accent-oikos', 'combat-accent-polis', 'combat-accent-default');
+            if (route === 'iggy') screen.classList.add('combat-accent-oikos');
+            else if (route === 'marah') screen.classList.add('combat-accent-polis');
+            else screen.classList.add('combat-accent-default');
+        }
+
+        function selectAction(action) {
+            selectedAction = action;
+            document.querySelectorAll('.action-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.action === action);
+            });
+            if (action === 'use_zoo') {
+                const zooBtn = document.getElementById('zoo-action-btn');
+                zooBtn?.classList.add('zoo-flash');
+                setTimeout(() => zooBtn?.classList.remove('zoo-flash'), 600);
+            }
+        }
+
+        function selectDice(value) {
+            selectedDice = value;
+            document.querySelectorAll('.dice-btn').forEach(btn => {
+                const isSel = parseInt(btn.dataset.dice, 10) === value;
+                btn.classList.toggle('selected', isSel);
+                if (btn.dataset.dice !== undefined) {
+                    btn.textContent = isSel && value === 2 ? '2 ★' : String(btn.dataset.dice);
+                }
+            });
+        }
+
+        function rollRandomDice() {
+            selectDice(Math.floor(Math.random() * 4));
+        }
+
+        function exitCombatScreen() {
+            setVisible(document.getElementById('combat-screen'), false);
+            setVisible(document.getElementById('combat-result-panel'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            setVisible(document.getElementById('combat-lobby'), true);
+            stopCombatPolling();
+            loadEncounters();
+        }
+
+        function showCombatScreen() {
+            setVisible(document.getElementById('combat-lobby'), false);
+            setVisible(document.getElementById('combat-screen'), true);
+            setVisible(document.getElementById('combat-result-panel'), false);
+            document.querySelectorAll('.action-btn').forEach(btn => {
+                btn.onclick = () => selectAction(btn.dataset.action);
+            });
+            document.querySelectorAll('.dice-btn[data-dice]').forEach(btn => {
+                btn.onclick = () => selectDice(parseInt(btn.dataset.dice, 10));
+            });
+            selectAction(selectedAction);
+            selectDice(selectedDice);
+        }
+
+        async function loadCombatPage() {
+            stopCombatPolling();
+            setVisible(document.getElementById('combat-lobby'), true);
+            setVisible(document.getElementById('combat-screen'), false);
+            await loadEncounters();
+            await loadCombatStatus(true);
+        }
+
+        async function loadEncounters() {
+            const container = document.getElementById('encounter-list');
+            if (!container) return;
+            container.innerHTML = '<div class="text-zinc-400">載入 Encounter...</div>';
+
+            try {
+                const res = await fetch('/encounters', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.success) {
+                    container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+                    return;
+                }
+
+                if (!data.encounters || data.encounters.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 cartoon-box p-6 text-center">暫無可用 Encounter（需達故事階段並選擇路線）</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                data.encounters.forEach(enc => {
+                    const card = document.createElement('div');
+                    card.className = 'cartoon-box p-5';
+                    const completed = enc.completed ? '<span class="text-xs px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded-full">已完成</span>' : '';
+                    const btn = enc.completed
+                        ? ''
+                        : `<button onclick="startEncounter('${enc.encounter_id}')" class="mt-3 px-4 py-2 theme-btn-primary rounded-xl text-sm font-medium">開始 Encounter</button>`;
+                    card.innerHTML = `
+                        <div class="flex items-start justify-between gap-3 mb-2">
+                            <div class="font-bold text-lg">${enc.title || enc.encounter_id}</div>
+                            ${completed}
+                        </div>
+                        <div class="text-xs text-zinc-500 mb-2">${enc.location_hint || ''}</div>
+                        <p class="text-sm text-zinc-300">${enc.description || ''}</p>
+                        ${enc.enemy_name ? `<div class="text-xs text-red-400/80 mt-2">敵人：${enc.enemy_name}</div>` : ''}
+                        ${btn}
+                    `;
+                    container.appendChild(card);
+                });
+
+                if (data.active_combat) {
+                    const hint = document.createElement('div');
+                    hint.className = 'text-sm text-amber-400 cartoon-box p-4 cursor-pointer';
+                    hint.innerHTML = '⚔️ 進行中的戰鬥 — <span class="underline">點擊繼續</span>';
+                    hint.onclick = () => { showCombatScreen(); loadCombatStatus(true); };
+                    container.prepend(hint);
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+            }
+        }
+
+        async function startEncounter(encounterId) {
+            if (!confirm('確定開始此 Encounter？')) return;
+            pendingEncounterId = encounterId;
+            const res = await fetch('/combat/start', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ encounter_id: encounterId }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                alert(data.error || '無法開始');
+                return;
+            }
+            currentCombatId = data.combat_id;
+            showSection('combat');
+            if (data.can_skip && data.status === 'precheck') {
+                document.getElementById('precheck-modal-title').textContent = data.encounter?.title || '前置判定';
+                document.getElementById('combat-precheck-text').textContent =
+                    data.precheck_text || '你們有足夠洞察力看穿這是情緒勒索的扭曲模式。';
+                setVisible(document.getElementById('combat-precheck-modal'), true);
+                return;
+            }
+            showCombatScreen();
+            updateCombatUI(data);
+            await loadCombatStatus(true);
+        }
+
+        async function confirmPrecheck(choice) {
+            const res = await fetch('/combat/start', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    encounter_id: pendingEncounterId,
+                    confirm: choice,
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                alert(data.error || '操作失敗');
+                return;
+            }
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            if (data.skipped) {
+                showCombatResult({ outcome: 'victory', narrative: data.narrative, reflection_prompt: data.reflection_prompt });
+                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                updateDashboard(await statusRes.json());
+                return;
+            }
+            currentCombatId = data.combat_id;
+            showCombatScreen();
+            await loadCombatStatus(true);
+        }
+
+        function showCombatResult(data) {
+            stopCombatPolling();
+            setVisible(document.getElementById('combat-screen'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-lobby'), false);
+            setVisible(document.getElementById('combat-result-panel'), true);
+            const victory = data.outcome === 'victory';
+            document.getElementById('combat-result-title').textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
+            document.getElementById('combat-result-narrative').textContent = data.narrative || '';
+            const reflection = data.reflection_prompt;
+            const reflectionBox = document.getElementById('combat-reflection');
+            if (reflection) {
+                setVisible(reflectionBox, true);
+                document.getElementById('combat-reflection-title').textContent = reflection.title || '界線反思';
+                document.getElementById('combat-reflection-theology').textContent = reflection.theological_tie || '';
+                document.getElementById('combat-reflection-questions').innerHTML =
+                    (reflection.questions || []).map((q, i) =>
+                        `<li class="pl-3 border-l-2 border-amber-600/50"><span class="text-amber-500/80 text-xs">Q${i + 1}</span><br>${q}</li>`
+                    ).join('');
+            } else {
+                setVisible(reflectionBox, false);
+            }
+        }
+
+        function updateNearDeathOverlay(me) {
+            const overlay = document.getElementById('combat-near-death-overlay');
+            const countdownEl = document.getElementById('near-death-countdown');
+            const inNearDeath = me?.near_death_until && new Date(me.near_death_until) > new Date();
+            setVisible(overlay, !!inNearDeath);
+            if (inNearDeath && countdownEl) {
+                const remaining = Math.max(0, Math.floor((new Date(me.near_death_until) - Date.now()) / 1000));
+                countdownEl.textContent = formatTimerDisplay(remaining);
+            }
+        }
+
+        function updateCombatUI(data) {
+            if (!data) return;
+            lastCombatStatus = data;
+            setVisible(document.getElementById('combat-result-panel'), false);
+
+            if (data.in_precheck) {
+                setVisible(document.getElementById('combat-precheck-modal'), true);
+                return;
+            }
+
+            if (!data.active) {
+                if (data.outcome) showCombatResult(data);
+                return;
+            }
+
+            currentCombatId = data.combat_id || currentCombatId;
+            showCombatScreen();
+            applyCombatAccent(data.route);
+
+            document.getElementById('combat-title').textContent = data.title || '戰鬥中';
+            const routeLabel = ROUTE_SUBTITLES[data.route] || '';
+            document.getElementById('combat-subtitle').textContent = routeLabel ? `${routeLabel} · Encounter` : '';
+
+            document.getElementById('current-phase').textContent = data.current_phase || 1;
+            document.getElementById('max-phase').textContent = data.max_phases || 5;
+
+            const phaseLabels = {
+                player_phase: { text: 'Player Phase', color: 'text-emerald-400' },
+                enemy_phase: { text: 'Enemy Phase', color: 'text-red-400' },
+            };
+            const pl = phaseLabels[data.status] || { text: data.status, color: 'text-zinc-400' };
+            const phaseLabelEl = document.getElementById('phase-status-label');
+            phaseLabelEl.textContent = pl.text;
+            phaseLabelEl.className = `text-xs ${pl.color}`;
+
+            const enemy = data.enemy || {};
+            document.getElementById('enemy-name').textContent = enemy.name || '敵人';
+            const quote = data.enemy_description || '';
+            document.getElementById('enemy-quote').textContent =
+                quote.length > 80 ? `「${quote.slice(0, 80)}…」` : (quote ? `「${quote}」` : '');
+            document.getElementById('enemy-hp').textContent = enemy.hp ?? 0;
+            document.getElementById('enemy-max-hp').textContent = enemy.max_hp || enemy.hp || 0;
+            document.getElementById('enemy-resilience').textContent = enemy.resilience ?? 0;
+            document.getElementById('enemy-sanity').textContent = enemy.sanity ?? 0;
+            const maxHp = enemy.max_hp || enemy.hp || 1;
+            document.getElementById('enemy-hp-bar').style.width =
+                `${Math.max(0, Math.min(100, Math.round((enemy.hp || 0) / maxHp * 100)))}%`;
+
+            const me = data.my_state || {};
+            const myId = data.my_squad_id || currentSquad?.squad_id;
+            const teamEl = document.getElementById('team-status');
+            const members = data.member_states || {};
+            teamEl.innerHTML = Object.entries(members).map(([sid, m]) => {
+                const isMe = sid === myId;
+                const label = isMe ? '你' : (m.display_name || sid);
+                const nearDeath = m.near_death_until && new Date(m.near_death_until) > new Date();
+                const mSanity = m.sanity ?? 100;
+                const berserkRisk = mSanity < 40;
+                const berserkCritical = mSanity < 10;
+                const acted = m.submitted
+                    ? '<span class="text-emerald-400">已行動</span>'
+                    : '<span class="text-amber-400">未行動</span>';
+                const statusText = m.submitted
+                    ? (COMBAT_ACTION_LABELS[m.action_type] || '已行動')
+                    : (isMe ? '選擇行動中…' : '等待中');
+                return `<div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-3 text-xs ${isMe ? 'team-card-me' : ''} ${berserkRisk ? 'team-card-berserk' : ''}">
+                    <div class="font-medium truncate">${label}${nearDeath ? ' 💔' : ''}${berserkCritical ? ' 🔥' : berserkRisk ? ' ⚠️' : ''}</div>
+                    <div class="text-zinc-400 mt-1">HP ${m.hp} · 神智 ${m.sanity ?? '?'}</div>
+                    <div class="mt-1">${acted} · ${statusText}</div>
+                </div>`;
+            }).join('');
+
+            const sanity = me.sanity ?? 100;
+            const berserkBar = document.getElementById('combat-berserk-bar');
+            const berserkChance = data.berserk_chance || 0;
+            if (sanity < 40) {
+                setVisible(berserkBar, true);
+                let berserkMsg;
+                if (sanity < 10) {
+                    berserkMsg = `神智崩潰邊緣！暴走機率 ${berserkChance}% — 極高風險`;
+                } else if (sanity < 20) {
+                    berserkMsg = `神智危險！暴走機率 ${berserkChance}% — 提交前請確認`;
+                } else {
+                    berserkMsg = `神智偏低（${sanity}），暴走風險 ${berserkChance}%`;
+                }
+                document.getElementById('combat-berserk-bar-text').textContent = berserkMsg;
+                berserkBar.classList.toggle('berserk-critical', sanity < 10);
+            } else {
+                setVisible(berserkBar, false);
+                berserkBar.classList.remove('berserk-critical');
+            }
+
+            setVisible(document.getElementById('combat-berserk-overlay'),
+                sanity < 10 && data.status === 'player_phase' && !me.submitted);
+
+            const zooHint = document.getElementById('zoo-hint');
+            if (zooHint) {
+                if (sanity >= 100) zooHint.textContent = 'Zoo 加成 ×1.8';
+                else if (sanity >= 90) zooHint.textContent = 'Zoo 加成 ×1.5';
+                else if (sanity >= 80) zooHint.textContent = 'Zoo 加成 ×1.4';
+                else if (sanity >= 70) zooHint.textContent = 'Zoo 加成 ×1.3 ✓';
+                else zooHint.textContent = `神智 ${sanity}，需 ≥70`;
+                zooHint.className = sanity >= 70 ? 'text-[10px] text-orange-300 font-medium' : 'text-[10px] text-zinc-500';
+            }
+
+            if (data.phase_deadline && data.status === 'player_phase') {
+                startPhaseCountdown(data.phase_deadline);
+            } else if (data.phase_expired) {
+                document.getElementById('phase-timer').textContent = '0:00';
+            }
+
+            const logEl = document.getElementById('combat-log');
+            logEl.innerHTML = (data.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
+                || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
+            logEl.scrollTop = logEl.scrollHeight;
+
+            const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
+            updateNearDeathOverlay(me);
+
+            const submitBtn = document.getElementById('combat-submit-btn');
+            const hintEl = document.getElementById('combat-submit-hint');
+            const actionContainer = document.getElementById('combat-action-container');
+            const canAct = data.status === 'player_phase' && !inNearDeath && !me.submitted;
+            if (submitBtn) submitBtn.disabled = !canAct;
+            if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.55';
+            document.querySelectorAll('.action-btn, .dice-btn[data-dice]').forEach(el => { el.disabled = !canAct; });
+            if (hintEl) {
+                if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
+                else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}，等待隊友…`;
+                else if (data.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
+                else hintEl.textContent = '選擇行動與骰子後提交';
+            }
+        }
+
+        async function loadCombatStatus(showLoading) {
+            try {
+                const url = currentCombatId
+                    ? `/combat/status?combat_id=${currentCombatId}`
+                    : '/combat/status';
+                const res = await fetch(url, { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.success) return;
+                if (data.outcome) {
+                    showCombatResult(data);
+                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    updateDashboard(await statusRes.json());
+                    return;
+                }
+                if (data.active) {
+                    setVisible(document.getElementById('combat-lobby'), false);
+                }
+                updateCombatUI(data);
+                if (data.active || data.in_precheck) startCombatPolling();
+                else stopCombatPolling();
+            } catch (e) {
+                if (showLoading) console.error('載入戰鬥狀態失敗', e);
+            }
+        }
+
+        async function submitAction() {
+            const labels = {
+                attack_physical: '物理攻擊（力量×2 − 敵人韌性）',
+                attack_nonphysical: '精神攻擊（智力×2 − 敵人神智）',
+                defend: '堅守界線（減傷 50%）',
+                use_zoo: 'Zoo 能力（神智 ≥70 有加成）',
+                use_item: '使用物品',
+                pass: '觀望',
+            };
+            const me = lastCombatStatus?.my_state || {};
+            const sanity = me.sanity ?? 100;
+            let confirmMsg = `確定提交？\n行動：${labels[selectedAction] || selectedAction}\n骰子：${selectedDice}`;
+            const berserkPct = lastCombatStatus?.berserk_chance || 0;
+            if (sanity < 10) confirmMsg += `\n\n⚠️ 神智崩潰邊緣，暴走機率約 ${berserkPct}%！`;
+            else if (sanity < 20) confirmMsg += `\n\n⚠️ 神智極低，暴走機率約 ${berserkPct}%！`;
+            else if (sanity < 40) confirmMsg += `\n\n⚠️ 神智偏低，暴走風險約 ${berserkPct}%。`;
+            if (!confirm(confirmMsg)) return;
+
+            const res = await fetch('/combat/submit_action', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    combat_id: currentCombatId,
+                    action_type: selectedAction,
+                    dice_result: selectedDice,
+                }),
+            });
+            const data = await res.json();
+            if (!data.success && data.error) {
+                alert(data.error);
+                return;
+            }
+            if (data.outcome) {
+                showCombatResult(data);
+                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                updateDashboard(await statusRes.json());
+                return;
+            }
+            updateCombatUI({ ...data, active: true });
+        }
+
+        async function rescueNearDeath() {
+            if (!confirm('為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）')) return;
+            const res = await fetch('/combat/rescue_near_death', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ combat_id: currentCombatId, rescue_type: 'prayer' }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                alert(data.error || '救援失敗');
+                return;
+            }
+            if (data.rescued) setVisible(document.getElementById('combat-near-death-overlay'), false);
+            const logEl = document.getElementById('combat-log');
+            if (logEl && data.message) {
+                const line = document.createElement('div');
+                line.className = 'py-0.5 text-emerald-400';
+                line.textContent = `• ${data.message}`;
+                logEl.appendChild(line);
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+            await loadCombatStatus(false);
         }
 
         async function loadStoryLog() {
@@ -3030,6 +5201,23 @@ HTML_TEMPLATE = """
                     progressHint = `<div class="text-xs text-amber-400/80 mt-3">你已達最終故事階段</div>`;
                 }
 
+                let encounterHint = '';
+                try {
+                    const encRes = await fetch('/encounters', { credentials: 'same-origin' });
+                    const encData = await encRes.json();
+                    const available = (encData.encounters || []).filter(e => !e.completed);
+                    if (available.length) {
+                        encounterHint = `
+                            <div class="mt-4 p-4 bg-red-900/20 border border-red-700/40 rounded-2xl">
+                                <div class="text-sm font-medium text-red-300 mb-2">⚔️ 可進行 Encounter</div>
+                                ${available.map(e => `
+                                    <div class="text-sm text-zinc-300 mb-2">${e.title}</div>
+                                    <button onclick="showSection('combat')" class="text-xs px-3 py-1 bg-red-800/60 hover:bg-red-700 rounded-xl">前往戰鬥</button>
+                                `).join('')}
+                            </div>`;
+                    }
+                } catch (_) {}
+
                 container.innerHTML = `
                     <div class="mb-3 flex flex-wrap gap-2">
                         <div class="inline-block px-3 py-1 bg-zinc-700 rounded-full text-xs">
@@ -3042,6 +5230,7 @@ HTML_TEMPLATE = """
                     <div class="text-xl font-bold mb-2">${title}</div>
                     <div class="text-zinc-300 leading-relaxed">${content}</div>
                     ${progressHint}
+                    ${encounterHint}
                 `;
 
             } catch (e) {
@@ -3131,13 +5320,13 @@ HTML_TEMPLATE = """
         function formatGlobalEffect(ev) {
             if (!ev.effect_type || ev.effect_type === 'announcement') return '';
             const labels = {
-                adjust_sanity: 'Sanity 調整',
-                sanity_adjust: 'Sanity 調整',
-                sanity_down: 'Sanity 下降',
-                sanity_up: 'Sanity 上升',
-                power_up: 'Power 上升',
-                intellect_up: 'Intellect 上升',
-                resilience_up: 'Resilience 上升',
+                adjust_sanity: '神智調整',
+                sanity_adjust: '神智調整',
+                sanity_down: '神智下降',
+                sanity_up: '神智上升',
+                power_up: '力量上升',
+                intellect_up: '智力上升',
+                resilience_up: '韌性上升',
                 judas_strengthen: 'Judas 加強',
                 iggy_collapse: 'Iggy 崩潰',
                 global_debuff: '全球減益',
@@ -3303,7 +5492,7 @@ HTML_TEMPLATE = """
         function buildProtagonistCardHtml(title, prefix, stats, isActive) {
             const ring = isActive ? 'ring-active-route' : '';
             const statsList = ['hp', 'sanity', 'power', 'intellect', 'resilience'];
-            const labels = {hp: '❤️ HP', sanity: '🧠 San', power: '⚡ Pow', intellect: '📖 Int', resilience: '🛡️ Res'};
+            const labels = {hp: '❤️ 生命值', sanity: '🧠 神智', power: '⚡ 力量', intellect: '📖 智力', resilience: '🛡️ 韌性'};
             const colors = {hp: 'text-red-400', sanity: 'text-purple-400', power: 'text-orange-400', intellect: 'text-blue-400', resilience: 'text-emerald-400'};
             const barColors = {hp: 'bg-red-500', sanity: 'bg-purple-500', power: 'bg-orange-500', intellect: 'bg-blue-500', resilience: 'bg-emerald-500'};
             const rows = statsList.map(s => `
@@ -3461,6 +5650,8 @@ HTML_TEMPLATE = """
 
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
+            const insightEl = document.getElementById('insight-value');
+            if (insightEl) insightEl.textContent = squad.insight_fragments || 0;
             document.getElementById('squad-name').textContent = squad.display_name || squad.squad_id;
 
             const routePicker = document.getElementById('route-picker');
@@ -3637,23 +5828,23 @@ HTML_TEMPLATE = """
                         <div class="grid grid-cols-5 gap-1 mt-3 text-center text-xs">
                             <div>
                                 <div class="text-red-400 font-mono">${m.hp}</div>
-                                <div class="text-zinc-500">HP</div>
+                                <div class="text-zinc-500">生命值</div>
                             </div>
                             <div>
                                 <div class="text-purple-400 font-mono">${m.sanity}</div>
-                                <div class="text-zinc-500">San</div>
+                                <div class="text-zinc-500">神智</div>
                             </div>
                             <div>
                                 <div class="text-orange-400 font-mono">${m.power}</div>
-                                <div class="text-zinc-500">Pow</div>
+                                <div class="text-zinc-500">力量</div>
                             </div>
                             <div>
                                 <div class="text-blue-400 font-mono">${m.intellect}</div>
-                                <div class="text-zinc-500">Int</div>
+                                <div class="text-zinc-500">智力</div>
                             </div>
                             <div>
                                 <div class="text-emerald-400 font-mono">${m.resilience}</div>
-                                <div class="text-zinc-500">Res</div>
+                                <div class="text-zinc-500">韌性</div>
                             </div>
                         </div>
                     `;
@@ -4336,7 +6527,7 @@ HTML_TEMPLATE = """
 
             // 簡單示範，之後可以改做真實後端驗證
             if (answer.toLowerCase() === 'iggy') {
-                alert('正確！獲得 Sanity +8');
+                alert('正確！獲得神智 +8');
                 closeModal(btn);
             } else {
                 alert('唔正確');
@@ -4371,6 +6562,84 @@ HTML_TEMPLATE = """
         }
 
         const ITEM_SOURCE_LABELS = { story: '劇情', qr: 'QR', event: '事件', special: '特殊' };
+        const ITEM_EFFECT_LABELS = {
+            power_up: '力量',
+            sanity_up: '神智',
+            resilience_up: '韌性',
+            hp_up: '生命值',
+            intellect_up: '智力',
+        };
+
+        let currentObtainedItem = null;
+        let pendingAppliedEffect = null;
+
+        function formatItemEffectText(item) {
+            if (item.effect_text) return item.effect_text;
+            if (!item.has_ability || !item.effect_type) return '';
+            const label = ITEM_EFFECT_LABELS[item.effect_type];
+            if (!label) return '';
+            const value = Number(item.effect_value) || 0;
+            const sign = value >= 0 ? '+' : '';
+            return `${sign}${value} ${label}`;
+        }
+
+        function showItemReveal(item, appliedEffect) {
+            currentObtainedItem = item;
+            pendingAppliedEffect = appliedEffect || null;
+
+            const modal = document.getElementById('item-reveal-modal');
+            const imageEl = document.getElementById('reveal-item-image');
+            const effectBox = document.getElementById('reveal-effect-box');
+            const abilityBadge = document.getElementById('reveal-ability-badge');
+
+            imageEl.src = item.image_path || '/static/images/default-item.svg';
+            imageEl.onerror = () => { imageEl.src = '/static/images/default-item.svg'; };
+            document.getElementById('reveal-item-name').textContent = item.name || '未知物品';
+            document.getElementById('reveal-item-desc').textContent = item.description || '';
+
+            const effectText = formatItemEffectText(item);
+            if (item.has_ability && effectText) {
+                effectBox.classList.remove('hidden');
+                abilityBadge.classList.remove('hidden');
+                document.getElementById('reveal-effect-text').textContent = effectText;
+                modal.classList.add('reveal-ability');
+            } else {
+                effectBox.classList.add('hidden');
+                abilityBadge.classList.add('hidden');
+                modal.classList.remove('reveal-ability');
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        async function confirmObtainItem() {
+            const modal = document.getElementById('item-reveal-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex', 'reveal-ability');
+
+            await loadMyItems();
+
+            if (pendingAppliedEffect && pendingAppliedEffect.stats) {
+                updateDashboard({ ...currentSquad, ...pendingAppliedEffect.stats });
+            } else {
+                try {
+                    const res = await fetch('/status', { credentials: 'same-origin' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.squad_id) {
+                            currentSquad = data;
+                            updateDashboard(data);
+                        }
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            currentObtainedItem = null;
+            pendingAppliedEffect = null;
+        }
 
         async function loadMyItems() {
             const container = document.getElementById('my-items-list');
@@ -4399,18 +6668,27 @@ HTML_TEMPLATE = """
                 container.innerHTML = '';
                 items.forEach(item => {
                     const div = document.createElement('div');
-                    div.className = 'bg-zinc-800/80 border border-zinc-700 rounded-2xl p-4';
+                    const isAbility = item.has_ability && item.effect_type;
+                    div.className = 'bg-zinc-800/80 border rounded-2xl p-4 overflow-hidden'
+                        + (isAbility ? ' border-amber-500/40 ring-1 ring-amber-500/20' : ' border-zinc-700');
                     const sourceLabel = ITEM_SOURCE_LABELS[item.source] || item.source || '未知';
-                    const icon = item.icon
-                        ? (item.icon.includes('/') ? `<img src="${escapeHtml(item.icon)}" class="w-10 h-10 object-contain" alt="">` : `<span class="text-3xl">${escapeHtml(item.icon)}</span>`)
-                        : '<span class="text-3xl">📦</span>';
+                    const imagePath = item.image_path || '/static/images/default-item.svg';
+                    const thumb = `<img src="${escapeHtml(imagePath)}" class="w-14 h-14 object-cover rounded-xl border border-zinc-600" alt="" onerror="this.src='/static/images/default-item.svg'">`;
+                    const effectText = formatItemEffectText(item);
+                    const abilityTag = isAbility && effectText
+                        ? `<span class="inventory-ability-tag text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 mt-1"><i class="fa-solid fa-bolt text-[10px]"></i>${escapeHtml(effectText)}</span>`
+                        : '';
                     div.innerHTML = `
                         <div class="flex gap-3">
-                            <div class="shrink-0 w-10 flex items-center justify-center">${icon}</div>
+                            <div class="shrink-0">${thumb}</div>
                             <div class="flex-1 min-w-0">
-                                <div class="font-semibold">${escapeHtml(item.name)}</div>
+                                <div class="font-semibold flex items-center gap-2 flex-wrap">
+                                    <span>${escapeHtml(item.name)}</span>
+                                    ${isAbility ? '<span class="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded font-bold">能力</span>' : ''}
+                                </div>
                                 <div class="text-xs text-zinc-400 mt-0.5 line-clamp-2">${escapeHtml(item.description || '')}</div>
                                 <div class="text-xs text-zinc-500 mt-1">${escapeHtml(sourceLabel)}</div>
+                                ${abilityTag}
                             </div>
                             <button onclick="discardItem(${item.id})"
                                     class="text-xs px-2 py-1 h-fit bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg shrink-0">
@@ -4452,9 +6730,8 @@ HTML_TEMPLATE = """
                     body: JSON.stringify({ item_id: itemId, source: 'story' })
                 });
                 const result = await res.json();
-                if (result.success) {
-                    alert(result.message || '成功獲得物品！');
-                    loadMyItems();
+                if (result.success && result.item) {
+                    showItemReveal(result.item, result.applied_effect);
                     return true;
                 }
                 alert(result.error || '獲取失敗');
@@ -4474,9 +6751,8 @@ HTML_TEMPLATE = """
                     body: JSON.stringify({ qr_payload: qrPayload, source: 'qr' })
                 });
                 const result = await res.json();
-                if (result.success) {
-                    alert(result.message || '成功獲得物品！');
-                    loadMyItems();
+                if (result.success && result.item) {
+                    showItemReveal(result.item, result.applied_effect);
                     return true;
                 }
                 alert(result.error || '獲取失敗');
@@ -4680,6 +6956,36 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- 物品 Reveal Modal -->
+    <div id="item-reveal-modal"
+         class="hidden fixed inset-0 bg-black/85 items-center justify-center">
+        <div class="reveal-card rounded-3xl w-full max-w-sm mx-4 overflow-hidden">
+            <div class="reveal-image-wrap">
+                <img id="reveal-item-image" class="w-full h-64 object-cover" alt="Item Image">
+                <div id="reveal-ability-badge"
+                     class="reveal-ability-badge hidden absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>能力物品</span>
+                </div>
+            </div>
+            <div class="p-5">
+                <h2 id="reveal-item-name" class="text-2xl font-bold mb-2"></h2>
+                <p id="reveal-item-desc" class="text-sm theme-muted-text mb-4"></p>
+                <div id="reveal-effect-box" class="reveal-effect-box hidden p-4 rounded-2xl mb-4">
+                    <div class="text-xs theme-muted-text mb-1 flex items-center gap-1">
+                        <i class="fa-solid fa-sparkles text-amber-400"></i>
+                        <span>獲得效果</span>
+                    </div>
+                    <div id="reveal-effect-text" class="reveal-effect-text text-xl font-bold"></div>
+                </div>
+                <button onclick="confirmObtainItem()"
+                        class="w-full py-3 theme-btn-primary rounded-2xl font-semibold text-sm">
+                    確認獲得
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 掃描 QR Code Modal -->
     <div id="qr-scanner-modal" onclick="if (event.target.id === 'qr-scanner-modal') stopQRScanner()"
          class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[100]">
@@ -4728,21 +7034,55 @@ CLAIM_ITEM_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>獲得物品 • Oikonomia</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-6">
-    <div class="max-w-md w-full bg-zinc-900 border border-zinc-700 rounded-3xl p-8 text-center">
-        <div class="text-5xl mb-4">{{ item.icon or '📦' }}</div>
-        <h1 class="text-2xl font-bold mb-2">{{ item.name }}</h1>
-        <p class="text-zinc-400 text-sm mb-6">{{ item.description or '' }}</p>
-        <div id="claim-status" class="text-sm text-zinc-400 mb-4">正在領取物品...</div>
-        <button id="claim-btn" onclick="claimNow()"
-                class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl mb-3">
-            領取物品
-        </button>
-        <a href="/" class="text-sm text-amber-400 hover:underline">返回 Dashboard</a>
+    <div id="claim-card" class="max-w-md w-full bg-zinc-900 border border-zinc-700 rounded-3xl overflow-hidden">
+        <div class="relative">
+            <img id="claim-image" src="{{ item.image_path or '/static/images/default-item.svg' }}"
+                 class="w-full h-56 object-cover" alt="">
+            {% if item.has_ability %}
+            <div class="absolute top-4 right-4 bg-amber-400 text-zinc-900 px-3 py-1 rounded-full text-sm font-bold">
+                <i class="fa-solid fa-bolt"></i> 能力物品
+            </div>
+            {% endif %}
+        </div>
+        <div class="p-6 text-center">
+            <h1 class="text-2xl font-bold mb-2">{{ item.name }}</h1>
+            <p class="text-zinc-400 text-sm mb-4">{{ item.description or '' }}</p>
+            {% if item.has_ability and item.effect_type %}
+            <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 mb-4 text-left">
+                <div class="text-xs text-zinc-400 mb-1">獲得效果</div>
+                <div id="claim-effect" class="text-xl font-bold text-amber-400"></div>
+            </div>
+            {% endif %}
+            <div id="claim-status" class="text-sm text-zinc-400 mb-4">正在領取物品...</div>
+            <button id="claim-btn" onclick="claimNow()"
+                    class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl mb-3">
+                確認獲得
+            </button>
+            <a href="/" class="text-sm text-amber-400 hover:underline">返回 Dashboard</a>
+        </div>
     </div>
     <script>
         const qrPayload = {{ qr_payload|tojson }};
+        const itemMeta = {{ item|tojson }};
+        const effectLabels = {
+            power_up: '力量', sanity_up: '神智', resilience_up: '韌性',
+            hp_up: '生命值', intellect_up: '智力'
+        };
+
+        (function initClaimPage() {
+            const effectEl = document.getElementById('claim-effect');
+            if (effectEl && itemMeta.has_ability && itemMeta.effect_type) {
+                const label = effectLabels[itemMeta.effect_type] || '';
+                const value = Number(itemMeta.effect_value) || 0;
+                const sign = value >= 0 ? '+' : '';
+                effectEl.textContent = label ? `${sign}${value} ${label}` : '';
+            }
+            const img = document.getElementById('claim-image');
+            if (img) img.onerror = () => { img.src = '/static/images/default-item.svg'; };
+        })();
 
         async function claimNow() {
             const status = document.getElementById('claim-status');
@@ -4762,6 +7102,10 @@ CLAIM_ITEM_HTML = """
                 status.textContent = data.message || '成功獲得物品！';
                 status.className = 'text-sm text-emerald-400 mb-4';
                 btn.classList.add('hidden');
+                if (data.applied_effect && data.applied_effect.effect_text) {
+                    const effectEl = document.getElementById('claim-effect');
+                    if (effectEl) effectEl.textContent = data.applied_effect.effect_text;
+                }
             } else {
                 status.textContent = data.error || '領取失敗';
                 status.className = 'text-sm text-red-400 mb-4';
@@ -4893,9 +7237,9 @@ GM_DASHBOARD_HTML = """
                         <th class="py-3 pl-2 w-12"></th>
                         <th class="py-3">玩家名稱</th>
                         <th class="py-3">路線</th>
-                        <th class="py-3">HP</th>
-                        <th class="py-3">Sanity</th>
-                        <th class="py-3">Pow/Int/Res</th>
+                        <th class="py-3">生命值</th>
+                        <th class="py-3">神智</th>
+                        <th class="py-3">力量/智力/韌性</th>
                         <th class="py-3">提交次數</th>
                         <th class="py-3">操作</th>
                     </tr>
@@ -4960,9 +7304,9 @@ GM_DASHBOARD_HTML = """
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
-                <!-- 全營 Sanity 調整 -->
+                <!-- 全營神智調整 -->
                 <div class="bg-zinc-800 rounded-2xl p-5">
-                    <div class="font-medium mb-3">全營 Sanity 調整</div>
+                    <div class="font-medium mb-3">全營神智調整</div>
                     <div class="flex gap-x-2">
                         <input type="number" id="sanity-value" value="-5" 
                                class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
@@ -4998,11 +7342,11 @@ GM_DASHBOARD_HTML = """
                         <select id="custom-event-effect-type"
                                 class="bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
                             <option value="">只記錄，不套用效果</option>
-                            <option value="sanity_down">全營 Sanity 下降</option>
-                            <option value="sanity_up">全營 Sanity 上升</option>
-                            <option value="power_up">全營 Power 上升</option>
-                            <option value="intellect_up">全營 Intellect 上升</option>
-                            <option value="resilience_up">全營 Resilience 上升</option>
+                            <option value="sanity_down">全營神智下降</option>
+                            <option value="sanity_up">全營神智上升</option>
+                            <option value="power_up">全營力量上升</option>
+                            <option value="intellect_up">全營智力上升</option>
+                            <option value="resilience_up">全營韌性上升</option>
                             <option value="global_debuff">全球減益（只記錄）</option>
                         </select>
                     </div>
@@ -5537,11 +7881,11 @@ GM_DASHBOARD_HTML = """
                             <a href="/gm/squad/${m.squad_id}" class="text-xs px-3 py-1 bg-amber-500/20 text-amber-400 rounded-xl hover:bg-amber-500/30">詳情</a>
                         </div>
                         <div class="grid grid-cols-5 gap-2 text-center text-xs">
-                            <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">HP</div></div>
-                            <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">San</div></div>
-                            <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">Pow</div></div>
-                            <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">Int</div></div>
-                            <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">Res</div></div>
+                            <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">生命值</div></div>
+                            <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">神智</div></div>
+                            <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">力量</div></div>
+                            <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">智力</div></div>
+                            <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">韌性</div></div>
                         </div>
                     `;
                     contentEl.appendChild(el);
@@ -5689,11 +8033,11 @@ GM_DASHBOARD_HTML = """
                                     <span class="text-xs px-3 py-1 rounded-full ${routeClass}">${team.route_label}</span>
                                 </div>
                                 <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-center text-xs mb-4">
-                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-red-400 font-mono text-base">${team.avg_hp}</div><div class="text-zinc-500">平均 HP</div></div>
-                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-purple-400 font-mono text-base">${team.avg_sanity}</div><div class="text-zinc-500">平均 San</div></div>
-                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-orange-400 font-mono text-base">${team.avg_power}</div><div class="text-zinc-500">平均 Pow</div></div>
-                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-blue-400 font-mono text-base">${team.avg_intellect}</div><div class="text-zinc-500">平均 Int</div></div>
-                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-emerald-400 font-mono text-base">${team.avg_resilience}</div><div class="text-zinc-500">平均 Res</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-red-400 font-mono text-base">${team.avg_hp}</div><div class="text-zinc-500">平均生命值</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-purple-400 font-mono text-base">${team.avg_sanity}</div><div class="text-zinc-500">平均神智</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-orange-400 font-mono text-base">${team.avg_power}</div><div class="text-zinc-500">平均力量</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-blue-400 font-mono text-base">${team.avg_intellect}</div><div class="text-zinc-500">平均智力</div></div>
+                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-emerald-400 font-mono text-base">${team.avg_resilience}</div><div class="text-zinc-500">平均韌性</div></div>
                                 </div>
                                 <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-400 mb-4">
                                     <span>已完成任務：<strong class="text-amber-400">${team.distinct_tasks}</strong></span>
@@ -5737,7 +8081,7 @@ GM_DASHBOARD_HTML = """
                                         <tr class="border-b border-zinc-700 text-zinc-400">
                                             <th class="py-2 pr-4">玩家</th>
                                             <th class="py-2 pr-4">路線</th>
-                                            <th class="py-2 pr-4">HP/San/Pow/Int/Res</th>
+                                            <th class="py-2 pr-4">生命值/神智/力量/智力/韌性</th>
                                             <th class="py-2 pr-4">任務</th>
                                             <th class="py-2 pr-4">階段</th>
                                             <th class="py-2 pr-4">提交</th>
@@ -6010,11 +8354,11 @@ GM_SQUAD_DETAIL_HTML = """
                 </div>
                 
                 <div class="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mt-2 pt-4 border-t border-zinc-700">
-                    <div>HP: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
-                    <div>Sanity: <span class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
-                    <div>Power: <span class="font-mono text-orange-400">{{ squad.power }}</span></div>
-                    <div>Intellect: <span class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
-                    <div>Resilience: <span class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
+                    <div>生命值: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
+                    <div>神智: <span class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
+                    <div>力量: <span class="font-mono text-orange-400">{{ squad.power }}</span></div>
+                    <div>智力: <span class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
+                    <div>韌性: <span class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
                 </div>
             </div>
         </div>
@@ -6032,7 +8376,7 @@ GM_SQUAD_DETAIL_HTML = """
                 <input type="hidden" name="squad_id" value="{{ squad.squad_id }}">
                 
                 <div>
-                    <label class="text-xs text-zinc-400 block mb-1">HP</label>
+                    <label class="text-xs text-zinc-400 block mb-1">生命值</label>
                     <div class="flex gap-x-2">
                         <input type="number" name="value" id="hp-value" value="{{ squad.hp }}" 
                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
@@ -6042,7 +8386,7 @@ GM_SQUAD_DETAIL_HTML = """
                 </div>
                 
                 <div>
-                    <label class="text-xs text-zinc-400 block mb-1">Sanity</label>
+                    <label class="text-xs text-zinc-400 block mb-1">神智</label>
                     <div class="flex gap-x-2">
                         <input type="number" name="value" id="sanity-value" value="{{ squad.sanity }}" 
                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
@@ -6052,7 +8396,7 @@ GM_SQUAD_DETAIL_HTML = """
                 </div>
                 
                 <div>
-                    <label class="text-xs text-zinc-400 block mb-1">Power</label>
+                    <label class="text-xs text-zinc-400 block mb-1">力量</label>
                     <div class="flex gap-x-2">
                         <input type="number" id="power-value" value="{{ squad.power }}" 
                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
@@ -6061,7 +8405,7 @@ GM_SQUAD_DETAIL_HTML = """
                     </div>
                 </div>
                 <div>
-                    <label class="text-xs text-zinc-400 block mb-1">Intellect</label>
+                    <label class="text-xs text-zinc-400 block mb-1">智力</label>
                     <div class="flex gap-x-2">
                         <input type="number" id="intellect-value" value="{{ squad.intellect }}" 
                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
@@ -6070,7 +8414,7 @@ GM_SQUAD_DETAIL_HTML = """
                     </div>
                 </div>
                 <div>
-                    <label class="text-xs text-zinc-400 block mb-1">Resilience</label>
+                    <label class="text-xs text-zinc-400 block mb-1">韌性</label>
                     <div class="flex gap-x-2">
                         <input type="number" id="resilience-value" value="{{ squad.resilience }}" 
                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
