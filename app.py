@@ -2572,7 +2572,7 @@ def index():
 @app.route("/login", methods=["POST"])
 def login():
     name = request.form.get("squad_id", "").strip()
-    input_pin = request.form.get("pin", "").strip()
+    input_pin = re.sub(r"\D", "", request.form.get("pin", "").strip())[:4]
 
     if not name:
         return jsonify({"error": "請輸入名稱"}), 400
@@ -2580,56 +2580,66 @@ def login():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
 
+    # 先用 display_name 搵人（防止重複建立）；其次允許 squad_id 靜默還原
     row = conn.execute(
-        "SELECT * FROM squads WHERE squad_id = ? OR LOWER(TRIM(display_name)) = LOWER(TRIM(?))",
-        (name, name),
+        "SELECT * FROM squads WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?))",
+        (name,),
     ).fetchone()
-
     if not row:
-        internal_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
-        while get_squad(internal_id):
-            internal_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
+        row = conn.execute(
+            "SELECT * FROM squads WHERE squad_id = ?",
+            (name,),
+        ).fetchone()
+
+    if row:
+        stored_pin = str(row["pin"] or "").strip()
+        has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
+
+        if has_pin:
+            if not input_pin:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "require_pin": True,
+                    "message": "請輸入 PIN",
+                })
+            if len(input_pin) != 4:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "error": "PIN 必須為 4 位數字",
+                })
+            if input_pin != stored_pin:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "error": "PIN 錯誤",
+                })
+
+        squad_id = row["squad_id"]
+    else:
+        squad_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
+        while get_squad(squad_id):
+            squad_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
+
         c = conn.cursor()
         c.execute(
             "INSERT INTO squads (squad_id, display_name) VALUES (?, ?)",
-            (internal_id, name),
+            (squad_id, name),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (internal_id,)).fetchone()
+        row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
 
-    stored_pin = str(row["pin"] or "").strip()
-    input_pin = re.sub(r"\D", "", input_pin)[:4]
-    has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
-
-    if has_pin:
-        if not input_pin:
-            conn.close()
-            return jsonify({
-                "success": False,
-                "require_pin": True,
-                "message": "請輸入 PIN",
-            })
-        if len(input_pin) != 4:
-            conn.close()
-            return jsonify({
-                "success": False,
-                "error": "PIN 必須為 4 位數字",
-            })
-        if input_pin != stored_pin:
-            conn.close()
-            return jsonify({
-                "success": False,
-                "error": "PIN 錯誤",
-            })
-
-    establish_player_session(row["squad_id"])
+    establish_player_session(squad_id)
     conn.close()
 
-    squad = get_squad(row["squad_id"])
+    squad = get_squad(squad_id)
     status = build_player_status(squad)
+    stored_pin = str(row["pin"] or "").strip()
+    has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
     status["require_set_pin"] = not has_pin
     status["has_pin"] = has_pin
-    attach_restore_token(status, row["squad_id"])
+    attach_restore_token(status, squad_id)
     return jsonify(status)
 
 
@@ -2664,7 +2674,9 @@ def set_pin():
 
     update_squad(session["squad_id"], pin=new_pin)
 
-    return jsonify({"success": True, "message": "PIN 設定成功"})
+    payload = {"success": True, "message": "PIN 設定成功", "has_pin": True}
+    attach_restore_token(payload, session["squad_id"])
+    return jsonify(payload)
 
 @app.route("/my_submissions")
 def my_submissions():
@@ -6207,13 +6219,23 @@ HTML_TEMPLATE = """
             };
         }
 
-        async function loadCombatPage() {
+        async function loadCombatPage(combatId) {
+            if (combatId) currentCombatId = combatId;
             stopCombatPolling();
             setVisible(document.getElementById('combat-lobby'), true);
             setVisible(document.getElementById('combat-screen'), false);
             await ensureCurrentSquadProfile();
             await loadEncounters();
             await loadCombatStatus(true);
+        }
+
+        function persistRestoreToken(data) {
+            if (!data?.restore_token) return;
+            try {
+                localStorage.setItem('oikonomia_restore_token', data.restore_token);
+            } catch (e) {
+                console.warn('restore_token save failed', e);
+            }
         }
 
         async function loadEncounters() {
@@ -7736,31 +7758,44 @@ HTML_TEMPLATE = """
             const loading = document.getElementById('session-loading');
             const loginScreen = document.getElementById('login-screen');
             const stored = loadLocalSession();
+            const token = stored?.restore_token || localStorage.getItem('oikonomia_restore_token');
 
-            // 1. 優先用 restore_token（手機 reload / Cookie 遺失）
-            if (stored?.restore_token || localStorage.getItem('oikonomia_restore_token')) {
+            const finishRestore = async (data) => {
+                persistRestoreToken(data);
+                if (loading) setVisible(loading, false);
+                await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
+                if (data.current_combat_id) {
+                    setTimeout(() => loadCombatPage(data.current_combat_id), 300);
+                }
+            };
+
+            // 1. restore_token（手機 reload / Cookie 遺失）
+            if (token) {
                 try {
-                    const restored = await tryRestoreWithToken(stored || {});
-                    if (restored) {
-                        const fresh = await refreshSquadFromServer() || restored;
-                        if (loading) setVisible(loading, false);
-                        await completeLogin({ ...fresh, require_set_pin: false, skip_team_prompt: true });
-                        await resumeActiveCombatAfterRestore(fresh);
+                    const res = await fetch('/session/restore', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ restore_token: token }),
+                    });
+                    const data = await res.json();
+                    if (data.success && data.squad_id) {
+                        const fresh = await refreshSquadFromServer() || data;
+                        await finishRestore(fresh);
                         return;
                     }
                 } catch (e) {
-                    console.warn('token restore failed', e);
+                    console.error('Restore with token failed', e);
                 }
             }
 
-            // 2. Cookie session（含 Render 冷啟動重試）
+            // 2. Cookie session（含冷啟動重試）
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
                     const squad = await refreshSquadFromServer();
                     if (squad) {
-                        if (loading) setVisible(loading, false);
-                        await completeLogin({ ...squad, require_set_pin: false, skip_team_prompt: true });
-                        await resumeActiveCombatAfterRestore(squad);
+                        persistRestoreToken(squad);
+                        await finishRestore(squad);
                         return;
                     }
                 } catch (e) {
@@ -7771,15 +7806,14 @@ HTML_TEMPLATE = """
                 }
             }
 
-            // 3. 用儲存嘅 squad_id 靜默登入（無 PIN 帳號）
+            // 3. 靜默 squad_id 登入（無 PIN 帳號）
             if (stored?.squad_id && !stored?.has_pin) {
                 try {
                     const relogin = await tryLoginWithStoredSquad(stored);
                     if (relogin) {
                         const fresh = await refreshSquadFromServer() || relogin;
-                        if (loading) setVisible(loading, false);
-                        await completeLogin({ ...fresh, require_set_pin: false, skip_team_prompt: true });
-                        await resumeActiveCombatAfterRestore(fresh);
+                        persistRestoreToken(fresh);
+                        await finishRestore(fresh);
                         return;
                     }
                 } catch (e) {
@@ -7837,6 +7871,7 @@ HTML_TEMPLATE = """
                     });
                     const result = await res.json();
                     if (result.success) {
+                        persistRestoreToken(result);
                         alert('PIN 設定成功！請記住。');
                         const fresh = await refreshSquadFromServer();
                         if (fresh) {
@@ -7845,7 +7880,7 @@ HTML_TEMPLATE = """
                             updateDashboard(fresh);
                         } else {
                             currentSquad.has_pin = true;
-                            saveLocalSession(currentSquad);
+                            saveLocalSession({ ...currentSquad, restore_token: result.restore_token });
                         }
                     } else {
                         alert(result.error || 'PIN 設定失敗');
@@ -7903,6 +7938,7 @@ HTML_TEMPLATE = """
             });
             const data = await res.json();
             if (data.success !== false && data.squad_id) {
+                persistRestoreToken(data);
                 await completeLogin(data);
             } else {
                 alert(data.error || data.message || 'PIN 錯誤');
@@ -7928,6 +7964,7 @@ HTML_TEMPLATE = """
                 const data = await res.json();
 
                 if (data.success !== false && data.squad_id) {
+                    persistRestoreToken(data);
                     await completeLogin(data);
                 } else {
                     if (data.require_pin) {
