@@ -33,6 +33,28 @@ if os.environ.get("RENDER") == "true" and os.path.isdir("/data"):
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 app.static_folder = os.path.join(PROJECT_DIR, "static")
 AVATAR_DIR = os.path.join(app.static_folder, "avatars")
+PORTRAIT_DIR = os.path.join(app.static_folder, "portraits")
+PORTRAIT_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg")
+os.makedirs(PORTRAIT_DIR, exist_ok=True)
+
+def _list_image_files(directory, exclude=()):
+    if not os.path.isdir(directory):
+        return []
+    skip = set(exclude)
+    return sorted(
+        name for name in os.listdir(directory)
+        if name not in skip
+        and not name.startswith(".")
+        and os.path.isfile(os.path.join(directory, name))
+        and name.lower().endswith(PORTRAIT_IMAGE_EXTS)
+    )
+
+def portrait_static_path(filename):
+    """非玩家角色頭像 URL（static/portraits/）。"""
+    safe = os.path.basename((filename or "").strip())
+    if not safe:
+        return "/static/avatars/default.png"
+    return f"/static/portraits/{safe}"
 DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -449,6 +471,32 @@ def calculate_attack_damage(player, enemy_resilience, multiplier=1.0, item_bonus
     attack_stat = get_effective_attack_stat(player)
     raw = ((attack_stat * 1.5) + base_damage + item_bonus) * multiplier - (enemy_resilience * 0.8)
     return max(1, int(raw))
+
+def calculate_damage_simple(attacker, target, base_damage=COMBAT_ATTACK_BASE_DAMAGE,
+                            multiplier=1.0, is_critical=False, apply_sanity_penalty=False,
+                            item_bonus=0):
+    """
+    進階版傷害計算（可選機制模板，預設唔啟用暴擊/神智減益）。
+    與 calculate_attack_damage 嘅分別：倍率/暴擊/神智係喺減防之後再疊加。
+    啟用時建議：骰 3 → is_critical=True；神智 <50 → apply_sanity_penalty=True。
+    target 可為敵人 dict（resilience）或整數防禦值。
+    """
+    if multiplier <= 0:
+        return 0
+    attack_power = get_effective_attack_stat(attacker)
+    if isinstance(target, dict):
+        defense = int(target.get("resilience") or 0)
+    else:
+        defense = int(target or 0)
+    damage = (attack_power * 1.5) + base_damage + item_bonus - (defense * 0.8)
+    damage *= multiplier
+    if is_critical:
+        damage *= 1.5
+    if apply_sanity_penalty:
+        sanity = int(attacker.get("sanity") or 100)
+        if sanity < 50:
+            damage *= 0.85
+    return max(1, int(damage))
 
 def calculate_damage(attacker_stat, multiplier, enemy_armor, item_bonus=0):
     """Legacy helper（暴走自傷等）；一般攻擊請用 calculate_attack_damage。"""
@@ -2380,12 +2428,8 @@ def api_version():
         name for name in os.listdir(UPLOAD_FOLDER)
         if os.path.isfile(os.path.join(UPLOAD_FOLDER, name))
     ]) if os.path.isdir(UPLOAD_FOLDER) else 0
-    avatar_count = 0
-    if os.path.isdir(AVATAR_DIR):
-        avatar_count = len([
-            name for name in os.listdir(AVATAR_DIR)
-            if name.lower().endswith((".png", ".jpg", ".jpeg")) and name != "default.png"
-        ])
+    avatar_count = len(_list_image_files(AVATAR_DIR, exclude=("default.png",)))
+    portrait_count = len(_list_image_files(PORTRAIT_DIR, exclude=("default.png",)))
     return jsonify({
         "success": True,
         "version": read_deploy_version(),
@@ -2401,6 +2445,8 @@ def api_version():
         "upload_file_count": upload_count,
         "avatar_dir": AVATAR_DIR,
         "avatar_count": avatar_count,
+        "portrait_dir": PORTRAIT_DIR,
+        "portrait_count": portrait_count,
     })
 
 @app.route("/")
@@ -3481,13 +3527,13 @@ def update_display_name():
 
 @app.route("/available_avatars")
 def available_avatars():
-    if not os.path.isdir(AVATAR_DIR):
-        return jsonify({"avatars": [], "avatar_dir": AVATAR_DIR})
-    files = [
-        filename for filename in os.listdir(AVATAR_DIR)
-        if filename.lower().endswith((".png", ".jpg", ".jpeg")) and filename != "default.png"
-    ]
-    return jsonify({"avatars": sorted(files)})
+    files = _list_image_files(AVATAR_DIR, exclude=("default.png",))
+    return jsonify({"avatars": files, "avatar_dir": AVATAR_DIR})
+
+@app.route("/available_portraits")
+def available_portraits():
+    files = _list_image_files(PORTRAIT_DIR, exclude=("default.png",))
+    return jsonify({"portraits": files, "portrait_dir": PORTRAIT_DIR})
 
 @app.route("/set_avatar", methods=["POST"])
 def set_avatar():
