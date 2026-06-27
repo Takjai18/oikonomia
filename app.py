@@ -925,6 +925,184 @@ def build_combat_status_response(combat, encounter, squad_id):
         "my_squad_id": squad_id,
     }
 
+def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):
+    """預估單一行動對敵人傷害（不含暴走隨機結果）"""
+    meta = {}
+    sanity = int(player.get("sanity") or 0)
+    berserk_chance = berserk_probability(sanity)
+    if berserk_chance > 0:
+        meta["berserk_risk"] = True
+        meta["berserk_chance"] = round(berserk_chance * 100)
+
+    try:
+        dice = max(0, min(3, int(dice_result)))
+    except (TypeError, ValueError):
+        dice = 1
+    multiplier = dice_multiplier(dice)
+    item_bonus = 0
+    if item_id:
+        item = get_item_by_id(int(item_id))
+        if item and item.get("effect_type") == "power_up":
+            item_bonus = abs(int(item.get("effect_value") or 0))
+
+    if action_type == "use_zoo":
+        multiplier *= zoo_bonus_multiplier(sanity)
+        stat = get_effective_stat(player, "power")
+        dmg = calculate_damage(stat, multiplier, enemy_resilience, item_bonus)
+    elif action_type == "attack_physical":
+        stat = get_effective_stat(player, "power")
+        dmg = calculate_damage(stat, multiplier, enemy_resilience, item_bonus)
+    elif action_type == "attack_nonphysical":
+        stat = get_effective_stat(player, "intellect")
+        dmg = calculate_damage(stat, multiplier, enemy_sanity, item_bonus)
+    else:
+        dmg = 0
+
+    if meta.get("berserk_risk"):
+        meta["damage_if_normal"] = dmg
+        meta["damage_note"] = "暴走時可能無法對敵輸出"
+    return dmg, meta
+
+def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, item_id=None):
+    combat = get_combat(combat_id)
+    if not combat or combat.get("status") != "player_phase":
+        return None
+
+    squad = get_squad(squad_id)
+    if not squad:
+        return None
+
+    encounter = load_encounter(combat["encounter_id"])
+    enemy_res = int(combat.get("enemy_resilience") or 0)
+    enemy_san = int(combat.get("enemy_sanity") or 0)
+    enemy_base = int(combat.get("enemy_base_damage") or 0)
+    participants = get_combat_participants(combat)
+    phase_actions = dict(combat.get("phase_actions") or {})
+
+    my_dmg, my_meta = _preview_action_enemy_damage(
+        squad, action_type, dice_result, item_id, enemy_res, enemy_san,
+    )
+    ally_damage = 0
+    ally_count = 0
+    for pid, ad in phase_actions.items():
+        if pid == squad_id:
+            continue
+        player = get_squad(pid)
+        if not player:
+            continue
+        d, _ = _preview_action_enemy_damage(
+            player,
+            ad.get("action_type"),
+            ad.get("dice_result", 1),
+            ad.get("item_id"),
+            enemy_res,
+            enemy_san,
+        )
+        ally_damage += d
+        ally_count += 1
+
+    hypo_actions = dict(phase_actions)
+    hypo_actions[squad_id] = {
+        "action_type": action_type,
+        "dice_result": dice_result,
+        "item_id": item_id,
+    }
+
+    active_participants = []
+    for p in participants:
+        sid = p["squad_id"]
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
+                    continue
+            except ValueError:
+                pass
+        active_participants.append(p)
+
+    all_submitted = all(hypo_actions.get(p["squad_id"]) for p in active_participants)
+    pending_count = sum(1 for p in active_participants if not hypo_actions.get(p["squad_id"]))
+
+    target = get_lowest_resilience_player(active_participants) or (participants[0] if participants else None)
+    counter_damage = 0
+    counter_target_name = None
+    counter_defending = False
+    if target:
+        target_id = target["squad_id"]
+        counter_defending = (hypo_actions.get(target_id) or {}).get("action_type") == "defend"
+        counter_damage = calculate_incoming_damage(
+            enemy_base,
+            get_effective_stat(target, "resilience"),
+            defending=counter_defending,
+        )
+        counter_target_name = target.get("display_name") or target_id
+
+    risks = []
+    if my_meta.get("berserk_risk"):
+        risks.append({
+            "level": "berserk",
+            "message": f"你有 {my_meta['berserk_chance']}% 暴走機率，可能無法對敵造成傷害",
+        })
+
+    for p in active_participants:
+        sid = p["squad_id"]
+        name = p.get("display_name") or sid
+        hp = int(p.get("hp") or 0)
+        sanity = int(p.get("sanity") or 0)
+        if target and sid == target["squad_id"] and counter_damage > 0:
+            after_hp = hp - counter_damage
+            if after_hp <= 0:
+                risks.append({
+                    "level": "critical",
+                    "message": f"{name} 可能被反擊致命或陷入瀕死！",
+                })
+            elif after_hp < 20:
+                risks.append({
+                    "level": "hp",
+                    "message": f"{name} 生命值將降至 {after_hp}（低於 20，瀕死風險）",
+                })
+        if sanity < 10:
+            risks.append({
+                "level": "sanity",
+                "message": f"{name} 神智 {sanity}，暴走機率約 90%",
+            })
+        elif sanity < 20:
+            risks.append({
+                "level": "sanity",
+                "message": f"{name} 神智 {sanity}，暴走機率約 50%",
+            })
+        elif sanity < 40:
+            risks.append({
+                "level": "sanity",
+                "message": f"{name} 神智 {sanity}，仍有暴走風險（約 20%）",
+            })
+
+    action_labels = {
+        "attack_physical": "物理攻擊",
+        "attack_nonphysical": "精神攻擊",
+        "defend": "堅守界線",
+        "use_zoo": "Zoo 能力",
+        "use_item": "使用物品",
+        "pass": "觀望",
+    }
+
+    return {
+        "action_type": action_type,
+        "action_label": action_labels.get(action_type, action_type),
+        "dice_result": dice_result,
+        "my_damage_to_enemy": my_dmg,
+        "ally_damage_to_enemy": ally_damage,
+        "total_damage_to_enemy": my_dmg + ally_damage,
+        "enemy_counter_damage": counter_damage,
+        "counter_target_name": counter_target_name,
+        "counter_defending": counter_defending,
+        "counter_pending": not all_submitted and len(active_participants) > 1,
+        "pending_teammates": max(0, pending_count - 0) if not all_submitted else 0,
+        "phase_resolves_now": all_submitted or len(active_participants) <= 1,
+        "berserk_risk": my_meta.get("berserk_risk", False),
+        "damage_if_normal": my_meta.get("damage_if_normal", my_dmg),
+        "risks": risks,
+    }
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -2659,6 +2837,52 @@ def combat_status_api():
     payload["in_precheck"] = combat.get("status") == "precheck"
     return jsonify(payload)
 
+@app.route("/combat/preview_action", methods=["POST"])
+def combat_preview_action_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    body = request.json if request.is_json else request.form.to_dict()
+    combat_id = body.get("combat_id")
+    try:
+        combat_id = int(combat_id) if combat_id else None
+    except (TypeError, ValueError):
+        combat_id = None
+
+    action_type = (body.get("action_type") or body.get("action") or "").strip()
+    if action_type not in COMBAT_ACTION_TYPES:
+        return jsonify({"success": False, "error": "無效行動"}), 400
+
+    try:
+        dice_result = int(body.get("dice_result", body.get("dice", 1)))
+    except (TypeError, ValueError):
+        dice_result = 1
+    dice_result = max(0, min(3, dice_result))
+
+    item_id = body.get("item_id")
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"success": False, "error": "玩家不存在"}), 400
+
+    if not combat_id:
+        active = None
+        if squad.get("team_id"):
+            active = get_active_combat_for_team(squad["team_id"])
+        if not active:
+            active = get_combat_by_squad(session["squad_id"])
+        combat_id = active["id"] if active else None
+
+    if not combat_id:
+        return jsonify({"success": False, "error": "沒有進行中的戰鬥"}), 400
+
+    preview = build_combat_round_preview(
+        combat_id, session["squad_id"], action_type, dice_result, item_id,
+    )
+    if not preview:
+        return jsonify({"success": False, "error": "無法預覽此回合"}), 400
+
+    return jsonify({"success": True, "preview": preview})
+
 @app.route("/combat/submit_action", methods=["POST"])
 @app.route("/combat/action", methods=["POST"])
 def combat_submit_action_api():
@@ -2684,11 +2908,15 @@ def combat_submit_action_api():
 
     item_id = body.get("item_id")
     squad = get_squad(session["squad_id"])
-    if not squad or not squad.get("team_id"):
-        return jsonify({"success": False, "error": "請先加入 Team"}), 400
+    if not squad:
+        return jsonify({"success": False, "error": "玩家不存在"}), 400
 
     if not combat_id:
-        active = get_active_combat_for_team(squad["team_id"])
+        active = None
+        if squad.get("team_id"):
+            active = get_active_combat_for_team(squad["team_id"])
+        if not active:
+            active = get_combat_by_squad(session["squad_id"])
         combat_id = active["id"] if active else None
     combat = get_combat(combat_id) if combat_id else None
     if not combat or combat.get("status") != "player_phase":
@@ -4736,13 +4964,35 @@ HTML_TEMPLATE = """
                         <div class="text-[10px] text-zinc-500 mt-2">0 = 失手　｜　3 = 爆擊</div>
                     </div>
 
-                    <div class="mt-6">
-                        <button type="button" id="combat-submit-btn" onclick="submitAction()"
-                                class="w-full py-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-xl font-semibold text-zinc-950 rounded-3xl transition">
-                            確認行動並結束回合
+                    <div id="round-preview" class="hidden mt-6 bg-zinc-900 border border-amber-600 rounded-3xl p-5">
+                        <div class="text-amber-400 font-semibold mb-1 flex items-center gap-x-2">
+                            <span>⚔️</span>
+                            <span>本回合戰況預覽</span>
+                        </div>
+                        <div id="preview-action-summary" class="text-xs text-zinc-400 mb-3"></div>
+                        <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                            <div class="bg-zinc-800 rounded-2xl p-4">
+                                <div class="text-emerald-400 text-xs mb-1">我方輸出</div>
+                                <div class="text-2xl font-bold text-emerald-400">
+                                    -<span id="preview-damage-to-enemy">0</span>
+                                </div>
+                                <div id="preview-my-damage-note" class="text-xs text-zinc-500 mt-1">對敵人造成傷害</div>
+                            </div>
+                            <div class="bg-zinc-800 rounded-2xl p-4">
+                                <div class="text-red-400 text-xs mb-1">敵方反擊</div>
+                                <div class="text-2xl font-bold text-red-400">
+                                    -<span id="preview-damage-to-team">0</span>
+                                </div>
+                                <div id="preview-counter-note" class="text-xs text-zinc-500 mt-1">預計對我方造成傷害</div>
+                            </div>
+                        </div>
+                        <div id="risk-warning" class="space-y-2 text-sm"></div>
+                        <button type="button" onclick="confirmAndResolveRound()"
+                                class="mt-4 w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl">
+                            確認並結束本回合
                         </button>
-                        <p id="combat-submit-hint" class="text-xs text-zinc-500 text-center mt-2"></p>
                     </div>
+                    <p id="combat-submit-hint" class="text-xs text-zinc-500 text-center mt-2"></p>
 
                     <div class="mt-6 bg-zinc-950 border border-zinc-800 rounded-3xl p-4 max-h-48 overflow-y-auto text-sm text-zinc-300" id="combat-log"></div>
                     <span id="max-phase" class="hidden"></span>
@@ -5057,6 +5307,7 @@ HTML_TEMPLATE = """
 
         function resetCombatDiceUi() {
             selectedDice = null;
+            hideRoundPreview();
             const area = document.getElementById('dice-area');
             if (area) area.classList.add('hidden');
             const face = document.getElementById('dice-face');
@@ -5067,10 +5318,6 @@ HTML_TEMPLATE = """
                 container.classList.remove('animate-pulse', 'dice-crit');
             }
             document.getElementById('dice-result-text')?.classList.add('hidden');
-            const submitBtn = document.getElementById('combat-submit-btn');
-            if (submitBtn) {
-                submitBtn.classList.remove('ring-2', 'ring-amber-300', 'ring-offset-2', 'ring-offset-zinc-950');
-            }
         }
 
         function showDiceResultStatic(value) {
@@ -5086,17 +5333,98 @@ HTML_TEMPLATE = """
             document.getElementById('dice-container')?.classList.toggle('dice-crit', value === 3);
         }
 
-        function showConfirmButton() {
-            const submitBtn = document.getElementById('combat-submit-btn');
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.classList.add('ring-2', 'ring-amber-300', 'ring-offset-2', 'ring-offset-zinc-950');
+        function hideRoundPreview() {
+            setVisible(document.getElementById('round-preview'), false);
+        }
+
+        function renderRiskWarnings(risks) {
+            const container = document.getElementById('risk-warning');
+            if (!container) return;
+            container.innerHTML = '';
+            if (!risks || !risks.length) {
+                container.innerHTML = '<div class="text-xs text-zinc-500">暫無額外危險提示</div>';
+                return;
             }
-            const hint = document.getElementById('combat-submit-hint');
+            const styles = {
+                critical: 'bg-red-900/30 border border-red-600 text-red-400',
+                hp: 'bg-red-900/20 border border-red-700 text-red-300',
+                sanity: 'bg-orange-900/30 border border-orange-600 text-orange-400',
+                berserk: 'bg-orange-900/40 border border-orange-500 text-orange-300',
+            };
+            risks.forEach(r => {
+                const div = document.createElement('div');
+                div.className = `text-xs px-3 py-2 rounded-xl ${styles[r.level] || 'bg-zinc-800 text-zinc-300'}`;
+                div.textContent = `⚠️ ${r.message}`;
+                container.appendChild(div);
+            });
+        }
+
+        function showRoundPreview(preview) {
+            if (!preview) return;
             const labels = ['失手', '普通', '良好', '爆擊'];
-            if (hint && selectedDice !== null) {
-                hint.textContent = `骰子 ${selectedDice}（${labels[selectedDice] || ''}）— 按「確認行動」提交`;
+            const diceLabel = labels[preview.dice_result] || '';
+            document.getElementById('preview-action-summary').textContent =
+                `${preview.action_label || ''} · 骰 ${preview.dice_result}（${diceLabel}）`;
+            document.getElementById('preview-damage-to-enemy').textContent = preview.total_damage_to_enemy ?? 0;
+            const myNote = document.getElementById('preview-my-damage-note');
+            if (myNote) {
+                let note = `你造成 ${preview.my_damage_to_enemy ?? 0}`;
+                if (preview.ally_damage_to_enemy > 0) {
+                    note += `，隊友已提交 ${preview.ally_damage_to_enemy}`;
+                }
+                if (preview.berserk_risk) {
+                    note += `（正常情況 ${preview.damage_if_normal ?? 0}；暴走則可能為 0）`;
+                }
+                myNote.textContent = note;
             }
+            document.getElementById('preview-damage-to-team').textContent = preview.enemy_counter_damage ?? 0;
+            const counterNote = document.getElementById('preview-counter-note');
+            if (counterNote) {
+                let note = preview.counter_target_name
+                    ? `預計反擊目標：${preview.counter_target_name}`
+                    : '預計對我方造成傷害';
+                if (preview.counter_defending) note += '（防禦減半）';
+                if (preview.counter_pending) note += ' · 待全隊提交後結算';
+                else if (preview.phase_resolves_now) note += ' · 本回合將結算';
+                counterNote.textContent = note;
+            }
+            renderRiskWarnings(preview.risks);
+            setVisible(document.getElementById('round-preview'), true);
+            const hint = document.getElementById('combat-submit-hint');
+            if (hint) hint.textContent = '請檢視戰況預覽，確認後結束本回合';
+        }
+
+        async function fetchAndShowRoundPreview() {
+            const payload = {
+                combat_id: currentCombatId,
+                action_type: selectedAction,
+                dice_result: selectedDice ?? 1,
+            };
+            if (selectedAction === 'use_item' && selectedItemId) {
+                payload.item_id = selectedItemId;
+            }
+            try {
+                const res = await fetch('/combat/preview_action', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    alert(data.error || '無法預覽戰況');
+                    return;
+                }
+                showRoundPreview(data.preview);
+            } catch (e) {
+                alert('預覽戰況失敗');
+            }
+        }
+
+        function confirmAndResolveRound() {
+            const btn = document.querySelector('#round-preview button');
+            if (btn?.disabled) return;
+            submitAction();
         }
 
         function rollDiceWithAnimation(callback) {
@@ -5167,7 +5495,7 @@ HTML_TEMPLATE = """
                 }
                 rollDiceWithAnimation((diceResult) => {
                     selectedDice = diceResult;
-                    showConfirmButton();
+                    fetchAndShowRoundPreview();
                 });
                 return;
             }
@@ -5184,7 +5512,7 @@ HTML_TEMPLATE = """
             }
             selectedDice = 1;
             highlightCombatAction(action, opts);
-            submitAction();
+            fetchAndShowRoundPreview();
         }
 
         async function loadCombatItems() {
@@ -5237,12 +5565,14 @@ HTML_TEMPLATE = """
             });
             if (!combatItemsLoaded) await loadCombatItems();
             resetCombatDiceUi();
-            const submitBtn = document.getElementById('combat-submit-btn');
             const me = lastCombatStatus?.my_state;
             const canAct = lastCombatStatus?.status === 'player_phase'
                 && !(me?.near_death_until && new Date(me.near_death_until) > new Date())
                 && !me?.submitted;
-            if (submitBtn) submitBtn.disabled = !canAct;
+            const hint = document.getElementById('combat-submit-hint');
+            if (hint) {
+                hint.textContent = canAct ? '選擇行動後將自動擲骰並顯示戰況預覽' : '';
+            }
         }
 
         async function loadCombatPage() {
@@ -5538,7 +5868,6 @@ HTML_TEMPLATE = """
             const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
             updateNearDeathOverlay(me);
 
-            const submitBtn = document.getElementById('combat-submit-btn');
             const hintEl = document.getElementById('combat-submit-hint');
             const actionContainer = document.getElementById('player-panel');
             const canAct = data.status === 'player_phase' && !inNearDeath && !me.submitted;
@@ -5549,31 +5878,21 @@ HTML_TEMPLATE = """
             if (canAct && phaseNum !== lastDicePhase) {
                 lastDicePhase = phaseNum;
                 resetCombatDiceUi();
-                if (submitBtn) submitBtn.disabled = true;
             } else if (me.submitted && me.dice_result !== undefined && me.dice_result !== null) {
                 selectedDice = me.dice_result;
                 showDiceResultStatic(me.dice_result);
+                hideRoundPreview();
             }
-            if (submitBtn) {
-                if (!canAct || diceRolling || me.submitted) {
-                    submitBtn.disabled = true;
-                } else if (COMBAT_DICE_ACTIONS.has(selectedAction)) {
-                    submitBtn.disabled = selectedDice === null;
-                    if (selectedDice !== null) showConfirmButton();
-                } else {
-                    submitBtn.disabled = true;
-                }
-            }
+            if (me.submitted || !canAct) hideRoundPreview();
             if (hintEl) {
                 if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
                 else if (data.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
                 else if (diceRolling) hintEl.textContent = '系統擲骰中，請稍候…';
-                else if (selectedDice !== null && COMBAT_DICE_ACTIONS.has(selectedAction)) {
-                    const labels = ['失手', '普通', '良好', '爆擊'];
-                    hintEl.textContent = `骰子 ${selectedDice}（${labels[selectedDice] || ''}）— 按「確認行動」提交`;
-                } else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
-                else hintEl.textContent = '選擇攻擊 / Zoo 會自動擲骰；Defend / 物品 / 觀望直接提交';
+                else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
+                else if (document.getElementById('round-preview') && !document.getElementById('round-preview').classList.contains('hidden')) {
+                    hintEl.textContent = '請檢視戰況預覽，確認後結束本回合';
+                } else hintEl.textContent = '選擇行動後將自動擲骰並顯示戰況預覽';
             }
         }
 
@@ -5612,22 +5931,9 @@ HTML_TEMPLATE = """
                 return;
             }
             if (selectedDice === null) selectedDice = 1;
-            const labels = {
-                attack_physical: 'Physical Attack（力量）',
-                attack_nonphysical: 'Non-Physical Attack（智力）',
-                defend: 'Defend（堅守界線）',
-                use_zoo: 'Use Zoo',
-                use_item: '使用物品',
-                pass: '觀望',
-            };
-            const me = lastCombatStatus?.my_state || {};
-            const sanity = me.sanity ?? 100;
-            let confirmMsg = `確定提交？\n行動：${labels[selectedAction] || selectedAction}\n骰子：${selectedDice}（系統隨機）`;
-            const berserkPct = lastCombatStatus?.berserk_chance || 0;
-            if (sanity < 10) confirmMsg += `\n\n⚠️ 神智崩潰邊緣，暴走機率約 ${berserkPct}%！`;
-            else if (sanity < 20) confirmMsg += `\n\n⚠️ 神智極低，暴走機率約 ${berserkPct}%！`;
-            else if (sanity < 40) confirmMsg += `\n\n⚠️ 神智偏低，暴走風險約 ${berserkPct}%。`;
-            if (!confirm(confirmMsg)) return;
+
+            const confirmBtn = document.querySelector('#round-preview button');
+            if (confirmBtn) confirmBtn.disabled = true;
 
             const payload = {
                 combat_id: currentCombatId,
@@ -5636,14 +5942,22 @@ HTML_TEMPLATE = """
             };
             if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
 
-            const res = await fetch('/combat/submit_action', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
+            let data;
+            try {
+                const res = await fetch('/combat/submit_action', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                data = await res.json();
+            } catch (e) {
+                if (confirmBtn) confirmBtn.disabled = false;
+                alert('提交失敗，請稍後再試');
+                return;
+            }
             if (!data.success && data.error) {
+                if (confirmBtn) confirmBtn.disabled = false;
                 alert(data.error);
                 return;
             }
