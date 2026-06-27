@@ -4215,10 +4215,9 @@ HTML_TEMPLATE = """
         }
         .zoo-flash { animation: zoo-flash 0.6s ease-out; }
         .combat-action-btn.selected { border-color: var(--combat-accent, #f59e0b) !important; background: var(--combat-accent-soft, rgba(245, 158, 11, 0.15)); }
-        #dice-result.dice-rolling { animation: dice-shake 0.12s ease-in-out infinite; color: #a1a1aa; }
-        @keyframes dice-shake {
-            0%, 100% { transform: rotate(-6deg) scale(1.02); }
-            50% { transform: rotate(6deg) scale(0.98); }
+        #dice-container.dice-crit {
+            border-color: #facc15 !important;
+            box-shadow: 0 0 28px rgba(234, 179, 8, 0.55);
         }
         #combat-berserk-bar { background: linear-gradient(90deg, #9a3412, #ea580c); }
         #combat-berserk-bar.berserk-critical { background: linear-gradient(90deg, #7f1d1d, #dc2626); animation: combat-pulse 1s ease-in-out infinite; }
@@ -4677,11 +4676,16 @@ HTML_TEMPLATE = """
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="team-status"></div>
                     </div>
 
-                    <div class="mt-6 flex flex-col items-center" id="combat-dice-area">
-                        <div id="dice-status-text" class="text-xs text-zinc-400 mb-2">系統自動擲骰</div>
-                        <div id="dice-result"
-                             class="w-20 h-20 flex items-center justify-center text-5xl font-bold border-4 border-amber-500 rounded-2xl bg-zinc-950 text-amber-400">?</div>
-                        <div class="text-[10px] text-zinc-500 mt-2">0 = 失手　｜　3 = 爆擊（每回合自動隨機）</div>
+                    <div id="dice-area" class="hidden mt-6 flex flex-col items-center">
+                        <div class="text-sm text-amber-400 mb-3 tracking-widest">系統正在擲骰...</div>
+                        <div id="dice-container"
+                             class="w-28 h-28 flex items-center justify-center text-7xl font-bold border-[6px] border-amber-500 rounded-3xl bg-zinc-950 shadow-inner transition-all duration-200">
+                            <span id="dice-face">?</span>
+                        </div>
+                        <div id="dice-result-text" class="mt-3 text-sm text-zinc-400 hidden">
+                            擲出：<span id="final-dice" class="font-bold text-amber-400 text-xl"></span>
+                        </div>
+                        <div class="text-[10px] text-zinc-500 mt-2">0 = 失手　｜　3 = 爆擊</div>
                     </div>
 
                     <div class="mt-6">
@@ -4869,6 +4873,7 @@ HTML_TEMPLATE = """
             pass: '觀望',
         };
         const ROUTE_SUBTITLES = { iggy: 'Iggy 線', marah: 'Marah 線' };
+        const COMBAT_DICE_ACTIONS = new Set(['attack_physical', 'attack_nonphysical', 'use_zoo']);
 
         function stopCombatPolling() {
             if (combatPollTimer) {
@@ -4920,72 +4925,147 @@ HTML_TEMPLATE = """
             else screen.classList.add('combat-accent-default');
         }
 
-        function performAction(action, opts = {}) {
-            if (diceRolling) return;
-            selectedAction = action;
-            if (action === 'use_item') {
-                selectedItemId = opts.item_id != null ? opts.item_id : null;
-            } else {
-                selectedItemId = null;
-            }
+        function highlightCombatAction(action, opts = {}) {
             document.querySelectorAll('.combat-action-btn').forEach(btn => {
                 const match = btn.dataset.action === action
-                    && (action !== 'use_item' || String(btn.dataset.itemId) === String(selectedItemId));
+                    && (action !== 'use_item' || String(btn.dataset.itemId) === String(opts.item_id));
                 btn.classList.toggle('selected', match);
             });
             document.querySelectorAll('.combat-item-btn').forEach(btn => {
-                btn.classList.toggle('selected', String(btn.dataset.itemId) === String(selectedItemId));
+                btn.classList.toggle('selected', String(btn.dataset.itemId) === String(opts.item_id));
             });
-            if (action === 'use_zoo') {
-                const zooBtn = document.getElementById('zoo-action-btn');
-                zooBtn?.classList.add('zoo-flash');
-                setTimeout(() => zooBtn?.classList.remove('zoo-flash'), 600);
+        }
+
+        function resetCombatDiceUi() {
+            selectedDice = null;
+            const area = document.getElementById('dice-area');
+            if (area) area.classList.add('hidden');
+            const face = document.getElementById('dice-face');
+            if (face) face.textContent = '?';
+            const container = document.getElementById('dice-container');
+            if (container) {
+                container.style.transform = 'scale(1)';
+                container.classList.remove('animate-pulse', 'dice-crit');
+            }
+            document.getElementById('dice-result-text')?.classList.add('hidden');
+            const submitBtn = document.getElementById('combat-submit-btn');
+            if (submitBtn) {
+                submitBtn.classList.remove('ring-2', 'ring-amber-300', 'ring-offset-2', 'ring-offset-zinc-950');
             }
         }
 
-        function setDiceDisplay(value, rolling) {
-            const diceEl = document.getElementById('dice-result');
-            const statusEl = document.getElementById('dice-status-text');
-            if (!diceEl) return;
-            diceEl.classList.toggle('dice-rolling', !!rolling);
-            if (rolling) {
-                diceEl.textContent = '🎲';
-                if (statusEl) statusEl.textContent = '系統正在擲骰…';
-            } else if (value === null || value === undefined) {
-                diceEl.textContent = '?';
-                if (statusEl) statusEl.textContent = '系統自動擲骰';
-            } else {
-                diceEl.textContent = String(value);
-                const labels = ['失手', '普通', '良好', '爆擊'];
-                if (statusEl) statusEl.textContent = `骰子結果：${value}（${labels[value] || ''}）`;
+        function showDiceResultStatic(value) {
+            const area = document.getElementById('dice-area');
+            const face = document.getElementById('dice-face');
+            const resultText = document.getElementById('dice-result-text');
+            const finalDice = document.getElementById('final-dice');
+            if (!area || !face) return;
+            area.classList.remove('hidden');
+            face.textContent = String(value);
+            if (finalDice) finalDice.textContent = String(value);
+            resultText?.classList.remove('hidden');
+            document.getElementById('dice-container')?.classList.toggle('dice-crit', value === 3);
+        }
+
+        function showConfirmButton() {
+            const submitBtn = document.getElementById('combat-submit-btn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.add('ring-2', 'ring-amber-300', 'ring-offset-2', 'ring-offset-zinc-950');
+            }
+            const hint = document.getElementById('combat-submit-hint');
+            const labels = ['失手', '普通', '良好', '爆擊'];
+            if (hint && selectedDice !== null) {
+                hint.textContent = `骰子 ${selectedDice}（${labels[selectedDice] || ''}）— 按「確認行動」提交`;
             }
         }
 
-        function rollDice(autoOnly) {
+        function rollDiceWithAnimation(callback) {
             if (diceRolling) return Promise.resolve(selectedDice);
+            const diceContainer = document.getElementById('dice-container');
+            const diceFace = document.getElementById('dice-face');
+            const resultText = document.getElementById('dice-result-text');
+            const finalDice = document.getElementById('final-dice');
+            const diceArea = document.getElementById('dice-area');
+            if (!diceContainer || !diceFace || !diceArea) return Promise.resolve(null);
+
             diceRolling = true;
-            setDiceDisplay(null, true);
             const submitBtn = document.getElementById('combat-submit-btn');
             if (submitBtn) submitBtn.disabled = true;
+            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => { el.disabled = true; });
+
+            diceArea.classList.remove('hidden');
+            resultText?.classList.add('hidden');
+            diceContainer.classList.remove('dice-crit');
+            diceContainer.classList.add('animate-pulse');
+
             return new Promise(resolve => {
-                let ticks = 0;
-                const interval = setInterval(() => {
-                    const face = document.getElementById('dice-result');
-                    if (face) face.textContent = String(Math.floor(Math.random() * 4));
-                    ticks += 1;
-                    if (ticks >= 10) {
-                        clearInterval(interval);
-                        selectedDice = Math.floor(Math.random() * 4);
-                        diceRolling = false;
-                        setDiceDisplay(selectedDice, false);
-                        const submitBtn = document.getElementById('combat-submit-btn');
-                        if (submitBtn && lastCombatStatus?.status === 'player_phase' && !lastCombatStatus?.my_state?.submitted) {
-                            submitBtn.disabled = false;
+                let rollCount = 0;
+                const maxRolls = 18;
+                const rollInterval = setInterval(() => {
+                    diceFace.textContent = String(Math.floor(Math.random() * 4));
+                    diceContainer.style.transform = `scale(${0.95 + Math.random() * 0.1})`;
+                    rollCount += 1;
+                    if (rollCount >= maxRolls) {
+                        clearInterval(rollInterval);
+                        const result = Math.floor(Math.random() * 4);
+                        selectedDice = result;
+                        diceFace.textContent = String(result);
+                        diceContainer.style.transform = 'scale(1)';
+                        diceContainer.classList.remove('animate-pulse');
+                        if (result === 3) {
+                            diceContainer.classList.add('dice-crit');
+                            setTimeout(() => diceContainer.classList.remove('dice-crit'), 1200);
                         }
-                        resolve(selectedDice);
+                        if (finalDice) finalDice.textContent = String(result);
+                        resultText?.classList.remove('hidden');
+                        diceRolling = false;
+                        document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
+                            const canAct = lastCombatStatus?.status === 'player_phase' && !lastCombatStatus?.my_state?.submitted;
+                            el.disabled = !canAct;
+                        });
+                        if (callback) callback(result);
+                        resolve(result);
                     }
-                }, autoOnly ? 70 : 90);
+                }, 80);
             });
+        }
+
+        function performAction(action, opts = {}) {
+            if (diceRolling) return;
+            const me = lastCombatStatus?.my_state || {};
+            const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
+            if (lastCombatStatus?.status !== 'player_phase' || me.submitted || inNearDeath) return;
+
+            if (COMBAT_DICE_ACTIONS.has(action)) {
+                selectedAction = action;
+                selectedItemId = null;
+                highlightCombatAction(action, opts);
+                if (action === 'use_zoo') {
+                    const zooBtn = document.getElementById('zoo-action-btn');
+                    zooBtn?.classList.add('zoo-flash');
+                    setTimeout(() => zooBtn?.classList.remove('zoo-flash'), 600);
+                }
+                rollDiceWithAnimation((diceResult) => {
+                    selectedDice = diceResult;
+                    showConfirmButton();
+                });
+                return;
+            }
+
+            selectedAction = action;
+            if (action === 'use_item') {
+                selectedItemId = opts.item_id != null ? opts.item_id : null;
+                if (!selectedItemId) {
+                    highlightCombatAction(action, opts);
+                    return;
+                }
+            } else {
+                selectedItemId = null;
+            }
+            selectedDice = 1;
+            highlightCombatAction(action, opts);
+            submitAction();
         }
 
         async function loadCombatItems() {
@@ -5021,7 +5101,7 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById('combat-near-death-overlay'), false);
             setVisible(document.getElementById('combat-lobby'), true);
             stopCombatPolling();
-            selectedDice = null;
+            resetCombatDiceUi();
             lastDicePhase = 0;
             loadEncounters();
         }
@@ -5036,12 +5116,13 @@ HTML_TEMPLATE = """
                 }
             });
             if (!combatItemsLoaded) await loadCombatItems();
-            performAction(selectedAction);
+            resetCombatDiceUi();
+            const submitBtn = document.getElementById('combat-submit-btn');
             const me = lastCombatStatus?.my_state;
-            const canRoll = lastCombatStatus?.status === 'player_phase'
+            const canAct = lastCombatStatus?.status === 'player_phase'
                 && !(me?.near_death_until && new Date(me.near_death_until) > new Date())
                 && !me?.submitted;
-            if (canRoll && selectedDice === null) await rollDice(true);
+            if (submitBtn) submitBtn.disabled = !canAct;
         }
 
         async function loadCombatPage() {
@@ -5328,7 +5409,6 @@ HTML_TEMPLATE = """
             const submitBtn = document.getElementById('combat-submit-btn');
             const hintEl = document.getElementById('combat-submit-hint');
             const actionContainer = document.getElementById('combat-action-container');
-            const diceArea = document.getElementById('combat-dice-area');
             const canAct = data.status === 'player_phase' && !inNearDeath && !me.submitted;
             if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.55';
             document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
@@ -5336,23 +5416,32 @@ HTML_TEMPLATE = """
             });
             if (canAct && phaseNum !== lastDicePhase) {
                 lastDicePhase = phaseNum;
-                selectedDice = null;
-                rollDice(true).then(() => {
-                    if (submitBtn && canAct) submitBtn.disabled = false;
-                });
+                resetCombatDiceUi();
+                if (submitBtn) submitBtn.disabled = true;
             } else if (me.submitted && me.dice_result !== undefined && me.dice_result !== null) {
                 selectedDice = me.dice_result;
-                setDiceDisplay(me.dice_result, false);
+                showDiceResultStatic(me.dice_result);
             }
-            if (submitBtn) submitBtn.disabled = !canAct || diceRolling || selectedDice === null;
-            setVisible(diceArea, canAct || !!(me.submitted && me.dice_result !== undefined));
+            if (submitBtn) {
+                if (!canAct || diceRolling || me.submitted) {
+                    submitBtn.disabled = true;
+                } else if (COMBAT_DICE_ACTIONS.has(selectedAction)) {
+                    submitBtn.disabled = selectedDice === null;
+                    if (selectedDice !== null) showConfirmButton();
+                } else {
+                    submitBtn.disabled = true;
+                }
+            }
             if (hintEl) {
                 if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
                 else if (data.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
                 else if (diceRolling) hintEl.textContent = '系統擲骰中，請稍候…';
-                else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
-                else hintEl.textContent = '選擇行動後確認提交（骰子已自動擲好）';
+                else if (selectedDice !== null && COMBAT_DICE_ACTIONS.has(selectedAction)) {
+                    const labels = ['失手', '普通', '良好', '爆擊'];
+                    hintEl.textContent = `骰子 ${selectedDice}（${labels[selectedDice] || ''}）— 按「確認行動」提交`;
+                } else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
+                else hintEl.textContent = '選擇攻擊 / Zoo 會自動擲骰；Defend / 物品 / 觀望直接提交';
             }
         }
 
@@ -5386,7 +5475,11 @@ HTML_TEMPLATE = """
                 alert('請先選擇要使用的物品');
                 return;
             }
-            if (selectedDice === null) await rollDice(true);
+            if (COMBAT_DICE_ACTIONS.has(selectedAction) && selectedDice === null) {
+                alert('請先選擇攻擊行動並完成擲骰');
+                return;
+            }
+            if (selectedDice === null) selectedDice = 1;
             const labels = {
                 attack_physical: 'Physical Attack（力量）',
                 attack_nonphysical: 'Non-Physical Attack（智力）',
@@ -5429,7 +5522,8 @@ HTML_TEMPLATE = """
                 combatItemsLoaded = false;
                 return;
             }
-            selectedDice = null;
+            resetCombatDiceUi();
+            lastDicePhase = 0;
             updateCombatUI({ ...data, active: true });
         }
 
