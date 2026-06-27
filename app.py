@@ -5001,12 +5001,43 @@ HTML_TEMPLATE = """
                                     <div id="combat-player-team" class="text-sm text-zinc-400 truncate">—</div>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-5 gap-2 text-center mb-6">
-                                <div><div class="text-xs text-zinc-400">生命值</div><div id="player-hp" class="text-xl md:text-2xl font-bold text-red-400">—</div></div>
-                                <div><div class="text-xs text-zinc-400">神智</div><div id="player-sanity" class="text-xl md:text-2xl font-bold text-purple-400">—</div></div>
-                                <div><div class="text-xs text-zinc-400">力量</div><div id="player-power" class="text-xl md:text-2xl font-bold text-orange-400">—</div></div>
-                                <div><div class="text-xs text-zinc-400">智力</div><div id="player-intellect" class="text-xl md:text-2xl font-bold text-blue-400">—</div></div>
-                                <div><div class="text-xs text-zinc-400">韌性</div><div id="player-resilience" class="text-xl md:text-2xl font-bold text-emerald-400">—</div></div>
+                            <div class="space-y-3.5 mb-6">
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span class="flex items-center gap-2"><span>❤️</span><span class="font-medium text-zinc-200">生命值</span></span>
+                                        <span class="font-mono text-red-400">
+                                            <span id="combat-hp-value">— / 100</span>
+                                            <span id="combat-hp-pct" class="text-xs text-zinc-500 ml-1">(—)</span>
+                                        </span>
+                                    </div>
+                                    <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div id="combat-hp-bar" class="h-2.5 bg-red-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span class="flex items-center gap-2"><span>🧠</span><span class="font-medium text-zinc-200">神智</span></span>
+                                        <span class="font-mono text-purple-400">
+                                            <span id="combat-sanity-value">— / 100</span>
+                                            <span id="combat-sanity-pct" class="text-xs text-zinc-500 ml-1">(—)</span>
+                                        </span>
+                                    </div>
+                                    <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div id="combat-sanity-bar" class="h-2.5 bg-purple-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between items-center py-1.5 border-t border-zinc-800/80 mt-1 pt-3">
+                                    <span class="flex items-center gap-2 text-sm"><span>💪</span><span class="font-medium text-zinc-200">力量</span></span>
+                                    <span id="combat-power-value" class="font-mono text-lg font-bold text-orange-400">—</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1.5">
+                                    <span class="flex items-center gap-2 text-sm"><span>📘</span><span class="font-medium text-zinc-200">智力</span></span>
+                                    <span id="combat-intellect-value" class="font-mono text-lg font-bold text-blue-400">—</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1.5">
+                                    <span class="flex items-center gap-2 text-sm"><span>🛡️</span><span class="font-medium text-zinc-200">韌性</span></span>
+                                    <span id="combat-resilience-value" class="font-mono text-lg font-bold text-emerald-400">—</span>
+                                </div>
                             </div>
                             <div class="space-y-3" id="combat-action-buttons">
                                 <button type="button" data-action="attack" id="attack-action-btn"
@@ -5406,8 +5437,8 @@ HTML_TEMPLATE = """
         }
 
         function getEffectiveAttackStatFromUi() {
-            const power = parseStatText('player-power', currentSquad?.power);
-            const intellect = parseStatText('player-intellect', currentSquad?.intellect);
+            const power = parseStatText('combat-power-value', currentSquad?.power);
+            const intellect = parseStatText('combat-intellect-value', currentSquad?.intellect);
             return { power, intellect, value: Math.max(power, intellect) };
         }
 
@@ -5605,7 +5636,7 @@ HTML_TEMPLATE = """
                 ? calcClientAttackDamage(multiplier)
                 : 0;
             const attackInfo = describeAttackStatFromUi();
-            const resilience = me.resilience ?? parseStatText('player-resilience', squad.resilience);
+            const resilience = me.resilience ?? parseStatText('combat-resilience-value', squad.resilience);
             const defending = selectedAction === 'defend';
             let counter = Math.max(0, (enemy.base_damage || 0) - Math.floor(resilience * 0.6));
             if (defending) counter = Math.max(0, Math.floor(counter * 0.5));
@@ -5614,7 +5645,7 @@ HTML_TEMPLATE = """
             if (apiError) {
                 risks.push({ level: 'sanity', message: `${apiError}（以下為本地估算，仍可確認提交）` });
             }
-            const hp = me.hp ?? parseStatText('player-hp', squad.hp);
+            const hp = me.hp ?? parseStatText('combat-hp-value', squad.hp);
             if (counter > 0 && hp - counter < 20) {
                 risks.push({
                     level: hp - counter <= 0 ? 'critical' : 'hp',
@@ -6089,11 +6120,7 @@ HTML_TEMPLATE = """
             document.getElementById('combat-player-name').textContent =
                 me.display_name || squad.display_name || '你';
             document.getElementById('combat-player-team').textContent = squad.team?.team_name || squad.team_name || '單人';
-            document.getElementById('player-hp').textContent = me.hp ?? squad.hp ?? '—';
-            document.getElementById('player-sanity').textContent = me.sanity ?? squad.sanity ?? '—';
-            document.getElementById('player-power').textContent = me.power ?? squad.power ?? '—';
-            document.getElementById('player-intellect').textContent = me.intellect ?? squad.intellect ?? '—';
-            document.getElementById('player-resilience').textContent = me.resilience ?? squad.resilience ?? '—';
+            updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
 
             const myId = data.my_squad_id || currentSquad?.squad_id;
@@ -6539,15 +6566,18 @@ HTML_TEMPLATE = """
             resilience: { text: 'text-emerald-400' },
         };
 
-        function setStatBar(prefix, stat, value) {
+        function setStatBar(prefix, stat, value, options = {}) {
             const meta = DASHBOARD_STAT_META[stat] || {};
             const el = document.getElementById(prefix + stat + '-value');
             const raw = Number(value) || 0;
+            const showRatio = options.showRatio ?? !prefix;
 
-            if (!prefix && !CAPPED_SQUAD_STATS.has(stat)) {
+            if (!CAPPED_SQUAD_STATS.has(stat)) {
                 if (el) {
                     el.textContent = String(raw);
-                    el.className = `font-mono text-lg font-bold ${meta.text || 'text-zinc-300'}`;
+                    if (!prefix) {
+                        el.className = `font-mono text-lg font-bold ${meta.text || 'text-zinc-300'}`;
+                    }
                 }
                 return;
             }
@@ -6558,14 +6588,23 @@ HTML_TEMPLATE = """
             const bar = document.getElementById(prefix + stat + '-bar');
             const pctEl = document.getElementById(prefix + stat + '-pct');
             if (el) {
-                if (!prefix) {
-                    el.textContent = `${v} / ${max}`;
-                } else {
-                    el.textContent = String(v);
-                }
+                el.textContent = showRatio ? `${v} / ${max}` : String(v);
             }
             if (pctEl) pctEl.textContent = `(${pct}%)`;
             if (bar) bar.style.width = `${pct}%`;
+        }
+
+        function updateCombatPlayerStats(me, squad) {
+            const stats = {
+                hp: me.hp ?? squad.hp ?? 100,
+                sanity: me.sanity ?? squad.sanity ?? 100,
+                power: me.power ?? squad.power ?? 0,
+                intellect: me.intellect ?? squad.intellect ?? 0,
+                resilience: me.resilience ?? squad.resilience ?? 0,
+            };
+            ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
+                setStatBar('combat-', s, stats[s], { showRatio: true });
+            });
         }
 
         function updateDashboardAttackHint(squad) {
