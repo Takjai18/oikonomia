@@ -2210,8 +2210,11 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oikonomia • 原型</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        #qr-reader { min-height: 280px; background: #09090b; }
+        #qr-reader video { border-radius: 0.75rem; }
         :root {
             --bg-main: #0D0D0D;
             --bg-color: #0D0D0D;
@@ -4244,7 +4247,7 @@ HTML_TEMPLATE = """
             const text = (decodedText || '').trim();
             if (!text) return null;
 
-            const claimMatch = text.match(/\/claim_item\/(\d+)/i);
+            const claimMatch = text.match(/[/]claim_item[/](\d+)/i);
             if (claimMatch) return parseInt(claimMatch[1], 10);
 
             const queryMatch = text.match(/[?&]item_id=(\d+)/i);
