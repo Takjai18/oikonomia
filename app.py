@@ -2354,6 +2354,8 @@ def api_version():
             "iggy_card": "iggy-card",
             "show_only_protagonist": "showOnlyProtagonistCard",
             "combat_system": callable(globals().get("resolve_player_phase")),
+            "combat_preview": callable(globals().get("build_combat_round_preview")),
+            "combat_modal": "combat-action-modal" in HTML_TEMPLATE,
         },
         "upload_folder": UPLOAD_FOLDER,
         "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,

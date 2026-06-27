@@ -2,12 +2,16 @@
 # Run on PythonAnywhere Bash console after code is pushed to GitHub.
 # Production: https://takjai.pythonanywhere.com
 #
-# IMPORTANT: Web tab → Reload only restarts the app worker.
+# IMPORTANT: Web tab -> Reload only restarts the app worker.
 # It does NOT download new code. You must run this script first.
+#
+# If git pull keeps failing, use force update:
+#   FORCE=1 bash ~/oikonomia/deploy/pa-update.sh
 
 set -e
 
 REPO="${HOME}/oikonomia"
+FORCE="${FORCE:-0}"
 
 echo "=========================================="
 echo " Oikonomia deploy update (PythonAnywhere)"
@@ -30,26 +34,55 @@ fi
 echo ""
 echo "--- Before update ---"
 echo "Path: $(pwd)"
+echo "Branch: $(git branch --show-current 2>/dev/null || echo unknown)"
 echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-if grep -q "def resolve_player_phase" app.py 2>/dev/null; then
-    echo "Code marker: COMBAT (resolve_player_phase found)"
-elif grep -q "showOnlyProtagonistCard" app.py 2>/dev/null; then
-    echo "Code marker: PARTIAL (no combat, has showOnlyProtagonistCard)"
-else
-    echo "Code marker: OLD"
-fi
+echo "Remote:"
+git remote -v 2>/dev/null || true
+
+code_marker() {
+    if grep -q "combat-action-modal" app.py 2>/dev/null; then
+        echo "COMBAT_MODAL"
+    elif grep -q "build_combat_round_preview" app.py 2>/dev/null; then
+        echo "COMBAT_PREVIEW"
+    elif grep -q "def resolve_player_phase" app.py 2>/dev/null; then
+        echo "COMBAT"
+    elif grep -q "showOnlyProtagonistCard" app.py 2>/dev/null; then
+        echo "PARTIAL"
+    else
+        echo "OLD"
+    fi
+}
+echo "Code marker: $(code_marker)"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo ""
-    echo "WARNING: Local changes detected on PythonAnywhere."
-    echo "git pull may fail. Run: git status"
-    echo "To discard local edits: git checkout -- . && git clean -fd"
+    echo "WARNING: Local changes on PythonAnywhere (git pull may fail)."
+    git status -sb || true
+    if [ "$FORCE" != "1" ]; then
+        echo ""
+        echo "To discard local edits and match GitHub exactly:"
+        echo "  FORCE=1 bash ~/oikonomia/deploy/pa-update.sh"
+    fi
 fi
 
 echo ""
-echo "--- Pulling from GitHub ---"
+echo "--- Fetching from GitHub ---"
 git fetch origin main
-git pull origin main
+
+if [ "$FORCE" = "1" ]; then
+    echo "FORCE=1: resetting to origin/main (discards local changes)"
+    git reset --hard origin/main
+else
+    echo "Pulling origin/main..."
+    if ! git pull origin main; then
+        echo ""
+        echo "ERROR: git pull failed."
+        echo "Common fixes:"
+        echo "  1) FORCE=1 bash ~/oikonomia/deploy/pa-update.sh"
+        echo "  2) bash ~/oikonomia/deploy/pa-diagnose.sh"
+        exit 1
+    fi
+fi
 
 NEW_COMMIT=$(git rev-parse --short HEAD)
 echo "$NEW_COMMIT" > .deploy-version
@@ -57,10 +90,14 @@ echo "$NEW_COMMIT" > .deploy-version
 echo ""
 echo "--- After update ---"
 echo "Commit: $NEW_COMMIT"
-if grep -q "showOnlyProtagonistCard" app.py; then
-    echo "Code marker: NEW (showOnlyProtagonistCard found)"
-else
-    echo "Code marker: still OLD — check git pull output above"
+echo "origin/main: $(git rev-parse --short origin/main 2>/dev/null || echo unknown)"
+echo "Code marker: $(code_marker)"
+
+if ! grep -q "combat-action-modal" app.py 2>/dev/null; then
+    echo ""
+    echo "WARNING: Latest combat modal code NOT found in app.py."
+    echo "Check: git remote -v  (should point to github.com/Takjai18/oikonomia)"
+    echo "       Web tab source code path should be: $REPO"
 fi
 
 echo ""
@@ -76,14 +113,15 @@ echo ""
 echo "--- Avatar images (static/avatars) ---"
 AVATAR_COUNT=$(find static/avatars -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) ! -iname 'default.png' 2>/dev/null | wc -l | tr -d ' ')
 echo "Selectable avatars: $AVATAR_COUNT"
-ls -1 static/avatars 2>/dev/null | grep -viE '^default\.png$' | head -20 || true
-if [ "$AVATAR_COUNT" = "0" ]; then
-    echo "WARNING: No avatar images found. Add PNG/JPG to static/avatars/ and git push."
-fi
 
 echo ""
-echo "Done. Now go to PythonAnywhere Web tab → Reload takjai.pythonanywhere.com"
-echo "Then verify: curl https://takjai.pythonanywhere.com/api/version"
-echo "Expected version: $NEW_COMMIT"
+echo "Done. Now: Web tab -> Reload takjai.pythonanywhere.com"
 echo ""
-echo "NOTE: Web tab → Static files 唔好 map /uploads/，交俾 Flask route 處理。"
+echo "Verify:"
+echo "  curl -s https://takjai.pythonanywhere.com/api/version"
+echo "Expected:"
+echo "  version: $NEW_COMMIT"
+echo "  markers.combat_preview: true"
+echo "  markers.combat_modal: true"
+echo ""
+echo "NOTE: Do NOT map /uploads/ in Static files (Flask serves uploads)."
