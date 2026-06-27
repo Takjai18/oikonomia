@@ -4982,10 +4982,10 @@ HTML_TEMPLATE = """
         function parseLogDamageEvent(entry, myDisplayName) {
             const msg = entry.message || '';
             const type = entry.type || 'event';
-            const dmgMatch = msg.match(/造成\s*(\d+)\s*點傷害/);
+            const dmgMatch = msg.match(/造成\\s*(\\d+)\\s*點傷害/);
             if (!dmgMatch) return null;
             const amount = parseInt(dmgMatch[1], 10);
-            const crit = /骰\s*3[）)]/.test(msg);
+            const crit = /骰\\s*3[）)]/.test(msg);
 
             if (type === 'damage') {
                 return { target: 'enemy-panel', amount, crit };
