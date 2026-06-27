@@ -41,6 +41,15 @@ def read_deploy_version():
             return f.read().strip()
     return "unknown"
 
+def normalize_photo_url(photo_path):
+    """Convert stored path to browser URL segment, e.g. uploads/foo.jpg"""
+    if not photo_path:
+        return None
+    path = str(photo_path).replace("\\", "/")
+    if path.startswith("uploads/"):
+        return path
+    return f"uploads/{os.path.basename(path)}"
+
 DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
 SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
 
@@ -713,7 +722,7 @@ def my_submissions():
         submissions.append({
             "task_id": row["task_id"],
             "content": row["content"],
-            "photo_path": row["photo_path"],
+            "photo_path": normalize_photo_url(row["photo_path"]),
             "timestamp": row["timestamp"],
         })
 
@@ -768,6 +777,7 @@ def team_task_logs():
         entry = dict(row)
         entry["status"] = "已完成"
         entry["display_name"] = entry.get("display_name") or entry.get("squad_id")
+        entry["photo_path"] = normalize_photo_url(entry.get("photo_path"))
         logs.append(entry)
 
     return jsonify({"success": True, "logs": logs, "has_team": has_team})
@@ -1074,8 +1084,8 @@ def submit_task():
         photo = request.files["photo"]
         if photo.filename:
             filename = f"{session['squad_id']}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-            photo_path = os.path.join(UPLOAD_FOLDER, filename)
-            photo.save(photo_path)
+            photo.save(os.path.join(UPLOAD_FOLDER, filename))
+            photo_path = f"uploads/{filename}"
 
     c.execute("""INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
                  VALUES (?, ?, ?, ?, ?)""",
@@ -1208,7 +1218,7 @@ def gm_squad_detail(squad_id):
         submissions.append({
             "task_id": sub[0],
             "content": sub[1],
-            "photo_path": sub[2],
+            "photo_path": normalize_photo_url(sub[2]),
             "timestamp": sub[3]
         })
     
