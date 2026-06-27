@@ -27,6 +27,8 @@ python3 app.py
 | 玩家端 | http://localhost:5001 |
 | GM 後台 | http://localhost:5001/gm |
 | GM PIN | `gm2026` |
+| 重置遊戲密碼 | `reset2026` |
+| 清空上傳圖片確認碼 | `CLEAR_IMAGES` |
 
 ## 正式環境（PythonAnywhere）
 
@@ -35,6 +37,8 @@ python3 app.py
 | 玩家端 | https://takjai.pythonanywhere.com |
 | GM 後台 | https://takjai.pythonanywhere.com/gm |
 | GM PIN | `gm2026` |
+| 重置遊戲密碼 | `reset2026` |
+| 清空上傳圖片確認碼 | `CLEAR_IMAGES` |
 
 每次 GitHub 有更新後，在 PythonAnywhere **Bash** 執行：
 
