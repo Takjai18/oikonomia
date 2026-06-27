@@ -4541,6 +4541,13 @@ HTML_TEMPLATE = """
         .dice-btn.selected { border-color: #f59e0b !important; background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
         .team-card-me { box-shadow: 0 0 0 2px var(--combat-accent, #f59e0b); }
         .team-card-berserk { animation: combat-pulse 1.5s ease-in-out infinite; }
+        .combat-team-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .combat-team-scroll::-webkit-scrollbar { display: none; }
+        .combat-team-chip { flex: 0 0 auto; min-width: 4.5rem; }
+        @media (max-width: 1023px) {
+            #combat-screen .combat-action-btn { padding-top: 0.65rem; padding-bottom: 0.65rem; font-size: 0.8125rem; }
+            #combat-log { max-height: 5.5rem; }
+        }
         @keyframes combat-pulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
             50% { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); }
@@ -4966,42 +4973,100 @@ HTML_TEMPLATE = """
                     <div id="encounter-list" class="space-y-4 mb-8"></div>
                 </div>
 
-                <!-- 戰鬥主畫面（雙欄：玩家 vs 敵人） -->
-                <div id="combat-screen" class="hidden max-w-6xl mx-auto combat-accent-default relative">
-                    <button onclick="exitCombatScreen()" class="mb-3 text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1">
+                <!-- 戰鬥主畫面（手機：敵人置頂 + compact；桌面：雙欄） -->
+                <div id="combat-screen" class="hidden max-w-md lg:max-w-6xl mx-auto combat-accent-default relative px-1 sm:px-0">
+                    <button onclick="exitCombatScreen()" class="mb-2 lg:mb-3 text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1">
                         <i class="fa-solid fa-arrow-left"></i> 返回遭遇列表
                     </button>
 
-                    <div class="flex justify-between items-center mb-4 gap-3">
+                    <div class="flex justify-between items-center mb-3 lg:mb-4 gap-2">
                         <div class="min-w-0">
-                            <h1 id="combat-title" class="combat-title text-2xl md:text-3xl font-bold truncate">戰鬥中</h1>
-                            <p id="combat-subtitle" class="text-sm text-zinc-400">第 <span id="current-phase">1</span> 回合</p>
+                            <h1 id="combat-title" class="combat-title text-lg lg:text-3xl font-bold truncate">戰鬥中</h1>
+                            <p id="combat-subtitle" class="text-xs lg:text-sm text-zinc-400">第 <span id="current-phase">1</span> 回合</p>
                         </div>
                         <div class="text-right shrink-0">
-                            <div id="phase-timer" class="text-3xl md:text-4xl font-mono font-bold text-emerald-400">--:--</div>
+                            <div id="phase-timer" class="text-2xl lg:text-4xl font-mono font-bold text-emerald-400">--:--</div>
                             <div id="phase-status-label" class="text-xs text-emerald-400">Player Phase</div>
                         </div>
                     </div>
 
-                    <div id="combat-berserk-bar" class="hidden mb-4 px-4 py-2 rounded-xl text-sm text-orange-100 font-medium">
+                    <div id="combat-berserk-bar" class="hidden mb-3 lg:mb-4 px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl text-xs lg:text-sm text-orange-100 font-medium">
                         ⚠️ <span id="combat-berserk-bar-text">神智偏低，暴走風險上升</span>
                     </div>
 
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <!-- 左欄：玩家 -->
-                        <div id="player-panel" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 relative overflow-hidden">
-                            <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-3xl flex items-center justify-center bg-zinc-950/80">
-                                <div class="text-center text-red-200 font-bold text-lg px-4">神智不清，能力失控</div>
-                            </div>
-                            <div class="flex items-center gap-x-4 mb-5">
-                                <img id="combat-player-avatar" src="/static/avatars/default.png"
-                                     class="w-20 h-20 rounded-2xl border-2 border-amber-500 object-cover" alt="玩家">
-                                <div class="min-w-0">
-                                    <div id="combat-player-name" class="text-xl font-semibold truncate">你</div>
-                                    <div id="combat-player-team" class="text-sm text-zinc-400 truncate">—</div>
+                    <div class="flex flex-col lg:grid lg:grid-cols-2 gap-3 lg:gap-6">
+                        <!-- 敵人（手機 order-1 置頂） -->
+                        <div id="enemy-panel" class="order-1 lg:order-2 bg-zinc-900 border border-red-500/40 lg:border-zinc-700 rounded-2xl lg:rounded-3xl p-3 lg:p-6 relative overflow-hidden">
+                            <div class="flex items-center gap-x-3 lg:gap-x-4">
+                                <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
+                                     class="w-12 h-12 lg:w-20 lg:h-20 rounded-xl lg:rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
+                                <div class="flex-1 min-w-0">
+                                    <div id="enemy-name" class="font-semibold lg:text-xl text-red-400 truncate">敵人</div>
+                                    <div class="hidden lg:block text-sm text-zinc-400">Enemy</div>
+                                    <div class="flex items-center gap-x-2 mt-1.5">
+                                        <div class="flex-1 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                                            <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
+                                        </div>
+                                        <div class="font-mono text-xs lg:text-sm text-red-400 whitespace-nowrap">
+                                            <span id="enemy-hp">0</span>/<span id="enemy-max-hp">0</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="space-y-3.5 mb-6">
+                            <div class="grid grid-cols-3 gap-2 lg:gap-4 text-center mt-3 lg:mt-6">
+                                <div>
+                                    <div class="text-[10px] lg:text-xs text-zinc-400">防禦</div>
+                                    <div id="enemy-resilience" class="font-mono text-base lg:text-3xl font-bold text-emerald-400">0</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] lg:text-xs text-zinc-400">精神防禦</div>
+                                    <div id="enemy-sanity" class="font-mono text-base lg:text-3xl font-bold text-purple-400">0</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] lg:text-xs text-zinc-400">傷害</div>
+                                    <div id="enemy-damage" class="font-mono text-base lg:text-3xl font-bold text-orange-400">0</div>
+                                </div>
+                            </div>
+                            <div id="enemy-quote" class="hidden lg:block text-sm text-zinc-300 leading-relaxed mt-4"></div>
+                        </div>
+
+                        <!-- 玩家 + 行動（手機 order-2） -->
+                        <div id="player-panel" class="order-2 lg:order-1 bg-zinc-900 border border-zinc-700 rounded-2xl lg:rounded-3xl p-3 lg:p-6 relative overflow-hidden">
+                            <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-2xl lg:rounded-3xl flex items-center justify-center bg-zinc-950/80">
+                                <div class="text-center text-red-200 font-bold text-base lg:text-lg px-4">神智不清，能力失控</div>
+                            </div>
+
+                            <!-- 手機：名 + HP + 神智 同一行 -->
+                            <div class="flex items-center justify-between gap-2 mb-3 lg:mb-5">
+                                <div class="flex items-center gap-x-2 lg:gap-x-4 min-w-0">
+                                    <img id="combat-player-avatar" src="/static/avatars/default.png"
+                                         class="w-9 h-9 lg:w-20 lg:h-20 rounded-full lg:rounded-2xl border-2 border-amber-500 object-cover shrink-0" alt="玩家">
+                                    <div class="min-w-0">
+                                        <div id="combat-player-name" class="font-semibold lg:text-xl truncate">你</div>
+                                        <div id="combat-player-team" class="hidden lg:block text-sm text-zinc-400 truncate">—</div>
+                                    </div>
+                                </div>
+                                <div class="lg:hidden flex items-center gap-x-3 text-sm shrink-0">
+                                    <div class="flex items-center gap-x-1">
+                                        <span class="text-red-400">❤️</span>
+                                        <span class="font-mono" id="combat-mobile-hp">—</span>
+                                    </div>
+                                    <div class="flex items-center gap-x-1">
+                                        <span class="text-purple-400">🧠</span>
+                                        <span class="font-mono" id="combat-mobile-sanity">—</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 手機：力量／智力／韌性 單行 -->
+                            <div class="lg:hidden flex justify-between items-center text-xs mb-3 px-0.5 border-t border-zinc-800/80 pt-2">
+                                <div class="flex items-center gap-x-1"><span>💪</span><span id="combat-m-power" class="font-mono text-orange-400">—</span></div>
+                                <div class="flex items-center gap-x-1"><span>📘</span><span id="combat-m-intellect" class="font-mono text-blue-400">—</span></div>
+                                <div class="flex items-center gap-x-1"><span>🛡️</span><span id="combat-m-resilience" class="font-mono text-emerald-400">—</span></div>
+                            </div>
+
+                            <!-- 桌面：完整屬性 -->
+                            <div class="hidden lg:block space-y-3.5 mb-6">
                                 <div>
                                     <div class="flex justify-between text-sm mb-1">
                                         <span class="flex items-center gap-2"><span>❤️</span><span class="font-medium text-zinc-200">生命值</span></span>
@@ -5039,83 +5104,56 @@ HTML_TEMPLATE = """
                                     <span id="combat-resilience-value" class="font-mono text-lg font-bold text-emerald-400">—</span>
                                 </div>
                             </div>
-                            <div class="space-y-3" id="combat-action-buttons">
+
+                            <div class="text-xs text-zinc-400 mb-2 px-0.5 lg:hidden">選擇行動</div>
+                            <div class="grid grid-cols-2 lg:grid-cols-1 gap-2 lg:gap-3" id="combat-action-buttons">
                                 <button type="button" data-action="attack" id="attack-action-btn"
-                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-3">
-                                    <span class="text-xl">⚔️</span>
+                                        class="combat-action-btn py-2.5 lg:py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl lg:rounded-2xl flex items-center justify-center gap-x-2 lg:gap-x-3">
+                                    <span class="text-lg lg:text-xl">⚔️</span>
                                     <span class="flex flex-col items-start leading-tight">
                                         <span>攻擊</span>
-                                        <span id="attack-stat-hint" class="text-[10px] text-amber-400 font-normal">自動取力量／智力較高者</span>
+                                        <span id="attack-stat-hint" class="hidden lg:inline text-[10px] text-amber-400 font-normal">自動取力量／智力較高者</span>
                                     </span>
                                 </button>
                                 <button type="button" data-action="defend"
-                                        class="combat-action-btn w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl flex items-center justify-center gap-x-2">
-                                    <span>🛡️</span><span>Defend（堅守界線）</span>
+                                        class="combat-action-btn py-2.5 lg:py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl lg:rounded-2xl flex items-center justify-center gap-x-2">
+                                    <span>🛡️</span><span class="lg:hidden">防禦</span><span class="hidden lg:inline">Defend（堅守界線）</span>
                                 </button>
-                                <div>
-                                    <div class="text-xs text-zinc-400 mb-1 px-1">可用物品</div>
-                                    <div id="combat-item-list" class="space-y-2">
-                                        <div class="text-xs text-zinc-500 py-2 text-center">載入物品中…</div>
-                                    </div>
-                                </div>
                                 <button type="button" data-action="use_zoo" id="zoo-action-btn"
-                                        class="combat-action-btn w-full py-3 bg-orange-900/30 hover:bg-orange-900/50 border border-orange-700 rounded-2xl flex flex-col items-center justify-center gap-y-0.5">
-                                    <span class="flex items-center gap-x-2"><span>🔥</span><span>Use Zoo（高神智有加成）</span></span>
+                                        class="combat-action-btn py-2.5 lg:py-3 bg-orange-900/30 hover:bg-orange-900/50 border border-orange-700 rounded-xl lg:rounded-2xl flex flex-col items-center justify-center gap-y-0.5">
+                                    <span class="flex items-center gap-x-2"><span>🔥</span><span class="lg:hidden">Zoo</span><span class="hidden lg:inline">Use Zoo（高神智有加成）</span></span>
                                     <span id="zoo-hint" class="text-[10px] text-orange-400">神智 ≥70 有加成</span>
                                 </button>
                                 <button type="button" data-action="pass"
-                                        class="combat-action-btn w-full py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-400">
-                                    ⏭️ 觀望
+                                        class="combat-action-btn py-2.5 lg:py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-400 flex items-center justify-center gap-x-2">
+                                    <span>⏭️</span><span>觀望</span>
                                 </button>
+                                <div class="col-span-2 lg:col-span-1">
+                                    <div class="text-xs text-zinc-400 mb-1 px-1">可用物品</div>
+                                    <div id="combat-item-list" class="space-y-1.5 lg:space-y-2">
+                                        <div class="text-xs text-zinc-500 py-2 text-center">載入物品中…</div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="mt-4 flex justify-end">
+                            <div class="mt-3 lg:mt-4 flex justify-end">
                                 <button type="button" onclick="rescueNearDeath()"
-                                        class="text-xs px-4 py-2 bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-700 rounded-xl">
+                                        class="text-[10px] lg:text-xs px-3 lg:px-4 py-1.5 lg:py-2 bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-700 rounded-xl">
                                     🤝 禱告救援瀕死隊友
                                 </button>
                             </div>
                         </div>
-
-                        <!-- 右欄：敵人 -->
-                        <div id="enemy-panel" class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 relative overflow-hidden">
-                            <div class="flex items-center gap-x-4 mb-5">
-                                <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
-                                     class="w-20 h-20 rounded-2xl border-2 border-red-500 object-cover bg-zinc-950" alt="敵人">
-                                <div class="min-w-0">
-                                    <div id="enemy-name" class="text-xl font-semibold text-red-400 truncate">敵人</div>
-                                    <div class="text-sm text-zinc-400">Enemy</div>
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-3 gap-4 text-center mb-6">
-                                <div>
-                                    <div class="text-xs text-zinc-400">生命值</div>
-                                    <div id="enemy-hp" class="text-2xl md:text-3xl font-bold text-red-400">0</div>
-                                    <div class="text-xs text-zinc-500">/ <span id="enemy-max-hp">0</span></div>
-                                </div>
-                                <div>
-                                    <div class="text-xs text-zinc-400">防禦（韌性）</div>
-                                    <div id="enemy-resilience" class="text-2xl md:text-3xl font-bold text-emerald-400">0</div>
-                                </div>
-                                <div>
-                                    <div class="text-xs text-zinc-400">精神防禦（神智）</div>
-                                    <div id="enemy-sanity" class="text-2xl md:text-3xl font-bold text-purple-400">0</div>
-                                </div>
-                            </div>
-                            <div class="mb-3 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
-                            </div>
-                            <div id="enemy-quote" class="text-sm text-zinc-300 leading-relaxed"></div>
-                        </div>
                     </div>
 
-                    <div id="combat-team-strip" class="hidden mt-4">
-                        <div class="text-xs text-zinc-400 mb-2 px-1">隊伍狀態</div>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="team-status"></div>
+                    <!-- 隊友 + 主角（手機水平 scroll） -->
+                    <div id="combat-team-strip" class="hidden mt-3 lg:mt-4 bg-zinc-900 border border-zinc-700 rounded-2xl lg:rounded-3xl p-3">
+                        <div class="text-xs text-zinc-400 mb-2 px-1">隊友狀態</div>
+                        <div class="flex gap-x-3 overflow-x-auto combat-team-scroll pb-1 lg:grid lg:grid-cols-4 lg:gap-2 lg:overflow-visible" id="team-status"></div>
+                        <div id="combat-protagonist-strip" class="hidden flex gap-x-3 overflow-x-auto combat-team-scroll mt-2 pt-2 border-t border-zinc-700/80"></div>
                     </div>
 
-                    <p id="combat-submit-hint" class="text-xs text-zinc-500 text-center mt-4"></p>
+                    <p id="combat-submit-hint" class="text-[10px] lg:text-xs text-zinc-500 text-center mt-3 lg:mt-4"></p>
 
-                    <div class="mt-6 bg-zinc-950 border border-zinc-800 rounded-3xl p-4 max-h-48 overflow-y-auto text-sm text-zinc-300" id="combat-log"></div>
+                    <div class="mt-3 lg:mt-6 bg-zinc-950 border border-zinc-800 rounded-2xl lg:rounded-3xl p-3 lg:p-4 max-h-48 overflow-y-auto text-xs lg:text-sm text-zinc-300" id="combat-log"></div>
                     <span id="max-phase" class="hidden"></span>
                 </div>
 
@@ -6103,6 +6141,8 @@ HTML_TEMPLATE = """
             document.getElementById('enemy-max-hp').textContent = enemy.max_hp || enemy.hp || 0;
             document.getElementById('enemy-resilience').textContent = enemy.resilience ?? 0;
             document.getElementById('enemy-sanity').textContent = enemy.sanity ?? 0;
+            const enemyDamageEl = document.getElementById('enemy-damage');
+            if (enemyDamageEl) enemyDamageEl.textContent = enemy.base_damage ?? 0;
             const maxHp = enemy.max_hp || enemy.hp || 1;
             const prevEnemyHp = lastCombatStatus?.enemy?.hp;
             const enemyHpBar = document.getElementById('enemy-hp-bar');
@@ -6128,7 +6168,10 @@ HTML_TEMPLATE = """
             const teamStrip = document.getElementById('combat-team-strip');
             const members = data.member_states || {};
             const memberCount = Object.keys(members).length;
-            setVisible(teamStrip, memberCount > 1);
+            const protagonists = currentSquad?.protagonists || squad.protagonists;
+            const combatRoute = data.route || squad.route || currentSquad?.route;
+            const showTeamStrip = memberCount > 1 || !!(protagonists && combatRoute);
+            setVisible(teamStrip, showTeamStrip);
             teamEl.innerHTML = Object.entries(members).map(([sid, m]) => {
                 const isMe = sid === myId;
                 const label = isMe ? '你' : (m.display_name || sid);
@@ -6136,18 +6179,21 @@ HTML_TEMPLATE = """
                 const mSanity = m.sanity ?? 100;
                 const berserkRisk = mSanity < 40;
                 const berserkCritical = mSanity < 10;
+                const avatarSrc = m.avatar ? `/static/avatars/${m.avatar}` : '/static/avatars/default.png';
                 const acted = m.submitted
-                    ? '<span class="text-emerald-400">已行動</span>'
-                    : '<span class="text-amber-400">未行動</span>';
+                    ? '<span class="text-emerald-400">✓</span>'
+                    : '<span class="text-amber-400">…</span>';
                 const statusText = m.submitted
                     ? (COMBAT_ACTION_LABELS[m.action_type] || '已行動')
-                    : (isMe ? '選擇行動中…' : '等待中');
-                return `<div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-3 text-xs ${isMe ? 'team-card-me' : ''} ${berserkRisk ? 'team-card-berserk' : ''}">
-                    <div class="font-medium truncate">${label}${nearDeath ? ' 💔' : ''}${berserkCritical ? ' 🔥' : berserkRisk ? ' ⚠️' : ''}</div>
-                    <div class="text-zinc-400 mt-1">HP ${m.hp} · 神智 ${m.sanity ?? '?'}</div>
-                    <div class="mt-1">${acted} · ${statusText}</div>
+                    : (isMe ? '行動中' : '等待');
+                return `<div class="combat-team-chip lg:min-w-0 text-center lg:text-left bg-zinc-950/60 lg:bg-zinc-900 border border-zinc-700 rounded-xl lg:rounded-2xl p-2 lg:p-3 text-xs ${isMe ? 'team-card-me' : ''} ${berserkRisk ? 'team-card-berserk' : ''}">
+                    <img src="${avatarSrc}" class="w-8 h-8 lg:hidden rounded-full border border-zinc-600 mx-auto mb-0.5 object-cover" alt="">
+                    <div class="font-medium truncate text-[10px] lg:text-xs">${label}${nearDeath ? ' 💔' : ''}${berserkCritical ? ' 🔥' : berserkRisk ? ' ⚠️' : ''}</div>
+                    <div class="text-[10px] lg:text-xs text-zinc-400 mt-0.5 lg:mt-1 font-mono">❤️${m.hp ?? '?'} 🧠${m.sanity ?? '?'}</div>
+                    <div class="text-[10px] lg:text-xs mt-0.5 lg:mt-1 hidden lg:block">${acted} · ${statusText}</div>
                 </div>`;
             }).join('');
+            renderCombatProtagonistStrip(combatRoute, protagonists);
 
             const sanity = me.sanity ?? 100;
             const berserkBar = document.getElementById('combat-berserk-bar');
@@ -6605,6 +6651,37 @@ HTML_TEMPLATE = """
             ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
                 setStatBar('combat-', s, stats[s], { showRatio: true });
             });
+            const setTextIf = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+            setTextIf('combat-mobile-hp', stats.hp);
+            setTextIf('combat-mobile-sanity', stats.sanity);
+            setTextIf('combat-m-power', stats.power);
+            setTextIf('combat-m-intellect', stats.intellect);
+            setTextIf('combat-m-resilience', stats.resilience);
+        }
+
+        function renderCombatProtagonistStrip(route, protagonists) {
+            const strip = document.getElementById('combat-protagonist-strip');
+            if (!strip || !protagonists) {
+                if (strip) setVisible(strip, false);
+                return;
+            }
+            const cards = [
+                { key: 'iggy', label: '🔥 Iggy', accent: 'text-red-400' },
+                { key: 'marah', label: '🌊 Marah', accent: 'text-blue-400' },
+            ];
+            const html = cards.map(({ key, label, accent }) => {
+                const p = protagonists[key] || {};
+                const active = route === key;
+                return `<div class="combat-team-chip text-center px-2 ${active ? 'opacity-100' : 'opacity-60'}">
+                    <div class="text-[10px] ${accent} mb-0.5">${label}${active ? '（主角）' : ''}</div>
+                    <div class="text-[10px] font-mono text-zinc-300">❤️${p.hp ?? '?'} 🧠${p.sanity ?? '?'}</div>
+                </div>`;
+            }).join('');
+            strip.innerHTML = html;
+            setVisible(strip, true);
         }
 
         function updateDashboardAttackHint(squad) {
