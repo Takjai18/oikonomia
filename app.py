@@ -6913,45 +6913,56 @@ HTML_TEMPLATE = """
             const container = document.getElementById('team-status-row');
             const teamStrip = document.getElementById('combat-team-strip');
             if (!container) return;
+            container.innerHTML = '';
 
             const myId = data.my_squad_id || currentSquad?.squad_id;
             const members = data.member_states || {};
-            const route = data.route || currentSquad?.route;
             const protagonists = data.protagonists || currentSquad?.protagonists || {};
-            const chips = [];
+            const route = data.route || data.my_state?.route || currentSquad?.route;
 
-            Object.entries(members).forEach(([sid, m]) => {
-                const isMe = sid === myId;
-                const label = isMe ? '你' : (m.display_name || sid);
-                const avatarSrc = m.avatar ? `/static/avatars/${m.avatar}` : '/static/avatars/default.png';
-                chips.push(`
-                    <div class="combat-team-chip flex-shrink-0 text-center min-w-[52px] ${isMe ? 'team-card-me rounded-xl px-1' : ''}">
-                        <img src="${avatarSrc}" class="w-8 h-8 rounded-full border border-zinc-600 mx-auto mb-0.5 object-cover" alt="">
-                        <div class="text-[10px] text-zinc-300 truncate max-w-[64px]">${label}</div>
-                        <div class="text-[10px] font-mono text-zinc-400">❤️${m.hp ?? '?'} 🧠${m.sanity ?? '?'}</div>
-                    </div>
-                `);
+            Object.keys(members).forEach(sid => {
+                if (sid === myId) return;
+
+                const m = members[sid];
+                const div = document.createElement('div');
+                div.className = 'combat-team-chip flex-shrink-0 text-center min-w-[56px]';
+                div.innerHTML = `
+                    <img src="/static/avatars/${m.avatar || 'default.png'}"
+                         class="w-8 h-8 rounded-full border border-zinc-600 mx-auto mb-0.5 object-cover" alt="">
+                    <div class="text-[10px] text-zinc-300 truncate max-w-[64px]">${m.display_name || sid}</div>
+                    <div class="text-[10px] font-mono text-zinc-400">❤️${m.hp ?? '-'} 🧠${m.sanity ?? '-'}</div>
+                `;
+                container.appendChild(div);
             });
 
-            [
-                { key: 'iggy', label: '🔥 Iggy', accent: 'text-red-400' },
-                { key: 'marah', label: '🌊 Marah', accent: 'text-blue-400' },
-            ].forEach(({ key, label, accent }) => {
-                const p = protagonists[key];
-                if (!p) return;
-                const active = route === key;
-                chips.push(`
-                    <div class="combat-team-chip flex-shrink-0 text-center min-w-[52px] border-l border-zinc-700 pl-3 ${active ? '' : 'opacity-60'}">
-                        <div class="w-8 h-8 rounded-full border border-amber-600/50 mx-auto mb-0.5 flex items-center justify-center text-xs">${key === 'iggy' ? '🔥' : '🌊'}</div>
-                        <div class="text-[10px] ${accent}">${label}${active ? '（主角）' : ''}</div>
-                        <div class="text-[10px] font-mono text-zinc-400">❤️${p.hp ?? '?'} 🧠${p.sanity ?? '?'}</div>
-                    </div>
-                `);
-            });
+            let activeProtagonist = null;
+            let protagonistLabel = '';
+            let protagonistAccent = 'text-amber-400';
 
-            container.innerHTML = chips.length
-                ? chips.join('')
-                : '<div class="text-[10px] text-zinc-500 py-1">暫無隊友資料</div>';
+            if (route === 'iggy' && protagonists.iggy) {
+                activeProtagonist = protagonists.iggy;
+                protagonistLabel = '🔥 Iggy';
+                protagonistAccent = 'text-red-400';
+            } else if (route === 'marah' && protagonists.marah) {
+                activeProtagonist = protagonists.marah;
+                protagonistLabel = '🌊 Marah';
+                protagonistAccent = 'text-blue-400';
+            }
+
+            if (activeProtagonist) {
+                const proDiv = document.createElement('div');
+                proDiv.className = 'combat-team-chip flex-shrink-0 text-center min-w-[56px] border-l border-zinc-700 pl-3';
+                proDiv.innerHTML = `
+                    <div class="w-8 h-8 rounded-full border border-amber-600/50 mx-auto mb-0.5 flex items-center justify-center text-xs">${route === 'iggy' ? '🔥' : '🌊'}</div>
+                    <div class="text-[10px] ${protagonistAccent}">${protagonistLabel}（主角）</div>
+                    <div class="text-[10px] font-mono text-zinc-400">❤️${activeProtagonist.hp ?? '-'} 🧠${activeProtagonist.sanity ?? '-'}</div>
+                `;
+                container.appendChild(proDiv);
+            }
+
+            if (!container.children.length) {
+                container.innerHTML = '<div class="text-[10px] text-zinc-500 py-1">暫無隊友資料</div>';
+            }
             if (teamStrip) setVisible(teamStrip, true);
         }
 
