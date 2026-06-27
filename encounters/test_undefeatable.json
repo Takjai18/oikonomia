@@ -1,0 +1,56 @@
+{
+  "encounter_id": "test_undefeatable",
+  "title": "【測試】永恆崩壞影",
+  "route": "test",
+  "story_stage": 0,
+  "trigger_type": "test",
+  "location_hint": "測試區（開發用）",
+  "description": "這是一個專為測試而設的戰鬥。你面對的敵人幾乎無法被擊敗。它代表當界線徹底崩壞時，單憑個人力量無法解決的狀態。用嚟測試失敗、Trauma、瀕死同暴走機制。",
+
+  "enemy": {
+    "name": "永恆崩壞影",
+    "hp": 9999,
+    "resilience": 99,
+    "sanity": 99,
+    "base_damage": 28,
+    "description": "一個不斷自我修復的黑暗存在，任何攻擊都彷彿打在虛無上。它不會被擊敗，只會不斷反噬。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 300,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 0,
+    "rewards": [],
+    "narrative": "（測試用）你竟然擊敗了永恆崩壞影？這不應該發生，請聯絡開發者。"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 12
+    },
+    "narrative": "你被永恆崩壞影徹底吞沒。舊有的界線徹底碎裂，內心留下難以癒合的傷口。",
+    "force_near_death": true,
+    "sanity_damage": 25,
+    "debuff": "resilience_-12_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "界線徹底崩壞",
+    "questions": [
+      "當你發現無論如何攻擊都無法擊敗對手時，你內心有什麼感覺？",
+      "這次失敗讓你獲得了 Trauma，這會如何影響你之後的選擇？",
+      "在現實生活中，你有沒有遇過「怎麼努力都改變不了」的關係或情況？"
+    ],
+    "theological_tie": "有時候，我們必須承認自己無法承擔所有後果，也無法單憑己力拯救別人。這正是《界線》所強調的：我們不是神。"
+  },
+
+  "notes_for_gm": {
+    "purpose": "測試失敗流程、Trauma、瀕死、暴走、Reflection",
+    "recommended_test_flow": "讓玩家打 2-3 輪後自然失敗，觀察 Trauma 是否正確扣除，以及是否觸發瀕死狀態。"
+  }
+}

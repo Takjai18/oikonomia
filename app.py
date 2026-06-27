@@ -790,16 +790,34 @@ def apply_encounter_success(team_id, encounter, started_by):
         narrative=success.get("narrative"),
     )
 
-def apply_encounter_failure(team_id, encounter):
-    failure = encounter.get("failure", {})
+def apply_failure_side_effects(squad_id, failure):
+    """失敗附加效果：trauma、debuff、神智傷害、強制瀕死"""
+    if not squad_id or not failure:
+        return
     trauma = failure.get("trauma", {})
     stat = trauma.get("stat", "resilience")
     amount = int(trauma.get("amount", 0))
+    if amount:
+        apply_trauma_on_failure(squad_id, stat, amount)
+    if failure.get("debuff"):
+        apply_status_debuff(squad_id, failure["debuff"])
+    sanity_dmg = int(failure.get("sanity_damage") or 0)
+    if sanity_dmg:
+        squad = get_squad(squad_id)
+        if squad:
+            new_sanity = max(0, int(squad.get("sanity") or 0) - sanity_dmg)
+            update_squad(squad_id, sanity=new_sanity)
+    if failure.get("force_near_death"):
+        update_squad(
+            squad_id,
+            hp=0,
+            near_death_until=(datetime.now() + timedelta(minutes=NEAR_DEATH_MINUTES)).isoformat(),
+        )
+
+def apply_encounter_failure(team_id, encounter):
+    failure = encounter.get("failure", {})
     for member in get_team_members(team_id):
-        if amount:
-            apply_trauma_on_failure(member["squad_id"], stat, amount)
-        if failure.get("debuff"):
-            apply_status_debuff(member["squad_id"], failure["debuff"])
+        apply_failure_side_effects(member["squad_id"], failure)
     record_encounter_completion(
         team_id,
         encounter["encounter_id"],
@@ -820,14 +838,7 @@ def apply_encounter_success_solo(squad_id, encounter):
                 grant_item_to_squad(squad_id, item["id"], source="encounter")
 
 def apply_encounter_failure_solo(squad_id, encounter):
-    failure = encounter.get("failure", {})
-    trauma = failure.get("trauma", {})
-    stat = trauma.get("stat", "resilience")
-    amount = int(trauma.get("amount", 0))
-    if amount:
-        apply_trauma_on_failure(squad_id, stat, amount)
-    if failure.get("debuff"):
-        apply_status_debuff(squad_id, failure["debuff"])
+    apply_failure_side_effects(squad_id, encounter.get("failure", {}))
 
 def apply_precheck_skip(team_id, encounter):
     skip = encounter.get("precheck", {}).get("skip_reward", {})
