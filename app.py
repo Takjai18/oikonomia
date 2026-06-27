@@ -26,6 +26,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_PATH="/",
+    SESSION_COOKIE_NAME="oikonomia_session",
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
 RESTORE_TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
@@ -2505,6 +2506,15 @@ def refresh_player_session():
     if "squad_id" in session or session.get("is_gm"):
         session.permanent = True
 
+
+@app.after_request
+def prevent_html_cache(response):
+    """避免手機瀏覽器快取舊版內嵌 HTML/JS。"""
+    if response.content_type and "text/html" in response.content_type:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 @app.route("/api/version")
 def api_version():
     upload_count = len([
@@ -2522,6 +2532,8 @@ def api_version():
             "combat_system": callable(globals().get("resolve_player_phase")),
             "combat_preview": callable(globals().get("build_combat_round_preview")),
             "combat_modal": "combat-action-modal" in HTML_TEMPLATE,
+            "session_restore_v2": "tryLoginWithStoredSquad" in HTML_TEMPLATE,
+            "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
         },
         "upload_folder": UPLOAD_FOLDER,
         "legacy_upload_folder": LEGACY_UPLOAD_FOLDER,
@@ -2595,6 +2607,7 @@ def login():
     squad = get_squad(row["squad_id"])
     status = build_player_status(squad)
     status["require_set_pin"] = not has_pin
+    status["has_pin"] = has_pin
     attach_restore_token(status, row["squad_id"])
     return jsonify(status)
 
@@ -6124,19 +6137,35 @@ HTML_TEMPLATE = """
             }
         }
 
+        function combatStatValue(...candidates) {
+            for (const raw of candidates) {
+                if (raw !== null && raw !== undefined && raw !== '') {
+                    const n = Number(raw);
+                    if (!Number.isNaN(n)) return n;
+                }
+            }
+            return null;
+        }
+
         function buildCombatMyState(data) {
             const squad = currentSquad || {};
             const ms = data?.my_state || {};
+            const members = data?.member_states || {};
+            const myId = data?.my_squad_id || squad.squad_id;
+            const member = myId ? members[myId] : null;
             return {
                 ...ms,
-                display_name: ms.display_name || squad.display_name || squad.squad_id || '你',
-                avatar: ms.avatar ?? squad.avatar,
-                hp: ms.hp ?? squad.hp,
-                sanity: ms.sanity ?? squad.sanity,
-                power: ms.power ?? squad.power,
-                intellect: ms.intellect ?? squad.intellect,
-                resilience: ms.resilience ?? squad.resilience,
-                near_death_until: ms.near_death_until ?? squad.near_death_until,
+                display_name: ms.display_name || member?.display_name || squad.display_name || squad.squad_id || '你',
+                avatar: ms.avatar ?? member?.avatar ?? squad.avatar,
+                hp: combatStatValue(ms.hp, member?.hp, squad.hp),
+                sanity: combatStatValue(ms.sanity, member?.sanity, squad.sanity),
+                power: combatStatValue(ms.power, member?.power, squad.power),
+                intellect: combatStatValue(ms.intellect, member?.intellect, squad.intellect),
+                resilience: combatStatValue(ms.resilience, member?.resilience, squad.resilience),
+                near_death_until: ms.near_death_until ?? member?.near_death_until ?? squad.near_death_until,
+                submitted: ms.submitted ?? member?.submitted,
+                action_type: ms.action_type ?? member?.action_type,
+                dice_result: ms.dice_result ?? member?.dice_result,
             };
         }
 
@@ -6424,12 +6453,13 @@ HTML_TEMPLATE = """
 
         async function loadCombatStatus(showLoading) {
             try {
+                await refreshSquadFromServer();
                 const url = currentCombatId
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
                 const res = await fetch(url, { credentials: 'same-origin' });
                 const data = await res.json();
-                if (!data.success) return;
+                if (data.success === false && !data.my_state && !data.active) return;
                 if (data.outcome) {
                     showCombatResult(data);
                     const statusRes = await fetch('/status', { credentials: 'same-origin' });
@@ -6793,11 +6823,11 @@ HTML_TEMPLATE = """
 
         function updateCombatPlayerStats(me, squad) {
             const stats = {
-                hp: me.hp ?? squad.hp ?? 100,
-                sanity: me.sanity ?? squad.sanity ?? 100,
-                power: me.power ?? squad.power ?? 0,
-                intellect: me.intellect ?? squad.intellect ?? 0,
-                resilience: me.resilience ?? squad.resilience ?? 0,
+                hp: combatStatValue(me.hp, squad.hp) ?? 100,
+                sanity: combatStatValue(me.sanity, squad.sanity) ?? 100,
+                power: combatStatValue(me.power, squad.power) ?? 0,
+                intellect: combatStatValue(me.intellect, squad.intellect) ?? 0,
+                resilience: combatStatValue(me.resilience, squad.resilience) ?? 0,
             };
             ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
                 setStatBar('combat-', s, stats[s], { showRatio: true });
@@ -7591,6 +7621,44 @@ HTML_TEMPLATE = """
             return null;
         }
 
+        async function tryLoginWithStoredSquad(stored) {
+            if (!stored?.squad_id) return null;
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({ squad_id: stored.squad_id, pin: '' }),
+                });
+                const data = await res.json();
+                if (data?.squad_id && data.success !== false) {
+                    if (stored.has_pin) return null;
+                    saveLocalSession(data);
+                    return data;
+                }
+            } catch (e) {
+                console.warn('stored squad login failed', e);
+            }
+            return null;
+        }
+
+        function shouldPromptSetPin(data) {
+            if (!data?.require_set_pin || data?.skip_team_prompt) return false;
+            const sid = data.squad_id || currentSquad?.squad_id;
+            if (!sid) return false;
+            try {
+                return !localStorage.getItem(`oikonomia_pin_prompted_${sid}`);
+            } catch (e) {
+                return true;
+            }
+        }
+
+        function markPinPromptDone(squadId) {
+            if (!squadId) return;
+            try {
+                localStorage.setItem(`oikonomia_pin_prompted_${squadId}`, String(Date.now()));
+            } catch (e) { /* ignore */ }
+        }
+
         async function refreshSquadFromServer() {
             try {
                 const res = await fetch('/status', { credentials: 'same-origin' });
@@ -7652,6 +7720,22 @@ HTML_TEMPLATE = """
                 }
             }
 
+            // 3. 用儲存嘅 squad_id 靜默登入（無 PIN 帳號）
+            if (stored?.squad_id && !stored?.has_pin) {
+                try {
+                    const relogin = await tryLoginWithStoredSquad(stored);
+                    if (relogin) {
+                        const fresh = await refreshSquadFromServer() || relogin;
+                        if (loading) setVisible(loading, false);
+                        await completeLogin({ ...fresh, require_set_pin: false, skip_team_prompt: true });
+                        await resumeActiveCombatAfterRestore(fresh);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('silent squad relogin failed', e);
+                }
+            }
+
             if (loading) setVisible(loading, false);
             if (loginScreen) setVisible(loginScreen, true);
             const nameEl = document.getElementById('squad_id');
@@ -7670,7 +7754,9 @@ HTML_TEMPLATE = """
         async function completeLogin(data) {
             currentSquad = data.squad_id ? data : (data.squad || data);
             const fresh = await refreshSquadFromServer();
-            if (fresh) currentSquad = fresh;
+            if (fresh) {
+                currentSquad = { ...currentSquad, ...fresh };
+            }
             saveLocalSession({
                 ...currentSquad,
                 restore_token: data.restore_token || currentSquad.restore_token,
@@ -7682,31 +7768,36 @@ HTML_TEMPLATE = """
             document.getElementById('squad-name').textContent =
                 currentSquad.display_name || currentSquad.squad_id;
 
-            if (data.require_set_pin) {
+            if (shouldPromptSetPin(data)) {
                 setTimeout(async () => {
-                    const pin = prompt('請設定你的 4 位數 PIN（之後登入要用）');
-                    const cleanPin = (pin || '').trim().replace(/\\D/g, '').slice(0, 4);
-                    if (cleanPin.length === 4) {
-                        const res = await fetch('/set_pin', {
-                            method: 'POST',
-                            credentials: 'same-origin',
-                            body: new URLSearchParams({pin: cleanPin})
-                        });
-                        const result = await res.json();
-                        if (result.success) {
-                            alert('PIN 設定成功！請記住。');
-                            const fresh = await refreshSquadFromServer();
-                            if (fresh) {
-                                currentSquad = fresh;
-                                updateDashboard(fresh);
-                            } else {
-                                currentSquad.has_pin = true;
-                            }
-                        } else {
-                            alert(result.error || 'PIN 設定失敗');
-                        }
-                    } else if (pin) {
+                    const sid = currentSquad?.squad_id;
+                    const pin = prompt('建議設定 4 位數 PIN 保護帳號（按取消可稍後再設）');
+                    markPinPromptDone(sid);
+                    if (!pin) return;
+                    const cleanPin = normalizeLoginPin(pin);
+                    if (cleanPin.length !== 4) {
                         alert('PIN 必須為 4 位數字');
+                        return;
+                    }
+                    const res = await fetch('/set_pin', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        body: new URLSearchParams({pin: cleanPin})
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        alert('PIN 設定成功！請記住。');
+                        const fresh = await refreshSquadFromServer();
+                        if (fresh) {
+                            currentSquad = fresh;
+                            saveLocalSession(fresh);
+                            updateDashboard(fresh);
+                        } else {
+                            currentSquad.has_pin = true;
+                            saveLocalSession(currentSquad);
+                        }
+                    } else {
+                        alert(result.error || 'PIN 設定失敗');
                     }
                 }, 800);
             }
