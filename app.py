@@ -5473,7 +5473,13 @@ HTML_TEMPLATE = """
         let actionModalRolling = false;
         let actionModalRollTimer = null;
         let actionModalPauseTimer = null;
-        const DICE_RESULT_PAUSE_MS = 1400;
+        const DICE_RESULT_PAUSE_MS = 1150;
+        const DICE_RESULT_DESCRIPTIONS = {
+            0: '失手 (0%)',
+            1: '普通攻擊 (100%)',
+            2: '強力攻擊 (150%)',
+            3: '爆擊！(200%)',
+        };
         let combatItemsLoaded = false;
         let lastDicePhase = 0;
         let lastCombatLogCount = 0;
@@ -5703,6 +5709,11 @@ HTML_TEMPLATE = """
                 diceBox.classList.remove('animate-pulse', 'dice-crit');
             }
             document.getElementById('modal-dice-final')?.classList.add('hidden');
+            const diceDesc = document.getElementById('modal-dice-desc');
+            if (diceDesc) {
+                diceDesc.textContent = '';
+                diceDesc.classList.remove('text-yellow-400', 'font-bold');
+            }
             document.getElementById('preview-warning')?.replaceChildren();
             const confirmBtn = document.getElementById('modal-confirm-btn');
             if (confirmBtn) confirmBtn.disabled = false;
@@ -5742,6 +5753,9 @@ HTML_TEMPLATE = """
             if (actionModalRolling) return;
             const diceBox = document.getElementById('modal-dice-box');
             const diceValue = document.getElementById('modal-dice-value');
+            const finalContainer = document.getElementById('modal-dice-final');
+            const diceNumber = document.getElementById('modal-dice-number');
+            const diceDesc = document.getElementById('modal-dice-desc');
             if (!diceBox || !diceValue) return;
 
             actionModalRolling = true;
@@ -5750,7 +5764,11 @@ HTML_TEMPLATE = """
 
             diceBox.classList.remove('dice-crit');
             diceBox.classList.add('animate-pulse');
-            document.getElementById('modal-dice-final')?.classList.add('hidden');
+            finalContainer?.classList.add('hidden');
+            if (diceDesc) {
+                diceDesc.textContent = '';
+                diceDesc.classList.remove('text-yellow-400', 'font-bold');
+            }
             document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
 
             let rollCount = 0;
@@ -5769,17 +5787,21 @@ HTML_TEMPLATE = """
                 selectedDice = result;
                 diceValue.textContent = String(result);
                 diceBox.style.transform = 'scale(1)';
-                diceBox.classList.remove('animate-pulse');
-                diceBox.classList.remove('dice-crit');
-                if (result === 3) diceBox.classList.add('dice-crit');
+                diceBox.classList.remove('animate-pulse', 'dice-crit');
 
-                const diceNumber = document.getElementById('modal-dice-number');
+                const description = DICE_RESULT_DESCRIPTIONS[result] || '';
+                const isCrit = result === 3;
+                if (isCrit) diceBox.classList.add('dice-crit');
                 if (diceNumber) diceNumber.textContent = String(result);
-                document.getElementById('modal-dice-final')?.classList.remove('hidden');
+                if (diceDesc) {
+                    diceDesc.textContent = description;
+                    diceDesc.classList.toggle('text-yellow-400', isCrit);
+                    diceDesc.classList.toggle('font-bold', isCrit);
+                }
+                finalContainer?.classList.remove('hidden');
 
-                const diceLabels = ['失手', '普通', '良好', '爆擊'];
                 document.getElementById('modal-status-hint').textContent =
-                    `擲出 ${result}（${diceLabels[result] || ''}）`;
+                    `擲出 ${result} — ${description}`;
 
                 actionModalRolling = false;
                 setCombatModalControlsLocked(false);
@@ -5788,11 +5810,10 @@ HTML_TEMPLATE = """
                     el.disabled = !canAct;
                 });
 
-                const pauseMs = result === 3 ? 1800 : DICE_RESULT_PAUSE_MS;
                 actionModalPauseTimer = setTimeout(() => {
                     actionModalPauseTimer = null;
                     fetchAndShowCombatPreview();
-                }, pauseMs);
+                }, DICE_RESULT_PAUSE_MS);
             }, 75);
         }
 
@@ -8580,8 +8601,11 @@ HTML_TEMPLATE = """
                      class="w-24 h-24 flex items-center justify-center text-6xl font-bold border-[6px] border-amber-500 rounded-3xl bg-zinc-950 mb-3 transition-all">
                     <span id="modal-dice-value">?</span>
                 </div>
-                <div id="modal-dice-final" class="text-sm text-zinc-400 hidden">
-                    擲出：<span id="modal-dice-number" class="text-2xl font-bold text-amber-400"></span>
+                <div id="modal-dice-final" class="text-sm text-zinc-400 hidden text-center">
+                    <div>
+                        擲出：<span id="modal-dice-number" class="text-2xl font-bold text-amber-400"></span>
+                    </div>
+                    <div id="modal-dice-desc" class="text-xs mt-0.5 text-zinc-400"></div>
                 </div>
             </div>
 
