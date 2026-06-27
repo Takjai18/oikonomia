@@ -1018,11 +1018,17 @@ def my_team():
         return jsonify({"error": "未登入"}), 401
     squad = get_squad(session["squad_id"])
     if not squad or not squad.get("team_id"):
-        return jsonify({"has_team": False})
+        return jsonify({
+            "has_team": False,
+            "route": squad.get("route") if squad else None,
+        })
     clean_team_id = normalize_team_id(squad["team_id"])
     team = get_team_by_id(clean_team_id)
     if not team:
-        return jsonify({"has_team": False})
+        return jsonify({
+            "has_team": False,
+            "route": squad.get("route"),
+        })
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
@@ -1933,29 +1939,88 @@ HTML_TEMPLATE = """
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #0D0D0D;
+            --bg-gradient-end: #141414;
+            --card-bg: #1F1F1F;
+            --card-border: #2C3E50;
+            --text-color: #FFFFFF;
+            --text-muted: #a1a1aa;
+            --accent-color: #FFFFFF;
+            --accent-contrast: #0D0D0D;
+            --accent-soft: rgba(255, 255, 255, 0.12);
+            --progress-track: #27272a;
+            --progress-color: #888888;
+            --header-border: rgba(63, 63, 70, 0.8);
+            --shadow-color: rgba(44, 62, 80, 0.6);
+        }
+        .theme-iggy {
+            --bg-color: #0D0D0D;
+            --bg-gradient-end: #2a1520;
+            --card-bg: #4A1C2E;
+            --card-border: #6b2d45;
+            --text-color: #F5E8C7;
+            --text-muted: #c4b59a;
+            --accent-color: #D4A017;
+            --accent-contrast: #1a0f14;
+            --accent-soft: rgba(212, 160, 23, 0.22);
+            --progress-track: #3d1a28;
+            --progress-color: #E07A5F;
+            --header-border: rgba(212, 160, 23, 0.28);
+            --shadow-color: rgba(107, 45, 69, 0.65);
+        }
+        .theme-marah {
+            --bg-color: #0D0D0D;
+            --bg-gradient-end: #0f1a2e;
+            --card-bg: #1E2A44;
+            --card-border: #2d3f5c;
+            --text-color: #E8E8E8;
+            --text-muted: #9ca8b8;
+            --accent-color: #C0C0C0;
+            --accent-contrast: #0f1520;
+            --accent-soft: rgba(74, 144, 164, 0.28);
+            --progress-track: #152033;
+            --progress-color: #4A90A4;
+            --header-border: rgba(74, 144, 164, 0.32);
+            --shadow-color: rgba(30, 42, 68, 0.75);
+        }
         body { font-family: 'Noto Sans TC', system-ui, sans-serif; }
+        body.theme-body {
+            background: linear-gradient(145deg, var(--bg-color) 0%, var(--bg-gradient-end) 100%);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
         .title-font { font-family: 'Playfair Display', Georgia, serif; }
-        .game-bg { background: linear-gradient(145deg, #0f172a 0%, #1e1135 100%); }
-        .section-card { 
-            background: rgba(15, 23, 42, 0.9); 
-            border: 1px solid rgba(245, 158, 11, 0.1);
+        .theme-accent-bg { background-color: var(--accent-color); }
+        .theme-accent-text { color: var(--accent-color); }
+        .theme-muted-text { color: var(--text-muted); }
+        .section-card {
+            background: var(--card-bg);
+            border: 1px solid var(--header-border);
         }
         .status-bar { transition: width 0.4s ease; }
-        .nav-active { background-color: rgba(245, 158, 11, 0.15); color: #f59e0b; border-radius: 9999px; }
+        .stat-track { background-color: var(--progress-track); }
+        .nav-active {
+            background-color: var(--accent-soft);
+            color: var(--accent-color);
+            border-radius: 9999px;
+        }
         .nav-btn {
-            color: #a1a1aa;
+            color: var(--text-muted);
             transition: all 0.2s;
         }
         .nav-btn:hover {
-            color: #f4f4f5;
-            background-color: rgba(63, 63, 70, 0.3);
+            color: var(--text-color);
+            background-color: var(--accent-soft);
             border-radius: 9999px;
         }
+        .app-header { border-color: var(--header-border) !important; }
         .cartoon-box {
-            border: 3px solid #2C3E50;
+            border: 3px solid var(--card-border);
             border-radius: 12px;
-            background: rgba(255, 255, 255, 0.05);
-            box-shadow: 6px 6px 0px rgba(44, 62, 80, 0.6);
+            background: var(--card-bg);
+            box-shadow: 6px 6px 0px var(--shadow-color);
+            color: var(--text-color);
         }
         .route-card {
             border: 3px solid #2C3E50;
@@ -1992,26 +2057,40 @@ HTML_TEMPLATE = """
                 flex-direction: column;
             }
         }
-        .location-card { cursor: pointer; padding: 1.25rem; border-radius: 1.5rem; margin-bottom: 1rem;
-            background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(245, 158, 11, 0.1); }
+        .location-card {
+            cursor: pointer; padding: 1.25rem; border-radius: 1.5rem; margin-bottom: 1rem;
+            background: var(--card-bg); border: 1px solid var(--header-border);
+            color: var(--text-color);
+        }
         .location-card:active { opacity: 0.85; }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
             display: flex; align-items: flex-end; justify-content: center; }
-        .modal-box { background: #18181b; width: 100%; max-width: 480px; padding: 1.5rem;
-            border-radius: 1.5rem 1.5rem 0 0; border-top: 1px solid #3f3f46; }
+        .modal-box {
+            background: var(--card-bg); color: var(--text-color);
+            width: 100%; max-width: 480px; padding: 1.5rem;
+            border-radius: 1.5rem 1.5rem 0 0; border-top: 1px solid var(--card-border);
+        }
+        #game-content .text-zinc-400 { color: var(--text-muted); }
+        #game-content .border-zinc-700,
+        #game-content .border-zinc-800 { border-color: var(--card-border); }
+        .theme-btn-primary {
+            background-color: var(--accent-color);
+            color: var(--accent-contrast);
+        }
+        .theme-btn-primary:hover { filter: brightness(1.08); }
         @media (min-width: 768px) {
             .modal-overlay { align-items: center; }
             .modal-box { border-radius: 1.5rem; }
         }
     </style>
 </head>
-<body class="game-bg text-zinc-200">
+<body class="theme-body">
     <div class="max-w-4xl mx-auto">
         <!-- ==================== Header ==================== -->
-        <div class="flex items-center justify-between px-6 py-5 border-b border-zinc-800">
+        <div class="app-header flex items-center justify-between px-6 py-5 border-b border-zinc-800">
             <div class="flex items-center gap-x-3">
-                <div class="w-9 h-9 bg-amber-500 rounded-2xl flex items-center justify-center">
-                    <i class="fa-solid fa-link text-zinc-950"></i>
+                <div class="w-9 h-9 theme-accent-bg rounded-2xl flex items-center justify-center">
+                    <i class="fa-solid fa-link" style="color: var(--accent-contrast)"></i>
                 </div>
                 <span class="title-font text-3xl font-bold">Oikonomia</span>
             </div>
@@ -2044,14 +2123,14 @@ HTML_TEMPLATE = """
 
         <!-- 恢復登入中 -->
         <div id="session-loading" class="max-w-md mx-auto px-6 py-24 text-center">
-            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-amber-400 mb-4"></i>
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl theme-accent-text mb-4"></i>
             <p class="text-zinc-400">正在恢復登入狀態...</p>
         </div>
 
         <!-- Login -->
         <div id="login-screen" class="hidden max-w-md mx-auto px-6 py-16">
             <div class="text-center mb-8">
-                <i class="fa-solid fa-user-secret text-6xl text-amber-400 mb-4"></i>
+                <i class="fa-solid fa-user-secret text-6xl theme-accent-text mb-4"></i>
                 <h1 class="text-3xl font-bold">歡迎進入Oikonomia的世界</h1>
                 <p class="text-zinc-400 mt-2">輸入名稱登入（首次無需 PIN）</p>
             </div>
@@ -2062,7 +2141,7 @@ HTML_TEMPLATE = """
                        inputmode="numeric" pattern="[0-9]*"
                        class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl tracking-widest text-center font-mono">
                 <button type="submit" 
-                        class="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold py-4 rounded-2xl">
+                        class="w-full theme-btn-primary font-semibold py-4 rounded-2xl">
                     進入 Oikonomia
                 </button>
             </form>
@@ -2136,11 +2215,11 @@ HTML_TEMPLATE = """
                     <div class="cartoon-box p-5">
                         <h3 class="font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Player Status</h3>
                         <div class="space-y-3">
-                            <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
-                            <div class="stat-row" data-stat="power"><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="intellect"><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div class="stat-row" data-stat="resilience"><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div class="stat-row" data-stat="hp"><div class="flex justify-between text-sm mb-1"><span>❤️ HP</span><span id="hp-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="hp-bar" class="h-2.5 rounded-full status-bar" style="width:100%;background:var(--progress-color)"></div></div></div>
+                            <div class="stat-row" data-stat="sanity"><div class="flex justify-between text-sm mb-1"><span>🧠 Sanity</span><span id="sanity-value" class="font-mono">50</span></div><div class="h-2.5 stat-track rounded-full"><div id="sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:50%"></div></div></div>
+                            <div class="stat-row" data-stat="power"><div class="flex justify-between text-sm mb-1"><span>⚡ Power</span><span id="power-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div class="stat-row" data-stat="intellect"><div class="flex justify-between text-sm mb-1"><span>📖 Intellect</span><span id="intellect-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
+                            <div class="stat-row" data-stat="resilience"><div class="flex justify-between text-sm mb-1"><span>🛡️ Resilience</span><span id="resilience-value" class="font-mono">100</span></div><div class="h-2.5 stat-track rounded-full"><div id="resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                         <div class="mt-4 pt-3 border-t border-zinc-700 flex justify-between text-sm">
                             <span><i class="fa-solid fa-gem text-purple-400 mr-1"></i>Resource</span>
@@ -2199,7 +2278,7 @@ HTML_TEMPLATE = """
                          src="/static/avatars/default.png"
                          class="w-12 h-12 rounded-full object-cover border border-zinc-600">
                     <div>
-                        <div class="text-sm text-amber-400">LOG</div>
+                        <div class="text-sm theme-accent-text">LOG</div>
                         <div class="text-3xl font-semibold">故事與任務記錄</div>
                     </div>
                 </div>
@@ -2251,7 +2330,7 @@ HTML_TEMPLATE = """
             <!-- Team 區塊 -->
             <div id="team" class="section hidden">
                 <div class="mb-6">
-                    <div class="text-sm text-amber-400">TEAM</div>
+                    <div class="text-sm theme-accent-text">TEAM</div>
                     <div class="text-3xl font-semibold">你的小隊</div>
                 </div>
 
@@ -2692,10 +2771,22 @@ HTML_TEMPLATE = """
             }
         }
 
+        function applyRouteTheme(route) {
+            const body = document.body;
+            body.classList.remove('theme-iggy', 'theme-marah');
+            if (route === 'iggy') {
+                body.classList.add('theme-iggy');
+            } else if (route === 'marah') {
+                body.classList.add('theme-marah');
+            }
+        }
+
         function updateDashboard(data) {
             const squad = data.squad_id ? data : (data.squad || data);
             const protagonists = data.protagonists || squad.protagonists;
             const route = data.route || data.team?.route || squad.route;
+
+            applyRouteTheme(route);
 
             ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
@@ -2777,9 +2868,12 @@ HTML_TEMPLATE = """
                 if (!data.has_team) {
                     setVisible(noBox, true);
                     setVisible(hasBox, false);
+                    applyRouteTheme(data.route || (currentSquad && currentSquad.route));
                 } else {
                     setVisible(noBox, false);
                     setVisible(hasBox, true);
+                    applyRouteTheme(data.route || data.team?.route);
+                    if (currentSquad && data.route) currentSquad.route = data.route;
                 }
 
                 if (!data.has_team) {
