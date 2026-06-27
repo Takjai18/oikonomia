@@ -614,7 +614,7 @@ def get_team_by_id(team_id):
         return None
 
     member_count = conn.execute(
-        "SELECT COUNT(*) FROM squads WHERE team_id = ?", (clean_id,)
+        "SELECT COUNT(*) FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))", (clean_id,)
     ).fetchone()[0]
     conn.close()
 
@@ -634,7 +634,7 @@ def query_teams_list(current_team_id=None):
     teams = []
     for row in rows:
         member_count = conn.execute(
-            "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
+            "SELECT COUNT(*) FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))", (row["team_id"],)
         ).fetchone()[0]
 
         teams.append({
@@ -655,7 +655,7 @@ def get_all_teams_with_stats():
 # ==================== Routes ====================
 @app.before_request
 def refresh_player_session():
-    if "squad_id" in session:
+    if "squad_id" in session or session.get("is_gm"):
         session.permanent = True
 
 @app.route("/api/version")
@@ -933,7 +933,7 @@ def available_teams():
     teams = []
     for row in rows:
         member_count = conn.execute(
-            "SELECT COUNT(*) FROM squads WHERE team_id = ?", (row["team_id"],)
+            "SELECT COUNT(*) FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))", (row["team_id"],)
         ).fetchone()[0]
 
         is_joined = (row["team_id"] == current_team_id)
@@ -1209,6 +1209,7 @@ def gm_login_page():
 def gm_login():
     pin = request.form.get("pin", "")
     if pin == GM_PIN:
+        session.permanent = True
         session["is_gm"] = True
         return jsonify({"success": True})
     else:
@@ -1458,40 +1459,50 @@ def gm_team_members(team_id):
 @app.route("/gm/assignable_players")
 def gm_assignable_players():
     if not session.get("is_gm"):
-        return jsonify({"error": "未授權"}), 403
+        return jsonify({"success": False, "error": "未授權", "players": []}), 403
 
-    team_id = request.args.get("team_id", "").strip().upper()
+    target_team_id = normalize_team_id(request.args.get("team_id", ""))
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-
-    if team_id:
-        rows = conn.execute("""
-            SELECT squad_id, display_name, team_id
-            FROM squads
-            WHERE team_id IS NULL OR team_id != ?
-            ORDER BY display_name
-        """, (team_id,)).fetchall()
-    else:
-        rows = conn.execute("""
-            SELECT squad_id, display_name, team_id FROM squads ORDER BY display_name
-        """).fetchall()
-
+    rows = conn.execute("""
+        SELECT squad_id, display_name, team_id
+        FROM squads
+        ORDER BY COALESCE(display_name, squad_id), squad_id
+    """).fetchall()
     conn.close()
 
     players = []
     for row in rows:
+        current_team_id = normalize_team_id(row["team_id"]) if row["team_id"] else None
+        on_target_team = bool(target_team_id and current_team_id == target_team_id)
+
         label = row["display_name"] or row["squad_id"]
-        if row["team_id"]:
-            label += f"（現於 {row['team_id']}）"
+        if current_team_id:
+            team_info = get_team_by_id(current_team_id)
+            team_label = team_info["team_name"] if team_info else current_team_id
+            label += f"（現於 {team_label}）"
+        else:
+            label += "（未入隊）"
+        if on_target_team:
+            label += "（已在目標隊）"
+
         players.append({
             "squad_id": row["squad_id"],
             "display_name": row["display_name"] or row["squad_id"],
-            "current_team_id": row["team_id"],
+            "current_team_id": current_team_id,
             "label": label,
+            "on_target_team": on_target_team,
+            "eligible": not on_target_team,
         })
 
-    return jsonify({"players": players})
+    eligible = [player for player in players if player["eligible"]]
+    return jsonify({
+        "success": True,
+        "players": eligible,
+        "all_players": players,
+        "count": len(eligible),
+    })
 
 @app.route("/gm/create_team", methods=["POST"])
 def gm_create_team():
@@ -1545,7 +1556,7 @@ def gm_assign_squad():
             old_team_name = old_team["team_name"]
 
     is_leader = 0
-    update_squad(squad_id, team_id=new_team_id, is_team_leader=is_leader)
+    update_squad(squad_id, team_id=normalize_team_id(new_team_id), is_team_leader=is_leader)
 
     label = squad.get("display_name") or squad_id
     message = f"已將 {label} 分配到 {new_team['team_name']}"
@@ -3869,13 +3880,28 @@ GM_DASHBOARD_HTML = """
             document.body.appendChild(modal);
 
             try {
-                const res = await fetch(`/gm/assignable_players?team_id=${teamId}`);
+                const res = await fetch(
+                    `/gm/assignable_players?team_id=${encodeURIComponent(teamId)}`,
+                    { credentials: 'same-origin' }
+                );
                 const data = await res.json();
 
                 const select = modal.querySelector('#assign-player-select');
                 select.innerHTML = '<option value="">-- 請選擇玩家 --</option>';
 
-                (data.players || []).forEach(player => {
+                if (!res.ok || data.success === false) {
+                    select.innerHTML = '<option value="">載入失敗</option>';
+                    alert(data.error || '載入玩家列表失敗，請重新登入 GM');
+                    return;
+                }
+
+                const players = data.players || [];
+                if (players.length === 0) {
+                    select.innerHTML = '<option value="">（無可分配玩家 — 可能全部已在隊內）</option>';
+                    return;
+                }
+
+                players.forEach(player => {
                     const option = document.createElement('option');
                     option.value = player.squad_id;
                     option.textContent = player.label || `${player.display_name} (${player.squad_id})`;
@@ -3902,6 +3928,7 @@ GM_DASHBOARD_HTML = """
 
             const res = await fetch('/gm/assign_squad', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams({
                     squad_id: squadId,
