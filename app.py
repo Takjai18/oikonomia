@@ -4660,6 +4660,33 @@ HTML_TEMPLATE = """
             #combat-screen .combat-action-btn { padding-top: 0.65rem; padding-bottom: 0.65rem; font-size: 0.8125rem; }
             #combat-log { max-height: 5.5rem; }
         }
+        #available-teams-list .team-join-card {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.875rem 1rem;
+            border-radius: 1rem;
+            border: 1px solid var(--card-border, #3f3f46);
+            background: rgba(24, 24, 27, 0.6);
+        }
+        @media (min-width: 640px) {
+            #available-teams-list .team-join-card {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+            }
+        }
+        #available-teams-list .team-join-btn {
+            min-height: 2.5rem;
+            padding: 0.5rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-radius: 0.75rem;
+            width: 100%;
+        }
+        @media (min-width: 640px) {
+            #available-teams-list .team-join-btn { width: auto; }
+        }
         @keyframes combat-pulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
             50% { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); }
@@ -5319,27 +5346,42 @@ HTML_TEMPLATE = """
 
             <!-- Team 區塊 -->
             <div id="team" class="section hidden">
-                <div class="mb-6">
+                <div class="mb-4">
                     <div class="text-sm theme-accent-text">TEAM</div>
-                    <div class="text-3xl font-semibold">你的小隊</div>
+                    <div class="text-2xl lg:text-3xl font-semibold">你的小隊</div>
                 </div>
 
-                <!-- 未有 Team 時顯示（改為列表模式） -->
-                <div id="no-team-box" class="hidden cartoon-box p-8">
-                    <div class="text-center mb-6">
-                        <i class="fa-solid fa-users text-5xl text-zinc-600 mb-4"></i>
-                        <h3 class="text-xl font-bold mb-2">你尚未加入任何 Team</h3>
-                        <p class="text-zinc-400">請選擇一個 Team 加入，或建立新隊</p>
+                <!-- 可加入隊伍（置頂，手機一開就見到） -->
+                <div id="available-teams-panel" class="cartoon-box p-4 mb-4">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-base">可加入的隊伍</div>
+                            <div class="text-xs text-zinc-400 mt-0.5">揀一隊加入，或往下建立新隊</div>
+                        </div>
+                        <button onclick="loadAvailableTeams()"
+                                class="shrink-0 text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
+                            <i class="fa-solid fa-sync text-xs"></i>
+                            <span>刷新</span>
+                        </button>
+                    </div>
+                    <div id="available-teams-list" class="space-y-2 max-h-[50vh] sm:max-h-[320px] overflow-y-auto pr-1 -webkit-overflow-scrolling-touch"></div>
+                </div>
+
+                <!-- 未有 Team 時顯示 -->
+                <div id="no-team-box" class="hidden cartoon-box p-5 sm:p-8 mb-4">
+                    <div class="text-center mb-5">
+                        <i class="fa-solid fa-users text-4xl sm:text-5xl text-zinc-600 mb-3"></i>
+                        <h3 class="text-lg sm:text-xl font-bold mb-1">你尚未加入任何 Team</h3>
+                        <p class="text-sm text-zinc-400">從上面列表加入，或建立新隊</p>
                     </div>
 
-                    <!-- 建立新隊 -->
-                    <div class="border-t border-zinc-700 pt-5">
-                        <div class="text-sm text-zinc-400 mb-2 px-1">或者建立新隊</div>
-                        <div class="flex gap-x-2">
-                            <input type="text" id="create-team-name" placeholder="輸入隊名（例如：界線守護者）" 
-                                   class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-5 py-3 text-sm">
-                            <button onclick="createMyTeam()" 
-                                    class="px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl whitespace-nowrap">
+                    <div class="border-t border-zinc-700 pt-4">
+                        <div class="text-sm text-zinc-400 mb-2 px-1">建立新隊</div>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="text" id="create-team-name" placeholder="輸入隊名（例如：界線守護者）"
+                                   class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-3 text-sm">
+                            <button onclick="createMyTeam()"
+                                    class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl">
                                 建立新隊
                             </button>
                         </div>
@@ -5381,19 +5423,6 @@ HTML_TEMPLATE = """
                         <div id="team-task-logs-list" class="space-y-3 max-h-[400px] overflow-auto pr-1"></div>
                     </div>
                 </div>
-
-                <!-- 所有 Team 列表（同 GM 一致，永遠顯示） -->
-                <div class="cartoon-box p-5 mt-6">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="font-semibold text-sm">所有 Team</div>
-                        <button onclick="loadAvailableTeams()" 
-                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
-                            <i class="fa-solid fa-sync text-xs"></i>
-                            <span>刷新列表</span>
-                        </button>
-                    </div>
-                    <div id="available-teams-list" class="space-y-2 max-h-[280px] overflow-auto pr-1"></div>
-                </div>
             </div>
         </div>
     </div>
@@ -5423,7 +5452,10 @@ HTML_TEMPLATE = """
             if (id === 'explore') loadLocations();
             if (id === 'dashboard') loadMyItems();
             if (id === 'combat') loadCombatPage();
-            if (id === 'team') loadMyTeam();
+            if (id === 'team') {
+                loadMyTeam();
+                loadAvailableTeams();
+            }
             if (id === 'log') {
                 loadStoryLog();
                 loadTeamTaskLogs();
@@ -7352,16 +7384,28 @@ HTML_TEMPLATE = """
             }
         }
 
+        function teamRouteBadge(route) {
+            if (route === 'iggy') return '<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-900/40 text-red-300">🔥 Iggy</span>';
+            if (route === 'marah') return '<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/40 text-blue-300">🌊 Marah</span>';
+            return '<span class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-400">未選路線</span>';
+        }
+
         async function loadAvailableTeams() {
             const container = document.getElementById('available-teams-list');
+            if (!container) return;
             container.innerHTML = '<div class="text-zinc-400 text-sm py-4 text-center">載入中...</div>';
 
             try {
                 const res = await fetch('/available_teams', { credentials: 'same-origin' });
                 const data = await res.json();
 
+                if (!res.ok) {
+                    container.innerHTML = `<div class="text-red-400 text-sm py-4 text-center">${data.error || '請先登入'}</div>`;
+                    return;
+                }
+
                 if (!data.teams || data.teams.length === 0) {
-                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇 Team</div>';
+                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇隊伍 — 你可以往下建立新隊</div>';
                     return;
                 }
 
@@ -7369,24 +7413,27 @@ HTML_TEMPLATE = """
                 const hasTeam = Boolean(data.has_team);
                 data.teams.forEach(team => {
                     const el = document.createElement('div');
-                    el.className = 'flex items-center justify-between bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-2xl px-4 py-3';
+                    el.className = 'team-join-card';
 
-                    let actionBtn = '';
+                    let actionHtml = '';
                     if (team.is_joined) {
-                        actionBtn = `<span class="px-4 py-1 text-xs bg-emerald-900/50 text-emerald-300 rounded-xl">已加入</span>`;
+                        actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-emerald-900/50 text-emerald-300">✓ 已加入</span>`;
                     } else if (hasTeam) {
-                        actionBtn = `<span class="px-4 py-1 text-xs bg-zinc-600 text-zinc-400 rounded-xl">已加入其他隊</span>`;
+                        actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-zinc-700 text-zinc-400">已屬其他隊</span>`;
                     } else {
-                        actionBtn = `<button class="px-4 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-zinc-950 font-medium rounded-xl">加入</button>`;
+                        actionHtml = `<button type="button" class="team-join-btn bg-amber-500 hover:bg-amber-600 text-zinc-950">加入此隊</button>`;
                     }
 
                     el.innerHTML = `
-                        <div class="flex-1">
-                            <div class="font-mono text-emerald-400 text-sm">${team.team_id}</div>
-                            <div class="font-semibold">${team.team_name}</div>
-                            <div class="text-xs text-zinc-400 mt-0.5">${team.member_count} 人</div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <div class="font-semibold text-base truncate">${team.team_name || team.team_id}</div>
+                                ${teamRouteBadge(team.route)}
+                            </div>
+                            <div class="font-mono text-emerald-400/90 text-xs mt-0.5">${team.team_id}</div>
+                            <div class="text-xs text-zinc-400 mt-1">${team.member_count} 位隊員</div>
                         </div>
-                        <div>${actionBtn}</div>
+                        <div class="shrink-0 w-full sm:w-auto">${actionHtml}</div>
                     `;
 
                     const btn = el.querySelector('button');
@@ -7396,7 +7443,8 @@ HTML_TEMPLATE = """
                     container.appendChild(el);
                 });
             } catch (e) {
-                container.innerHTML = '<div class="text-red-400 text-sm py-4 text-center">載入失敗</div>';
+                console.error('loadAvailableTeams failed', e);
+                container.innerHTML = '<div class="text-red-400 text-sm py-4 text-center">載入失敗，請下拉刷新重試</div>';
             }
         }
 
@@ -7416,6 +7464,7 @@ HTML_TEMPLATE = """
                     updateDashboard(currentSquad);
                 }
                 loadMyTeam();
+                loadAvailableTeams();
             } else {
                 alert(data.error || '加入失敗');
             }
@@ -7433,6 +7482,7 @@ HTML_TEMPLATE = """
                 alert(`Team ${data.team_id} 已建立！`);
                 document.getElementById('create-team-name').value = '';
                 loadMyTeam();
+                loadAvailableTeams();
             } else {
                 alert(data.error || '建立失敗');
             }
