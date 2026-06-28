@@ -1750,33 +1750,39 @@ STORY_CONTENT = {
 
 def count_team_distinct_tasks(squad_id, team_id):
     conn = sqlite3.connect(DB_PATH)
-    if team_id:
-        clean_team_id = normalize_team_id(team_id)
-        count = conn.execute("""
-            SELECT COUNT(DISTINCT task_id)
-            FROM submissions
-            WHERE squad_id IN (
-                SELECT squad_id FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
-            )
-        """, (clean_team_id,)).fetchone()[0]
-        rows = conn.execute("""
-            SELECT DISTINCT task_id
-            FROM submissions
-            WHERE squad_id IN (
-                SELECT squad_id FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
-            )
-        """, (clean_team_id,)).fetchall()
-    else:
-        count = conn.execute(
-            "SELECT COUNT(DISTINCT task_id) FROM submissions WHERE squad_id = ?",
-            (squad_id,),
-        ).fetchone()[0]
-        rows = conn.execute(
-            "SELECT DISTINCT task_id FROM submissions WHERE squad_id = ?",
-            (squad_id,),
-        ).fetchall()
-    conn.close()
-    return count, {row[0] for row in rows}
+    count = 0
+    task_ids = set()
+    try:
+        if team_id:
+            clean_team_id = normalize_team_id(team_id)
+            count = conn.execute("""
+                SELECT COUNT(DISTINCT task_id) FROM submissions
+                WHERE squad_id IN (
+                    SELECT squad_id FROM squads
+                    WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                )
+            """, (clean_team_id,)).fetchone()[0]
+            rows = conn.execute("""
+                SELECT DISTINCT task_id FROM submissions
+                WHERE squad_id IN (
+                    SELECT squad_id FROM squads
+                    WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                )
+            """, (clean_team_id,)).fetchall()
+            task_ids = {row[0] for row in rows}
+        else:
+            count = conn.execute(
+                "SELECT COUNT(DISTINCT task_id) FROM submissions WHERE squad_id = ?",
+                (squad_id,),
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT DISTINCT task_id FROM submissions WHERE squad_id = ?",
+                (squad_id,),
+            ).fetchall()
+            task_ids = {row[0] for row in rows}
+    finally:
+        conn.close()
+    return count, task_ids
 
 def resolve_story_stage(completed_count, completed_task_ids):
     stage = 0
@@ -3710,43 +3716,44 @@ def submit_task():
         return jsonify({"error": "你未加入任何 Team，無法提交任務"}), 400
 
     conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        SELECT id FROM submissions
-        WHERE task_id = ? AND squad_id IN (
-            SELECT squad_id FROM squads WHERE team_id = ?
-        )
-    """, (task_id, team_id))
-    already_submitted = c.fetchone()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id FROM submissions
+            WHERE task_id = ? AND squad_id IN (
+                SELECT squad_id FROM squads WHERE team_id = ?
+            )
+        """, (task_id, team_id))
+        already_submitted = c.fetchone()
 
-    photo_path = None
-    if "photo" in request.files:
-        photo = request.files["photo"]
-        if photo.filename:
-            filename = f"{session['squad_id']}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-            photo.save(os.path.join(UPLOAD_FOLDER, filename))
-            photo_path = f"uploads/{filename}"
+        photo_path = None
+        if "photo" in request.files:
+            photo = request.files["photo"]
+            if photo.filename:
+                ts = datetime.now().strftime('%Y%m%d%H%M%S%f')
+                filename = f"{session['squad_id']}_{ts}_{random.randint(1000, 9999)}.jpg"
+                photo.save(os.path.join(UPLOAD_FOLDER, filename))
+                photo_path = f"uploads/{filename}"
 
-    c.execute("""INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
-                 VALUES (?, ?, ?, ?, ?)""",
-              (session["squad_id"], task_id, content, photo_path, datetime.now().isoformat()))
-    conn.commit()
+        c.execute("""INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
+                     VALUES (?, ?, ?, ?, ?)""",
+                  (session["squad_id"], task_id, content, photo_path, datetime.now().isoformat()))
+        conn.commit()
 
-    if not already_submitted:
-        new_sanity = min(100, squad["sanity"] + 6)
-        new_resources = squad["resources"] + 1
-        update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
-        conn.close()
-        return jsonify({
-            "success": True,
-            "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）"
-        })
-    else:
-        conn.close()
+        if not already_submitted:
+            new_sanity = min(100, squad["sanity"] + 6)
+            new_resources = squad["resources"] + 1
+            update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
+            return jsonify({
+                "success": True,
+                "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）"
+            })
         return jsonify({
             "success": True,
             "message": "提交已記錄，但呢個任務已經計過分（只計一次）"
         })
+    finally:
+        conn.close()
 
 @app.route("/update_display_name", methods=["POST"])
 def update_display_name():
