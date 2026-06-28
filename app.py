@@ -1777,9 +1777,25 @@ def migrate_db():
 
     conn.commit()
     conn.close()
-    backfill_team_routes_from_members()
+    try:
+        backfill_team_routes_from_members()
+    except Exception as e:
+        print(f"[oikonomia] backfill_team_routes_from_members failed: {e}", flush=True)
 
-init_db()
+
+_DB_INIT_ERROR = None
+
+
+def _safe_init_db():
+    global _DB_INIT_ERROR
+    try:
+        init_db()
+    except Exception as e:
+        _DB_INIT_ERROR = str(e)
+        print(f"[oikonomia] init_db failed: {e}", flush=True)
+
+
+_safe_init_db()
 
 # ==================== 樣本資料（之後容易改） ====================
 LOCATIONS = {
@@ -2664,8 +2680,9 @@ def api_version():
     avatar_count = len(_list_image_files(AVATAR_DIR, exclude=("default.png",)))
     portrait_count = len(_list_image_files(PORTRAIT_DIR, exclude=("default.png",)))
     return jsonify({
-        "success": True,
+        "success": _DB_INIT_ERROR is None,
         "version": read_deploy_version(),
+        "db_init_error": _DB_INIT_ERROR,
         "markers": {
             "iggy_card": "iggy-card",
             "show_only_protagonist": "showOnlyProtagonistCard",
