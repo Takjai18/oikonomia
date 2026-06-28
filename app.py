@@ -5775,13 +5775,14 @@ HTML_TEMPLATE = """
                 <div class="mb-4">
                     <div class="text-sm theme-accent-text">TEAM</div>
                     <div class="text-2xl lg:text-3xl font-semibold">你的小隊</div>
+                    <div id="team-page-subtitle" class="text-sm text-zinc-400 mt-1"></div>
                 </div>
 
-                <!-- 可加入隊伍（置頂，手機一開就見到） -->
-                <div id="available-teams-panel" class="cartoon-box p-4 mb-4">
+                <!-- 未加入隊伍：可選隊伍列表 -->
+                <div id="available-teams-panel" class="hidden cartoon-box p-4 mb-4">
                     <div class="flex items-center justify-between gap-2 mb-3">
                         <div class="min-w-0">
-                            <div class="font-semibold text-base">可加入的隊伍</div>
+                            <div id="available-teams-heading" class="font-semibold text-base">可加入的隊伍</div>
                             <div class="text-xs text-zinc-400 mt-0.5">揀一隊加入，或往下建立新隊</div>
                         </div>
                         <button onclick="loadAvailableTeams()"
@@ -5793,33 +5794,25 @@ HTML_TEMPLATE = """
                     <div id="available-teams-list" class="space-y-2 max-h-[50vh] sm:max-h-[320px] overflow-y-auto pr-1 -webkit-overflow-scrolling-touch"></div>
                 </div>
 
-                <!-- 未有 Team 時顯示 -->
+                <!-- 未加入隊伍：建立新隊 -->
                 <div id="no-team-box" class="hidden cartoon-box p-5 sm:p-8 mb-4">
-                    <div class="text-center mb-5">
-                        <i class="fa-solid fa-users text-4xl sm:text-5xl text-zinc-600 mb-3"></i>
-                        <h3 class="text-lg sm:text-xl font-bold mb-1">你尚未加入任何 Team</h3>
-                        <p class="text-sm text-zinc-400">從上面列表加入，或建立新隊</p>
-                    </div>
-
-                    <div class="border-t border-zinc-700 pt-4">
-                        <div class="text-sm text-zinc-400 mb-2 px-1">建立新隊</div>
-                        <div class="flex flex-col sm:flex-row gap-2">
-                            <input type="text" id="create-team-name" placeholder="輸入隊名（例如：界線守護者）"
-                                   class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-3 text-sm">
-                            <button onclick="createMyTeam()"
-                                    class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl">
-                                建立新隊
-                            </button>
-                        </div>
+                    <div class="text-sm text-zinc-400 mb-2 px-1">或建立新隊</div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <input type="text" id="create-team-name" placeholder="輸入隊名（例如：界線守護者）"
+                               class="flex-1 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-3 text-sm">
+                        <button onclick="createMyTeam()"
+                                class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl">
+                            建立新隊
+                        </button>
                     </div>
                 </div>
 
-                <!-- 已有 Team 時顯示 -->
+                <!-- 已加入隊伍：你的隊伍 + 隊友 -->
                 <div id="has-team-box" class="hidden">
-                    <div class="cartoon-box p-6 mb-6">
+                    <div id="my-team-card" class="cartoon-box p-6 mb-6">
                         <div class="flex justify-between items-center">
                             <div>
-                                <div class="text-xs text-emerald-400">TEAM NAME</div>
+                                <div class="text-xs text-emerald-400">你的隊伍</div>
                                 <div id="my-team-name" class="text-2xl font-bold"></div>
                                 <div id="my-team-id" class="font-mono text-xs text-zinc-500"></div>
                             </div>
@@ -5828,7 +5821,7 @@ HTML_TEMPLATE = """
                     </div>
 
                     <div class="mb-4 flex items-center justify-between">
-                        <div class="font-semibold">隊友列表</div>
+                        <div class="text-sm text-zinc-400">隊友列表</div>
                         <button onclick="loadMyTeam()" class="text-xs px-3 py-1 bg-zinc-700 rounded-xl">刷新</button>
                     </div>
                     <div id="team-protagonists-section" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
@@ -5897,7 +5890,6 @@ HTML_TEMPLATE = """
             if (id === 'combat') loadCombatPage();
             if (id === 'team') {
                 loadMyTeam();
-                loadAvailableTeams();
             }
             if (id === 'log') {
                 loadStoryLog();
@@ -7638,7 +7630,6 @@ HTML_TEMPLATE = """
 
             if (data.success) {
                 document.getElementById('my-team-name').textContent = data.team_name;
-                loadAvailableTeams();
                 alert('隊名已更新！');
             } else {
                 alert(data.error || '更新失敗');
@@ -7906,7 +7897,6 @@ HTML_TEMPLATE = """
             }
             updateDashboard(currentSquad);
             loadMyTeam();
-            loadAvailableTeams();
         }
 
         async function selectRoute(route) {
@@ -7938,6 +7928,26 @@ HTML_TEMPLATE = """
             if (picker) setVisible(picker, false);
         }
 
+        function updateTeamPageMode(hasTeam) {
+            const subtitle = document.getElementById('team-page-subtitle');
+            const availablePanel = document.getElementById('available-teams-panel');
+            const noBox = document.getElementById('no-team-box');
+            const hasBox = document.getElementById('has-team-box');
+
+            if (subtitle) {
+                subtitle.textContent = hasTeam ? '你的隊伍' : '選擇隊伍';
+            }
+            setVisible(availablePanel, !hasTeam);
+            setVisible(noBox, !hasTeam);
+            setVisible(hasBox, hasTeam);
+        }
+
+        function memberRouteLabel(route) {
+            if (route === 'iggy') return '<span class="text-xs text-red-400">🔥 Iggy</span>';
+            if (route === 'marah') return '<span class="text-xs text-sky-400">🌊 Marah</span>';
+            return '<span class="text-xs text-zinc-500">未選路線</span>';
+        }
+
         async function loadMyTeam() {
             const noBox = document.getElementById('no-team-box');
             const hasBox = document.getElementById('has-team-box');
@@ -7945,21 +7955,16 @@ HTML_TEMPLATE = """
                 const res = await fetch('/my_team', { credentials: 'same-origin' });
                 const data = await res.json();
 
-                if (!data.has_team) {
-                    setVisible(noBox, true);
-                    setVisible(hasBox, false);
-                    applyRouteTheme(data.route || (currentSquad && currentSquad.route));
-                } else {
-                    setVisible(noBox, false);
-                    setVisible(hasBox, true);
-                    applyRouteTheme(data.route || data.team?.route);
-                    if (currentSquad && data.route) currentSquad.route = data.route;
-                }
+                updateTeamPageMode(!!data.has_team);
 
                 if (!data.has_team) {
+                    applyRouteTheme(data.route || (currentSquad && currentSquad.route));
                     loadAvailableTeams();
                     return;
                 }
+
+                applyRouteTheme(data.route || data.team?.route);
+                if (currentSquad && data.route) currentSquad.route = data.route;
 
                 const team = data.team;
                 const isLeader = data.is_team_leader === 1;
@@ -8004,25 +8009,32 @@ HTML_TEMPLATE = """
                     </div>
                 ` : '';
 
-                document.querySelector('#has-team-box .cartoon-box').innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="text-xs text-emerald-400">TEAM NAME</div>
-                            ${teamNameHTML}
-                            <div id="my-team-id" class="font-mono text-xs text-zinc-500">${team.team_id}</div>
+                const memberCount = (data.members || []).length;
+                const teamCard = document.getElementById('my-team-card');
+                if (teamCard) {
+                    teamCard.innerHTML = `
+                        <div class="flex justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <div class="text-xs text-emerald-400">你的隊伍</div>
+                                ${teamNameHTML}
+                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-0.5">${team.team_id}</div>
+                                <div class="text-sm text-zinc-400 mt-2">${memberCount} 位隊員</div>
+                            </div>
+                            <div id="my-team-route-badge" class="shrink-0"></div>
                         </div>
-                        <div id="my-team-route-badge"></div>
-                    </div>
-                    ${routePickerHTML}
-                `;
+                        ${routePickerHTML}
+                    `;
+                }
 
                 const routeBadge = document.getElementById('my-team-route-badge');
-                if (teamRoute === 'iggy') {
-                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 線</div>';
-                } else if (teamRoute === 'marah') {
-                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 線</div>';
-                } else {
-                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未選路線</div>';
+                if (routeBadge) {
+                    if (teamRoute === 'iggy') {
+                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 路線</div>';
+                    } else if (teamRoute === 'marah') {
+                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 路線</div>';
+                    } else {
+                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未選路線</div>';
+                    }
                 }
 
                 if (currentSquad) {
@@ -8045,6 +8057,7 @@ HTML_TEMPLATE = """
                     el.className = 'cartoon-box p-4' + (isYou ? ' ring-2 ring-amber-500/50' : '');
 
                     const displayName = m.display_name || m.squad_id;
+                    const memberRoute = m.route || teamRoute;
                     const leaderBadge = isMemberLeader
                         ? '<span class="ml-2 text-xs px-2 py-0.5 bg-amber-500 text-zinc-950 rounded-full font-medium">👑 隊長</span>'
                         : '';
@@ -8065,6 +8078,7 @@ HTML_TEMPLATE = """
                                     ${leaderBadge}
                                     ${isYou ? '<span class="text-xs text-amber-400">(你)</span>' : ''}
                                 </div>
+                                <div class="mt-0.5">${memberRouteLabel(memberRoute)}</div>
                             </div>
                             ${transferBtn}
                         </div>
@@ -8096,11 +8110,9 @@ HTML_TEMPLATE = """
                 });
                 }
                 loadTeamTaskLogs();
-                loadAvailableTeams();
             } catch (e) {
                 console.error('loadMyTeam failed', e);
-                setVisible(noBox, true);
-                setVisible(hasBox, false);
+                updateTeamPageMode(false);
                 loadAvailableTeams();
             }
         }
@@ -8190,8 +8202,9 @@ HTML_TEMPLATE = """
         }
 
         async function loadAvailableTeams() {
+            const panel = document.getElementById('available-teams-panel');
             const container = document.getElementById('available-teams-list');
-            if (!container) return;
+            if (!container || !panel || panel.classList.contains('hidden')) return;
             container.innerHTML = '<div class="text-zinc-400 text-sm py-4 text-center">載入中...</div>';
 
             try {
@@ -8203,27 +8216,24 @@ HTML_TEMPLATE = """
                     return;
                 }
 
-                if (!data.teams || data.teams.length === 0) {
-                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇隊伍 — 你可以往下建立新隊</div>';
+                if (data.has_team) {
+                    updateTeamPageMode(true);
+                    return;
+                }
+
+                const joinableTeams = (data.teams || []).filter(team => team.route && team.can_join !== false);
+
+                if (joinableTeams.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-400 text-sm py-6 text-center">暫時冇可加入嘅隊伍<br><span class="text-xs">你可以往下建立新隊</span></div>';
                     return;
                 }
 
                 container.innerHTML = '';
-                const hasTeam = Boolean(data.has_team);
-                data.teams.forEach(team => {
+                joinableTeams.forEach(team => {
                     const el = document.createElement('div');
                     el.className = 'team-join-card';
 
-                    let actionHtml = '';
-                    if (team.is_joined) {
-                        actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-emerald-900/50 text-emerald-300">✓ 已加入</span>`;
-                    } else if (hasTeam) {
-                        actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-zinc-700 text-zinc-400">已屬其他隊</span>`;
-                    } else if (!team.route || team.can_join === false) {
-                        actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-zinc-800 text-zinc-500 cursor-not-allowed" title="該隊尚未選擇路線">尚未選路線</span>`;
-                    } else {
-                        actionHtml = `<button type="button" class="team-join-btn bg-amber-500 hover:bg-amber-600 text-zinc-950">加入此隊</button>`;
-                    }
+                    const actionHtml = `<button type="button" class="team-join-btn bg-amber-500 hover:bg-amber-600 text-zinc-950">加入此隊</button>`;
 
                     el.innerHTML = `
                         <div class="min-w-0 flex-1">
@@ -8265,7 +8275,6 @@ HTML_TEMPLATE = """
                     updateDashboard(currentSquad);
                 }
                 loadMyTeam();
-                loadAvailableTeams();
             } else {
                 alert(data.error || '加入失敗');
             }
@@ -8287,7 +8296,6 @@ HTML_TEMPLATE = """
                     currentSquad.is_team_leader = 1;
                 }
                 loadMyTeam();
-                loadAvailableTeams();
             } else {
                 alert(data.error || '建立失敗');
             }
