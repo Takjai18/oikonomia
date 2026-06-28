@@ -328,6 +328,21 @@ def resolve_team_display_route(team_id, team_row=None):
         conn.close()
 
 
+def official_team_route(team):
+    """隊伍正式路線（僅 teams.route，唔用成員 fallback）。"""
+    route = (team or {}).get("route")
+    return route if route in ("iggy", "marah") else None
+
+
+def is_team_leader_session(team, squad_id):
+    if not team or not squad_id:
+        return False
+    if team.get("leader_squad_id") == squad_id:
+        return True
+    squad = get_squad(squad_id)
+    return bool(squad and squad.get("is_team_leader") == 1)
+
+
 def sync_team_route(team_id, route):
     """寫入 teams.route 並同步全隊 squads.route。"""
     clean_id = normalize_team_id(team_id)
@@ -2220,7 +2235,7 @@ def build_player_status(squad):
 
     team = get_team_by_id(squad["team_id"])
     protagonists = get_team_protagonists(squad["team_id"])
-    route = (team or {}).get("route") or squad.get("route")
+    route = official_team_route(team)
 
     return {
         "success": True,
@@ -3530,13 +3545,13 @@ def my_team():
             member["is_leader"] = member.get("is_team_leader") == 1
             members.append(member)
     protagonists = get_team_protagonists(squad["team_id"])
-    display_route = resolve_team_display_route(clean_team_id, team) or team.get("route")
-    team_payload = {**team, "route": display_route}
+    official_route = official_team_route(team)
+    team_payload = {**team, "route": official_route}
     return jsonify({
         "success": True,
         "has_team": True,
         "team": team_payload,
-        "route": display_route,
+        "route": official_route,
         "members": members,
         "is_team_leader": squad.get("is_team_leader", 0),
         "current_squad_id": session["squad_id"],
@@ -3568,11 +3583,12 @@ def available_teams():
             and normalize_team_id(row["team_id"]) == clean_current_id
         )
 
-        display_route = resolve_team_display_route(row["team_id"], row)
+        official_route = official_team_route(dict(row))
         teams.append({
             "team_id": row["team_id"],
             "team_name": row["team_name"],
-            "route": display_route,
+            "route": official_route,
+            "can_join": bool(official_route),
             "member_count": member_count,
             "is_joined": is_joined,
         })
@@ -3604,13 +3620,26 @@ def join_team():
         return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
 
     clean_tid = normalize_team_id(team["team_id"])
-    update_squad(session["squad_id"], team_id=clean_tid, is_team_leader=0)
-    team_route = resolve_team_display_route(clean_tid, team) or team.get("route")
-    if team_route:
-        update_squad(session["squad_id"], route=team_route)
+    team_route = official_team_route(team)
+    if not team_route:
+        return jsonify({
+            "success": False,
+            "error": "該隊尚未選擇路線，暫時無法加入",
+        }), 400
+
+    update_squad(
+        session["squad_id"],
+        team_id=clean_tid,
+        is_team_leader=0,
+        route=team_route,
+    )
     team = get_team_by_id(clean_tid) or team
-    display_route = resolve_team_display_route(clean_tid, team) or team.get("route")
-    return jsonify({"success": True, "team": {**team, "route": display_route}})
+    status = build_player_status(get_squad(session["squad_id"]))
+    return jsonify({
+        "success": True,
+        "team": {**team, "route": official_team_route(team)},
+        **status,
+    })
 
 @app.route("/team/create", methods=["POST"])
 def create_player_team():
@@ -3624,21 +3653,24 @@ def create_player_team():
     team_name = request.form.get("team_name", "").strip() or "新小隊"
     team_id = get_next_team_id()
     created_at = datetime.now().isoformat()
-    initial_route = squad.get("route") if squad.get("route") in ("iggy", "marah") else None
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
         "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
-        (team_id, team_name, initial_route, created_at, session["squad_id"]),
+        (team_id, team_name, None, created_at, session["squad_id"]),
     )
     conn.commit()
     conn.close()
 
     update_squad(session["squad_id"], team_id=team_id, is_team_leader=1)
-    if initial_route:
-        sync_team_route(team_id, initial_route)
-    return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
+    return jsonify({
+        "success": True,
+        "team_id": team_id,
+        "team_name": team_name,
+        "needs_team_route": True,
+        "message": "隊伍已建立，請在下方為隊伍選擇路線",
+    })
 
 @app.route("/team/update_name", methods=["POST"])
 def team_update_name():
@@ -3713,6 +3745,44 @@ def transfer_leadership():
         "is_team_leader": updated.get("is_team_leader", 0),
     })
 
+@app.route("/team/set_route", methods=["POST"])
+def set_team_route():
+    """隊長為隊伍設定正式路線（全隊強制統一，設定後不可改）。"""
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    data = request.get_json(silent=True) or {}
+    team_id = normalize_team_id(data.get("team_id") or "")
+    route = (data.get("route") or "").lower()
+
+    if not team_id or route not in ("iggy", "marah"):
+        return jsonify({"success": False, "error": "參數錯誤"}), 400
+
+    team = get_team_by_id(team_id)
+    if not team:
+        return jsonify({"success": False, "error": "隊伍不存在"}), 404
+
+    if not is_team_leader_session(team, session["squad_id"]):
+        return jsonify({"success": False, "error": "只有隊長可以設定路線"}), 403
+
+    squad = get_squad(session["squad_id"])
+    if normalize_team_id(squad.get("team_id")) != team_id:
+        return jsonify({"success": False, "error": "你只能設定自己隊伍的路線"}), 403
+
+    if official_team_route(team):
+        return jsonify({"success": False, "error": "隊伍已設定路線，無法更改"}), 400
+
+    sync_team_route(team_id, route)
+    updated = get_squad(session["squad_id"])
+    status = build_player_status(updated)
+    return jsonify({
+        "success": True,
+        "message": "路線已更新，全隊已同步",
+        "route": route,
+        **status,
+    })
+
+
 @app.route("/set_team_route_by_leader", methods=["POST"])
 def set_team_route_by_leader():
     if "squad_id" not in session:
@@ -3751,15 +3821,15 @@ def set_route():
         return jsonify({"error": "請選擇 Iggy 或 Marah 路線"}), 400
 
     squad = get_squad(session["squad_id"])
+    if squad.get("team_id"):
+        return jsonify({
+            "error": "已加入隊伍，路線由隊長統一設定；請到 Team 頁面查看",
+        }), 400
+
     if squad.get("route"):
         return jsonify({"error": "你已選擇路線，無法更改"}), 400
 
     update_squad(session["squad_id"], route=route)
-    squad = get_squad(session["squad_id"])
-    if squad.get("team_id") and squad.get("is_team_leader") == 1:
-        team = get_team_by_id(squad["team_id"])
-        if team and not team.get("route"):
-            sync_team_route(squad["team_id"], route)
     return jsonify(build_player_status(get_squad(session["squad_id"])))
 
 @app.route("/locations")
@@ -7760,7 +7830,7 @@ HTML_TEMPLATE = """
 
             showOnlyProtagonistCard(route, protagonists || {});
 
-            if (routePicker) setVisible(routePicker, !route && (!inTeam || isLeader));
+            if (routePicker) setVisible(routePicker, !route && !inTeam);
 
             if (routeBadge) {
                 if (route === 'iggy') {
@@ -7787,13 +7857,43 @@ HTML_TEMPLATE = """
             initPlayerAvatar();
         }
 
+        async function setTeamRoute(route) {
+            const teamId = currentSquad?.team_id;
+            if (!teamId) {
+                alert('找不到隊伍 ID');
+                return;
+            }
+            const label = route === 'iggy' ? 'Iggy' : 'Marah';
+            if (!confirm(`確認為隊伍選擇 ${label} 路線？設定後全隊統一，不可更改。`)) return;
+
+            const res = await fetch('/team/set_route', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ team_id: teamId, route })
+            });
+            const data = await res.json();
+
+            if (!data.success) {
+                alert(data.error || '設定失敗');
+                return;
+            }
+
+            if (data.squad_id) {
+                currentSquad = data;
+            } else {
+                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                currentSquad = await statusRes.json();
+            }
+            updateDashboard(currentSquad);
+            loadMyTeam();
+            loadAvailableTeams();
+        }
+
         async function selectRoute(route) {
             if (!confirm(route === 'iggy' ? '確認選擇 Iggy 路線？' : '確認選擇 Marah 路線？')) return;
 
-            const useTeamRoute = currentSquad && currentSquad.is_team_leader === 1 && currentSquad.team_id;
-            const endpoint = useTeamRoute ? '/set_team_route_by_leader' : '/set_route';
-
-            const res = await fetch(endpoint, {
+            const res = await fetch('/set_route', {
                 method: 'POST',
                 credentials: 'same-origin',
                 body: new URLSearchParams({route})
@@ -7865,6 +7965,26 @@ HTML_TEMPLATE = """
 
                 teamNameHTML += `</div>`;
 
+                const teamRoute = data.route || team.route;
+                const routePickerHTML = (isLeader && !teamRoute) ? `
+                    <div id="team-route-picker" class="mt-4 pt-4 border-t border-zinc-700">
+                        <div class="text-sm font-semibold mb-1">為隊伍選擇路線</div>
+                        <p class="text-xs text-zinc-400 mb-3">設定後全隊統一，其他人方可加入</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button type="button" onclick="setTeamRoute('iggy')"
+                                    class="route-card route-iggy text-left px-4 py-3 rounded-2xl border border-red-800/50 hover:bg-red-950/40">
+                                <div class="font-bold">🔥 Iggy 路線</div>
+                                <div class="text-xs mt-1 opacity-80">界線、力量、面對 Judas</div>
+                            </button>
+                            <button type="button" onclick="setTeamRoute('marah')"
+                                    class="route-card route-marah text-left px-4 py-3 rounded-2xl border border-sky-800/50 hover:bg-sky-950/40">
+                                <div class="font-bold">🌊 Marah 路線</div>
+                                <div class="text-xs mt-1 opacity-80">智慧、韌性、深度連結</div>
+                            </button>
+                        </div>
+                    </div>
+                ` : '';
+
                 document.querySelector('#has-team-box .cartoon-box').innerHTML = `
                     <div class="flex justify-between items-center">
                         <div>
@@ -7874,16 +7994,21 @@ HTML_TEMPLATE = """
                         </div>
                         <div id="my-team-route-badge"></div>
                     </div>
+                    ${routePickerHTML}
                 `;
 
                 const routeBadge = document.getElementById('my-team-route-badge');
-                const teamRoute = data.route || team.route;
                 if (teamRoute === 'iggy') {
                     routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 線</div>';
                 } else if (teamRoute === 'marah') {
                     routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 線</div>';
                 } else {
-                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未設定路線</div>';
+                    routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未選路線</div>';
+                }
+
+                if (currentSquad) {
+                    currentSquad.team_id = team.team_id;
+                    currentSquad.is_team_leader = data.is_team_leader;
                 }
 
                 renderTeamProtagonists(data.protagonists);
@@ -8075,6 +8200,8 @@ HTML_TEMPLATE = """
                         actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-emerald-900/50 text-emerald-300">✓ 已加入</span>`;
                     } else if (hasTeam) {
                         actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-zinc-700 text-zinc-400">已屬其他隊</span>`;
+                    } else if (!team.route || team.can_join === false) {
+                        actionHtml = `<span class="team-join-btn inline-flex items-center justify-center bg-zinc-800 text-zinc-500 cursor-not-allowed" title="該隊尚未選擇路線">尚未選路線</span>`;
                     } else {
                         actionHtml = `<button type="button" class="team-join-btn bg-amber-500 hover:bg-amber-600 text-zinc-950">加入此隊</button>`;
                     }
@@ -8134,8 +8261,12 @@ HTML_TEMPLATE = """
             });
             const data = await res.json();
             if (data.success) {
-                alert(`Team ${data.team_id} 已建立！`);
+                alert(data.message || `Team ${data.team_id} 已建立！請在隊伍卡片選擇路線。`);
                 document.getElementById('create-team-name').value = '';
+                if (currentSquad) {
+                    currentSquad.team_id = data.team_id;
+                    currentSquad.is_team_leader = 1;
+                }
                 loadMyTeam();
                 loadAvailableTeams();
             } else {
