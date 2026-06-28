@@ -283,6 +283,85 @@ def get_team_members(team_id):
     conn.close()
     return [row_to_squad(r) for r in rows]
 
+
+def resolve_team_display_route(team_id, team_row=None):
+    """隊伍顯示用路線：teams.route → 隊長 route → 任一隊員 route。"""
+    clean_id = normalize_team_id(team_id)
+    if not clean_id:
+        return None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = team_row
+        if row is None:
+            row = conn.execute(
+                "SELECT team_id, route, leader_squad_id FROM teams WHERE team_id = ?",
+                (clean_id,),
+            ).fetchone()
+        if not row:
+            return None
+
+        route = row["route"] if hasattr(row, "keys") else row.get("route")
+        if route:
+            return route
+
+        leader_id = row["leader_squad_id"] if hasattr(row, "keys") else row.get("leader_squad_id")
+        if leader_id:
+            leader = conn.execute(
+                "SELECT route FROM squads WHERE squad_id = ?", (leader_id,)
+            ).fetchone()
+            if leader and leader["route"]:
+                return leader["route"]
+
+        member_row = conn.execute(
+            """SELECT route FROM squads
+               WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                 AND route IS NOT NULL AND TRIM(route) != ''
+               LIMIT 1""",
+            (clean_id,),
+        ).fetchone()
+        if member_row:
+            return member_row["route"]
+        return None
+    finally:
+        conn.close()
+
+
+def sync_team_route(team_id, route):
+    """寫入 teams.route 並同步全隊 squads.route。"""
+    clean_id = normalize_team_id(team_id)
+    if not clean_id or route not in ("iggy", "marah"):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        c = conn.cursor()
+        c.execute("UPDATE teams SET route = ? WHERE team_id = ?", (route, clean_id))
+        c.execute(
+            "UPDATE squads SET route = ? WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+            (route, clean_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def backfill_team_routes_from_members():
+    """將舊隊伍嘅 teams.route 由隊長/隊員 squads.route 補回。"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        teams = conn.execute(
+            "SELECT team_id FROM teams WHERE route IS NULL OR TRIM(route) = ''"
+        ).fetchall()
+        for team in teams:
+            resolved = resolve_team_display_route(team["team_id"])
+            if resolved:
+                sync_team_route(team["team_id"], resolved)
+    finally:
+        conn.close()
+
+
 def get_team_average_stat(team_id, stat):
     members = get_team_members(team_id)
     if not members:
@@ -1683,6 +1762,7 @@ def migrate_db():
 
     conn.commit()
     conn.close()
+    backfill_team_routes_from_members()
 
 init_db()
 
@@ -2337,6 +2417,7 @@ def get_team_by_id(team_id):
         "team_id": row["team_id"],
         "team_name": row["team_name"],
         "route": row["route"],
+        "leader_squad_id": row["leader_squad_id"],
         "created_at": row["created_at"],
         "member_count": member_count,
     }
@@ -3449,11 +3530,13 @@ def my_team():
             member["is_leader"] = member.get("is_team_leader") == 1
             members.append(member)
     protagonists = get_team_protagonists(squad["team_id"])
+    display_route = resolve_team_display_route(clean_team_id, team) or team.get("route")
+    team_payload = {**team, "route": display_route}
     return jsonify({
         "success": True,
         "has_team": True,
-        "team": team,
-        "route": team.get("route"),
+        "team": team_payload,
+        "route": display_route,
         "members": members,
         "is_team_leader": squad.get("is_team_leader", 0),
         "current_squad_id": session["squad_id"],
@@ -3485,10 +3568,11 @@ def available_teams():
             and normalize_team_id(row["team_id"]) == clean_current_id
         )
 
+        display_route = resolve_team_display_route(row["team_id"], row)
         teams.append({
             "team_id": row["team_id"],
             "team_name": row["team_name"],
-            "route": row["route"],
+            "route": display_route,
             "member_count": member_count,
             "is_joined": is_joined,
         })
@@ -3519,8 +3603,14 @@ def join_team():
     if squad.get("team_id"):
         return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
 
-    update_squad(session["squad_id"], team_id=normalize_team_id(team["team_id"]), is_team_leader=0)
-    return jsonify({"success": True, "team": team})
+    clean_tid = normalize_team_id(team["team_id"])
+    update_squad(session["squad_id"], team_id=clean_tid, is_team_leader=0)
+    team_route = resolve_team_display_route(clean_tid, team) or team.get("route")
+    if team_route:
+        update_squad(session["squad_id"], route=team_route)
+    team = get_team_by_id(clean_tid) or team
+    display_route = resolve_team_display_route(clean_tid, team) or team.get("route")
+    return jsonify({"success": True, "team": {**team, "route": display_route}})
 
 @app.route("/team/create", methods=["POST"])
 def create_player_team():
@@ -3534,17 +3624,20 @@ def create_player_team():
     team_name = request.form.get("team_name", "").strip() or "新小隊"
     team_id = get_next_team_id()
     created_at = datetime.now().isoformat()
+    initial_route = squad.get("route") if squad.get("route") in ("iggy", "marah") else None
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
         "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
-        (team_id, team_name, None, created_at, session["squad_id"]),
+        (team_id, team_name, initial_route, created_at, session["squad_id"]),
     )
     conn.commit()
     conn.close()
 
     update_squad(session["squad_id"], team_id=team_id, is_team_leader=1)
+    if initial_route:
+        sync_team_route(team_id, initial_route)
     return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
 
 @app.route("/team/update_name", methods=["POST"])
@@ -3641,11 +3734,7 @@ def set_team_route_by_leader():
     if team and team.get("route"):
         return jsonify({"success": False, "error": "Team 已設定路線，無法更改"}), 400
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE teams SET route = ? WHERE team_id = ?", (route, team_id))
-    conn.commit()
-    conn.close()
+    sync_team_route(team_id, route)
 
     updated = get_squad(session["squad_id"])
     status = build_player_status(updated)
@@ -3666,6 +3755,11 @@ def set_route():
         return jsonify({"error": "你已選擇路線，無法更改"}), 400
 
     update_squad(session["squad_id"], route=route)
+    squad = get_squad(session["squad_id"])
+    if squad.get("team_id") and squad.get("is_team_leader") == 1:
+        team = get_team_by_id(squad["team_id"])
+        if team and not team.get("route"):
+            sync_team_route(squad["team_id"], route)
     return jsonify(build_player_status(get_squad(session["squad_id"])))
 
 @app.route("/locations")
@@ -7783,9 +7877,10 @@ HTML_TEMPLATE = """
                 `;
 
                 const routeBadge = document.getElementById('my-team-route-badge');
-                if (team.route === 'iggy') {
+                const teamRoute = data.route || team.route;
+                if (teamRoute === 'iggy') {
                     routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 線</div>';
-                } else if (team.route === 'marah') {
+                } else if (teamRoute === 'marah') {
                     routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 線</div>';
                 } else {
                     routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未設定路線</div>';
