@@ -1434,6 +1434,17 @@ def migrate_db():
                 c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
             except sqlite3.OperationalError:
                 pass
+    if "stats_allocated" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN stats_allocated INTEGER DEFAULT 0")
+            c.execute(
+                "UPDATE squads SET stats_allocated = 1 "
+                "WHERE COALESCE(stats_allocated, 0) = 0 "
+                "AND (COALESCE(power, 100) != 10 OR COALESCE(intellect, 100) != 10 "
+                "OR COALESCE(resilience, 100) != 10 OR pin IS NOT NULL)"
+            )
+        except sqlite3.OperationalError:
+            pass
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
@@ -2165,6 +2176,7 @@ def row_to_squad(row):
         "trauma_intellect": d.get("trauma_intellect") or 0,
         "near_death_until": d.get("near_death_until"),
         "current_combat_id": d.get("current_combat_id"),
+        "stats_allocated": 1 if d.get("stats_allocated") else 0,
         "protagonist": protagonist,
     }
 
@@ -2261,7 +2273,7 @@ def update_squad(squad_id, **kwargs):
         "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin",
         "avatar", "insight_fragments", "status_effects",
         "trauma_resilience", "trauma_power", "trauma_intellect",
-        "near_death_until", "current_combat_id",
+        "near_death_until", "current_combat_id", "stats_allocated",
     }
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -2632,7 +2644,9 @@ def login():
 
         c = conn.cursor()
         c.execute(
-            "INSERT INTO squads (squad_id, display_name) VALUES (?, ?)",
+            """INSERT INTO squads
+               (squad_id, display_name, power, intellect, resilience, stats_allocated)
+               VALUES (?, ?, 10, 10, 10, 0)""",
             (squad_id, name),
         )
         conn.commit()
@@ -2685,6 +2699,47 @@ def set_pin():
     payload = {"success": True, "message": "PIN 設定成功", "has_pin": True}
     attach_restore_token(payload, session["squad_id"])
     return jsonify(payload)
+
+
+@app.route("/allocate_stats", methods=["POST"])
+def allocate_stats():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"success": False, "error": "玩家不存在"}), 404
+
+    if squad.get("stats_allocated"):
+        return jsonify({"success": False, "error": "你已經分配過能力值"}), 400
+
+    data = request.json or {}
+    try:
+        power = int(data.get("power", 10))
+        intellect = int(data.get("intellect", 10))
+        resilience = int(data.get("resilience", 10))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "數值格式錯誤"}), 400
+
+    if power < 10 or intellect < 10 or resilience < 10:
+        return jsonify({"success": False, "error": "每項屬性最少要有 10 點"}), 400
+
+    total_free = (power - 10) + (intellect - 10) + (resilience - 10)
+    if total_free != 30:
+        return jsonify({"success": False, "error": "必須剛好使用 30 點自由點數"}), 400
+
+    update_squad(
+        session["squad_id"],
+        power=power,
+        intellect=intellect,
+        resilience=resilience,
+        stats_allocated=1,
+    )
+
+    squad = get_squad(session["squad_id"])
+    status = build_player_status(squad)
+    attach_restore_token(status, session["squad_id"])
+    return jsonify({"success": True, "message": "能力值分配成功", **status})
 
 @app.route("/my_submissions")
 def my_submissions():
@@ -4555,6 +4610,24 @@ HTML_TEMPLATE = """
     <style>
         #qr-reader { min-height: 280px; background: #09090b; }
         #qr-reader video { border-radius: 0.75rem; }
+        input[type="password"],
+        input[type="text"].form-input,
+        #login_pin,
+        #squad_id {
+            background-color: #27272a;
+            color: #f4f4f5;
+            border: 1px solid #3f3f46;
+            border-radius: 12px;
+        }
+        .modal-input {
+            background-color: #18181b !important;
+            color: #ffffff !important;
+            border: 2px solid #52525b !important;
+            caret-color: #fbbf24;
+        }
+        .modal-input::placeholder {
+            color: #a1a1aa;
+        }
         #item-reveal-modal { z-index: 110; }
         #item-reveal-modal .reveal-card {
             background: var(--card-bg);
@@ -4924,21 +4997,69 @@ HTML_TEMPLATE = """
             <div class="text-center mb-8">
                 <i class="fa-solid fa-user-secret text-6xl theme-accent-text mb-4"></i>
                 <h1 class="text-3xl font-bold">歡迎進入Oikonomia的世界</h1>
-                <p class="text-zinc-400 mt-2">輸入名稱登入（首次無需 PIN）</p>
+                <p class="text-zinc-400 mt-2 text-sm leading-snug">輸入名稱登入</p>
                 <p id="login-restore-hint" class="hidden text-sm text-amber-400/90 mt-3"></p>
             </div>
             <form onsubmit="login(event)" class="section-card rounded-3xl p-8 space-y-4">
                 <input type="text" id="squad_id" name="squad_id" placeholder="輸入你的名稱"
                        autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"
-                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl mb-3">
-                <input type="password" id="login_pin" name="login_pin" placeholder="輸入 PIN（第一次登入可留空）" maxlength="4"
+                       class="form-input w-full focus:border-amber-500 px-6 py-4 text-xl">
+                <div class="text-center text-xs text-zinc-400 leading-snug mb-1">
+                    輸入 PIN<br>
+                    <span class="text-zinc-500">（第一次登入請留空）</span>
+                </div>
+                <input type="password" id="login_pin" name="login_pin" placeholder="4 位 PIN" maxlength="4"
                        inputmode="numeric" pattern="[0-9]*" autocomplete="current-password"
-                       class="w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded-2xl px-6 py-4 text-xl tracking-widest text-center font-mono">
+                       class="modal-input form-input w-full focus:border-amber-500 px-6 py-4 text-2xl tracking-widest text-center font-mono">
                 <button type="submit" 
                         class="w-full theme-btn-primary font-semibold py-4 rounded-2xl">
                     進入 Oikonomia
                 </button>
             </form>
+        </div>
+
+        <!-- 能力值分配（新玩家） -->
+        <div id="stats-allocation-screen" class="hidden max-w-md mx-auto px-6 py-10">
+            <h2 class="text-2xl font-bold mb-1">分配起始能力值</h2>
+            <p class="text-zinc-400 text-sm mb-6 leading-snug">
+                每項基礎 <span class="text-zinc-300">10</span> 點，另有
+                <span class="text-amber-400 font-semibold">30</span> 點可自由分配
+            </p>
+            <div class="space-y-5 mb-6">
+                <div class="flex justify-between items-center">
+                    <div><span class="font-semibold">力量</span><span class="text-xs text-zinc-500 ml-1">(Power)</span></div>
+                    <div class="flex items-center gap-x-3">
+                        <button type="button" onclick="adjustAllocStat('power', -1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">−</button>
+                        <span id="alloc-power-value" class="font-mono text-xl w-10 text-center text-orange-400">10</span>
+                        <button type="button" onclick="adjustAllocStat('power', 1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">+</button>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <div><span class="font-semibold">智力</span><span class="text-xs text-zinc-500 ml-1">(Intellect)</span></div>
+                    <div class="flex items-center gap-x-3">
+                        <button type="button" onclick="adjustAllocStat('intellect', -1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">−</button>
+                        <span id="alloc-intellect-value" class="font-mono text-xl w-10 text-center text-blue-400">10</span>
+                        <button type="button" onclick="adjustAllocStat('intellect', 1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">+</button>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <div><span class="font-semibold">韌性</span><span class="text-xs text-zinc-500 ml-1">(Resilience)</span></div>
+                    <div class="flex items-center gap-x-3">
+                        <button type="button" onclick="adjustAllocStat('resilience', -1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">−</button>
+                        <span id="alloc-resilience-value" class="font-mono text-xl w-10 text-center text-emerald-400">10</span>
+                        <button type="button" onclick="adjustAllocStat('resilience', 1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center mb-6">
+                <div class="text-sm text-zinc-400">剩餘點數</div>
+                <div id="alloc-remaining" class="text-5xl font-bold text-amber-400">30</div>
+            </div>
+            <button type="button" id="alloc-submit-btn" onclick="submitStatAllocation()"
+                    class="w-full py-3.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled>
+                確認分配
+            </button>
         </div>
 
         <!-- Game Content -->
@@ -4968,25 +5089,23 @@ HTML_TEMPLATE = """
                     <div id="all-announcements" class="hidden mt-4 pt-4 border-t border-blue-700/50 space-y-3 text-sm"></div>
                 </div>
 
-                <div class="flex items-center gap-x-3 mb-6">
-                    <img id="player-avatar"
-                         src="/static/avatars/default.png"
-                         class="w-16 h-16 rounded-full object-cover border-2 border-zinc-600 cursor-pointer"
-                         onclick="showAvatarModal()">
-
-                    <div>
-                        <div class="flex items-center gap-x-2">
-                            <div id="squad-name" class="text-4xl font-semibold"></div>
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-x-3">
+                        <img id="player-avatar"
+                             src="/static/avatars/default.png"
+                             class="w-14 h-14 rounded-full object-cover border-2 border-amber-500 cursor-pointer"
+                             onclick="showAvatarModal()" alt="玩家頭像">
+                        <div class="flex items-center gap-x-2 min-w-0">
+                            <div id="squad-name" class="text-3xl font-bold truncate"></div>
                             <button onclick="editDisplayName()"
-                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
-                                <i class="fa-solid fa-edit text-xs"></i>
+                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center gap-x-1 shrink-0">
+                                <i class="fa-solid fa-edit text-[10px]"></i>
                                 <span>改名</span>
                             </button>
                         </div>
-                        <div id="route-badge" class="hidden mt-2 text-sm"></div>
-                        <div class="text-sm text-zinc-400 mt-1">點擊頭像更換角色頭像</div>
                     </div>
                 </div>
+                <p class="text-xs text-zinc-500 mb-4">點擊頭像更換角色頭像</p>
 
                 <!-- 路線選擇 -->
                 <div id="route-picker" class="hidden mb-8 cartoon-box p-6">
@@ -5007,15 +5126,9 @@ HTML_TEMPLATE = """
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <!-- 玩家狀態（同戰鬥畫面風格） -->
                     <div id="player-status-card" class="cartoon-box p-5 bg-zinc-900/50 border border-zinc-700">
-                        <div class="flex items-center gap-3 mb-5 pb-4 border-b border-zinc-700/80">
-                            <img id="dashboard-player-avatar"
-                                 src="/static/avatars/default.png"
-                                 class="w-14 h-14 rounded-2xl object-cover border-2 border-amber-500 shrink-0 cursor-pointer"
-                                 onclick="showAvatarModal()" alt="玩家頭像">
-                            <div class="min-w-0">
-                                <div id="dashboard-player-name" class="font-semibold text-lg truncate">—</div>
-                                <div id="dashboard-attack-hint" class="text-xs text-amber-400/90 mt-0.5">攻擊力：—</div>
-                            </div>
+                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-4 pb-3 border-b border-zinc-700/80">
+                            <div id="route-badge" class="hidden text-sm"></div>
+                            <div id="dashboard-attack-hint" class="text-xs text-amber-400/90">攻擊力：—</div>
                         </div>
                         <h3 class="font-bold mb-3 flex items-center gap-2 text-sm text-zinc-400 uppercase tracking-wide">
                             <i class="fa-solid fa-shield-halved theme-accent-text"></i> 能力狀態
@@ -6274,6 +6387,167 @@ HTML_TEMPLATE = """
             }
         }
 
+        let pinModalResolver = null;
+
+        function showPinModal({ title, desc, skippable = true }) {
+            return new Promise(resolve => {
+                pinModalResolver = resolve;
+                const modal = document.getElementById('pin-modal');
+                document.getElementById('pin-modal-title').textContent = title || '輸入 PIN';
+                document.getElementById('pin-modal-desc').textContent = desc || '請輸入 4 位數字 PIN';
+                const cancelBtn = document.getElementById('pin-modal-cancel');
+                if (cancelBtn) cancelBtn.style.display = skippable ? '' : 'none';
+                const input = document.getElementById('pin-modal-input');
+                if (input) {
+                    input.value = '';
+                    input.onkeydown = (e) => {
+                        if (e.key === 'Enter') confirmPinModal();
+                    };
+                }
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                setTimeout(() => input?.focus(), 120);
+            });
+        }
+
+        function hidePinModal() {
+            const modal = document.getElementById('pin-modal');
+            if (modal) {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }
+            if (pinModalResolver) {
+                const done = pinModalResolver;
+                pinModalResolver = null;
+                done(null);
+            }
+        }
+
+        function confirmPinModal() {
+            const input = document.getElementById('pin-modal-input');
+            const val = normalizeLoginPin(input?.value || '');
+            const modal = document.getElementById('pin-modal');
+            if (modal) {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }
+            if (pinModalResolver) {
+                const done = pinModalResolver;
+                pinModalResolver = null;
+                done(val);
+            }
+        }
+
+        const STAT_ALLOC_BASE = 10;
+        const STAT_ALLOC_FREE = 30;
+        let allocStats = { power: 10, intellect: 10, resilience: 10 };
+
+        function resetAllocStats() {
+            allocStats = { power: 10, intellect: 10, resilience: 10 };
+            updateAllocUi();
+        }
+
+        function updateAllocUi() {
+            ['power', 'intellect', 'resilience'].forEach(stat => {
+                const el = document.getElementById(`alloc-${stat}-value`);
+                if (el) el.textContent = allocStats[stat];
+            });
+            const used = (allocStats.power - STAT_ALLOC_BASE)
+                + (allocStats.intellect - STAT_ALLOC_BASE)
+                + (allocStats.resilience - STAT_ALLOC_BASE);
+            const remaining = STAT_ALLOC_FREE - used;
+            const remEl = document.getElementById('alloc-remaining');
+            if (remEl) remEl.textContent = remaining;
+            const btn = document.getElementById('alloc-submit-btn');
+            if (btn) btn.disabled = remaining !== 0;
+        }
+
+        function adjustAllocStat(stat, delta) {
+            const next = allocStats[stat] + delta;
+            if (next < STAT_ALLOC_BASE) return;
+            if (delta > 0) {
+                const used = (allocStats.power - STAT_ALLOC_BASE)
+                    + (allocStats.intellect - STAT_ALLOC_BASE)
+                    + (allocStats.resilience - STAT_ALLOC_BASE);
+                if (used >= STAT_ALLOC_FREE) return;
+            }
+            allocStats[stat] = next;
+            updateAllocUi();
+        }
+
+        function showStatsAllocationScreen() {
+            setVisible(document.getElementById('login-screen'), false);
+            setVisible(document.getElementById('game-content'), false);
+            setVisible(document.getElementById('stats-allocation-screen'), true);
+            resetAllocStats();
+        }
+
+        async function submitStatAllocation() {
+            const used = (allocStats.power - STAT_ALLOC_BASE)
+                + (allocStats.intellect - STAT_ALLOC_BASE)
+                + (allocStats.resilience - STAT_ALLOC_BASE);
+            if (STAT_ALLOC_FREE - used !== 0) {
+                alert('請分配完所有 30 點');
+                return;
+            }
+            try {
+                const res = await fetch('/allocate_stats', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(allocStats),
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    alert(data.error || '分配失敗');
+                    return;
+                }
+                persistRestoreToken(data);
+                currentSquad = data;
+                saveLocalSession(data);
+                await enterDashboardAfterOnboarding({ skip_team_prompt: false });
+            } catch (e) {
+                console.error('allocate_stats failed', e);
+                alert('分配失敗，請稍後再試');
+            }
+        }
+
+        async function enterDashboardAfterOnboarding(data = {}) {
+            setVisible(document.getElementById('stats-allocation-screen'), false);
+            setVisible(document.getElementById('game-content'), true);
+            showSection('dashboard');
+            updateDashboard(currentSquad);
+            initPlayerAvatar();
+            loadMyItems();
+            loadAnnouncements();
+
+            setTimeout(() => {
+                const picker = document.getElementById('route-picker');
+                if (!picker) return;
+                if (currentSquad.route) {
+                    setVisible(picker, false);
+                } else if (currentSquad.is_team_leader !== 1) {
+                    setVisible(picker, false);
+                }
+            }, 400);
+
+            if (!data.skip_team_prompt) {
+                try {
+                    const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
+                    const teamData = await teamRes.json();
+                    if (!teamData.has_team) {
+                        setTimeout(() => {
+                            if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
+                                showSection('team');
+                            }
+                        }, 1200);
+                    }
+                } catch (teamErr) {
+                    console.error('team check failed', teamErr);
+                }
+            }
+        }
+
         async function loadEncounters() {
             const container = document.getElementById('encounter-list');
             if (!container) return;
@@ -7276,8 +7550,6 @@ HTML_TEMPLATE = """
             if (insightEl) insightEl.textContent = squad.insight_fragments || 0;
             const displayName = squad.display_name || squad.squad_id;
             document.getElementById('squad-name').textContent = displayName;
-            const dashName = document.getElementById('dashboard-player-name');
-            if (dashName) dashName.textContent = displayName;
             updateDashboardAttackHint(squad);
 
             const routePicker = document.getElementById('route-picker');
@@ -7890,80 +8162,56 @@ HTML_TEMPLATE = """
                 restore_token: data.restore_token || currentSquad.restore_token,
             });
             setVisible(document.getElementById('login-screen'), false);
-            setVisible(document.getElementById('game-content'), true);
             showNavAfterLogin();
 
             document.getElementById('squad-name').textContent =
                 currentSquad.display_name || currentSquad.squad_id;
 
             if (shouldPromptSetPin(data)) {
-                setTimeout(async () => {
-                    const sid = currentSquad?.squad_id;
-                    const pin = prompt('建議設定 4 位數 PIN 保護帳號（按取消可稍後再設）');
-                    markPinPromptDone(sid);
-                    if (!pin) return;
+                const sid = currentSquad?.squad_id;
+                const pin = await showPinModal({
+                    title: '設定 PIN',
+                    desc: '建議設定 4 位數 PIN 保護帳號（按取消可稍後再設）',
+                    skippable: true,
+                });
+                markPinPromptDone(sid);
+                if (pin) {
                     const cleanPin = normalizeLoginPin(pin);
                     if (cleanPin.length !== 4) {
                         alert('PIN 必須為 4 位數字');
-                        return;
-                    }
-                    const res = await fetch('/set_pin', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        body: new URLSearchParams({pin: cleanPin})
-                    });
-                    const result = await res.json();
-                    if (result.success) {
-                        persistRestoreToken(result);
-                        alert('PIN 設定成功！請記住。');
-                        const statusRes = await fetch('/status', { credentials: 'same-origin' });
-                        const statusData = await statusRes.json();
-                        persistRestoreToken(statusData);
-                        if (statusData?.squad_id && statusData.success !== false) {
-                            currentSquad = statusData;
-                            saveLocalSession(statusData);
-                            updateDashboard(statusData);
-                        } else {
-                            currentSquad.has_pin = true;
-                            saveLocalSession({ ...currentSquad, restore_token: result.restore_token });
-                        }
                     } else {
-                        alert(result.error || 'PIN 設定失敗');
-                    }
-                }, 800);
-            }
-
-            showSection('dashboard');
-            updateDashboard(currentSquad);
-            initPlayerAvatar();
-            loadMyItems();
-            loadAnnouncements();
-
-            setTimeout(() => {
-                const picker = document.getElementById('route-picker');
-                if (!picker) return;
-                if (currentSquad.route) {
-                    setVisible(picker, false);
-                } else if (currentSquad.is_team_leader !== 1) {
-                    setVisible(picker, false);
-                }
-            }, 400);
-
-            if (!data.skip_team_prompt) {
-                try {
-                    const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
-                    const teamData = await teamRes.json();
-                    if (!teamData.has_team) {
-                        setTimeout(() => {
-                            if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
-                                showSection('team');
+                        const res = await fetch('/set_pin', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            body: new URLSearchParams({ pin: cleanPin }),
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                            persistRestoreToken(result);
+                            alert('PIN 設定成功！請記住。');
+                            const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                            const statusData = await statusRes.json();
+                            persistRestoreToken(statusData);
+                            if (statusData?.squad_id && statusData.success !== false) {
+                                currentSquad = statusData;
+                                saveLocalSession(statusData);
+                            } else {
+                                currentSquad.has_pin = true;
+                                saveLocalSession({ ...currentSquad, restore_token: result.restore_token });
                             }
-                        }, 1200);
+                        } else {
+                            alert(result.error || 'PIN 設定失敗');
+                        }
                     }
-                } catch (teamErr) {
-                    console.error('team check failed', teamErr);
                 }
             }
+
+            if (!currentSquad.stats_allocated) {
+                showStatsAllocationScreen();
+                return;
+            }
+
+            await enterDashboardAfterOnboarding(data);
         }
 
         function normalizeLoginPin(raw) {
@@ -8018,7 +8266,11 @@ HTML_TEMPLATE = """
                             document.getElementById('login_pin')?.focus();
                             return;
                         }
-                        const inputPin = prompt('請輸入你的 4 位數 PIN');
+                        const inputPin = await showPinModal({
+                            title: '輸入 PIN',
+                            desc: '請輸入你的 4 位數 PIN',
+                            skippable: false,
+                        });
                         if (inputPin) {
                             await loginWithPin(name, inputPin);
                         }
@@ -8811,7 +9063,7 @@ HTML_TEMPLATE = """
         function initPlayerAvatar() {
             const filename = currentSquad?.avatar || null;
             currentAvatar = filename;
-            ['player-avatar', 'log-player-avatar', 'combat-player-avatar', 'dashboard-player-avatar'].forEach(id => {
+            ['player-avatar', 'log-player-avatar', 'combat-player-avatar'].forEach(id => {
                 setAvatarImage(document.getElementById(id), filename);
             });
         }
@@ -8819,6 +9071,25 @@ HTML_TEMPLATE = """
         // 頁面載入時還原登入狀態（Render 冷啟動會重試）
         restoreSession();
     </script>
+
+    <!-- PIN 設定 / 輸入 Modal -->
+    <div id="pin-modal" onclick="if (event.target.id === 'pin-modal') hidePinModal()"
+         class="hidden fixed inset-0 bg-black/80 items-center justify-center z-[105]">
+        <div onclick="event.stopImmediatePropagation()"
+             class="bg-zinc-900 w-full max-w-sm mx-4 rounded-3xl p-6 border border-zinc-600">
+            <div id="pin-modal-title" class="text-xl font-bold mb-2">設定 PIN</div>
+            <p id="pin-modal-desc" class="text-sm text-zinc-400 mb-4 leading-snug">請輸入 4 位數字 PIN</p>
+            <input type="password" id="pin-modal-input" maxlength="4" inputmode="numeric" pattern="[0-9]*"
+                   placeholder="••••"
+                   class="modal-input w-full text-center text-2xl tracking-[0.4em] font-mono py-4 mb-4 rounded-2xl">
+            <div class="flex gap-x-3">
+                <button type="button" id="pin-modal-cancel" onclick="hidePinModal()"
+                        class="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">取消</button>
+                <button type="button" id="pin-modal-confirm" onclick="confirmPinModal()"
+                        class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl text-sm">確認</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 轉讓隊長 Modal -->
     <div id="transfer-modal" onclick="if (event.target.id === 'transfer-modal') hideTransferModal()"
