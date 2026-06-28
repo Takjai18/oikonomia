@@ -2728,12 +2728,20 @@ def allocate_stats():
     if total_free != 30:
         return jsonify({"success": False, "error": "必須剛好使用 30 點自由點數"}), 400
 
+    avatar_filename = os.path.basename((data.get("avatar") or "").strip())
+    if not avatar_filename:
+        return jsonify({"success": False, "error": "請選擇頭像"}), 400
+    avatar_path = os.path.join(AVATAR_DIR, avatar_filename)
+    if not os.path.isfile(avatar_path) or avatar_filename == "default.png":
+        return jsonify({"success": False, "error": "頭像不存在"}), 400
+
     update_squad(
         session["squad_id"],
         power=power,
         intellect=intellect,
         resilience=resilience,
         stats_allocated=1,
+        avatar=avatar_filename,
     )
 
     squad = get_squad(session["squad_id"])
@@ -4628,6 +4636,22 @@ HTML_TEMPLATE = """
         .modal-input::placeholder {
             color: #a1a1aa;
         }
+        #stats-allocation-screen input[type="range"] {
+            touch-action: pan-x;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: 9999px;
+            background: #3f3f46;
+        }
+        #stats-allocation-screen input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #fbbf24;
+            border: 2px solid #fef3c7;
+        }
+        #stats-allocation-screen { touch-action: manipulation; }
         #item-reveal-modal { z-index: 110; }
         #item-reveal-modal .reveal-card {
             background: var(--card-bg);
@@ -5019,44 +5043,53 @@ HTML_TEMPLATE = """
         </div>
 
         <!-- 能力值分配（新玩家） -->
-        <div id="stats-allocation-screen" class="hidden max-w-md mx-auto px-6 py-10">
-            <h2 class="text-2xl font-bold mb-1">分配起始能力值</h2>
-            <p class="text-zinc-400 text-sm mb-6 leading-snug">
-                每項基礎 <span class="text-zinc-300">10</span> 點，另有
-                <span class="text-amber-400 font-semibold">30</span> 點可自由分配
+        <div id="stats-allocation-screen" class="hidden max-w-md mx-auto px-5 py-8">
+            <h2 class="text-2xl font-bold mb-1">建立你的角色</h2>
+            <p class="text-zinc-400 text-sm mb-5 leading-snug">
+                選擇頭像，並將
+                <span class="text-amber-400 font-semibold">30</span> 點分配到力量／智力／韌性（每項基礎 10）
             </p>
-            <div class="space-y-5 mb-6">
-                <div class="flex justify-between items-center">
-                    <div><span class="font-semibold">力量</span><span class="text-xs text-zinc-500 ml-1">(Power)</span></div>
-                    <div class="flex items-center gap-x-3">
-                        <button type="button" onclick="adjustAllocStat('power', -1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">−</button>
-                        <span id="alloc-power-value" class="font-mono text-xl w-10 text-center text-orange-400">10</span>
-                        <button type="button" onclick="adjustAllocStat('power', 1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">+</button>
-                    </div>
-                </div>
-                <div class="flex justify-between items-center">
-                    <div><span class="font-semibold">智力</span><span class="text-xs text-zinc-500 ml-1">(Intellect)</span></div>
-                    <div class="flex items-center gap-x-3">
-                        <button type="button" onclick="adjustAllocStat('intellect', -1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">−</button>
-                        <span id="alloc-intellect-value" class="font-mono text-xl w-10 text-center text-blue-400">10</span>
-                        <button type="button" onclick="adjustAllocStat('intellect', 1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">+</button>
-                    </div>
-                </div>
-                <div class="flex justify-between items-center">
-                    <div><span class="font-semibold">韌性</span><span class="text-xs text-zinc-500 ml-1">(Resilience)</span></div>
-                    <div class="flex items-center gap-x-3">
-                        <button type="button" onclick="adjustAllocStat('resilience', -1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">−</button>
-                        <span id="alloc-resilience-value" class="font-mono text-xl w-10 text-center text-emerald-400">10</span>
-                        <button type="button" onclick="adjustAllocStat('resilience', 1)" class="w-9 h-9 bg-zinc-700 hover:bg-zinc-600 rounded-full text-lg">+</button>
-                    </div>
+
+            <div class="mb-6">
+                <div class="text-sm text-zinc-400 mb-2">選擇角色頭像</div>
+                <div class="grid grid-cols-4 gap-3" id="alloc-avatar-grid">
+                    <div class="col-span-full text-center text-zinc-500 text-sm py-4">載入頭像中…</div>
                 </div>
             </div>
+
+            <div class="space-y-5 mb-6">
+                <div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span>力量 <span class="text-zinc-500">(Power)</span></span>
+                        <span id="alloc-power-value" class="font-mono text-orange-400">10</span>
+                    </div>
+                    <input type="range" id="alloc-power" min="10" max="40" value="10" step="1"
+                           class="w-full accent-orange-500" oninput="onAllocSliderInput('power')">
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span>智力 <span class="text-zinc-500">(Intellect)</span></span>
+                        <span id="alloc-intellect-value" class="font-mono text-blue-400">10</span>
+                    </div>
+                    <input type="range" id="alloc-intellect" min="10" max="40" value="10" step="1"
+                           class="w-full accent-blue-500" oninput="onAllocSliderInput('intellect')">
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span>韌性 <span class="text-zinc-500">(Resilience)</span></span>
+                        <span id="alloc-resilience-value" class="font-mono text-emerald-400">10</span>
+                    </div>
+                    <input type="range" id="alloc-resilience" min="10" max="40" value="10" step="1"
+                           class="w-full accent-emerald-500" oninput="onAllocSliderInput('resilience')">
+                </div>
+            </div>
+
             <div class="text-center mb-6">
                 <div class="text-sm text-zinc-400">剩餘點數</div>
-                <div id="alloc-remaining" class="text-5xl font-bold text-amber-400">30</div>
+                <div id="alloc-remaining" class="text-6xl font-bold text-amber-400">30</div>
             </div>
             <button type="button" id="alloc-submit-btn" onclick="submitStatAllocation()"
-                    class="w-full py-3.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    class="w-full py-3.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:bg-zinc-700 disabled:text-zinc-400 text-zinc-950 font-semibold rounded-2xl text-lg transition-colors"
                     disabled>
                 確認分配
             </button>
@@ -6440,14 +6473,47 @@ HTML_TEMPLATE = """
 
         const STAT_ALLOC_BASE = 10;
         const STAT_ALLOC_FREE = 30;
+        const STAT_ALLOC_MAX = 40;
         let allocStats = { power: 10, intellect: 10, resilience: 10 };
+        let selectedAllocAvatar = null;
+
+        function readAllocStatsFromSliders() {
+            return {
+                power: parseInt(document.getElementById('alloc-power')?.value || '10', 10),
+                intellect: parseInt(document.getElementById('alloc-intellect')?.value || '10', 10),
+                resilience: parseInt(document.getElementById('alloc-resilience')?.value || '10', 10),
+            };
+        }
+
+        function writeAllocStatsToSliders(stats) {
+            ['power', 'intellect', 'resilience'].forEach(stat => {
+                const slider = document.getElementById(`alloc-${stat}`);
+                if (slider) slider.value = stats[stat];
+            });
+        }
 
         function resetAllocStats() {
             allocStats = { power: 10, intellect: 10, resilience: 10 };
+            selectedAllocAvatar = null;
+            writeAllocStatsToSliders(allocStats);
+            updateAllocUi();
+        }
+
+        function onAllocSliderInput(changedStat) {
+            allocStats = readAllocStatsFromSliders();
+            let used = (allocStats.power - STAT_ALLOC_BASE)
+                + (allocStats.intellect - STAT_ALLOC_BASE)
+                + (allocStats.resilience - STAT_ALLOC_BASE);
+            if (used > STAT_ALLOC_FREE) {
+                const excess = used - STAT_ALLOC_FREE;
+                allocStats[changedStat] = Math.max(STAT_ALLOC_BASE, allocStats[changedStat] - excess);
+                writeAllocStatsToSliders(allocStats);
+            }
             updateAllocUi();
         }
 
         function updateAllocUi() {
+            allocStats = readAllocStatsFromSliders();
             ['power', 'intellect', 'resilience'].forEach(stat => {
                 const el = document.getElementById(`alloc-${stat}-value`);
                 if (el) el.textContent = allocStats[stat];
@@ -6457,22 +6523,51 @@ HTML_TEMPLATE = """
                 + (allocStats.resilience - STAT_ALLOC_BASE);
             const remaining = STAT_ALLOC_FREE - used;
             const remEl = document.getElementById('alloc-remaining');
-            if (remEl) remEl.textContent = remaining;
+            if (remEl) {
+                remEl.textContent = remaining;
+                remEl.classList.toggle('text-red-400', remaining < 0);
+                remEl.classList.toggle('text-amber-400', remaining >= 0);
+            }
             const btn = document.getElementById('alloc-submit-btn');
-            if (btn) btn.disabled = remaining !== 0;
+            if (btn) btn.disabled = remaining !== 0 || !selectedAllocAvatar;
         }
 
-        function adjustAllocStat(stat, delta) {
-            const next = allocStats[stat] + delta;
-            if (next < STAT_ALLOC_BASE) return;
-            if (delta > 0) {
-                const used = (allocStats.power - STAT_ALLOC_BASE)
-                    + (allocStats.intellect - STAT_ALLOC_BASE)
-                    + (allocStats.resilience - STAT_ALLOC_BASE);
-                if (used >= STAT_ALLOC_FREE) return;
+        function selectAllocAvatar(filename, element) {
+            selectedAllocAvatar = filename;
+            document.querySelectorAll('#alloc-avatar-grid > div[data-avatar]').forEach(el => {
+                el.classList.remove('border-amber-500', 'ring-2', 'ring-amber-500/40');
+                el.classList.add('border-transparent');
+            });
+            if (element) {
+                element.classList.remove('border-transparent');
+                element.classList.add('border-amber-500', 'ring-2', 'ring-amber-500/40');
             }
-            allocStats[stat] = next;
             updateAllocUi();
+        }
+
+        async function initAllocAvatarSelection() {
+            const grid = document.getElementById('alloc-avatar-grid');
+            if (!grid) return;
+            grid.innerHTML = '<div class="col-span-full text-center text-zinc-500 text-sm py-4">載入頭像中…</div>';
+            try {
+                const res = await fetch('/available_avatars', { credentials: 'same-origin' });
+                const data = await res.json();
+                grid.innerHTML = '';
+                if (!data.avatars?.length) {
+                    grid.innerHTML = '<div class="col-span-full text-center text-zinc-400 py-4">暫無可用頭像</div>';
+                    return;
+                }
+                data.avatars.forEach(filename => {
+                    const div = document.createElement('div');
+                    div.dataset.avatar = filename;
+                    div.className = 'aspect-square rounded-2xl overflow-hidden border-2 border-transparent cursor-pointer transition-all';
+                    div.innerHTML = `<img src="${avatarSrc(filename)}" class="w-full h-full object-cover" alt="">`;
+                    div.onclick = () => selectAllocAvatar(filename, div);
+                    grid.appendChild(div);
+                });
+            } catch (e) {
+                grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-4">載入頭像失敗</div>';
+            }
         }
 
         function showStatsAllocationScreen() {
@@ -6480,9 +6575,14 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById('game-content'), false);
             setVisible(document.getElementById('stats-allocation-screen'), true);
             resetAllocStats();
+            initAllocAvatarSelection();
         }
 
         async function submitStatAllocation() {
+            if (!selectedAllocAvatar) {
+                alert('請先選擇頭像');
+                return;
+            }
             const used = (allocStats.power - STAT_ALLOC_BASE)
                 + (allocStats.intellect - STAT_ALLOC_BASE)
                 + (allocStats.resilience - STAT_ALLOC_BASE);
@@ -6495,7 +6595,7 @@ HTML_TEMPLATE = """
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(allocStats),
+                    body: JSON.stringify({ ...allocStats, avatar: selectedAllocAvatar }),
                 });
                 const data = await res.json();
                 if (!data.success) {
