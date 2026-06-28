@@ -270,6 +270,13 @@ def encounter_route_matches(encounter_route, squad_route):
         return False
     return encounter_route == squad_route
 
+
+def normalize_team_id(team_id):
+    if not team_id:
+        return None
+    return str(team_id).strip().upper()
+
+
 def get_team_members(team_id):
     if not team_id:
         return []
@@ -2230,11 +2237,6 @@ def create_global_event(title, description="", effect_type=None, effect_value=0,
     conn.close()
 
 # ==================== 輔助函數 ====================
-def normalize_team_id(team_id):
-    if not team_id:
-        return None
-    return str(team_id).strip().upper()
-
 def build_player_status(squad):
     if not squad:
         return None
