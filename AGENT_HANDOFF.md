@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`fc53d73`
+> 最後更新：2026-06-29 · local/GitHub：`050c842`（功能 commit `fc53d73`）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -12,8 +12,8 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `fc53d73` | ✅ 最新 |
-| **GitHub `main`** | `fc53d73` | ✅ 已 push |
+| **Local** | `050c842` | ✅ 最新 |
+| **GitHub `main`** | `050c842` | ✅ 已 push |
 | **PythonAnywhere** | 未知（500） | 🔴 **網站掛咗** — `/api/version` 回 HTML error page，唔係 JSON |
 
 ```bash
@@ -29,7 +29,7 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ### PA 500 根因（已修但未部署）
 
 `fc53d73` 修咗 **`models/combat.py` 重複定義** `apply_encounter_success` 等函數，shadow 咗 `models/encounter_outcomes.py` 嘅 import，導致戰鬥勝利時 `NameError: add_insight_fragments` → 全站 500。  
-**P0：請用戶部署 `fc53d73` 到 PA 並 Web Reload。**
+**P0：請用戶部署 `fc53d73`（或更新後 `050c842`）到 PA 並 Web Reload。**
 
 ### 本地測試（`fc53d73`）
 
@@ -187,7 +187,7 @@ Zoo：神智 ≥70/80/90/100 → ×1.3/1.4/1.5/1.8
 
 | 優先 | 項目 | 說明 |
 |------|------|------|
-| **P0** | **部署 PA 至 `fc53d73`** | PA 目前 500；見 Deploy 一節 |
+| **P0** | **部署 PA 至 `050c842`** | PA 目前 500；見 Deploy 一節 |
 | P1 | 部署後實機驗證 | 戰鬥勝利流程、`/api/version` markers |
 | P3 | Defend 全隊 buff | 目前只對「被反擊目標」減傷 50% |
 | P4 | 更多 encounter JSON | Marah 線、stage 2+ |
@@ -293,6 +293,7 @@ python3 app.py                    # → :5001
 ## 近期 commit（參考）
 
 ```
+050c842 docs: update AGENT_HANDOFF for fc53d73 refactor + PA deploy status
 fc53d73 fix: combat victory crash + stable smoke test + PA deploy checks
 5d195c6 fix: BEGIN IMMEDIATE transactions + upload secure_filename
 92b4cbb fix: persist announcements to DB for multi-worker safety
@@ -314,7 +315,7 @@ fc53d73 fix: combat victory crash + stable smoke test + PA deploy checks
 2. 確保 GitHub 同 PythonAnywhere 版本同 local 一致
 
 開工前先核對版本：
-- local: git rev-parse --short HEAD（應為 fc53d73）
+- local: git rev-parse --short HEAD（應為 050c842）
 - PA: curl https://takjai.pythonanywhere.com/api/version
 
 PA 若 500 或 version 落後：請我跑 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh + Web Reload，你再 curl 確認。
@@ -325,5 +326,5 @@ PA 若 500 或 version 落後：請我跑 FORCE=1 bash ~/oikonomia/deploy/pa-upd
 若不確定下一個任務，可先：
 
 ```
-…然後做 P0：部署 PA 至 fc53d73，curl 確認 /api/version，再跑戰鬥勝利實機測試。
+…然後做 P0：部署 PA 至 050c842，curl 確認 /api/version，再跑戰鬥勝利實機測試。
 ```
