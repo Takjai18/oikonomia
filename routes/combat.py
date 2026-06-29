@@ -33,6 +33,7 @@ from models.combat import (
     _build_round_resolved_response,
     _combat_outcome_json,
     _attach_round_settlement,
+    combat_outcome_if_finished,
 )
 from models.encounter import (
     encounter_route_matches,
@@ -211,6 +212,11 @@ def combat_status_api():
             if outcome:
                 return jsonify({**outcome, "active": False})
             combat = get_combat(combat["id"]) or combat
+            finished = combat_outcome_if_finished(
+                combat, encounter, team_id=actor.get("team_id") if actor else None,
+            )
+            if finished:
+                return jsonify({**finished, "active": False})
             participants = None
             round_just_resolved = (
                 int(combat.get("current_phase") or 0) > prev_phase
@@ -391,6 +397,10 @@ def combat_submit_action_api():
         return jsonify(outcome)
 
     combat = get_combat(combat_id)
+    finished = combat_outcome_if_finished(combat, encounter, team_id=squad.get("team_id"))
+    if finished:
+        return jsonify(finished)
+
     if len(required_ids) > 1 and len(phase_actions) < len(required_ids):
         me = next(
             (p for p in participants if p["squad_id"] == session["squad_id"]),

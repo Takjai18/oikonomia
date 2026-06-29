@@ -404,6 +404,61 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
     update_protagonist_state(team_id, "iggy", is_active=1)
 
 
+def test_solo_killing_blow_returns_victory(client, client2, team_id):
+    """Final hit at enemy HP 1 must return victory, not another attackable player_phase."""
+    from models.combat import combat_outcome_if_finished, get_active_combat_for_team, save_combat
+    from models.encounter import load_encounter
+    from models.protagonist import update_protagonist_state
+
+    active = get_active_combat_for_team(team_id)
+    if active:
+        teardown_test_combat(team_id, active.get("encounter_id"))
+    prepare_test_encounter(team_id, TEST_ENCOUNTER_ID)
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("killing blow: start combat", start.get("success") and combat_id, str(start))
+
+    save_combat(combat_id, enemy_hp=1)
+    with patch("routes.combat.roll_combat_dice", return_value=2):
+        w = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        ).get_json() or {}
+        ok("killing blow: leader waits", w.get("status") == "waiting_for_teammates", str(w)[:200])
+        data = client2.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        ).get_json() or {}
+    ok("killing blow: victory outcome", data.get("outcome") == "victory", str(data)[:240])
+    ok(
+        "killing blow: combat ended in db",
+        (get_combat(combat_id) or {}).get("status") == "ended",
+        str(get_combat(combat_id))[:200],
+    )
+
+    zombie = dict(get_combat(combat_id) or {})
+    zombie.update({"status": "player_phase", "enemy_hp": 0, "winner": None})
+    finished = combat_outcome_if_finished(zombie, load_encounter(TEST_ENCOUNTER_ID), team_id=team_id)
+    ok(
+        "killing blow: zombie hp0 guard returns victory",
+        finished and finished.get("outcome") == "victory",
+        str(finished)[:200],
+    )
+
+    teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
+    clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
+    update_protagonist_state(team_id, "iggy", is_active=1)
+
+
 def fight_until_victory(client, client2, combat_id):
     """
     Both players attack each player_phase until victory or max rounds.
@@ -620,6 +675,7 @@ def main():
     test_create_combat_record_active_guard(leader_id, team_id)
     test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id)
     test_protagonist_player_control(client, client2, team_id, route="iggy")
+    test_solo_killing_blow_returns_victory(client, client2, team_id)
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")

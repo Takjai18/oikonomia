@@ -572,6 +572,13 @@ def _recover_stale_resolving_combat(combat_id):
             except ValueError:
                 stale = True
         if stale:
+            hp_row = conn.execute(
+                "SELECT enemy_hp FROM combats WHERE id = ?",
+                (combat_id,),
+            ).fetchone()
+            enemy_hp = int(hp_row[0] or 0) if hp_row else 0
+            if enemy_hp <= 0:
+                return
             conn.execute(
                 "UPDATE combats SET status = 'player_phase' WHERE id = ? AND status = ?",
                 (combat_id, COMBAT_STATUS_RESOLVING),
@@ -594,6 +601,9 @@ def _claim_player_phase_resolution(combat_id):
 
 
 def _release_player_phase_resolution(combat_id):
+    combat = get_combat(combat_id)
+    if combat and int(combat.get("enemy_hp") or 0) <= 0:
+        return
     with immediate_transaction() as conn:
         conn.execute(
             "UPDATE combats SET status = 'player_phase' WHERE id = ? AND status = ?",
@@ -798,7 +808,6 @@ def _resolve_player_phase_body(combat_id):
     combat["phase_actions"] = {}
 
     if new_enemy_hp <= 0:
-        save_combat(combat_id, enemy_hp=new_enemy_hp, logs=combat.get("logs"), phase_actions={})
         return _end_combat(combat_id, "squad", encounter), "squad"
 
     save_combat(
@@ -1357,6 +1366,20 @@ def _combat_outcome_json(winner, encounter, team_id=None):
         return build_victory_outcome_payload(encounter, team_id=team_id)
     if winner == "enemy":
         return build_defeat_outcome_payload(encounter)
+    return None
+
+
+def combat_outcome_if_finished(combat, encounter, team_id=None):
+    """Return victory/defeat JSON when combat already ended or enemy HP is 0."""
+    if not combat:
+        return None
+    if combat.get("status") == "ended":
+        return _combat_outcome_json(combat.get("winner"), encounter, team_id=team_id)
+    if int(combat.get("enemy_hp") or 0) <= 0:
+        combat_id = combat.get("id")
+        if combat_id:
+            _end_combat(combat_id, "squad", encounter)
+        return _combat_outcome_json("squad", encounter, team_id=team_id)
     return None
 
 

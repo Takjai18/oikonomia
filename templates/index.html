@@ -1956,8 +1956,58 @@
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
+        async function finishCombatVictoryFromPayload(data) {
+            resetCombatSettlementState();
+            combatWaitingForRound = false;
+            hideCombatWaitingPanel();
+            hideRoundSettlementModal();
+            hideSinglePlayerResultModal();
+            hideCombatModal();
+            if (data?.log_entries?.length) {
+                processCombatDamageAnimations(data, 120);
+            }
+            resetCombatEnemyHpTracking(0);
+            updateEnemyCombatStats(
+                { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
+                data.enemy_description || lastCombatStatus?.enemy_description || '',
+            );
+            let payload = data;
+            if (!payload.outcome) {
+                try {
+                    const url = currentCombatId
+                        ? `/combat/status?combat_id=${currentCombatId}`
+                        : '/combat/status';
+                    const res = await fetch(url, { credentials: 'same-origin' });
+                    const fresh = await res.json();
+                    if (fresh.outcome) payload = { ...payload, ...fresh };
+                } catch (_) { /* use local payload */ }
+            }
+            const outcome = payload.outcome
+                || (payload.winner === 'enemy' ? 'defeat' : 'victory');
+            showCombatResult({
+                ...payload,
+                outcome,
+                active: false,
+            });
+            const statusRes = await fetch('/status', { credentials: 'same-origin' });
+            updateDashboard(await statusRes.json());
+            combatItemsLoaded = false;
+        }
+
+        function shouldFinishCombatVictory(data) {
+            if (!data) return false;
+            if (data.outcome) return true;
+            if (data.status === 'ended' || data.winner) return true;
+            const hp = Number(data.enemy?.hp);
+            return Number.isFinite(hp) && hp <= 0;
+        }
+
         function handleCombatRoundResolved(data) {
             if (!data) return;
+            if (shouldFinishCombatVictory(data)) {
+                finishCombatVictoryFromPayload(data);
+                return;
+            }
             setCombatPhaseLock(false);
             hideCombatModal();
             if (data.enemy?.hp != null) {
@@ -3263,6 +3313,10 @@
                     if (phaseAdvanced && !data.round_settlement && data.log_entries?.length) {
                         data.round_settlement = buildClientRoundSettlement(data.log_entries);
                     }
+                    if (shouldFinishCombatVictory(data)) {
+                        await finishCombatVictoryFromPayload(data);
+                        return;
+                    }
                     handleCombatRoundResolved(data);
                     return;
                 }
@@ -3351,23 +3405,8 @@
                 showToast(data.error, 'error');
                 return;
             }
-            if (data.outcome) {
-                combatWaitingForRound = false;
-                hideCombatWaitingPanel();
-                if (data.log_entries?.length) {
-                    processCombatDamageAnimations(data, 200);
-                }
-                if (data.outcome === 'victory') {
-                    resetCombatEnemyHpTracking(0);
-                    updateEnemyCombatStats(
-                        { ...(lastCombatStatus?.enemy || {}), hp: 0 },
-                        lastCombatStatus?.enemy_description || '',
-                    );
-                }
-                showCombatResult(data);
-                const statusRes = await fetch('/status', { credentials: 'same-origin' });
-                updateDashboard(await statusRes.json());
-                combatItemsLoaded = false;
+            if (data.outcome || shouldFinishCombatVictory(data)) {
+                await finishCombatVictoryFromPayload(data);
                 return;
             }
 
@@ -4302,21 +4341,10 @@
             let hp = enemy.hp ?? 0;
             const maxHp = enemy.max_hp || enemy.hp || 1;
             const rawStatus = lastCombatStatus?.status;
-            const status = effectiveCombatStatus(lastCombatStatus);
             if (rawStatus === 'resolving' && combatEnemyHpSeen !== null) {
                 hp = combatEnemyHpSeen;
-            } else if (
-                currentCombatId
-                && combatEnemyHpSeen !== null
-                && hp > combatEnemyHpSeen
-                && status !== 'ended'
-                && !lastCombatStatus?.outcome
-            ) {
-                hp = combatEnemyHpSeen;
             } else if (currentCombatId) {
-                combatEnemyHpSeen = combatEnemyHpSeen === null
-                    ? hp
-                    : Math.min(combatEnemyHpSeen, hp);
+                combatEnemyHpSeen = hp;
             }
             const prevDisplayed = parseLocaleInt(document.getElementById('enemy-hp-current')?.textContent);
             const fromHp = lastAnimatedEnemyHp ?? (
