@@ -79,6 +79,55 @@
 
 ---
 
+## 2026-06-30 — Combat UX Delay Phase 2 優化（fixes 1+2+3）
+
+**問題**：後端數據正確（`enemy_hp_sync_v6` + production 採證），但前端 timer stacking 造成 ~4s/round 體感 lag，尤其多回合 `practice_iggy_03_boundary`（140 HP）。血條即刻跳 + HP 數字 tween 420ms + settlement modal 1500ms + poll 凍結期間 DOM 唔更新，加強「lag」感。即使 data 正確，玩家仍覺得慢或「打唔入」。
+
+**決策**：採納低風險組合修復 **1+2+3**（Tak 於 2026-06-30 確認；Grok Architect 記錄）：
+
+1. **練習戰自動 fast**：`practice_*` encounter 自動使用 800ms settlement `modalDelay`，**跳過 HP tween**（只即時 set HP）。
+2. **`syncEnemyHpDisplay(data, { animate: false })`**：round_resolved / poll 路徑即時更新數字（解決血條即刻跳、數字慢數不同步）。
+3. **分拆 poll 凍結**：`settlementTimerPending` 只擋 full `updateCombatUI`，但**保留 HP sync 通道**（保留 v6 race fix 成果）。
+
+**架構設計原則**：
+
+- 細粒度 lock 而非全凍結：`settlementTimerPending` 期間仍容許 authoritative HP sync
+- Practice encounter 自動 bypass 長 animation queue（`encounter_id` prefix `practice_`）
+- 為之後 **configurable `combatSpeed` preset**（slow/normal/fast）鋪路
+- 保持現有 victory settlement flow（`finishCombatVictoryFromPayload` + `showFullRoundSettlement`）不變
+
+**影響範圍**：
+
+- 主要：`templates/index.html`（`syncEnemyHpDisplay`、`loadCombatStatus`、`showFullRoundSettlement`）
+- 次要：`routes/misc.py` marker `enemy_hp_sync_v7`
+
+**風險評估**：**低**（patch 為主，無大重構）。最大風險係 poll 時序 — 已用細粒度 HP channel 緩解，避免 reintroduce v6 stale HP overwrite（`resolveAuthoritativeEnemyHp` + monotonic guard 保留）。
+
+**營會實用性**：高。20 人西貢戶外營會，mobile + 可能不穩網絡；practice 每回合目標由 ~4s 減到 ~1–1.5s，提升 immersion 同「行動有即時後果」感覺。
+
+**實作紀錄（Grok Build）**：
+
+| Step | 狀態 | 備註 |
+|------|------|------|
+| 1 `syncEnemyHpDisplay` `{ animate }` option | ✅ | commit `66f70c6` |
+| 2 round_resolved / poll 即時 HP | ✅ | `handleCombatRoundResolved`、`updateEnemyCombatStats` |
+| 3 practice 自動 fast | ✅ | `isPracticeCombat` + `getEffectiveSettlementDelayMs` |
+| 4 分拆 poll 凍結 | ✅ | `syncHpOnlyFromPoll`（等同 `hpSyncAllowedDuringSettlement`） |
+| 5 modalDelay 扣減 hpAnimMs | ✅ | `max(120/200, baseDelay - hpAnimMs)` |
+| 6 perf log | ✅ | `window.COMBAT_PERF_DEBUG` |
+
+**驗證計劃**：
+
+- CI：`scripts/test_combat_flow.py` — **188 通過 / 0 失敗**（`66f70c6`）
+- Henry 實機（待）：`practice_iggy_03_boundary` HP 即時 + modal <1.5s；`practice_iggy_01_quick` 一輪殺 settlement 正常
+- PA deploy 後：`curl /api/version` → `enemy_hp_sync_v7: true`
+
+**狀態**：**已實作、待 deploy + Henry 實機確認** — 見 `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md` §14
+
+**記錄者**：Grok Architect（依 Tak 確認 1+2+3）· Grok Build 實作 `66f70c6`
+
+---
+
 ## 變更紀錄
 
 | 日期 | Commit | 摘要 |
@@ -86,4 +135,5 @@
 | 2026-06-29 | `fc72077` | Phase 1+2 初版：ending、combat_outcomes、database.py |
 | 2026-06-29 | `c1768a1` | 修 combat import + test 隔離 |
 | 2026-06-29 | `fd4e0e1` | Model bootstrap fallback（encounters_dir、default_protagonist） |
-| 2026-06-29 | （本 commit） | Grok Phase 1 spec 補齊：apply_ending、trauma_summary、test_ending_flow、decisions_log |
+| 2026-06-29 | — | Grok Phase 1 spec 補齊：apply_ending、trauma_summary、test_ending_flow、decisions_log |
+| 2026-06-30 | `66f70c6` | Combat UX Delay Phase 2（fixes 1+2+3）；`enemy_hp_sync_v7` |
