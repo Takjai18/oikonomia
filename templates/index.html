@@ -2178,7 +2178,7 @@
             loadCombatStatus(false);
         }
 
-        // combat_flow_v5: v4 + 勝利確認後不再重複結算（victory flow lock）
+        // combat_flow_v6: v5 + 秒殺必出結算（唔因 phase 重複而跳過 modal）
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
@@ -2232,27 +2232,59 @@
                 || (victorySettlementAcknowledgedCombatId && cid === victorySettlementAcknowledgedCombatId);
         }
 
+        function ensureVictorySettlementPayload(data) {
+            if (!data) return data;
+            if (victoryPayloadHasSettlement(data)) return data;
+            const logs = data.log_entries || data.log || [];
+            if (!logs.length) return data;
+            const built = buildClientRoundSettlement(
+                Array.isArray(logs) && logs[0]?.type
+                    ? logs
+                    : logs.map((line) => ({ type: 'event', message: String(line) })),
+            );
+            if (Number(built.team_damage_dealt) > 0 || (built.player_hits || []).length) {
+                return {
+                    ...data,
+                    round_settlement: built,
+                    round_resolved: true,
+                    round_enemy_damage: built.team_damage_dealt,
+                };
+            }
+            return data;
+        }
+
+        function victorySettlementAlreadyShown(combatId, phase) {
+            if (!(phase > 0) || phase > lastShownSettlementPhase) return false;
+            const cid = combatId || currentCombatId;
+            return !cid || cid === settlementCombatId || cid === currentCombatId;
+        }
+
         async function finishCombatVictoryFromPayload(data) {
+            if (victoryFinalizeInProgress) return;
+            data = ensureVictorySettlementPayload(data);
             const combatId = data?.combat_id || currentCombatId;
-            if (isVictoryFlowLocked(combatId)) {
-                if (!victoryFinalizeInProgress) {
-                    await finalizeCombatVictoryFromPayload(data);
-                }
+
+            if (victorySettlementAcknowledgedCombatId
+                && combatId === victorySettlementAcknowledgedCombatId) {
+                await finalizeCombatVictoryFromPayload(data);
                 return;
             }
+            if (combatFinalizingVictory) return;
+
             if (combatAwaitingSettlementAck) {
                 if (!pendingVictoryAfterSettlement) {
                     pendingVictoryAfterSettlement = data;
                 }
                 return;
             }
+
             const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
             const phase = Number(data?.current_phase) || 0;
-            if (victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome)) {
-                if (phase > 0 && phase <= lastShownSettlementPhase
-                    && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
-                    victorySettlementAcknowledgedCombatId = combatId || victorySettlementAcknowledgedCombatId;
-                    await finalizeCombatVictoryFromPayload(data);
+            const hasSettlementUi = victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome);
+
+            if (hasSettlementUi) {
+                if (victorySettlementAlreadyShown(combatId, phase)) {
+                    pendingVictoryAfterSettlement = data;
                     return;
                 }
                 pendingVictoryAfterSettlement = data;
@@ -3510,10 +3542,7 @@
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
 
-                    if (isVictoryFlowLocked(data.combat_id)) {
-                        if (!victoryFinalizeInProgress) {
-                            await finalizeCombatVictoryFromPayload(data);
-                        }
+                    if (victoryFinalizeInProgress || combatFinalizingVictory) {
                         return;
                     }
 
