@@ -1588,6 +1588,7 @@
         let combatPhaseLockedRound = 0;
         let enemyHpAnimFrame = null;
         let lastCombatUiSnapshotKey = '';
+        let lastCombatStatusJson = '';
         const COMBAT_POLL_INTERVAL_NORMAL = 3000;
         const COMBAT_POLL_INTERVAL_WAITING = 4000;
         const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
@@ -1600,6 +1601,8 @@
         const FETCH_NO_CACHE_HEADERS = {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
+            'Expires': '0',
+            'X-Requested-With': 'XMLHttpRequest',
         };
 
         function fetchNoCache(url, options = {}) {
@@ -1642,6 +1645,26 @@
                 data.round_resolved,
                 data.outcome,
             ].join('|');
+        }
+
+        function isCombatVictoryPayload(data) {
+            if (!data) return false;
+            return !!(data.outcome || data.status === 'ended' || data.winner);
+        }
+
+        function queueVictoryDuringSettlement(data) {
+            if (isCombatVictoryPayload(data)) {
+                pendingVictoryAfterSettlement = data;
+                return true;
+            }
+            if (shouldFinishCombatVictory(data)) {
+                pendingVictoryAfterSettlement = {
+                    ...data,
+                    outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
+                };
+                return true;
+            }
+            return false;
         }
         const COMBAT_ACTION_LABELS = {
             attack: '攻擊',
@@ -1972,6 +1995,7 @@
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             lastShownSettlementPhase = 0;
+            lastCombatStatusJson = '';
             settlementCombatId = null;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
@@ -2096,8 +2120,8 @@
                 resetCombatEnemyHpTracking(data.enemy.hp);
             }
             const phase = Number(data?.current_phase) || 0;
-            combatAwaitingSettlementAck = true;
             settlementTimerPending = true;
+            combatAwaitingSettlementAck = false;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
             }
@@ -2135,6 +2159,7 @@
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
                 settlementTimerPending = false;
+                combatAwaitingSettlementAck = true;
                 showRoundSettlementModal(data);
             }, modalDelay);
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
@@ -3416,6 +3441,7 @@
                 settlementCombatId = uiData.combat_id;
                 lastShownSettlementPhase = 0;
                 lastCombatUiSnapshotKey = '';
+                lastCombatStatusJson = '';
                 combatAwaitingSettlementAck = false;
                 settlementTimerPending = false;
                 clearTimeout(showFullRoundSettlement._modalTimer);
@@ -3559,13 +3585,16 @@
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
                 const res = await fetchNoCache(url);
+                if (!res.ok) throw new Error(`combat/status HTTP ${res.status}`);
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
-                if (data.outcome) {
-                    if (combatAwaitingSettlementAck || settlementTimerPending) {
-                        pendingVictoryAfterSettlement = data;
-                        return;
-                    }
+
+                if (settlementTimerPending || combatAwaitingSettlementAck) {
+                    if (queueVictoryDuringSettlement(data)) return;
+                    return;
+                }
+
+                if (isCombatVictoryPayload(data)) {
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
@@ -3600,21 +3629,22 @@
                     return;
                 }
 
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    if (data.outcome) {
-                        pendingVictoryAfterSettlement = data;
-                    } else if (shouldFinishCombatVictory(data)) {
-                        pendingVictoryAfterSettlement = {
-                            ...data,
-                            outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
-                        };
-                    }
-                    return;
-                }
-
                 if (shouldFinishCombatVictory(data)) {
                     await finishCombatVictoryFromPayload(data);
                     return;
+                }
+
+                if (!showLoading) {
+                    const statusJson = JSON.stringify(data);
+                    if (statusJson === lastCombatStatusJson) {
+                        if (data.active || data.in_precheck) {
+                            startCombatPolling(getCombatPollInterval(data));
+                        } else {
+                            stopCombatPolling();
+                        }
+                        return;
+                    }
+                    lastCombatStatusJson = statusJson;
                 }
 
                 if (data.status === 'resolving') {

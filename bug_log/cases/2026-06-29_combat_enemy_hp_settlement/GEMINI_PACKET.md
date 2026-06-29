@@ -1,7 +1,7 @@
 # GEMINI_PACKET — BUG-2026-001（自包含，可直接貼入 Gemini）
 
 > **生成時間**：2026-06-29 15:53 UTC  
-> **Git commit**：`08a50ee`  
+> **Git commit**：`20b5601`  
 > **用途**：Gemini **讀唔到** Google Drive bug_log 資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。
 > **重新生成**：`bash scripts/build_gemini_packet.sh`
 
@@ -11,9 +11,9 @@
 
 1. **最簡單**：打開本檔 `GEMINI_PACKET.md` → 全選 Copy → 貼到 Gemini
 2. **GitHub Raw**（若 Gemini 支援 URL）：
-   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/08a50ee/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/08a50ee/templates/index.html
-   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/08a50ee/routes/combat.py
+   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/20b5601/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
+   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/20b5601/templates/index.html
+   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/20b5601/routes/combat.py
 3. **唔好用**：Drive 資料夾連結（Gemini API 索引唔到 .md / bug_log）
 4. **可選**：將本檔 Upload 為 **Google Doc**（單檔分享連結）再俾 Gemini
 
@@ -110,6 +110,29 @@
 ### `templates/index.html` L1785–L2199
 
 ```javascript
+                `${preview.player_name || '你'} · ${preview.action_label || ''}（骰 ${preview.dice_result} ${diceLabel}）`;
+            document.getElementById('single-result-summary').textContent = preview.summary || '';
+            document.getElementById('single-result-dealt').textContent = String(preview.damage_dealt ?? 0);
+
+            const takenPending = preview.damage_taken_pending;
+            const takenWrap = document.getElementById('single-result-taken-wrap');
+            const takenEl = document.getElementById('single-result-taken');
+            const takenPendingEl = document.getElementById('single-result-taken-pending');
+            if (takenPending) {
+                if (takenEl) takenEl.textContent = String(preview.estimated_counter_damage ?? '?');
+                setVisible(takenPendingEl, true);
+            } else {
+                if (takenEl) takenEl.textContent = String(preview.damage_taken ?? 0);
+                setVisible(takenPendingEl, false);
+            }
+
+            const risksEl = document.getElementById('single-result-risks');
+            if (risksEl) {
+                if (preview.risks?.length) {
+                    risksEl.innerHTML = preview.risks.map(r =>
+                        `<div class="text-orange-300 px-2 py-1 bg-orange-900/20 rounded-lg">⚠️ ${r.message}</div>`
+                    ).join('');
+                } else {
                     risksEl.innerHTML = '';
                 }
             }
@@ -300,6 +323,7 @@
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             lastShownSettlementPhase = 0;
+            lastCombatStatusJson = '';
             settlementCombatId = null;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
@@ -424,8 +448,8 @@
                 resetCombatEnemyHpTracking(data.enemy.hp);
             }
             const phase = Number(data?.current_phase) || 0;
-            combatAwaitingSettlementAck = true;
             settlementTimerPending = true;
+            combatAwaitingSettlementAck = false;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
             }
@@ -463,6 +487,7 @@
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
                 settlementTimerPending = false;
+                combatAwaitingSettlementAck = true;
                 showRoundSettlementModal(data);
             }, modalDelay);
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
@@ -500,36 +525,36 @@
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideRoundSettlementModal();
-            hideSinglePlayerResultModal();
-            hideCombatModal();
-            if (data?.log_entries?.length) {
-                processCombatDamageAnimations(data, 120);
-            }
-            resetCombatEnemyHpTracking(0);
-            updateEnemyCombatStats(
-                { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
-                data.enemy_description || lastCombatStatus?.enemy_description || '',
-            );
-            let payload = data;
-            if (!payload.outcome) {
-                try {
-                    const url = currentCombatId
-                        ? `/combat/status?combat_id=${currentCombatId}`
-                        : '/combat/status';
-                    const res = await fetchNoCache(url);
-                    const fresh = await res.json();
-                    if (fresh.outcome) payload = { ...payload, ...fresh };
-                } catch (_) { /* use local payload */ }
-            }
-            const outcome = payload.outcome
-                || (payload.winner === 'enemy' ? 'defeat' : 'victory');
-            showCombatResult({
-                ...payload,
 ```
 
 ### `templates/index.html` L3323–L3680
 
 ```javascript
+            }
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            if (data.skipped) {
+                showCombatResult({ outcome: 'victory', narrative: data.narrative, reflection_prompt: data.reflection_prompt });
+                const statusRes = await fetchNoCache('/status');
+                updateDashboard(await statusRes.json());
+                return;
+            }
+            currentCombatId = data.combat_id;
+            resetCombatSettlementState();
+            resetCombatEnemyHpTracking(null);
+            showCombatScreen();
+            await loadCombatStatus(true);
+        }
+
+        function showCombatResult(data) {
+            stopCombatPolling();
+            resetCombatSettlementState();
+            combatWaitingForRound = false;
+            resetCombatEnemyHpTracking(null);
+            controllingProtagonist = false;
+            setVisible(document.getElementById('combat-screen'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-lobby'), false);
             setVisible(document.getElementById('combat-result-panel'), true);
             const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
             const victory = data.outcome === 'victory';
@@ -626,6 +651,7 @@
                 settlementCombatId = uiData.combat_id;
                 lastShownSettlementPhase = 0;
                 lastCombatUiSnapshotKey = '';
+                lastCombatStatusJson = '';
                 combatAwaitingSettlementAck = false;
                 settlementTimerPending = false;
                 clearTimeout(showFullRoundSettlement._modalTimer);
@@ -769,13 +795,16 @@
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
                 const res = await fetchNoCache(url);
+                if (!res.ok) throw new Error(`combat/status HTTP ${res.status}`);
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
-                if (data.outcome) {
-                    if (combatAwaitingSettlementAck || settlementTimerPending) {
-                        pendingVictoryAfterSettlement = data;
-                        return;
-                    }
+
+                if (settlementTimerPending || combatAwaitingSettlementAck) {
+                    if (queueVictoryDuringSettlement(data)) return;
+                    return;
+                }
+
+                if (isCombatVictoryPayload(data)) {
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
@@ -810,21 +839,22 @@
                     return;
                 }
 
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    if (data.outcome) {
-                        pendingVictoryAfterSettlement = data;
-                    } else if (shouldFinishCombatVictory(data)) {
-                        pendingVictoryAfterSettlement = {
-                            ...data,
-                            outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
-                        };
-                    }
-                    return;
-                }
-
                 if (shouldFinishCombatVictory(data)) {
                     await finishCombatVictoryFromPayload(data);
                     return;
+                }
+
+                if (!showLoading) {
+                    const statusJson = JSON.stringify(data);
+                    if (statusJson === lastCombatStatusJson) {
+                        if (data.active || data.in_precheck) {
+                            startCombatPolling(getCombatPollInterval(data));
+                        } else {
+                            stopCombatPolling();
+                        }
+                        return;
+                    }
+                    lastCombatStatusJson = statusJson;
                 }
 
                 if (data.status === 'resolving') {
@@ -858,65 +888,35 @@
         }
 
         async function submitAction() {
-            if (combatAwaitingSettlementAck || settlementTimerPending) {
-                showToast('請先等待本回合傷害結算', 'error');
-                return;
-            }
-            if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
-                showToast('回合結算中，請稍候', 'error');
-                return;
-            }
-            if (selectedAction === 'use_item' && !selectedItemId) {
-                showToast('請先選擇要使用的物品', 'error');
-                return;
-            }
-            if (COMBAT_DICE_ACTIONS.has(selectedAction) && selectedDice === null) {
-                showToast('請先選擇攻擊行動並完成擲骰', 'error');
-                return;
-            }
-            if (selectedDice === null) selectedDice = 1;
-
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            if (confirmBtn) confirmBtn.disabled = true;
-
-            const payload = {
-                combat_id: currentCombatId,
-                action_type: selectedAction,
-            };
-            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
-                payload.as_protagonist = true;
-            }
-            if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
-
 ```
 
 ### `templates/index.html` L4562–L4585
 
 ```javascript
-            const meta = DASHBOARD_STAT_META[stat] || {};
-            const el = document.getElementById(prefix + stat + '-value');
-            const raw = Number(value) || 0;
-            const showRatio = options.showRatio ?? !prefix;
-
-            if (stat === 'hp') {
-                const max = Math.max(1, Number(options.maxHp ?? options.max ?? DEFAULT_PLAYER_MAX_HP));
-                const v = Math.max(0, Math.min(max, raw));
-                const pct = Math.round((v / max) * 100);
-                const bar = document.getElementById(prefix + stat + '-bar');
-                const pctEl = document.getElementById(prefix + stat + '-pct');
-                if (el) {
-                    el.textContent = showRatio ? `${v} / ${max}` : String(v);
-                    if (!prefix) {
-                        el.className = `font-mono text-red-400`;
-                    }
-                }
-                if (pctEl) pctEl.textContent = `(${pct}%)`;
-                if (bar) bar.style.width = `${pct}%`;
-                return;
+                    container.appendChild(el);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
             }
+        }
 
-            if (!CAPPED_SQUAD_STATS.has(stat)) {
-                if (el) {
+        function closeModal(el) {
+            const modal = el?.closest?.('.modal-overlay') || el?.closest?.('.fixed');
+            if (modal) modal.remove();
+        }
+
+        const CAPPED_SQUAD_STATS = new Set(['hp', 'sanity']);
+        const SQUAD_CAP_MAX = { sanity: 100 };
+        const DEFAULT_PLAYER_MAX_HP = 100;
+
+        function effectivePlayerMaxHp(stats) {
+            const hp = Number(stats?.hp ?? 0);
+            const maxHp = Number(stats?.max_hp ?? DEFAULT_PLAYER_MAX_HP);
+            return Math.max(DEFAULT_PLAYER_MAX_HP, maxHp, hp);
+        }
+        const DASHBOARD_STAT_META = {
+            hp: { text: 'text-red-400', bar: 'bg-red-500' },
+            sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
 ```
 
 ## E. 後端 Python
@@ -1290,7 +1290,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 ## G. 實機仍 fail 條件（Henry）
 
 - Iggy 線、**單人**、`practice_iggy_03_boundary`（140 HP）
-- PA `08a50ee`、`enemy_hp_sync_v3: true`
+- PA `20b5601`、`enemy_hp_sync_v3: true`
 - 戰鬥中敵 HP **顯示**唔更新
 
 ---

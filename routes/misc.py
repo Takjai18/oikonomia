@@ -83,6 +83,8 @@ def api_version():
                 and "appendCacheBust" in template_text,
             "enemy_hp_sync_v5": "animateCombatNumber" in template_text
                 and "combatUiSnapshotKey" in template_text,
+            "enemy_hp_sync_v6": "queueVictoryDuringSettlement" in template_text
+                and "X-Requested-With" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

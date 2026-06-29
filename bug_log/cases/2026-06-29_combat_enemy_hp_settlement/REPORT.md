@@ -304,6 +304,7 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 - `fetchNoCache` / `appendCacheBust`：`/combat/status`、`/status`、`/my_team`
 - **後端** `Cache-Control: no-store` on `/combat/*`、`/status`、`/my_team`
 - **`v5`**：`syncEnemyHpDisplay` 用 `animateCombatNumber`；`combatUiSnapshotKey` 跳過冗餘 poll DOM
+- **`v6`**（Gemini patch）：`queueVictoryDuringSettlement`；結算期 poll **零 DOM 更新**；`lastCombatStatusJson`；`X-Requested-With`；settlement 計時器與 `combatAwaitingSettlementAck` 分離
 - **Mac Chrome 亦重現**（非 Safari 特例）→ 標準 HTTP GET cache + 前端 race
 - Henry 驗證：Chrome DevTools → Network → **Disable cache**；或無痕模式打 140 HP 敵
 
