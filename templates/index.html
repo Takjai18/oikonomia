@@ -1560,7 +1560,7 @@
         let actionModalRolling = false;
         let actionModalRollTimer = null;
         let actionModalPauseTimer = null;
-        let combatPreviewPending = false;
+
 
         const DICE_RESULT_DESCRIPTIONS = {
             0: '失手 (0%)',
@@ -1803,7 +1803,7 @@
         }
 
         function isCombatModalBusy() {
-            return actionModalRolling || actionModalPauseTimer !== null || combatPreviewPending;
+            return actionModalRolling || actionModalPauseTimer !== null;
         }
 
         function resolveAuthoritativeEnemyHp(data) {
@@ -2045,7 +2045,7 @@
             loadCombatStatus(false);
         }
 
-        // combat_flow_v2: 行動→擲骰→(等隊友)→結算畫面→確定→即刻扣血→下一輪
+        // combat_flow_v3: 行動→擲骰→確認→(等隊友)→結算畫面→確定→即刻扣血→下一輪（無預計傷害預覽）
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
@@ -2328,14 +2328,6 @@
             hint.textContent = `使用${info.label} ${info.value}（自動取較高屬性）`;
         }
 
-        function calcClientAttackDamage(multiplier, itemBonus = 0) {
-            const info = describeAttackStatFromUi();
-            const enemyRes = lastCombatStatus?.enemy?.resilience || 0;
-            if (multiplier <= 0) return 0;
-            const raw = ((info.value * 1.5) + COMBAT_ATTACK_BASE_DAMAGE + itemBonus) * multiplier - (enemyRes * 0.8);
-            return Math.max(1, Math.floor(raw));
-        }
-
         function isCombatModalOpen() {
             const modal = document.getElementById('combat-action-modal');
             return modal && !modal.classList.contains('hidden');
@@ -2374,7 +2366,6 @@
             actionModalRolling = false;
             setCombatModalControlsLocked(false);
             showCombatModalPanel('modal-dice-area', true);
-            showCombatModalPanel('modal-preview-area', false);
             showCombatModalPanel('modal-confirm-btn', false);
             const diceValue = document.getElementById('modal-dice-value');
             const diceBox = document.getElementById('modal-dice-box');
@@ -2389,7 +2380,6 @@
                 diceDesc.textContent = '';
                 diceDesc.classList.remove('text-yellow-400', 'font-bold');
             }
-            document.getElementById('preview-warning')?.replaceChildren();
             const confirmBtn = document.getElementById('modal-confirm-btn');
             if (confirmBtn) confirmBtn.disabled = false;
         }
@@ -2477,7 +2467,7 @@
                 finalContainer?.classList.remove('hidden');
 
                 document.getElementById('modal-status-hint').textContent =
-                    `演示擲出 ${result} — ${description}（提交後以系統擲骰為準）`;
+                    `擲出 ${result} — ${description} · 請確認並結束本回合`;
 
                 actionModalRolling = false;
                 setCombatModalControlsLocked(false);
@@ -2490,24 +2480,16 @@
                     el.disabled = !canAct;
                 });
 
+                const revealConfirm = () => showCombatConfirmStep();
                 if (diceCfg.pauseMs > 0) {
                     actionModalPauseTimer = setTimeout(() => {
                         actionModalPauseTimer = null;
-                        fetchAndShowCombatPreview();
+                        revealConfirm();
                     }, diceCfg.pauseMs);
                 } else {
-                    fetchAndShowCombatPreview();
+                    revealConfirm();
                 }
             }, diceCfg.intervalMs);
-        }
-
-        function zooBonusMultiplier(sanity) {
-            const s = parseInt(sanity, 10) || 0;
-            if (s >= 100) return 1.8;
-            if (s >= 90) return 1.5;
-            if (s >= 80) return 1.4;
-            if (s >= 70) return 1.3;
-            return 1;
         }
 
         function parseStatText(id, fallback) {
@@ -2516,185 +2498,10 @@
             return Number.isFinite(n) ? n : (fallback ?? 0);
         }
 
-        function buildClientPreviewFallback(apiError) {
-            const dice = selectedDice ?? 1;
-            let multiplier = COMBAT_DICE_MULTIPLIERS[dice] ?? 1;
-            const me = lastCombatStatus?.my_state || {};
-            const enemy = lastCombatStatus?.enemy || {};
-            const squad = currentSquad || {};
-            const sanity = me.sanity ?? squad.sanity ?? 50;
-
-            if (selectedAction === 'use_zoo') {
-                multiplier *= zooBonusMultiplier(sanity);
-            }
-
-            const myDmg = ['attack', 'attack_physical', 'attack_nonphysical', 'use_zoo'].includes(selectedAction)
-                ? calcClientAttackDamage(multiplier)
-                : 0;
-            const attackInfo = describeAttackStatFromUi();
-            const resilience = me.resilience ?? parseStatText('combat-resilience-value', squad.resilience);
-            const defending = selectedAction === 'defend';
-            let counter = Math.max(0, (enemy.base_damage || 0) - Math.floor(resilience * 0.6));
-            if (defending) counter = Math.max(0, Math.floor(counter * 0.5));
-
-            const risks = [];
-            if (apiError) {
-                risks.push({ level: 'sanity', message: `${apiError}（以下為本地估算，仍可確認提交）` });
-            }
-            const hp = me.hp ?? parseStatText('combat-hp-value', squad.hp);
-            if (counter > 0 && hp - counter < 20) {
-                risks.push({
-                    level: hp - counter <= 0 ? 'critical' : 'hp',
-                    message: hp - counter <= 0
-                        ? '反擊可能令你陷入瀕死或致命！'
-                        : `反擊後生命值約 ${hp - counter}（低於 20）`,
-                });
-            }
-            if (sanity < 20) {
-                risks.push({ level: 'berserk', message: `神智 ${sanity}，暴走風險偏高` });
-            }
-
-            return {
-                action_label: getActionDisplayName(selectedAction),
-                dice_result: dice,
-                attack_stat_label: attackInfo.label,
-                attack_stat_value: attackInfo.value,
-                my_damage_to_enemy: myDmg,
-                ally_damage_to_enemy: 0,
-                total_damage_to_enemy: myDmg,
-                enemy_counter_damage: counter,
-                counter_target_name: me.display_name || squad.display_name || '你',
-                counter_defending: defending,
-                counter_pending: false,
-                phase_resolves_now: true,
-                berserk_risk: sanity < 40,
-                damage_if_normal: myDmg,
-                risks,
-                _fallback: true,
-            };
-        }
-
-        function renderPreviewWarnings(risks) {
-            const container = document.getElementById('preview-warning');
-            if (!container) return;
-            container.innerHTML = '';
-            if (!risks || !risks.length) {
-                container.innerHTML = '<div class="text-zinc-500">暫無額外危險提示</div>';
-                return;
-            }
-            const styles = {
-                critical: 'text-red-400 bg-red-900/30 border border-red-600',
-                hp: 'text-red-300 bg-red-900/20 border border-red-700',
-                sanity: 'text-orange-400 bg-orange-900/30 border border-orange-600',
-                berserk: 'text-orange-300 bg-orange-900/40 border border-orange-500',
-            };
-            risks.forEach(r => {
-                const div = document.createElement('div');
-                div.className = `px-3 py-1.5 rounded-xl ${styles[r.level] || 'bg-zinc-800 text-zinc-300'}`;
-                div.textContent = `⚠️ ${r.message}`;
-                container.appendChild(div);
-            });
-        }
-
-        function showPreviewInModal(preview) {
-            if (!preview) return;
-            const labels = ['失手', '普通', '良好', '爆擊'];
-            const diceLabel = labels[preview.dice_result] ?? '';
-            document.getElementById('modal-preview-summary').textContent =
-                `${preview.action_label || ''} · 估算骰 ${preview.dice_result}（${diceLabel}）`;
-            const estimateNote = preview.preview_note || '實際結果於提交後由系統擲骰決定';
-            document.getElementById('modal-status-hint').textContent =
-                `${estimateNote} · 請確認後結束本回合`;
-            document.getElementById('preview-damage-enemy').textContent = preview.total_damage_to_enemy ?? 0;
-            document.getElementById('preview-damage-player').textContent = preview.enemy_counter_damage ?? 0;
-
-            const myNote = document.getElementById('modal-my-damage-note');
-            if (myNote) {
-                let note = `你造成 ${preview.my_damage_to_enemy ?? 0}`;
-                if (preview.attack_stat_label && preview.attack_stat_value != null) {
-                    note += `（${preview.attack_stat_label} ${preview.attack_stat_value}）`;
-                }
-                if (preview.ally_damage_to_enemy > 0) note += `，隊友已提交 ${preview.ally_damage_to_enemy}`;
-                if (preview.berserk_risk) note += `（正常 ${preview.damage_if_normal ?? 0}；暴走可能 0）`;
-                myNote.textContent = note;
-            }
-
-            const counterNote = document.getElementById('modal-counter-note');
-            if (counterNote) {
-                let note = preview.counter_target_name
-                    ? `反擊目標：${preview.counter_target_name}`
-                    : '預計對我方造成傷害';
-                if (preview.counter_defending) {
-                    const dc = preview.team_defend_count || 1;
-                    note += dc > 1 ? `（${dc} 人為全隊堅守界線，減半）` : '（全隊防禦，減半）';
-                }
-                if (preview.counter_pending) note += ' · 待全隊提交';
-                else if (preview.phase_resolves_now) note += ' · 本回合將結算';
-                counterNote.textContent = note;
-            }
-
-            renderPreviewWarnings(preview.risks);
-            if (COMBAT_DICE_ACTIONS.has(selectedAction)) {
-                showCombatModalPanel('modal-dice-area', false);
-            }
-            showCombatModalPanel('modal-preview-area', true);
+        function showCombatConfirmStep() {
             showCombatModalPanel('modal-confirm-btn', true);
-
             const hint = document.getElementById('combat-submit-hint');
             if (hint) hint.textContent = '請於彈窗內確認並結束本回合';
-        }
-
-        async function fetchAndShowCombatPreview() {
-            combatPreviewPending = true;
-            showCombatModalPanel('modal-preview-area', false);
-            showCombatModalPanel('modal-confirm-btn', false);
-            document.getElementById('modal-status-hint').textContent = '計算戰況預覽中…';
-
-            const combatId = currentCombatId || lastCombatStatus?.combat_id;
-            const payload = {
-                combat_id: combatId,
-                action_type: selectedAction,
-            };
-            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
-                payload.as_protagonist = true;
-            }
-            if (selectedAction === 'use_item' && selectedItemId) {
-                payload.item_id = selectedItemId;
-            }
-
-            let preview = null;
-            let apiError = null;
-            try {
-                const res = await fetch('/combat/preview_action', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                const text = await res.text();
-                let data = null;
-                try {
-                    data = JSON.parse(text);
-                } catch (parseErr) {
-                    apiError = res.status === 404
-                        ? '伺服器尚未更新預覽 API'
-                        : `預覽服務回應異常（HTTP ${res.status}）`;
-                }
-                if (data?.success && data.preview) {
-                    preview = data.preview;
-                } else if (!apiError) {
-                    apiError = data?.error || `無法預覽戰況（HTTP ${res.status}）`;
-                }
-            } catch (e) {
-                apiError = '無法連接預覽服務';
-            } finally {
-                combatPreviewPending = false;
-            }
-
-            if (!preview) {
-                preview = buildClientPreviewFallback(apiError);
-            }
-            showPreviewInModal(preview);
         }
 
         function confirmRound() {
@@ -2744,9 +2551,9 @@
             }
 
             selectedDice = 1;
-            document.getElementById('modal-status-hint').textContent = '本回合戰況預覽';
+            document.getElementById('modal-status-hint').textContent = '請確認並結束本回合';
             showCombatModalPanel('modal-dice-area', false);
-            fetchAndShowCombatPreview();
+            showCombatConfirmStep();
         }
 
         async function loadCombatItems() {
@@ -3499,7 +3306,7 @@
                 else if (actionModalRolling) hintEl.textContent = '系統擲骰中，請稍候…';
                 else if (isCombatModalOpen()) hintEl.textContent = '請於彈窗內確認並結束本回合';
                 else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
-                else hintEl.textContent = '選擇行動後將彈出戰況預覽';
+                else hintEl.textContent = '選擇行動後確認提交';
             }
         }
 
@@ -6842,26 +6649,6 @@
                         擲出：<span id="modal-dice-number" class="text-2xl font-bold text-amber-400"></span>
                     </div>
                     <div id="modal-dice-desc" class="text-xs mt-0.5 text-zinc-400"></div>
-                </div>
-            </div>
-
-            <div id="modal-preview-area" class="hidden px-6 pb-5">
-                <div class="border-t border-zinc-700 pt-4">
-                    <div class="text-sm font-medium text-amber-400 mb-1">本回合預計結果</div>
-                    <div id="modal-preview-summary" class="text-xs text-zinc-400 mb-3"></div>
-                    <div class="grid grid-cols-2 gap-3 mb-3">
-                        <div class="bg-zinc-800 rounded-2xl p-3 text-center">
-                            <div class="text-emerald-400 text-xs">對敵人造成</div>
-                            <div class="text-3xl font-bold text-emerald-400">-<span id="preview-damage-enemy">0</span></div>
-                            <div id="modal-my-damage-note" class="text-[10px] text-zinc-500 mt-1"></div>
-                        </div>
-                        <div class="bg-zinc-800 rounded-2xl p-3 text-center">
-                            <div class="text-red-400 text-xs">敵人反擊</div>
-                            <div class="text-3xl font-bold text-red-400">-<span id="preview-damage-player">0</span></div>
-                            <div id="modal-counter-note" class="text-[10px] text-zinc-500 mt-1"></div>
-                        </div>
-                    </div>
-                    <div id="preview-warning" class="text-xs space-y-1 mb-4"></div>
                 </div>
             </div>
 

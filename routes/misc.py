@@ -89,6 +89,8 @@ def api_version():
             "combat_instant_settlement": "combat_instant_settlement" in template_text,
             "combat_flow_v2": "combat_flow_v2" in template_text
                 and "applyPendingSettlementHp" in template_text,
+            "combat_flow_v3": "combat_flow_v3" in template_text
+                and "showCombatConfirmStep" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,
