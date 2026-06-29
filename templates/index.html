@@ -2163,10 +2163,11 @@
             if (panel) panel.style.opacity = '1';
             if (pendingVictoryAfterSettlement) {
                 const victoryPayload = pendingVictoryAfterSettlement;
+                const combatId = victoryPayload.combat_id || currentCombatId;
                 pendingVictoryAfterSettlement = null;
+                stopCombatPolling();
+                victorySettlementAcknowledgedCombatId = combatId;
                 combatAwaitingSettlementAck = false;
-                victorySettlementAcknowledgedCombatId =
-                    victoryPayload.combat_id || currentCombatId || victorySettlementAcknowledgedCombatId;
                 void finalizeCombatVictoryFromPayload(victoryPayload);
                 return;
             }
@@ -2178,10 +2179,13 @@
             loadCombatStatus(false);
         }
 
-        // combat_flow_v6: v5 + 秒殺必出結算（唔因 phase 重複而跳過 modal）
+        // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
+            const isVictorySettlement = !!pendingVictoryAfterSettlement
+                || !!data?.outcome
+                || shouldFinishCombatVictory(data);
             if (combatFinalizingVictory || victoryFinalizeInProgress) return;
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) return;
@@ -2206,14 +2210,18 @@
             hideCombatModal();
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
+            lockCombatActionsForSettlement();
+            showRoundSettlementModal(data);
             updateCombatUI(data, {
                 damageDelay: 0,
                 skipActionEnable: true,
                 deferEnemyHp: true,
             });
-            lockCombatActionsForSettlement();
-            showRoundSettlementModal(data);
-            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+            if (isVictorySettlement) {
+                stopCombatPolling();
+            } else {
+                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+            }
         }
 
         function victoryPayloadHasSettlement(data) {
@@ -2318,7 +2326,7 @@
             hideCombatModal();
             try {
                 if (data?.log_entries?.length) {
-                    processCombatDamageAnimations(data, 120);
+                    processCombatDamageAnimations(data, 0);
                 }
                 resetCombatEnemyHpTracking(0);
                 updateEnemyCombatStats(

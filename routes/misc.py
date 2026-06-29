@@ -97,6 +97,8 @@ def api_version():
                 and "victorySettlementAcknowledgedCombatId" in template_text,
             "combat_flow_v6": "combat_flow_v6" in template_text
                 and "ensureVictorySettlementPayload" in template_text,
+            "combat_flow_v7": "combat_flow_v7" in template_text
+                and "isVictorySettlement" in template_text,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },
