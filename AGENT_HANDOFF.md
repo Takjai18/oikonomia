@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`3c89f62` · PA：請 `curl /api/version` 核對
+> 最後更新：2026-06-30 · local/GitHub：`cc5671d` · PA：請 `curl /api/version` 核對
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -23,7 +23,7 @@
 - 活躍 case 見 **`bug_log/INDEX.md`**
 - 與 `UPDATE_LOG.md`（短）、`decisions_log.md`（決策）分工
 
-**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **reopened**（PA `3c89f62` 已 deploy，Henry 仍失敗；見 REPORT §10 poll `outcome` 捷徑）
+**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **fix_in_progress**（GitHub `cc5671d`；PA 待 deploy；Henry 實機驗證中 — 見 REPORT + 下方 Combat UX 一節）
 
 ---
 
@@ -31,9 +31,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `3c89f62` | ✅ |
-| **GitHub `main`** | `3c89f62` | ✅ |
-| **PythonAnywhere** | 請 curl 核對 | ⏳ 部署後應為 `3c89f62` |
+| **Local** | `cc5671d` | ✅ |
+| **GitHub `main`** | `cc5671d` | ✅ |
+| **PythonAnywhere** | 請 curl 核對 | ⏳ 部署後應為 `cc5671d` |
 
 ```bash
 # 本地
@@ -48,7 +48,8 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ### 本地測試
 
 ```bash
-bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（154+ 項）
+bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（188+ 項）
+./venv/bin/python3 scripts/test_combat_flow.py           # 戰鬥 smoke（含 settlement breakdown）
 ./venv/bin/python3 scripts/test_encounter_cache.py       # 預期：3 通過 / 0 失敗
 ```
 
@@ -68,7 +69,7 @@ bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（
 | 正式環境 | https://takjai.pythonanywhere.com |
 | GM 後台 | https://takjai.pythonanywhere.com/gm （PIN: `gm2026` 或 env `GM_PIN`；session 8 小時過期） |
 | 本地開發 | `source venv/bin/activate && python3 app.py` → http://localhost:5001 |
-| 測試帳號 | `test_squad_01`（開發／實機測試用） |
+| 測試帳號 | `test_squad_01`（開發）；**Henry** `PLAYER-75406`（Iggy solo 實機主測） |
 
 **主題**：Summer Camp 2026 ARG（Oikonomia 青年營會），Iggy / Marah 雙主角路線。
 
@@ -121,9 +122,54 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ---
 
-## 本輪已完成（2026-06-29 最新）
+## 本輪已完成（2026-06-30 最新 — BUG-2026-001 Combat UX）
 
-### P4 生產 Encounter JSON（本輪）
+### 戰鬥流程重構（`387c89b` → `cc5671d`）
+
+| Commit | Marker | 摘要 |
+|--------|--------|------|
+| `66f70c6` | `enemy_hp_sync_v7` | Practice fast settlement；poll HP 同步 |
+| `d061aa2` | `combat_instant_settlement` | 移除人工 delay（modal／HP tween／擲骰 pause） |
+| `387c89b` | `combat_flow_v2` | 精簡結算 modal；按「確定」先扣主畫面 HP |
+| `03cf917` | `combat_flow_v3` | **取消**「本回合預計傷害」預覽（唔再 call `preview_action`） |
+| `46cc3a5` | `combat_flow_v4` | 勝利不重複結算；已確認回合可進下一輪 |
+| `c621354` | `settlement_breakdown_v1` | 結算畫面：Player／主角／隊友 輸出＋承受＋敵人總計 |
+| `cc5671d` | `combat_flow_v5` | 按「確定，查看勝利」後唔再彈 1～2 次結算（victory flow lock） |
+
+**現行玩家流程（`combat_flow_v5`）**：
+
+```
+選行動 → 擲骰（攻擊/Zoo）→ 確認並結束本回合 → (等隊友) → 傷害結算 modal → 確定 → 主畫面扣血 → 下一輪
+擊殺回合 → 結算 modal（確定，查看勝利）→ 勝利畫面（只應出現一次結算）
+```
+
+**關鍵前端符號**（`templates/index.html`）：
+
+| 符號 | 用途 |
+|------|------|
+| `showCombatConfirmStep()` | 擲骰後直接出確認掣（無預計傷害） |
+| `showFullRoundSettlement()` | 顯示結算 modal；`deferEnemyHp` 主畫面暫唔扣血 |
+| `applyPendingSettlementHp()` | 按「確定」後即刻扣血 |
+| `renderSettlementBreakdown()` | Player／主角／隊友／敵人 分類傷害 |
+| `isVictoryFlowLocked()` | 勝利確認後鎖，防 poll 重彈結算 |
+| `victorySettlementAcknowledgedCombatId` | 已確認勝利結算嘅 combat_id |
+| `resetCombatSessionState()` | 新 encounter／離開戰鬥時清狀態 |
+
+**後端** `models/combat.py` → `_round_settlement_from_logs()` 回傳 `breakdown.dealt/taken/enemy` + `player_hits[].role`。
+
+**Henry 實機待驗**（2026-06-30 回報）：
+
+| 場景 | 預期 |
+|------|------|
+| `practice_iggy_04_marathon` 長戰打到贏 | 結算只 1 次 → 勝利 |
+| `practice_iggy_03_boundary` 多回合 | R2 攻擊有反應；再開同一 encounter 正常 |
+| 勝利後 | **唔再** 彈 1～2 次傷害結算 |
+
+---
+
+## 早前已完成（2026-06-29）
+
+### P4 生產 Encounter JSON
 
 | 檔案 | 路線 | Stage | 說明 |
 |------|------|-------|------|
@@ -226,8 +272,8 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 | 功能 | 說明 |
 |------|------|
-| **本回合戰況預覽 Modal** | `#combat-action-modal` in `templates/index.html` |
-| **`POST /combat/preview_action`** | 伺服器預覽 |
+| **戰鬥行動 Modal** | `#combat-action-modal` — 擲骰 + 確認（**已移除**預計傷害預覽，`combat_flow_v3`） |
+| **`POST /combat/preview_action`** | 後端仍存在；前端戰鬥流程**唔再呼叫** |
 | **統一攻擊** | `max(力量, 智力)` |
 | **傷害公式** | `(攻擊×1.5 + 10) × 骰倍率 − 敵韌性×0.8`，最低 1 |
 | **玩家卡片** | HP/神智 有比例 + 條；力量/智力/韌性 只顯示數值 |
@@ -279,9 +325,10 @@ GM stat：>100 唔被全營事件/item cap 壓返 100
 ### 前端戰鬥 UI（`templates/index.html`）
 
 - `#combat-screen` / `#player-panel` / `#enemy-panel`
-- `combat-hp-value`、`combat-hp-pct`、`updateCombatPlayerStats`、`CAPPED_SQUAD_STATS`
+- `#combat-round-settlement-modal` — 回合傷害結算（`settlement_breakdown_v1`）
+- `combat-hp-value`、`syncEnemyHpDisplay`、`applyPendingSettlementHp`
 - `setStatBar()` — Dashboard + 戰鬥共用
-- 輪詢 ~8 秒
+- 輪詢：正常 3s／等待隊友 4s／resolving 1s（`COMBAT_POLL_INTERVAL_*`）
 
 ---
 
@@ -331,6 +378,10 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ### `/api/version` 重要 markers
 
 `combat_system`, `server_combat_dice`, `defend_team_buff`, `combat_round_continue`, `player_max_hp`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `upload_path_hardened`, `encounter_logs`, `qr_signed_v2`
+
+**BUG-2026-001 戰鬥 UX（2026-06-30 起）** — deploy 後應全為 `true`：
+
+`enemy_hp_sync_v7`, `combat_instant_settlement`, `combat_flow_v2`, `combat_flow_v3`, `combat_flow_v4`, `combat_flow_v5`, `settlement_breakdown_v1`
 
 Reload Web worker 後 markers 先會更新（`version` 可能已新但 markers 仍舊）。
 
@@ -401,25 +452,30 @@ python3 app.py                    # → :5001
 | `utils/helpers.py` → `clamped_stat_delta_expr()` | GM-boosted stat cap 邏輯 |
 | `templates/index.html` → `updateCombatPlayerStats()` | 戰鬥玩家卡片 UI |
 | `templates/index.html` → `syncStoryViewsFromServer()` | 劇情已讀 server 同步 |
+| `templates/index.html` → `finishCombatVictoryFromPayload()` | 勝利 + 擊殺結算路由 |
+| `templates/index.html` → `isVictoryFlowLocked()` | 勝利後防重複結算 |
+| `models/combat.py` → `_round_settlement_from_logs()` | 回合 settlement + `breakdown` |
 
 ---
 
 ## 近期 commit（參考）
 
 ```
-3cdb207 fix(security): address Gemini review — combat locks, QR, GM auth
-6f81430 fix(stats): preserve GM-boosted values above 100 cap
-da1f6e6 feat(log): record encounter outcomes and rewards in journal
-b6b91c3 feat(ui): confirm modal + Phase 5 protagonist player control
-4971fc9 fix(encounter): invalidate JSON cache on file mtime change
-f6c9701 feat(ending): Phase 4 trauma bad ending judgment and UI
-dba1548 feat(combat): Defend grants team-wide counter-attack damage reduction
-fc53d73 fix: combat victory crash + stable smoke test + PA deploy checks
+cc5671d combat_flow_v5: fix duplicate settlement after victory confirm
+c621354 settlement_breakdown_v1: role-based damage detail in round modal
+46cc3a5 combat_flow_v4: fix duplicate victory settlement and stuck next round
+03cf917 combat_flow_v3: remove redundant round damage preview step
+387c89b combat_flow_v2: slim settlement, HP on confirm only
+d061aa2 combat_instant_settlement: remove artificial animation delays
+66f70c6 enemy_hp_sync_v7: practice fast settlement + instant HP sync
+3cdb207 fix(security): Gemini review — combat locks, QR, GM auth
 ```
 
 ---
 
 ## 新 Tab 開場白（複製貼上）
+
+### 通用模板
 
 ```
 請讀 @AGENT_HANDOFF.md，繼續開發 Oikonomia（/Users/mingtakyau/Documents/oikonomia）。
@@ -429,16 +485,39 @@ fc53d73 fix: combat victory crash + stable smoke test + PA deploy checks
 2. 確保 GitHub 同 PythonAnywhere 版本同 local 一致
 
 開工前先核對版本：
-- local: git rev-parse --short HEAD（應為 4c14e8d）
-- PA: curl https://takjai.pythonanywhere.com/api/version
+- local: cd /Users/mingtakyau/Documents/oikonomia && git rev-parse --short HEAD（應為 cc5671d）
+- PA: curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
+  確認 version=cc5671d 且 markers 含 combat_flow_v5、settlement_breakdown_v1
 
-PA 若 500 或 version 落後：請我跑 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh + Web Reload，你再 curl 確認。
+PA 若落後：我會喺 PA Bash 跑 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh + Web Reload，你再 curl 確認。
 
 然後做我指定嘅任務：[在這裡寫你的任務]
 ```
 
-若不確定下一個任務，可先：
+### 建議：BUG-2026-001 Henry 實機收尾（2026-06-30）
 
 ```
-…然後做 P0：curl 確認 /api/version 為 3cdb207，跑 test_combat_flow.py（66/66），再實機測試全營事件唔會壓 GM stat。
+請讀 @AGENT_HANDOFF.md 同 bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md。
+
+背景：BUG-2026-001 戰鬥 HP／結算 UX。GitHub main 已 cc5671d（combat_flow_v5 + settlement_breakdown_v1）。
+主測：Henry（PLAYER-75406，Iggy solo）。
+
+你先做：
+1. curl /api/version — 若 PA 唔係 cc5671d，請我 deploy 後再驗
+2. bash scripts/pre_deploy_checks.sh
+
+Henry 待驗清單（實機 Safari，硬重新整理）：
+- practice_iggy_04_marathon：打到贏 → 結算 modal 只 1 次 → 按「確定，查看勝利」→ 直接勝利（唔再彈結算）
+- practice_iggy_03_boundary：R1 結算 → 確定 → R2 攻擊有反應；打完再開同一場正常
+- 結算 modal 有 Player／主角／隊友 輸出＋承受＋敵人總計
+
+若仍有 bug：查 templates/index.html 嘅 isVictoryFlowLocked、finishCombatVictoryFromPayload、loadCombatStatus poll 路徑；修完 push + 請我 deploy。
+
+我嘅回報／新任務：[貼 Henry 測試結果或下一項需求]
+```
+
+### 若不確定任務（健康檢查）
+
+```
+…然後做 P0：curl 確認 PA version=cc5671d、markers.combat_flow_v5=true；跑 pre_deploy_checks.sh 全綠；簡述 BUG-2026-001 現狀同下一步。
 ```
