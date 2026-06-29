@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, session
 
 from models.combat import get_active_combat_for_team, get_combat_by_squad
 from models.encounter import encounter_route_matches, load_all_encounters, load_encounter
-from models.encounter_outcomes import encounter_already_completed
+from models.encounter_outcomes import encounter_already_completed, get_team_encounter_logs
 from models.squad import get_squad
 from services.story import count_team_distinct_tasks, resolve_story_stage
 
@@ -80,6 +80,30 @@ def get_encounter_api(encounter_id):
             "reflection_prompt": encounter.get("reflection_prompt"),
             "completed": encounter_already_completed(team_id, encounter_id) if team_id else False,
         },
+    })
+
+
+@encounters_bp.route("/encounter_logs")
+def encounter_logs_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+
+    team_id = squad.get("team_id")
+    if not team_id:
+        return jsonify({
+            "success": True,
+            "has_team": False,
+            "logs": [],
+        })
+
+    return jsonify({
+        "success": True,
+        "has_team": True,
+        "logs": get_team_encounter_logs(team_id),
     })
 
 

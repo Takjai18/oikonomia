@@ -73,6 +73,8 @@ def api_version():
                 and "showConfirmModal" in template_text,
             "protagonist_player_control": "protagonist-control-bar" in template_text
                 and "controllingProtagonist" in template_text,
+            "encounter_logs": "encounter-logs-list" in template_text
+                and "loadEncounterLogs" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

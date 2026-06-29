@@ -390,6 +390,18 @@ def main():
     ok("trauma_ending marker", ver.get("markers", {}).get("trauma_ending") is True)
     ok("confirm_modal marker", ver.get("markers", {}).get("confirm_modal") is True)
     ok("protagonist_player_control marker", ver.get("markers", {}).get("protagonist_player_control") is True)
+    ok("encounter_logs marker", ver.get("markers", {}).get("encounter_logs") is True)
+
+    r = client.get("/encounter_logs")
+    enc_logs = r.get_json() or {}
+    ok("encounter_logs API", enc_logs.get("success") and enc_logs.get("has_team"), str(enc_logs)[:200])
+    logs = enc_logs.get("logs") or []
+    ok("encounter_logs has entries", len(logs) >= 1, f"count={len(logs)}")
+    if logs:
+        latest = logs[0]
+        ok("encounter_log has outcome", bool(latest.get("outcome_label")), str(latest)[:200])
+        ok("encounter_log has reward_lines", isinstance(latest.get("reward_lines"), list), str(latest)[:200])
+
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

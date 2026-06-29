@@ -492,6 +492,7 @@ def init_db():
         outcome TEXT NOT NULL,
         unlocks TEXT DEFAULT '[]',
         narrative TEXT,
+        rewards TEXT,
         completed_at TEXT,
         UNIQUE(team_id, encounter_id)
     )''')
@@ -781,9 +782,18 @@ def migrate_db():
             outcome TEXT NOT NULL,
             unlocks TEXT DEFAULT '[]',
             narrative TEXT,
+            rewards TEXT,
             completed_at TEXT,
             UNIQUE(team_id, encounter_id)
         )''')
+    else:
+        c.execute("PRAGMA table_info(encounter_completions)")
+        ec_cols = {row[1] for row in c.fetchall()}
+        if "rewards" not in ec_cols:
+            try:
+                c.execute("ALTER TABLE encounter_completions ADD COLUMN rewards TEXT")
+            except sqlite3.OperationalError:
+                pass
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='combats'")
     if not c.fetchone():
