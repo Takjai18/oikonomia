@@ -1515,16 +1515,32 @@ def _round_settlement_from_logs(logs):
             "damage": dmg,
         })
 
+    summary_hp = None
+    if summary_idx is not None:
+        summary_msg = entries[summary_idx].get("message") or ""
+        hp_match = re.search(r"剩餘\s*HP\s*(\d+)", summary_msg)
+        if hp_match:
+            summary_hp = int(hp_match.group(1))
+
     return {
         "team_damage_dealt": team_dealt,
         "enemy_damage_dealt": enemy_dealt,
         "counter_hits": counter_hits,
         "player_hits": player_hits,
+        "enemy_hp_after": summary_hp,
     }
 
 
-def _attach_round_settlement(payload):
-    settlement = _round_settlement_from_logs(payload.get("log_entries"))
+def _attach_round_settlement(payload, combat=None):
+    logs = (combat or {}).get("logs") or payload.get("log_entries")
+    settlement = _round_settlement_from_logs(logs)
+    enemy_hp = (payload.get("enemy") or {}).get("hp")
+    if enemy_hp is None and combat is not None and combat.get("enemy_hp") is not None:
+        enemy_hp = int(combat.get("enemy_hp"))
+    if enemy_hp is not None:
+        settlement["enemy_hp_after"] = int(enemy_hp)
+    elif settlement.get("enemy_hp_after") is None:
+        settlement["enemy_hp_after"] = _enemy_hp_from_logs(logs)
     payload["round_settlement"] = settlement
     payload["round_enemy_damage"] = settlement.get("team_damage_dealt") or 0
     payload["round_player_damage"] = settlement.get("enemy_damage_dealt") or 0
@@ -1532,11 +1548,12 @@ def _attach_round_settlement(payload):
 
 
 def _build_round_resolved_response(combat, encounter, squad_id):
+    combat = reconcile_enemy_hp(combat, persist=True) if combat else combat
     payload = build_combat_status_response(combat, encounter, squad_id)
     payload["status"] = "round_resolved"
     payload["round_resolved"] = True
     payload["active"] = combat.get("status") not in ("ended", "precheck")
-    _attach_round_settlement(payload)
+    _attach_round_settlement(payload, combat=combat)
     payload["full_preview"] = _build_full_preview_from_status(payload)
     return payload
 

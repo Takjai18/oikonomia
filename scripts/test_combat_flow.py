@@ -650,6 +650,45 @@ def test_encounter_list_hides_test_for_players(client, team_id):
     ok("encounter list has progress hint", bool(data.get("progress_hint")), data.get("progress_hint"))
 
 
+def test_practice_boundary_settlement_enemy_hp(client, team_id):
+    """Round settlement must include enemy_hp_after matching DB after damage."""
+    from models.protagonist import update_protagonist_state
+
+    update_protagonist_state(team_id, "iggy", is_active=0)
+    enc_id = "practice_iggy_03_boundary"
+    teardown_test_combat(team_id, enc_id)
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    combat_id = (r.get_json() or {}).get("combat_id")
+    ok("boundary hp test: start", combat_id, str(r.get_json())[:120])
+    start_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or 0)
+
+    with patch("routes.combat.roll_combat_dice", return_value=1):
+        d = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        ).get_json() or {}
+    if d.get("outcome"):
+        ok("boundary hp test: skip one-shot", True, "victory in one round")
+        teardown_test_combat(team_id, enc_id)
+        return
+
+    settlement = d.get("round_settlement") or {}
+    payload_hp = int((d.get("enemy") or {}).get("hp") or -1)
+    after = settlement.get("enemy_hp_after")
+    db_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or -1)
+    ok("boundary hp test: team dealt damage", int(settlement.get("team_damage_dealt") or 0) > 0, str(settlement))
+    ok("boundary hp test: enemy_hp_after present", after is not None, str(settlement))
+    ok("boundary hp test: hp dropped", payload_hp < start_hp, f"{start_hp}->{payload_hp}")
+    ok("boundary hp test: after matches payload", int(after) == payload_hp, f"{after} vs {payload_hp}")
+    ok("boundary hp test: after matches db", int(after) == db_hp, f"{after} vs db {db_hp}")
+    teardown_test_combat(team_id, enc_id)
+
+
 def test_practice_encounter_replayable(client, team_id):
     """Practice fights can be started again after victory without new player."""
     from models.encounter import load_encounter
@@ -719,6 +758,7 @@ def main():
 
     test_encounter_list_hides_test_for_players(client, team_id)
     test_practice_encounter_replayable(client, team_id)
+    test_practice_boundary_settlement_enemy_hp(client, team_id)
 
     # --- 玩家 2：加入隊伍 ---
     client2 = oikonomia.app.test_client()

@@ -1563,6 +1563,7 @@
         let actionModalRolling = false;
         let actionModalRollTimer = null;
         let actionModalPauseTimer = null;
+        let combatPreviewPending = false;
 
         const DICE_RESULT_DESCRIPTIONS = {
             0: '失手 (0%)',
@@ -1777,12 +1778,58 @@
         }
 
         function isCombatModalBusy() {
-            return actionModalRolling || actionModalPauseTimer !== null;
+            return actionModalRolling || actionModalPauseTimer !== null || combatPreviewPending;
+        }
+
+        function resolveAuthoritativeEnemyHp(data) {
+            if (!data) return null;
+            const settlement = getRoundSettlement(data);
+            const fromSettlement = Number(settlement.enemy_hp_after);
+            if (Number.isFinite(fromSettlement)) return fromSettlement;
+            const fromEnemy = Number(data.enemy?.hp);
+            if (Number.isFinite(fromEnemy)) return fromEnemy;
+            const fromLog = parseEnemyRemainingHpFromStatus(data);
+            if (fromLog != null) return fromLog;
+            return null;
+        }
+
+        function syncEnemyHpDisplay(data, enemyOverride = null) {
+            const ctx = enemyOverride
+                ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
+                : data;
+            const hp = resolveAuthoritativeEnemyHp(ctx);
+            if (!Number.isFinite(hp)) return;
+            const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
+            const prevHp = Number.isFinite(lastAnimatedEnemyHp)
+                ? lastAnimatedEnemyHp
+                : resolveAuthoritativeEnemyHp(lastCombatStatus);
+            resetCombatEnemyHpTracking(hp);
+            const fmt = (n) => Number(n).toLocaleString('zh-Hant');
+            safeSetText('enemy-hp-current', fmt(hp));
+            safeSetText('enemy-stat-hp', fmt(hp));
+            safeSetText('enemy-hp-max', fmt(maxHp));
+            lastAnimatedEnemyHp = hp;
+            const bar = document.getElementById('enemy-hp-bar');
+            if (bar) {
+                bar.style.width = `${Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)))}%`;
+                if (Number.isFinite(prevHp) && hp < prevHp) {
+                    flashEnemyHpBar();
+                }
+            }
+            const roundDmgEl = document.getElementById('enemy-round-damage');
+            if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
+                const delta = prevHp - hp;
+                roundDmgEl.textContent = `敵人剩餘 ${fmt(hp)}（本回合 -${fmt(delta)}）`;
+                setVisible(roundDmgEl, true);
+            }
         }
 
         function applySettlementEnemyHp(data) {
             if (!data?.enemy) return data;
-            const remaining = parseEnemyRemainingHpFromStatus(data);
+            const settlement = getRoundSettlement(data);
+            const remaining = Number.isFinite(Number(settlement.enemy_hp_after))
+                ? Number(settlement.enemy_hp_after)
+                : parseEnemyRemainingHpFromStatus(data);
             if (remaining == null) return data;
             const current = Number(data.enemy.hp);
             if (Number.isFinite(current) && current <= remaining) return data;
@@ -1825,11 +1872,17 @@
                     }
                 }
             }
+            let enemyHpAfter = null;
+            if (summaryIdx >= 0) {
+                const hm = (entries[summaryIdx].message || '').match(/剩餘\s*HP\s*(\d+)/);
+                if (hm) enemyHpAfter = parseInt(hm[1], 10);
+            }
             return {
                 team_damage_dealt: teamDealt,
                 enemy_damage_dealt: enemyDealt,
                 player_hits: playerHits,
                 counter_hits: counterHits,
+                enemy_hp_after: enemyHpAfter,
             };
         }
 
@@ -1983,6 +2036,7 @@
             hideCombatModal();
             processCombatDamageAnimations(data, 120);
             updateCombatUI(data, { damageDelay: 200, skipActionEnable: true });
+            syncEnemyHpDisplay(data);
             lockCombatActionsForSettlement();
             const settlement = getRoundSettlement(data);
             const teamDealt = Number(settlement.team_damage_dealt) || 0;
@@ -2544,6 +2598,7 @@
         }
 
         async function fetchAndShowCombatPreview() {
+            combatPreviewPending = true;
             showCombatModalPanel('modal-preview-area', false);
             showCombatModalPanel('modal-confirm-btn', false);
             document.getElementById('modal-status-hint').textContent = '計算戰況預覽中…';
@@ -2585,6 +2640,8 @@
                 }
             } catch (e) {
                 apiError = '無法連接預覽服務';
+            } finally {
+                combatPreviewPending = false;
             }
 
             if (!preview) {
@@ -4441,38 +4498,8 @@
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            const enemyHpRaw = enemy.hp;
-            let hp = enemyHpRaw != null ? Number(enemyHpRaw) : null;
-            const maxHp = enemy.max_hp || enemy.hp || 1;
-            const logHp = parseEnemyRemainingHpFromStatus(lastCombatStatus || {});
-            if (logHp != null && (!Number.isFinite(hp) || hp > logHp)) {
-                hp = logHp;
-            }
-            if (!Number.isFinite(hp)) {
-                hp = logHp != null ? logHp : 0;
-            }
-            const rawStatus = lastCombatStatus?.status;
-            if (rawStatus === 'resolving' && combatEnemyHpSeen !== null) {
-                hp = combatEnemyHpSeen;
-            } else if (combatEnemyHpSeen !== null && hp > combatEnemyHpSeen) {
-                hp = combatEnemyHpSeen;
-            } else if (currentCombatId) {
-                combatEnemyHpSeen = hp;
-            }
-            const prevDisplayed = parseLocaleInt(document.getElementById('enemy-hp-current')?.textContent);
-            const fromHp = lastAnimatedEnemyHp ?? (
-                Number.isFinite(prevDisplayed) ? prevDisplayed : (combatEnemyHpSeen ?? hp)
-            );
-            const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
-            animateCombatNumber('enemy-hp-current', fromHp, hp, 420, fmtHp, (v) => {
-                lastAnimatedEnemyHp = v;
-            });
-            safeSetText('enemy-hp-max', fmtHp(maxHp));
-            safeSetText('enemy-stat-hp', fmtHp(hp));
-            safeSetText('enemy-stat-sanity', enemy.sanity);
-            safeSetText('enemy-stat-power', enemy.power);
-            safeSetText('enemy-stat-intellect', enemy.intellect);
-            safeSetText('enemy-stat-resilience', enemy.resilience);
+            syncEnemyHpDisplay(lastCombatStatus, enemy);
+            const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
             const hpHintEl = document.getElementById('enemy-hp-hint');
             if (hpHintEl) {
                 if (maxHp >= 500) {
@@ -4483,15 +4510,10 @@
                     setVisible(hpHintEl, false);
                 }
             }
-            const enemyHpBar = document.getElementById('enemy-hp-bar');
-            const prevEnemyHp = lastCombatStatus?.enemy?.hp;
-            if (enemyHpBar) {
-                enemyHpBar.style.width =
-                    `${Math.max(0, Math.min(100, Math.round((hp || 0) / maxHp * 100)))}%`;
-                if (prevEnemyHp != null && hp != null && hp < prevEnemyHp) {
-                    flashEnemyHpBar();
-                }
-            }
+            safeSetText('enemy-stat-sanity', enemy.sanity);
+            safeSetText('enemy-stat-power', enemy.power);
+            safeSetText('enemy-stat-intellect', enemy.intellect);
+            safeSetText('enemy-stat-resilience', enemy.resilience);
         }
 
         function updateProtagonistControlUi() {

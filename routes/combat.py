@@ -231,7 +231,7 @@ def combat_status_api():
     payload = build_combat_status_response(
         combat, encounter, session["squad_id"], participants=participants,
     )
-    _attach_round_settlement(payload)
+    _attach_round_settlement(payload, combat=combat)
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     payload["in_precheck"] = combat.get("status") == "precheck"
     if combat.get("status") == "resolving":
