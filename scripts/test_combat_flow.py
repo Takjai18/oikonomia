@@ -266,6 +266,67 @@ def test_defend_team_buff_integration(client, client2, leader_id, member_id):
     )
 
 
+def test_enemy_hp_updates_after_round(client, client2, team_id):
+    """Round resolve must persist enemy HP; round_resolved payload must reflect damage."""
+    from models.protagonist import update_protagonist_state
+
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("enemy hp test: start combat", start.get("success") and combat_id, str(start))
+
+    combat = get_combat(combat_id) if combat_id else None
+    start_hp = int((combat or {}).get("enemy_hp") or 0)
+    ok("enemy hp test: initial hp", start_hp > 0, str(start_hp))
+
+    r1 = client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack"},
+        content_type="application/json",
+    )
+    ok(
+        "enemy hp test: leader submits",
+        (r1.get_json() or {}).get("status") == "waiting_for_teammates",
+        str(r1.get_json())[:200],
+    )
+
+    with patch("routes.combat.roll_combat_dice", return_value=3):
+        r2 = client2.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        )
+    phase = r2.get_json() or {}
+    resolved = bool(
+        phase.get("round_resolved")
+        or phase.get("status") == "round_resolved"
+        or phase.get("outcome") == "victory"
+    )
+    ok("enemy hp test: round resolves", resolved, str(phase)[:200])
+
+    db_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or start_hp)
+    if phase.get("outcome") == "victory":
+        ok("enemy hp test: victory zeroes enemy hp", db_hp == 0, f"db={db_hp}")
+    else:
+        payload_hp = int((phase.get("enemy") or {}).get("hp") or start_hp)
+        ok(
+            "enemy hp test: payload hp dropped",
+            payload_hp < start_hp,
+            f"{start_hp}->{payload_hp}",
+        )
+        ok(
+            "enemy hp test: db hp matches payload",
+            db_hp == payload_hp,
+            f"db={db_hp}, payload={payload_hp}",
+        )
+
+
 def fight_until_victory(client, client2, combat_id):
     """
     Both players attack each player_phase until victory or max rounds.
@@ -354,6 +415,7 @@ def main():
     test_defend_team_buff_helpers()
     test_trauma_ending_thresholds()
     test_encounter_catalog()
+    test_enemy_hp_updates_after_round(client, client2, team_id)
 
     # --- 開始 encounter（max_hp 測試會改 TestLeader stats，先跑主線）---
     r = client.post(

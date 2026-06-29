@@ -1466,6 +1466,7 @@
         let combatSubmittedPhase = 0;
         let lastShownSettlementPhase = 0;
         let lastCombatStatus = null;
+        let combatEnemyHpSeen = null;
 
         /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
         function effectiveCombatStatus(data) {
@@ -2297,6 +2298,7 @@
             stopCombatPolling();
             lastShownSettlementPhase = 0;
             combatWaitingForRound = false;
+            resetCombatEnemyHpTracking(null);
             setVisible(document.getElementById('combat-lobby'), true);
             setVisible(document.getElementById('combat-screen'), false);
             await ensureCurrentSquadProfile();
@@ -2658,6 +2660,7 @@
             stopCombatPolling();
             lastShownSettlementPhase = 0;
             combatWaitingForRound = false;
+            resetCombatEnemyHpTracking(null);
             controllingProtagonist = false;
             setVisible(document.getElementById('combat-screen'), false);
             setVisible(document.getElementById('combat-near-death-overlay'), false);
@@ -2952,6 +2955,13 @@
                 if (data.log_entries?.length) {
                     processCombatDamageAnimations(data, 200);
                 }
+                if (data.outcome === 'victory') {
+                    resetCombatEnemyHpTracking(0);
+                    updateEnemyCombatStats(
+                        { ...(lastCombatStatus?.enemy || {}), hp: 0 },
+                        lastCombatStatus?.enemy_description || '',
+                    );
+                }
                 showCombatResult(data);
                 const statusRes = await fetch('/status', { credentials: 'same-origin' });
                 updateDashboard(await statusRes.json());
@@ -2973,8 +2983,10 @@
             }
 
             if (data.status === 'round_resolved' || data.round_resolved) {
+                if (data.enemy?.hp != null) {
+                    resetCombatEnemyHpTracking(data.enemy.hp);
+                }
                 handleCombatRoundResolved({ ...data, active: true });
-                setTimeout(() => loadCombatStatus(false), 400);
                 return;
             }
 
@@ -3876,12 +3888,30 @@
             safeSetText('combat-m-resilience', stats.resilience);
         }
 
+        function resetCombatEnemyHpTracking(enemyHp = null) {
+            combatEnemyHpSeen = enemyHp;
+        }
+
         function updateEnemyCombatStats(enemy, description) {
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            const hp = enemy.hp ?? 0;
+            let hp = enemy.hp ?? 0;
             const maxHp = enemy.max_hp || enemy.hp || 1;
+            const status = effectiveCombatStatus(lastCombatStatus);
+            if (
+                currentCombatId
+                && combatEnemyHpSeen !== null
+                && hp > combatEnemyHpSeen
+                && status !== 'ended'
+                && !lastCombatStatus?.outcome
+            ) {
+                hp = combatEnemyHpSeen;
+            } else if (currentCombatId) {
+                combatEnemyHpSeen = combatEnemyHpSeen === null
+                    ? hp
+                    : Math.min(combatEnemyHpSeen, hp);
+            }
             safeSetText('enemy-hp-current', hp);
             safeSetText('enemy-hp-max', maxHp);
             safeSetText('enemy-stat-hp', hp);

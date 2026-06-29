@@ -3,6 +3,7 @@ import json
 import math
 import random
 import sqlite3
+import time
 from datetime import datetime, timedelta
 
 from models.settings import settings
@@ -594,6 +595,25 @@ def _release_player_phase_resolution(combat_id):
             (combat_id, COMBAT_STATUS_RESOLVING),
         )
 
+
+def _wait_for_resolution_complete(combat_id, max_wait=6.0):
+    """Wait for another worker to finish resolve; avoids stale enemy HP snapshots."""
+    deadline = time.time() + max_wait
+    last = None
+    while time.time() < deadline:
+        combat = get_combat(combat_id)
+        if not combat:
+            return None, None
+        last = combat
+        status = combat.get("status")
+        if status == "ended":
+            return combat, combat.get("winner")
+        if status not in (COMBAT_STATUS_RESOLVING, "enemy_phase"):
+            return combat, None
+        time.sleep(0.05)
+    return last, None
+
+
 def get_lowest_resilience_player(participants):
     best = None
     best_res = 999
@@ -625,8 +645,8 @@ def resolve_player_phase(combat_id):
         combat = get_combat(combat_id)
         if not combat:
             return None, None
-        if combat.get("status") == COMBAT_STATUS_RESOLVING:
-            return combat, None
+        if combat.get("status") in (COMBAT_STATUS_RESOLVING, "enemy_phase"):
+            return _wait_for_resolution_complete(combat_id)
         if combat.get("status") == "ended":
             return combat, combat.get("winner")
         return combat, None
@@ -641,6 +661,7 @@ def resolve_player_phase(combat_id):
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != COMBAT_STATUS_RESOLVING:
+        _release_player_phase_resolution(combat_id)
         return combat, None
 
     encounter = load_encounter(combat["encounter_id"])
