@@ -582,6 +582,15 @@ def migrate_db():
                 c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
             except sqlite3.OperationalError:
                 pass
+    if "max_hp" not in cols:
+        try:
+            c.execute("ALTER TABLE squads ADD COLUMN max_hp INTEGER DEFAULT 100")
+            c.execute(
+                "UPDATE squads SET max_hp = MAX(COALESCE(hp, 100), 100) "
+                "WHERE max_hp IS NULL OR max_hp < 100"
+            )
+        except sqlite3.OperationalError:
+            pass
     if "stats_allocated" not in cols:
         try:
             c.execute("ALTER TABLE squads ADD COLUMN stats_allocated INTEGER DEFAULT 0")

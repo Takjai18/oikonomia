@@ -2144,6 +2144,7 @@
                 intellect: combatStatValue(ms.intellect, member?.intellect, squad.intellect),
                 resilience: combatStatValue(ms.resilience, member?.resilience, squad.resilience),
                 near_death_until: ms.near_death_until ?? member?.near_death_until ?? squad.near_death_until,
+                max_hp: combatStatValue(ms.max_hp, member?.max_hp, squad.max_hp) ?? DEFAULT_PLAYER_MAX_HP,
                 submitted: ms.submitted ?? member?.submitted,
                 action_type: ms.action_type ?? member?.action_type,
                 dice_result: ms.dice_result ?? member?.dice_result,
@@ -3474,7 +3475,8 @@
         }
 
         const CAPPED_SQUAD_STATS = new Set(['hp', 'sanity']);
-        const SQUAD_CAP_MAX = { hp: 100, sanity: 100 };
+        const SQUAD_CAP_MAX = { sanity: 100 };
+        const DEFAULT_PLAYER_MAX_HP = 100;
         const DASHBOARD_STAT_META = {
             hp: { text: 'text-red-400', bar: 'bg-red-500' },
             sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
@@ -3488,6 +3490,23 @@
             const el = document.getElementById(prefix + stat + '-value');
             const raw = Number(value) || 0;
             const showRatio = options.showRatio ?? !prefix;
+
+            if (stat === 'hp') {
+                const max = Math.max(1, Number(options.maxHp ?? options.max ?? DEFAULT_PLAYER_MAX_HP));
+                const v = Math.max(0, Math.min(max, raw));
+                const pct = Math.round((v / max) * 100);
+                const bar = document.getElementById(prefix + stat + '-bar');
+                const pctEl = document.getElementById(prefix + stat + '-pct');
+                if (el) {
+                    el.textContent = showRatio ? `${v} / ${max}` : String(v);
+                    if (!prefix) {
+                        el.className = `font-mono text-red-400`;
+                    }
+                }
+                if (pctEl) pctEl.textContent = `(${pct}%)`;
+                if (bar) bar.style.width = `${pct}%`;
+                return;
+            }
 
             if (!CAPPED_SQUAD_STATS.has(stat)) {
                 if (el) {
@@ -3512,14 +3531,16 @@
         }
 
         function updateCombatPlayerStats(me, squad) {
+            const maxHp = combatStatValue(me.max_hp, squad.max_hp) ?? DEFAULT_PLAYER_MAX_HP;
             const stats = {
-                hp: combatStatValue(me.hp, squad.hp) ?? 100,
+                hp: combatStatValue(me.hp, squad.hp) ?? maxHp,
                 sanity: combatStatValue(me.sanity, squad.sanity) ?? 100,
                 power: combatStatValue(me.power, squad.power) ?? 0,
                 intellect: combatStatValue(me.intellect, squad.intellect) ?? 0,
                 resilience: combatStatValue(me.resilience, squad.resilience) ?? 0,
             };
-            ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
+            setStatBar('combat-', 'hp', stats.hp, { showRatio: true, maxHp });
+            ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
                 setStatBar('combat-', s, stats[s], { showRatio: true });
             });
             safeSetText('combat-player-hp', stats.hp);
@@ -3664,7 +3685,10 @@
         }
 
         function renderProtagonistStats(prefix, stats) {
-            ['hp', 'sanity', 'power', 'intellect', 'resilience'].forEach(s => {
+            setStatBar(prefix, 'hp', stats?.hp ?? DEFAULT_PLAYER_MAX_HP, {
+                maxHp: stats?.max_hp ?? stats?.hp ?? DEFAULT_PLAYER_MAX_HP,
+            });
+            ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
                 setStatBar(prefix, s, stats?.[s] ?? 100);
             });
         }
@@ -3852,7 +3876,10 @@
 
             applyRouteTheme(route);
 
-            ['hp','sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
+            setStatBar('', 'hp', squad.hp ?? DEFAULT_PLAYER_MAX_HP, {
+                maxHp: squad.max_hp ?? DEFAULT_PLAYER_MAX_HP,
+            });
+            ['sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
             const insightEl = document.getElementById('insight-value');
             if (insightEl) insightEl.textContent = squad.insight_fragments || 0;

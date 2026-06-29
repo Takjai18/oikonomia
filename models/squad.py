@@ -6,6 +6,34 @@ from models.settings import settings
 from utils.helpers import normalize_team_id
 from utils.validators import parse_status_effects
 
+DEFAULT_MAX_HP = 100
+HP_STAT_CEILING = 999
+
+
+def squad_max_hp(squad):
+    """Effective HP ceiling for a squad (defaults to 100, never below current hp)."""
+    if not squad:
+        return DEFAULT_MAX_HP
+    hp = int(squad.get("hp") or 0)
+    max_hp = int(squad.get("max_hp") or DEFAULT_MAX_HP)
+    return max(max_hp, hp, DEFAULT_MAX_HP)
+
+
+def apply_hp_change(hp, max_hp, delta):
+    """Apply HP delta; positive deltas raise max_hp so players can exceed 100."""
+    hp = int(hp or 0)
+    max_hp = int(max_hp or DEFAULT_MAX_HP)
+    try:
+        delta = int(delta)
+    except (TypeError, ValueError):
+        return hp, max_hp
+    if delta > 0:
+        max_hp = min(HP_STAT_CEILING, max_hp + delta)
+        hp = min(max_hp, hp + delta)
+    else:
+        hp = max(0, hp + delta)
+    return hp, max_hp
+
 
 def row_to_squad(row):
     d = dict(row)
@@ -21,6 +49,7 @@ def row_to_squad(row):
         "display_name": d.get("display_name") or d["squad_id"],
         "sanity": d.get("sanity", 50),
         "hp": d.get("hp", 100),
+        "max_hp": d.get("max_hp", DEFAULT_MAX_HP),
         "power": d.get("power", 100),
         "intellect": d.get("intellect", 100),
         "resilience": d.get("resilience", 100),
@@ -95,7 +124,7 @@ def get_squad(squad_id):
 
 def update_squad(squad_id, **kwargs):
     allowed = {
-        "sanity", "hp", "power", "intellect", "resilience", "resources", "route",
+        "sanity", "hp", "max_hp", "power", "intellect", "resilience", "resources", "route",
         "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin",
         "avatar", "insight_fragments", "status_effects",
         "trauma_resilience", "trauma_power", "trauma_intellect",
@@ -105,6 +134,18 @@ def update_squad(squad_id, **kwargs):
     c = conn.cursor()
     updates = []
     params = []
+    if "hp" in kwargs and kwargs["hp"] is not None:
+        try:
+            new_hp = int(kwargs["hp"])
+        except (TypeError, ValueError):
+            new_hp = None
+        if new_hp is not None:
+            current = get_squad(squad_id) or {}
+            current_max = squad_max_hp(current)
+            if new_hp > current_max:
+                kwargs["max_hp"] = min(HP_STAT_CEILING, new_hp)
+            kwargs["hp"] = max(0, new_hp)
+
     for key, val in kwargs.items():
         if key not in allowed:
             continue

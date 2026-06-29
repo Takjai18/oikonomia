@@ -17,7 +17,8 @@ from models.combat import (
     count_team_defenders,
     team_defend_damage_multiplier,
 )
-from models.squad import get_squad, update_squad
+from models.squad import apply_hp_change, get_squad, squad_max_hp, update_squad
+from models.item import apply_item_effect_to_squad
 
 oikonomia.init_db()
 oikonomia.migrate_db()
@@ -51,6 +52,25 @@ def submit_attack(client, combat_id):
         json={"combat_id": combat_id, "action_type": "attack"},
         content_type="application/json",
     )
+
+
+def test_player_max_hp(leader_id):
+    """HP ceiling can exceed 100 via boosts."""
+    hp, max_hp = apply_hp_change(100, 100, 20)
+    ok("hp boost raises max above 100", max_hp == 120 and hp == 120, f"{hp}/{max_hp}")
+    hp2, max_hp2 = apply_hp_change(80, 120, 0)
+    ok("damage does not lower max_hp", max_hp2 == 120 and hp2 == 80, f"{hp2}/{max_hp2}")
+
+    update_squad(leader_id, hp=90, max_hp=100)
+    applied = apply_item_effect_to_squad(leader_id, {
+        "has_ability": 1,
+        "effect_type": "hp_up",
+        "effect_value": 25,
+    })
+    squad = get_squad(leader_id) or {}
+    ok("hp_up item raises max_hp", applied and int(squad.get("max_hp") or 0) == 125, str(squad))
+    ok("hp_up item heals to new cap", int(squad.get("hp") or 0) == 115, str(squad))
+    ok("squad_max_hp helper", squad_max_hp(squad) == 125)
 
 
 def test_defend_team_buff_helpers():
@@ -171,7 +191,7 @@ def main():
 
     test_defend_team_buff_helpers()
 
-    # --- 開始 encounter ---
+    # --- 開始 encounter（max_hp 測試會改 TestLeader stats，先跑主線）---
     r = client.post(
         "/combat/start",
         json={"encounter_id": ENCOUNTER_ID},
@@ -206,6 +226,8 @@ def main():
     # --- Defend 全隊 buff（主線戰鬥結束後另開 test encounter）---
     test_defend_team_buff_integration(client, client2, leader_id, member_id)
 
+    test_player_max_hp(leader_id)
+
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
     status = r.get_json()
@@ -225,6 +247,7 @@ def main():
     ok("server_combat_dice marker", ver.get("markers", {}).get("server_combat_dice") is True)
     ok("defend_team_buff marker", ver.get("markers", {}).get("defend_team_buff") is True)
     ok("combat_round_continue marker", ver.get("markers", {}).get("combat_round_continue") is True)
+    ok("player_max_hp marker", ver.get("markers", {}).get("player_max_hp") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

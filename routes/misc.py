@@ -64,6 +64,7 @@ def api_version():
             "upload_path_hardened": True,
             "defend_team_buff": callable(count_team_defenders),
             "combat_round_continue": "continueCombatAfterRound" in template_text,
+            "player_max_hp": "max_hp" in template_text and "DEFAULT_PLAYER_MAX_HP" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

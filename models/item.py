@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from models.settings import settings
-from models.squad import get_squad
+from models.squad import apply_hp_change, get_squad
 from utils.db_tx import immediate_transaction
 from utils.helpers import normalize_team_id
 
@@ -69,6 +69,38 @@ def serialize_item_for_client(item):
     }
 
 
+def _apply_stat_delta(c, squad_id, stat, delta):
+    row = c.execute(
+        "SELECT hp, max_hp, sanity, power, intellect, resilience FROM squads WHERE squad_id = ?",
+        (squad_id,),
+    ).fetchone()
+    if not row:
+        return None
+
+    if stat == "hp":
+        new_hp, new_max_hp = apply_hp_change(row["hp"], row["max_hp"], delta)
+        c.execute(
+            "UPDATE squads SET hp = ?, max_hp = ? WHERE squad_id = ?",
+            (new_hp, new_max_hp, squad_id),
+        )
+    elif stat == "sanity":
+        c.execute(
+            "UPDATE squads SET sanity = MAX(0, MIN(100, sanity + ?)) WHERE squad_id = ?",
+            (delta, squad_id),
+        )
+    else:
+        c.execute(
+            f"UPDATE squads SET {stat} = MAX(0, MIN(100, {stat} + ?)) WHERE squad_id = ?",
+            (delta, squad_id),
+        )
+
+    updated = c.execute(
+        "SELECT hp, max_hp, sanity, power, intellect, resilience FROM squads WHERE squad_id = ?",
+        (squad_id,),
+    ).fetchone()
+    return dict(updated) if updated else None
+
+
 def apply_item_effect_to_squad(squad_id, item):
     if not item or not item.get("has_ability") or not item.get("effect_type"):
         return None
@@ -93,18 +125,13 @@ def apply_item_effect_to_squad(squad_id, item):
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute(
-        f"UPDATE squads SET {stat} = MAX(0, MIN(100, {stat} + ?)) WHERE squad_id = ?",
-        (delta, squad_id),
-    )
-    row = c.execute(
-        "SELECT hp, sanity, power, intellect, resilience FROM squads WHERE squad_id = ?",
-        (squad_id,),
-    ).fetchone()
-    conn.commit()
-    conn.close()
+    try:
+        stats = _apply_stat_delta(c, squad_id, stat, delta)
+        conn.commit()
+    finally:
+        conn.close()
 
-    if not row:
+    if not stats:
         return None
 
     return {
@@ -112,7 +139,7 @@ def apply_item_effect_to_squad(squad_id, item):
         "effect_value": delta,
         "effect_text": format_item_effect_text(effect_type, delta),
         "stat": stat,
-        "stats": dict(row),
+        "stats": stats,
     }
 
 

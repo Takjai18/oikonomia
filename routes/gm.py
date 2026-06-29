@@ -464,7 +464,7 @@ def gm_adjust():
     if not squad_id or not field or value is None:
         return jsonify({"success": False, "error": "缺少參數"}), 400
 
-    allowed_fields = {"hp", "sanity", "power", "intellect", "resilience", "resources"}
+    allowed_fields = {"hp", "max_hp", "sanity", "power", "intellect", "resilience", "resources"}
     if field not in allowed_fields:
         return jsonify({"success": False, "error": "無效欄位"}), 400
 
