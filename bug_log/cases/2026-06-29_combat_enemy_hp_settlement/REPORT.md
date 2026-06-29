@@ -299,10 +299,13 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 1. **Race**：poll 收到 `outcome` 時 `resetCombatSettlementState()` 中斷 settlement `_modalTimer`
 2. **Safari GET cache**：`/combat/status` 無 cache-bust → 回傳開局 140 HP JSON 覆寫 DOM
 
-**修復（`enemy_hp_sync_v4`）**：
+**修復（`enemy_hp_sync_v4` → `v5`）**：
 - `loadCombatStatus`：`outcome` 時若 `combatAwaitingSettlementAck` → `pendingVictoryAfterSettlement` 唔中斷 modal
 - `fetchNoCache` / `appendCacheBust`：`/combat/status`、`/status`、`/my_team`
-- Henry 驗證：**Safari 無痕模式**打 140 HP 敵（若正常遞減 = 快取確診）
+- **後端** `Cache-Control: no-store` on `/combat/*`、`/status`、`/my_team`
+- **`v5`**：`syncEnemyHpDisplay` 用 `animateCombatNumber`；`combatUiSnapshotKey` 跳過冗餘 poll DOM
+- **Mac Chrome 亦重現**（非 Safari 特例）→ 標準 HTTP GET cache + 前端 race
+- Henry 驗證：Chrome DevTools → Network → **Disable cache**；或無痕模式打 140 HP 敵
 
 ### 12.7 建議 Henry 實機採證 checklist
 

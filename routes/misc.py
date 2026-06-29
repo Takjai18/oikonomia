@@ -81,6 +81,8 @@ def api_version():
                 and "Math.min(...candidates)" in template_text,
             "enemy_hp_sync_v4": "fetchNoCache" in template_text
                 and "appendCacheBust" in template_text,
+            "enemy_hp_sync_v5": "animateCombatNumber" in template_text
+                and "combatUiSnapshotKey" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

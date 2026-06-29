@@ -1587,6 +1587,7 @@
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let enemyHpAnimFrame = null;
+        let lastCombatUiSnapshotKey = '';
         const COMBAT_POLL_INTERVAL_NORMAL = 3000;
         const COMBAT_POLL_INTERVAL_WAITING = 4000;
         const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
@@ -1623,6 +1624,24 @@
             const uiStatus = effectiveCombatStatus(data);
             if (!uiStatus || uiStatus === data.status) return data;
             return { ...data, status: uiStatus, round_resolved: false };
+        }
+
+        function combatUiSnapshotKey(data) {
+            if (!data) return '';
+            const enemy = data.enemy || {};
+            const me = data.my_state || {};
+            return [
+                data.combat_id,
+                data.status,
+                data.current_phase,
+                enemy.hp,
+                enemy.max_hp,
+                me.hp,
+                me.submitted,
+                me.action_type,
+                data.round_resolved,
+                data.outcome,
+            ].join('|');
         }
         const COMBAT_ACTION_LABELS = {
             attack: '攻擊',
@@ -1827,21 +1846,31 @@
                 hp = lastAnimatedEnemyHp;
             }
             const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
-            const prevHp = Number.isFinite(lastAnimatedEnemyHp)
+            const prevHpRaw = Number.isFinite(lastAnimatedEnemyHp)
                 ? lastAnimatedEnemyHp
                 : resolveAuthoritativeEnemyHp(lastCombatStatus);
-            resetCombatEnemyHpTracking(hp);
+            const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
             const fmt = (n) => Number(n).toLocaleString('zh-Hant');
-            safeSetText('enemy-hp-current', fmt(hp));
-            safeSetText('enemy-stat-hp', fmt(hp));
             safeSetText('enemy-hp-max', fmt(maxHp));
-            lastAnimatedEnemyHp = hp;
             const bar = document.getElementById('enemy-hp-bar');
-            if (bar) {
-                bar.style.width = `${Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)))}%`;
-                if (Number.isFinite(prevHp) && hp < prevHp) {
-                    flashEnemyHpBar();
+            const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
+            const commitHpDisplay = (displayHp) => {
+                combatEnemyHpSeen = displayHp;
+                lastAnimatedEnemyHp = displayHp;
+                safeSetText('enemy-stat-hp', fmt(displayHp));
+            };
+            if (Number.isFinite(prevHp) && prevHp !== hp) {
+                if (bar) {
+                    bar.style.width = `${targetPct}%`;
+                    if (hp < prevHp) flashEnemyHpBar();
                 }
+                animateCombatNumber('enemy-hp-current', prevHp, hp, 420, fmt, (finalHp) => {
+                    commitHpDisplay(finalHp);
+                });
+            } else {
+                safeSetText('enemy-hp-current', fmt(hp));
+                if (bar) bar.style.width = `${targetPct}%`;
+                commitHpDisplay(hp);
             }
             const roundDmgEl = document.getElementById('enemy-round-damage');
             if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
@@ -3340,6 +3369,14 @@
         function updateCombatUI(data, options = {}) {
             if (!data) return;
             const uiData = normalizeCombatStatusData(applySettlementEnemyHp(data));
+            const snapKey = combatUiSnapshotKey(uiData);
+            const skipRedundantDom = !options.damageDelay
+                && !options.skipActionEnable
+                && !options.initLogsOnly
+                && !options.forceRefresh
+                && snapKey === lastCombatUiSnapshotKey;
+            if (skipRedundantDom) return;
+            lastCombatUiSnapshotKey = snapKey;
             if (!uiData.my_state && (uiData.active || uiData.status === 'player_phase' || uiData.status === 'enemy_phase')) {
                 console.warn('Combat data missing my_state');
             }
@@ -3378,6 +3415,7 @@
             if (uiData.combat_id && uiData.combat_id !== settlementCombatId) {
                 settlementCombatId = uiData.combat_id;
                 lastShownSettlementPhase = 0;
+                lastCombatUiSnapshotKey = '';
                 combatAwaitingSettlementAck = false;
                 settlementTimerPending = false;
                 clearTimeout(showFullRoundSettlement._modalTimer);

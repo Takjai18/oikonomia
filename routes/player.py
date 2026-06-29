@@ -21,6 +21,20 @@ from utils.uploads import save_task_submission_photo
 
 player_bp = Blueprint("player", __name__)
 
+_DYNAMIC_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+@player_bp.after_request
+def player_dynamic_no_cache(response):
+    if request.path in ("/status", "/my_team"):
+        for key, value in _DYNAMIC_NO_CACHE_HEADERS.items():
+            response.headers[key] = value
+    return response
+
 
 @player_bp.route("/submit_task", methods=["POST"])
 def submit_task():

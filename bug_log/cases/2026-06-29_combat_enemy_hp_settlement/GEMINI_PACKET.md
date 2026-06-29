@@ -1,7 +1,7 @@
 # GEMINI_PACKET — BUG-2026-001（自包含，可直接貼入 Gemini）
 
-> **生成時間**：2026-06-29 15:47 UTC  
-> **Git commit**：`f65e47b`  
+> **生成時間**：2026-06-29 15:53 UTC  
+> **Git commit**：`08a50ee`  
 > **用途**：Gemini **讀唔到** Google Drive bug_log 資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。
 > **重新生成**：`bash scripts/build_gemini_packet.sh`
 
@@ -11,9 +11,9 @@
 
 1. **最簡單**：打開本檔 `GEMINI_PACKET.md` → 全選 Copy → 貼到 Gemini
 2. **GitHub Raw**（若 Gemini 支援 URL）：
-   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/f65e47b/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/f65e47b/templates/index.html
-   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/f65e47b/routes/combat.py
+   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/08a50ee/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
+   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/08a50ee/templates/index.html
+   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/08a50ee/routes/combat.py
 3. **唔好用**：Drive 資料夾連結（Gemini API 索引唔到 .md / bug_log）
 4. **可選**：將本檔 Upload 為 **Google Doc**（單檔分享連結）再俾 Gemini
 
@@ -110,6 +110,25 @@
 ### `templates/index.html` L1785–L2199
 
 ```javascript
+                    risksEl.innerHTML = '';
+                }
+            }
+            setVisible(modal, true);
+            modal.classList.add('flex');
+        }
+
+        function hideSinglePlayerResultModal() {
+            const modal = document.getElementById('combat-single-result-modal');
+            if (!modal) return;
+            modal.classList.remove('flex');
+            setVisible(modal, false);
+        }
+
+        function parseEnemyRemainingHpFromLogs(logEntries, logLines) {
+            for (let i = (logEntries || []).length - 1; i >= 0; i--) {
+                const e = logEntries[i];
+                if (e?.type !== 'summary') continue;
+                const m = (e.message || '').match(/剩餘\s*HP\s*(\d+)/);
                 if (m) return parseInt(m[1], 10);
             }
             for (let i = (logLines || []).length - 1; i >= 0; i--) {
@@ -155,21 +174,31 @@
                 hp = lastAnimatedEnemyHp;
             }
             const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
-            const prevHp = Number.isFinite(lastAnimatedEnemyHp)
+            const prevHpRaw = Number.isFinite(lastAnimatedEnemyHp)
                 ? lastAnimatedEnemyHp
                 : resolveAuthoritativeEnemyHp(lastCombatStatus);
-            resetCombatEnemyHpTracking(hp);
+            const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
             const fmt = (n) => Number(n).toLocaleString('zh-Hant');
-            safeSetText('enemy-hp-current', fmt(hp));
-            safeSetText('enemy-stat-hp', fmt(hp));
             safeSetText('enemy-hp-max', fmt(maxHp));
-            lastAnimatedEnemyHp = hp;
             const bar = document.getElementById('enemy-hp-bar');
-            if (bar) {
-                bar.style.width = `${Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)))}%`;
-                if (Number.isFinite(prevHp) && hp < prevHp) {
-                    flashEnemyHpBar();
+            const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
+            const commitHpDisplay = (displayHp) => {
+                combatEnemyHpSeen = displayHp;
+                lastAnimatedEnemyHp = displayHp;
+                safeSetText('enemy-stat-hp', fmt(displayHp));
+            };
+            if (Number.isFinite(prevHp) && prevHp !== hp) {
+                if (bar) {
+                    bar.style.width = `${targetPct}%`;
+                    if (hp < prevHp) flashEnemyHpBar();
                 }
+                animateCombatNumber('enemy-hp-current', prevHp, hp, 420, fmt, (finalHp) => {
+                    commitHpDisplay(finalHp);
+                });
+            } else {
+                safeSetText('enemy-hp-current', fmt(hp));
+                if (bar) bar.style.width = `${targetPct}%`;
+                commitHpDisplay(hp);
             }
             const roundDmgEl = document.getElementById('enemy-round-damage');
             if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
@@ -496,40 +525,40 @@
                 || (payload.winner === 'enemy' ? 'defeat' : 'victory');
             showCombatResult({
                 ...payload,
-                outcome,
-                active: false,
-            });
-            const statusRes = await fetchNoCache('/status');
-            updateDashboard(await statusRes.json());
-            combatItemsLoaded = false;
-        }
-
-        function shouldFinishCombatVictory(data) {
-            if (!data) return false;
-            if (data.outcome) return true;
-            if (data.status === 'ended' || data.winner) return true;
-            const hp = Number(data.enemy?.hp);
-            return Number.isFinite(hp) && hp <= 0;
-        }
-
-        function handleCombatRoundResolved(data) {
-            if (!data) return;
-            if (shouldFinishCombatVictory(data)) {
-                finishCombatVictoryFromPayload(data);
-                return;
-            }
-            setCombatPhaseLock(false);
-            hideCombatModal();
-            if (data.enemy?.hp != null) {
-                resetCombatEnemyHpTracking(data.enemy.hp);
-            }
-            const phase = Number(data.current_phase) || 0;
-            const settled = applySettlementEnemyHp(data);
 ```
 
 ### `templates/index.html` L3323–L3680
 
 ```javascript
+            setVisible(document.getElementById('combat-result-panel'), true);
+            const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
+            const victory = data.outcome === 'victory';
+            const titleEl = document.getElementById('combat-result-title');
+            if (badEnding) {
+                titleEl.textContent = '🌑 陰影結局';
+                titleEl.className = 'text-xl font-bold mb-3 text-violet-300';
+            } else {
+                titleEl.textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
+                titleEl.className = 'text-xl font-bold mb-3';
+            }
+            const traumaBadge = document.getElementById('combat-result-trauma-badge');
+            if (badEnding) {
+                const total = data.protagonist_trauma_total ?? data.ending?.protagonist_trauma_total ?? '?';
+                traumaBadge.textContent = `主角心理創傷過深（累計 ${total} 次）——即使贏了這一仗，也無法迎來真正的救贖。`;
+                setVisible(traumaBadge, true);
+            } else {
+                setVisible(traumaBadge, false);
+            }
+            document.getElementById('combat-result-narrative').textContent = data.narrative || '';
+            const reflection = badEnding ? null : data.reflection_prompt;
+            const reflectionBox = document.getElementById('combat-reflection');
+            if (reflection) {
+                setVisible(reflectionBox, true);
+                document.getElementById('combat-reflection-title').textContent = reflection.title || '界線反思';
+                document.getElementById('combat-reflection-theology').textContent = reflection.theological_tie || '';
+                document.getElementById('combat-reflection-questions').innerHTML =
+                    (reflection.questions || []).map((q, i) =>
+                        `<li class="pl-3 border-l-2 border-amber-600/50"><span class="text-amber-500/80 text-xs">Q${i + 1}</span><br>${q}</li>`
                     ).join('');
             } else {
                 setVisible(reflectionBox, false);
@@ -550,6 +579,14 @@
         function updateCombatUI(data, options = {}) {
             if (!data) return;
             const uiData = normalizeCombatStatusData(applySettlementEnemyHp(data));
+            const snapKey = combatUiSnapshotKey(uiData);
+            const skipRedundantDom = !options.damageDelay
+                && !options.skipActionEnable
+                && !options.initLogsOnly
+                && !options.forceRefresh
+                && snapKey === lastCombatUiSnapshotKey;
+            if (skipRedundantDom) return;
+            lastCombatUiSnapshotKey = snapKey;
             if (!uiData.my_state && (uiData.active || uiData.status === 'player_phase' || uiData.status === 'enemy_phase')) {
                 console.warn('Combat data missing my_state');
             }
@@ -588,6 +625,7 @@
             if (uiData.combat_id && uiData.combat_id !== settlementCombatId) {
                 settlementCombatId = uiData.combat_id;
                 lastShownSettlementPhase = 0;
+                lastCombatUiSnapshotKey = '';
                 combatAwaitingSettlementAck = false;
                 settlementTimerPending = false;
                 clearTimeout(showFullRoundSettlement._modalTimer);
@@ -850,73 +888,35 @@
             }
             if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
 
-            let data;
-            try {
-                const res = await fetch('/combat/submit_action', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                data = await res.json();
-            } catch (e) {
-                if (confirmBtn) confirmBtn.disabled = false;
-                showToast('提交失敗，請稍後再試', 'error');
-                return;
-            }
-            if (!data.success && data.error) {
-                if (confirmBtn) confirmBtn.disabled = false;
-                if (data.error.includes('結算中')) {
-                    setCombatPhaseLock(true, lastCombatStatus || { current_phase: combatSubmittedPhase });
-                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
-                }
-                showToast(data.error, 'error');
-                return;
-            }
-            if (data.outcome || shouldFinishCombatVictory(data)) {
-                await finishCombatVictoryFromPayload(data);
-                return;
-            }
-
-            resetCombatDiceUi();
-            lastDicePhase = 0;
-
-            if (data.status === 'waiting_for_teammates') {
-                combatWaitingForRound = true;
-                combatSubmittedPhase = data.current_phase || lastCombatStatus?.current_phase || 0;
-                showSinglePlayerResultModal(data.single_preview);
-                showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
-                showToast('已提交行動，等待隊友後先會顯示全隊傷害結算', 'info');
-                updateCombatUI({ ...data, active: true }, { initLogsOnly: true });
 ```
 
 ### `templates/index.html` L4562–L4585
 
 ```javascript
-                el.textContent = showRatio ? `${v} / ${max}` : String(v);
-            }
-            if (pctEl) pctEl.textContent = `(${pct}%)`;
-            if (bar) bar.style.width = `${pct}%`;
-        }
+            const meta = DASHBOARD_STAT_META[stat] || {};
+            const el = document.getElementById(prefix + stat + '-value');
+            const raw = Number(value) || 0;
+            const showRatio = options.showRatio ?? !prefix;
 
-        function updateCombatPlayerStats(me, squad) {
-            const maxHp = effectivePlayerMaxHp({
-                hp: combatStatValue(me.hp, squad.hp),
-                max_hp: combatStatValue(me.max_hp, squad.max_hp),
-            });
-            const stats = {
-                hp: combatStatValue(me.hp, squad.hp) ?? maxHp,
-                sanity: combatStatValue(me.sanity, squad.sanity) ?? 100,
-                power: combatStatValue(me.power, squad.power) ?? 0,
-                intellect: combatStatValue(me.intellect, squad.intellect) ?? 0,
-                resilience: combatStatValue(me.resilience, squad.resilience) ?? 0,
-            };
-            setStatBar('combat-', 'hp', stats.hp, { showRatio: true, maxHp });
-            ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
-                setStatBar('combat-', s, stats[s], { showRatio: true });
-            });
-            safeSetText('combat-player-hp', stats.hp);
-            safeSetText('combat-player-sanity', stats.sanity);
+            if (stat === 'hp') {
+                const max = Math.max(1, Number(options.maxHp ?? options.max ?? DEFAULT_PLAYER_MAX_HP));
+                const v = Math.max(0, Math.min(max, raw));
+                const pct = Math.round((v / max) * 100);
+                const bar = document.getElementById(prefix + stat + '-bar');
+                const pctEl = document.getElementById(prefix + stat + '-pct');
+                if (el) {
+                    el.textContent = showRatio ? `${v} / ${max}` : String(v);
+                    if (!prefix) {
+                        el.className = `font-mono text-red-400`;
+                    }
+                }
+                if (pctEl) pctEl.textContent = `(${pct}%)`;
+                if (bar) bar.style.width = `${pct}%`;
+                return;
+            }
+
+            if (!CAPPED_SQUAD_STATS.has(stat)) {
+                if (el) {
 ```
 
 ## E. 後端 Python
@@ -925,6 +925,20 @@
 ### `routes/combat.py` L161–L278
 
 ```python
+        "success": True,
+        "combat_id": combat["id"],
+        "status": combat.get("status"),
+        "precheck_passed": precheck_passed,
+        "can_skip": precheck_passed,
+        "precheck_text": precheck.get("success_text") if precheck_passed else None,
+        "enemy": build_enemy_combat_stats(combat, encounter),
+        "encounter": {
+            "encounter_id": encounter_id,
+            "title": encounter.get("title"),
+            "description": encounter.get("description"),
+        },
+    })
+
 @combat_bp.route("/combat/status")
 def combat_status_api():
     if "squad_id" not in session:
@@ -1029,25 +1043,25 @@ def combat_status_api():
 
     raw_enemy_hp = (payload.get("enemy") or {}).get("hp")
     enemy_hp = int(raw_enemy_hp) if raw_enemy_hp is not None else 1
-    if payload.get("active") and enemy_hp <= 0:
-        combat = get_combat(combat["id"]) or combat
-        squad = get_squad(session["squad_id"])
-        actor_team_id = squad.get("team_id") if squad else None
-        finished = combat_outcome_if_finished(
-            combat,
-            encounter,
-            team_id=actor_team_id,
-            squad_id=session["squad_id"],
-        )
-        if finished:
-            return jsonify({**finished, "active": False})
-
-    return jsonify(payload)
 ```
 
 ### `routes/combat.py` L331–L475
 
 ```python
+        combat_id,
+        session["squad_id"],
+        action_type,
+        dice_result,
+        item_id,
+        as_protagonist=as_protagonist,
+    )
+    if not preview:
+        return jsonify({"success": False, "error": "無法預覽此回合"}), 400
+
+    preview["is_estimate"] = True
+    preview["preview_note"] = "此為估算（普通骰）；實際結果於提交後由系統擲骰決定"
+    return jsonify({"success": True, "preview": preview})
+
 @combat_bp.route("/combat/submit_action", methods=["POST"])
 @combat_bp.route("/combat/action", methods=["POST"])
 def combat_submit_action_api():
@@ -1179,20 +1193,6 @@ def combat_submit_action_api():
             "single_preview": single_preview,
             "submitted_count": len(phase_actions),
             "total_active": len(required_ids),
-            "combat_id": combat_id,
-            "current_phase": combat.get("current_phase", 0),
-            "message": "行動已提交，等待其他隊友行動中...",
-            "active": True,
-            "my_state": status.get("my_state"),
-            "member_states": status.get("member_states"),
-            "enemy": status.get("enemy"),
-            "title": status.get("title"),
-            "log": status.get("log"),
-            "log_entries": status.get("log_entries"),
-        })
-
-    payload = _build_round_resolved_response(combat, encounter, session["squad_id"])
-    payload["dice_result"] = dice_result
 ```
 
 ### `models/combat.py` L931–L1010
@@ -1290,7 +1290,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 ## G. 實機仍 fail 條件（Henry）
 
 - Iggy 線、**單人**、`practice_iggy_03_boundary`（140 HP）
-- PA `f65e47b`、`enemy_hp_sync_v3: true`
+- PA `08a50ee`、`enemy_hp_sync_v3: true`
 - 戰鬥中敵 HP **顯示**唔更新
 
 ---

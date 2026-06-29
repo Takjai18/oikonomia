@@ -2,7 +2,7 @@
 
 | ID | 日期 | 標題 | 狀態 | 修復 commit | Case 路徑 |
 |----|------|------|------|-------------|-----------|
-| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP 唔跌／結算 modal 缺失 | **fix_in_progress** — Gemini cache-bust + settlement queue | `enemy_hp_sync_v4` | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) · [Packet](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md) |
+| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP 唔跌／結算 modal 缺失 | **fix_in_progress** — v5 deploy 待 Henry 驗證 | `enemy_hp_sync_v5` | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) · [Packet](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md) |
 
 ## 狀態說明
 

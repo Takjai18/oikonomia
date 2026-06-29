@@ -53,6 +53,20 @@ from models.squad import get_squad, get_team_members, update_squad
 
 combat_bp = Blueprint("combat", __name__)
 
+_DYNAMIC_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+@combat_bp.after_request
+def combat_disable_http_cache(response):
+    """Prevent browsers from caching combat GET polls (Chrome/Safari disk cache)."""
+    for key, value in _DYNAMIC_NO_CACHE_HEADERS.items():
+        response.headers[key] = value
+    return response
+
 
 @combat_bp.route("/combat/start", methods=["POST"])
 def combat_start_api(encounter_id=None):
