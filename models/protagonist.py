@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from enum import Enum
 
-from models.settings import settings
+from models.settings import default_protagonist_template, settings
 from models.squad import DEFAULT_MAX_HP, get_team_members
 from models.team import get_team_by_id, get_team_protagonists
 from services.story import count_team_distinct_tasks, resolve_story_stage
@@ -82,7 +82,7 @@ def initialize_protagonist_for_team(team_id, protagonist_key):
     existing = get_protagonist_state(clean_team, protagonist_key, create=False)
     if existing:
         return existing
-    base = settings.default_protagonist.copy()
+    base = default_protagonist_template()
     now = datetime.now().isoformat()
     hp = int(base.get("hp", 100))
     max_hp = int(base.get("hp", DEFAULT_MAX_HP))
@@ -270,7 +270,7 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
         if not create:
             return None
 
-        base = settings.default_protagonist.copy()
+        base = default_protagonist_template()
         profile = PROTAGONIST_PROFILES.get(protagonist_key, {})
         now = datetime.now().isoformat()
         hp = int(base.get("hp", 100))
@@ -433,7 +433,7 @@ def get_controllable_protagonist_squad_id(team_id, route, encounter, story_stage
 
 def _protagonist_base_stats(team_id, protagonist_key):
     protagonists = get_team_protagonists(team_id)
-    template = protagonists.get(protagonist_key) or settings.default_protagonist.copy()
+    template = protagonists.get(protagonist_key) or default_protagonist_template()
     profile = PROTAGONIST_PROFILES.get(protagonist_key, {})
     return {
         "display_name": template.get("name") or profile.get("display_name") or protagonist_key.title(),

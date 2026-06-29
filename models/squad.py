@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import datetime
 
-from models.settings import settings
+from models.settings import default_protagonist_template, settings
 from utils.helpers import normalize_team_id
 from utils.validators import parse_status_effects
 
@@ -81,7 +81,7 @@ def apply_hp_change(hp, max_hp, delta):
 
 def row_to_squad(row):
     d = dict(row)
-    protagonist = settings.default_protagonist.copy()
+    protagonist = default_protagonist_template()
     if d.get("protagonist_stats"):
         try:
             protagonist = json.loads(d["protagonist_stats"])

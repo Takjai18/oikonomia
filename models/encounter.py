@@ -6,9 +6,17 @@ from models.item import team_has_item_by_name
 from models.settings import settings
 from models.squad import get_team_average_stat
 
+_PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_ENCOUNTERS_DIR = os.path.join(_PROJECT_DIR, "encounters")
+
+
+def _encounters_dir():
+    """Resolve encounters folder; fallback when app.configure_models() not run (scripts/tests)."""
+    return settings.encounters_dir or _DEFAULT_ENCOUNTERS_DIR
+
 
 def _encounter_json_path(encounter_id):
-    return os.path.join(settings.encounters_dir, f"{encounter_id}.json")
+    return os.path.join(_encounters_dir(), f"{encounter_id}.json")
 
 
 def _read_encounter_file(path):
@@ -55,7 +63,7 @@ def load_encounter(encounter_id):
 
 
 def list_encounter_ids():
-    encounters_dir = settings.encounters_dir
+    encounters_dir = _encounters_dir()
     if not os.path.isdir(encounters_dir):
         return []
     return sorted(

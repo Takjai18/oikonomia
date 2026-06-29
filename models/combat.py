@@ -13,6 +13,7 @@ from services.combat_outcomes import (
     build_victory_outcome_payload,
     resolve_combat_outcome,
 )
+from services.ending import judge_ending
 from models.item import get_item_by_id
 from models.squad import (
     fetch_squads_by_ids,
@@ -25,7 +26,6 @@ from models.protagonist import (
     apply_damage_to_protagonist,
     get_controllable_protagonist_squad_id,
     get_player_control_protagonist_ids,
-    get_team_ending_state,
     get_team_protagonist_trauma_total,
     get_team_story_stage,
     is_protagonist_participant,
@@ -1012,6 +1012,8 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         for entry in recent_logs
     ]
 
+    ending_state = judge_ending(team_id) if team_id else None
+
     return {
         "success": True,
         "combat_id": combat["id"],
@@ -1069,7 +1071,8 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "protagonist_trauma_total": (
             get_team_protagonist_trauma_total(team_id) if team_id else 0
         ),
-        "ending": get_team_ending_state(team_id) if team_id else None,
+        "ending": ending_state,
+        "trauma_level": (ending_state or {}).get("trauma_level", "safe"),
     }
 
 def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):

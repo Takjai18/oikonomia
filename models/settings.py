@@ -1,5 +1,18 @@
 """Shared runtime configuration for model layer (set once from app.py)."""
 
+FALLBACK_DEFAULT_PROTAGONIST = {
+    "hp": 100,
+    "sanity": 100,
+    "power": 100,
+    "intellect": 100,
+    "resilience": 100,
+}
+
+
+def default_protagonist_template():
+    """Copy of default protagonist stats; safe before app.configure_models()."""
+    return (settings.default_protagonist or FALLBACK_DEFAULT_PROTAGONIST).copy()
+
 
 class ModelSettings:
     db_path = None

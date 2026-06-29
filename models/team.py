@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import datetime
 
-from models.settings import settings
+from models.settings import default_protagonist_template, settings
 from utils.db_tx import immediate_transaction
 from utils.helpers import normalize_team_id
 
@@ -162,7 +162,7 @@ def get_team_by_id(team_id):
 
 def get_team_protagonists(team_id):
     clean_team_id = normalize_team_id(team_id)
-    default = settings.default_protagonist.copy()
+    default = default_protagonist_template()
     if not clean_team_id:
         return {
             "iggy": default.copy(),
