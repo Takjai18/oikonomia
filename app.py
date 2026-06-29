@@ -2233,13 +2233,21 @@ NARRATIVE_STORIES = {
 
 
 def _enrich_story_lines(story):
-    """為每行補上 portrait URL。"""
+    """為每行補上 portrait URL；旁白行標記 is_narration 且不附頭像。"""
     enriched = dict(story)
     lines = []
     for line in story.get("lines") or []:
         row = dict(line)
-        char = row.get("character") or "旁白"
-        row.setdefault("portrait", NARRATIVE_PORTRAITS.get(char, NARRATIVE_PORTRAITS["旁白"]))
+        char = row.get("character")
+        is_narration = bool(row.get("is_narration")) or not char or char == "旁白"
+        row["is_narration"] = is_narration
+        if is_narration:
+            row.pop("portrait", None)
+        else:
+            row.setdefault(
+                "portrait",
+                NARRATIVE_PORTRAITS.get(char, NARRATIVE_PORTRAITS["旁白"]),
+            )
         lines.append(row)
     enriched["lines"] = lines
     return enriched
@@ -8120,6 +8128,7 @@ HTML_TEMPLATE = """
             const line = currentStory.lines[currentLineIndex];
             const textEl = document.getElementById('story-text');
             const portraitEl = document.getElementById('story-portrait');
+            const portraitSection = portraitEl?.parentElement?.parentElement;
             const nameEl = document.getElementById('story-character-name');
             const progressEl = document.getElementById('story-line-progress');
 
@@ -8127,15 +8136,27 @@ HTML_TEMPLATE = """
 
             renderStoryChoices(line);
 
-            if (portraitEl) {
-                if (line.portrait) {
-                    portraitEl.src = line.portrait;
-                    setVisible(portraitEl.parentElement, true);
-                } else {
-                    setVisible(portraitEl.parentElement, false);
+            const isNarration = line.is_narration === true
+                || !line.character
+                || line.character === '旁白';
+
+            if (isNarration) {
+                if (portraitSection) setVisible(portraitSection, false);
+                if (nameEl) nameEl.textContent = '';
+                if (textEl) {
+                    textEl.style.fontStyle = 'italic';
+                    textEl.style.color = '#d1d5db';
+                }
+            } else {
+                if (portraitSection) setVisible(portraitSection, true);
+                if (portraitEl && line.portrait) portraitEl.src = line.portrait;
+                if (nameEl) nameEl.textContent = line.character || '';
+                if (textEl) {
+                    textEl.style.fontStyle = 'normal';
+                    textEl.style.color = '#ffffff';
                 }
             }
-            if (nameEl) nameEl.textContent = line.character || '';
+
             if (progressEl) {
                 progressEl.textContent = `${currentLineIndex + 1} / ${currentStory.lines.length}`;
             }
