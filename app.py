@@ -5740,13 +5740,22 @@ HTML_TEMPLATE = """
                 <button onclick="showSection('combat')" class="px-5 py-2 nav-btn">戰鬥</button>
                 <button onclick="showSection('team')" class="px-5 py-2 nav-btn">Team</button>
                 <button onclick="showSection('log')" class="px-5 py-2 nav-btn">日誌</button>
+                <button type="button" onclick="openSettingsModal()" class="px-4 py-2 nav-btn" aria-label="設定">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
             </div>
 
-            <!-- 手機版漢堡按鈕（<768px 先顯示） -->
-            <button id="hamburger-btn" onclick="toggleMobileMenu()"
-                    class="text-2xl text-zinc-300 hover:text-white px-2">
-                <i class="fa-solid fa-bars"></i>
-            </button>
+            <!-- 手機版：設定 + 漢堡按鈕（<768px 先顯示） -->
+            <div class="flex items-center gap-x-1">
+                <button type="button" onclick="openSettingsModal()"
+                        class="text-xl text-zinc-400 hover:text-white px-2" aria-label="設定">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+                <button id="hamburger-btn" onclick="toggleMobileMenu()"
+                        class="text-2xl text-zinc-300 hover:text-white px-2">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
         </div>
 
         <!-- 手機版彈出選單 -->
@@ -5757,7 +5766,8 @@ HTML_TEMPLATE = """
                 <button onclick="showSection('explore'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">探索</button>
                 <button onclick="showSection('combat'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">戰鬥</button>
                 <button onclick="showSection('team'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">Team</button>
-                <button onclick="showSection('log'); toggleMobileMenu()" class="py-4 text-left">日誌</button>
+                <button onclick="showSection('log'); toggleMobileMenu()" class="py-4 text-left border-b border-zinc-800">日誌</button>
+                <button type="button" onclick="openSettingsModal(); toggleMobileMenu()" class="py-4 text-left">設定</button>
             </div>
         </div>
 
@@ -6448,6 +6458,113 @@ HTML_TEMPLATE = """
         function showNavAfterLogin() {
             document.getElementById('nav-desktop')?.classList.add('nav-visible');
             document.getElementById('hamburger-btn')?.classList.add('nav-visible');
+        }
+
+        const GAME_SETTINGS_KEY = 'game_settings';
+
+        function getGameSettings() {
+            try {
+                return JSON.parse(localStorage.getItem(GAME_SETTINGS_KEY) || '{}');
+            } catch (_) {
+                return {};
+            }
+        }
+
+        function loadSettings() {
+            const settings = getGameSettings();
+
+            const autoPlayCheckbox = document.getElementById('setting-auto-play');
+            if (autoPlayCheckbox) {
+                autoPlayCheckbox.checked = !!settings.autoPlayStory;
+            }
+
+            const speed = settings.typewriterSpeed || 'normal';
+            const fontSize = settings.fontSize || 'medium';
+            highlightSettingButton('speed', speed);
+            highlightSettingButton('size', fontSize);
+            applyFontSize(fontSize);
+
+            return settings;
+        }
+
+        function saveSettings() {
+            const prev = getGameSettings();
+            const settings = {
+                autoPlayStory: document.getElementById('setting-auto-play')?.checked
+                    ?? prev.autoPlayStory
+                    ?? false,
+                typewriterSpeed: getActiveSpeed(),
+                fontSize: getActiveFontSize(),
+            };
+
+            localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify(settings));
+            applyFontSize(settings.fontSize);
+        }
+
+        function applyFontSize(size) {
+            const root = document.documentElement;
+            if (size === 'small') root.style.fontSize = '14px';
+            else if (size === 'large') root.style.fontSize = '18px';
+            else root.style.fontSize = '16px';
+        }
+
+        function getTypewriterSpeedMs() {
+            const speed = getGameSettings().typewriterSpeed || 'normal';
+            if (speed === 'slow') return 90;
+            if (speed === 'fast') return 35;
+            return 60;
+        }
+
+        function setTypewriterSpeed(speed) {
+            highlightSettingButton('speed', speed);
+            saveSettings();
+        }
+
+        function setFontSize(size) {
+            highlightSettingButton('size', size);
+            applyFontSize(size);
+            saveSettings();
+        }
+
+        function getActiveFontSize() {
+            const activeBtn = document.querySelector('.setting-btn[data-size].border-amber-500');
+            if (activeBtn) return activeBtn.dataset.size;
+            return getGameSettings().fontSize || 'medium';
+        }
+
+        function getActiveSpeed() {
+            const activeBtn = document.querySelector('.setting-btn[data-speed].border-amber-500');
+            if (activeBtn) return activeBtn.dataset.speed;
+            return getGameSettings().typewriterSpeed || 'normal';
+        }
+
+        function highlightSettingButton(kind, value) {
+            const selector = kind === 'speed'
+                ? '.setting-btn[data-speed]'
+                : '.setting-btn[data-size]';
+            document.querySelectorAll(selector).forEach(btn => {
+                btn.classList.remove('border-amber-500', 'bg-amber-500/10');
+                const key = kind === 'speed' ? btn.dataset.speed : btn.dataset.size;
+                if (key === value) {
+                    btn.classList.add('border-amber-500', 'bg-amber-500/10');
+                }
+            });
+        }
+
+        function openSettingsModal() {
+            const modal = document.getElementById('settings-modal');
+            if (!modal) return;
+            setVisible(modal, true);
+            modal.classList.add('flex');
+            loadSettings();
+        }
+
+        function closeSettingsModal() {
+            saveSettings();
+            const modal = document.getElementById('settings-modal');
+            if (!modal) return;
+            modal.classList.remove('flex');
+            setVisible(modal, false);
         }
 
         function showSection(id) {
@@ -7933,7 +8050,6 @@ HTML_TEMPLATE = """
         let isStoryAutoPlaying = false;
         const storyAutoShown = new Set();
         const STORY_READ_STORAGE_KEY = 'read_stories';
-        const STORY_TYPEWRITER_MS = 60;
         const STORY_AUTOPLAY_PAUSE_MS = 1400;
 
         function getReadStories() {
@@ -8041,7 +8157,7 @@ HTML_TEMPLATE = """
                     if (onDone) onDone();
                     scheduleStoryAutoAdvance();
                 }
-            }, STORY_TYPEWRITER_MS);
+            }, getTypewriterSpeedMs());
         }
 
         function renderStoryChoices(line) {
@@ -8119,6 +8235,13 @@ HTML_TEMPLATE = """
             const modal = document.getElementById('story-modal');
             setVisible(modal, true);
             modal.classList.add('flex');
+
+            const wantAutoPlay = !!getGameSettings().autoPlayStory;
+            if (wantAutoPlay) {
+                isStoryAutoPlaying = true;
+                const autoplayText = document.getElementById('autoplay-text');
+                if (autoplayText) autoplayText.textContent = '停止播放';
+            }
 
             showCurrentStoryLine();
         }
@@ -10538,7 +10661,8 @@ HTML_TEMPLATE = """
             });
         }
 
-        // 頁面載入時還原登入狀態（Render 冷啟動會重試）
+        // 頁面載入：套用設定 + 還原登入狀態（Render 冷啟動會重試）
+        loadSettings();
         restoreSession();
     </script>
 
@@ -10795,6 +10919,70 @@ HTML_TEMPLATE = """
                         繼續
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 設定界面 -->
+    <div id="settings-modal"
+         onclick="if (event.target.id === 'settings-modal') closeSettingsModal()"
+         class="hidden fixed inset-0 bg-black/90 z-[70] items-center justify-center">
+        <div class="w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-3xl p-6"
+             onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">設定</h2>
+                <button type="button" onclick="closeSettingsModal()"
+                        class="text-2xl text-zinc-400 hover:text-white">×</button>
+            </div>
+
+            <div class="space-y-6">
+                <div class="flex items-center justify-between gap-x-4">
+                    <div>
+                        <div class="font-medium">自動劇情播放</div>
+                        <div class="text-xs text-zinc-400">永久開啟自動播放劇情</div>
+                    </div>
+                    <label class="relative inline-flex shrink-0 items-center cursor-pointer">
+                        <input type="checkbox" id="setting-auto-play" class="sr-only peer" onchange="saveSettings()">
+                        <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
+                <div>
+                    <div class="font-medium mb-2">劇情打字機速度</div>
+                    <div class="flex gap-x-2">
+                        <button type="button" onclick="setTypewriterSpeed('slow')"
+                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                data-speed="slow">慢</button>
+                        <button type="button" onclick="setTypewriterSpeed('normal')"
+                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                data-speed="normal">正常</button>
+                        <button type="button" onclick="setTypewriterSpeed('fast')"
+                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                data-speed="fast">快</button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="font-medium mb-2">界面字體大小</div>
+                    <div class="flex gap-x-2">
+                        <button type="button" onclick="setFontSize('small')"
+                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                data-size="small">小</button>
+                        <button type="button" onclick="setFontSize('medium')"
+                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                data-size="medium">中</button>
+                        <button type="button" onclick="setFontSize('large')"
+                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                data-size="large">大</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center">
+                <button type="button" onclick="closeSettingsModal()"
+                        class="px-8 py-2.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm transition-colors">
+                    完成
+                </button>
             </div>
         </div>
     </div>
