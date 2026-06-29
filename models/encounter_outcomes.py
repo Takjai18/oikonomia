@@ -4,6 +4,7 @@ import random
 import sqlite3
 from datetime import datetime, timedelta
 
+from models.encounter import encounter_skips_progression
 from models.settings import settings
 from models.item import get_item_by_qr_code_value, grant_item_to_squad
 from models.squad import get_squad, get_team_members, update_squad
@@ -233,6 +234,8 @@ def apply_trauma_on_failure(squad_id, stat, amount):
 
 
 def apply_encounter_success(team_id, encounter, started_by):
+    if encounter_skips_progression(encounter):
+        return
     success = encounter.get("success", {})
     insight = int(success.get("insight_fragment", 0))
     unlocks = []
@@ -369,6 +372,8 @@ def _record_encounter_completion_conn(
 
 
 def apply_encounter_failure(team_id, encounter):
+    if encounter_skips_progression(encounter):
+        return
     failure = encounter.get("failure", {})
     rewards_meta = _failure_rewards_from_config(failure)
     with immediate_transaction() as conn:
@@ -386,6 +391,8 @@ def apply_encounter_failure(team_id, encounter):
 
 
 def apply_encounter_success_solo(squad_id, encounter):
+    if encounter_skips_progression(encounter):
+        return
     success = encounter.get("success", {})
     squad = get_squad(squad_id)
     if squad:
@@ -399,6 +406,8 @@ def apply_encounter_success_solo(squad_id, encounter):
 
 
 def apply_encounter_failure_solo(squad_id, encounter):
+    if encounter_skips_progression(encounter):
+        return
     apply_failure_side_effects(squad_id, encounter.get("failure", {}))
 
 
@@ -420,6 +429,8 @@ def apply_trauma_bad_ending_victory(team_id, encounter):
 
 
 def apply_precheck_skip(team_id, encounter):
+    if encounter_skips_progression(encounter):
+        return
     skip = encounter.get("precheck", {}).get("skip_reward", {})
     insight = int(skip.get("insight_fragment", 0))
     add_insight_fragments(team_id, insight)

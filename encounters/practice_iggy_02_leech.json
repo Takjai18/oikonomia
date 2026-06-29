@@ -1,0 +1,44 @@
+{
+  "encounter_id": "practice_iggy_02_leech",
+  "title": "【練習】情緒寄生影（標準）",
+  "route": "iggy",
+  "story_stage": 0,
+  "trigger_type": "practice",
+  "location_hint": "練習場 · 界線訓練區",
+  "description": "同劇情首戰相近嘅 HP 同傷害，用嚟反覆測試多回合結算。完成劇情版後都可以用呢場繼續練。",
+
+  "enemy": {
+    "name": "練習・情緒寄生影",
+    "hp": 110,
+    "sanity": 38,
+    "power": 35,
+    "intellect": 28,
+    "resilience": 22,
+    "base_damage": 17,
+    "description": "與 enc_iggy_01_leech 同級數，但可無限重玩。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 0,
+    "narrative": "練習擊敗情緒寄生影。劇情進度不變，可立即再戰。",
+    "next_story_unlock": null
+  },
+
+  "failure": {
+    "trauma": { "stat": "resilience", "amount": 0 },
+    "narrative": "練習落敗。調整策略後可再挑戰。",
+    "debuff": null
+  },
+
+  "reflection_prompt": {
+    "title": "練習反思",
+    "questions": ["多回合後敵人 HP 有冇穩定下降？"],
+    "theological_tie": "練習用。"
+  }
+}

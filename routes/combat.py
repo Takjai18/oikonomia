@@ -36,6 +36,7 @@ from models.combat import (
     combat_outcome_if_finished,
 )
 from models.encounter import (
+    encounter_is_replayable,
     encounter_route_matches,
     encounter_visible_to_player,
     evaluate_precheck_condition,
@@ -81,7 +82,10 @@ def combat_start_api(encounter_id=None):
         return jsonify({"success": False, "error": "此 Encounter 僅供開發測試"}), 403
 
     team_id = squad["team_id"]
-    if encounter_already_completed(team_id, encounter_id):
+    if (
+        not encounter_is_replayable(encounter)
+        and encounter_already_completed(team_id, encounter_id)
+    ):
         return jsonify({"success": False, "error": "此 Encounter 已完成"}), 400
 
     existing = get_active_combat_for_team(team_id)

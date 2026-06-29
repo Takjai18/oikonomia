@@ -6,6 +6,8 @@ from flask import Blueprint, jsonify, session
 from models.combat import get_active_combat_for_team, get_combat_by_squad
 from models.settings import settings
 from models.encounter import (
+    encounter_is_practice,
+    encounter_is_replayable,
     encounter_route_matches,
     encounter_visible_to_player,
     load_all_encounters,
@@ -51,6 +53,7 @@ def list_encounters_api():
         if enc.get("story_stage", 0) > stage:
             continue
         completed = encounter_already_completed(team_id, enc["encounter_id"]) if team_id else False
+        replayable = encounter_is_replayable(enc)
         encounters.append({
             "encounter_id": enc["encounter_id"],
             "title": enc.get("title"),
@@ -58,8 +61,11 @@ def list_encounters_api():
             "location_hint": enc.get("location_hint"),
             "story_stage": enc.get("story_stage"),
             "trigger_type": enc.get("trigger_type"),
-            "completed": completed,
+            "completed": completed and not replayable,
+            "replayable": replayable,
+            "is_practice": encounter_is_practice(enc),
             "enemy_name": (enc.get("enemy") or {}).get("name"),
+            "enemy_hp": (enc.get("enemy") or {}).get("hp"),
         })
 
     thresholds = settings.story_stage_thresholds or {}
@@ -81,13 +87,31 @@ def list_encounters_api():
             )
         else:
             progress_hint = "暫無符合你路線同故事階段嘅遭遇戰。"
-    elif len(encounters) == 1:
-        progress_hint = (
-            f"故事階段 {stage}：目前解鎖 1 場遭遇戰（按劇情順序逐步開放，"
-            "完成探索任務可提升階段）。"
-        )
     else:
-        progress_hint = f"故事階段 {stage}：已解鎖 {len(encounters)} 場遭遇戰。"
+        practice_count = sum(1 for e in encounters if e.get("is_practice"))
+        story_count = len(encounters) - practice_count
+        if story_count and practice_count:
+            progress_hint = (
+                f"故事階段 {stage}：{story_count} 場劇情戰 + {practice_count} 場練習戰"
+                "（練習可重複挑戰，唔使開新角色）。"
+            )
+        elif practice_count:
+            progress_hint = f"已解鎖 {practice_count} 場練習戰（可無限重複，方便測試戰鬥）。"
+        elif len(encounters) == 1:
+            progress_hint = (
+                f"故事階段 {stage}：目前解鎖 1 場劇情遭遇戰；"
+                "下方練習戰可重複測試戰鬥。"
+            )
+        else:
+            progress_hint = f"故事階段 {stage}：已解鎖 {len(encounters)} 場遭遇戰。"
+
+    encounters.sort(
+        key=lambda e: (
+            1 if e.get("is_practice") else 0,
+            e.get("story_stage") or 0,
+            e.get("encounter_id") or "",
+        )
+    )
 
     return jsonify({
         "success": True,

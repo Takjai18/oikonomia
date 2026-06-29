@@ -1,0 +1,44 @@
+{
+  "encounter_id": "practice_marah_01_quick",
+  "title": "【練習】低語殘響（速戰）",
+  "route": "marah",
+  "story_stage": 0,
+  "trigger_type": "practice",
+  "location_hint": "練習場 · Marah 靜默角",
+  "description": "Marah 路線快速練習戰，低 HP，可無限重複。",
+
+  "enemy": {
+    "name": "低語殘響",
+    "hp": 50,
+    "sanity": 40,
+    "power": 26,
+    "intellect": 34,
+    "resilience": 16,
+    "base_damage": 11,
+    "description": "弱化低語影，方便 Marah 線測試。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 0,
+    "narrative": "Marah 練習戰勝利，可再戰。",
+    "next_story_unlock": null
+  },
+
+  "failure": {
+    "trauma": { "stat": "resilience", "amount": 0 },
+    "narrative": "Marah 練習落敗，可再戰。",
+    "debuff": null
+  },
+
+  "reflection_prompt": {
+    "title": "練習反思",
+    "questions": ["Marah 線戰鬥流程是否正常？"],
+    "theological_tie": "練習用。"
+  }
+}

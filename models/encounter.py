@@ -86,6 +86,22 @@ def encounter_is_test(encounter):
     )
 
 
+def encounter_is_practice(encounter):
+    """Player-visible drills: no story progress lock, unlimited replays."""
+    return bool(encounter and encounter.get("trigger_type") == "practice")
+
+
+def encounter_is_replayable(encounter):
+    if not encounter:
+        return False
+    return encounter_is_practice(encounter) or bool(encounter.get("replayable"))
+
+
+def encounter_skips_progression(encounter):
+    """Practice fights do not record completion or apply lasting rewards/trauma."""
+    return encounter_is_practice(encounter)
+
+
 def encounter_visible_to_player(encounter, show_test=False):
     if not encounter:
         return False

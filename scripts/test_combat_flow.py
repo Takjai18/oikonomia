@@ -329,48 +329,37 @@ def test_defend_team_buff_integration(client, client2, leader_id, member_id):
     )
 
 
-def test_enemy_hp_reconciled_from_logs(client, client2, team_id):
+def test_enemy_hp_reconciled_from_logs(client, leader_id, team_id):
     """Status API must repair stale DB enemy_hp using log summaries (F5 refresh)."""
-    from models.combat import build_enemy_combat_stats, save_combat
+    from models.combat import build_enemy_combat_stats, create_combat_record, save_combat
+    from models.encounter import load_encounter
 
-    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
-    r = client.post(
-        "/combat/start",
-        json={"encounter_id": TEST_ENCOUNTER_ID},
-        content_type="application/json",
-    )
-    combat_id = (r.get_json() or {}).get("combat_id")
-    ok("reconcile test: start", combat_id, str(r.get_json())[:120])
+    enc_id = "practice_iggy_01_quick"
+    enc = load_encounter(enc_id)
+    teardown_test_combat(team_id, enc_id)
+    combat = create_combat_record(leader_id, enc_id, enc, initial_status="player_phase")
+    combat_id = combat.get("id")
+    start_hp = 48
+    true_hp = 36
+    logs = list(combat.get("logs") or [])
+    logs.extend([
+        {"type": "damage", "message": "Tester 攻擊對速戰殘影造成 12 點傷害"},
+        {"type": "summary", "message": f"速戰殘影 受到共 12 點傷害，剩餘 HP {true_hp}"},
+    ])
+    save_combat(combat_id, enemy_hp=start_hp, logs=logs, status="player_phase")
+    ok("reconcile test: seeded combat", combat_id, str(combat_id))
 
-    with patch("routes.combat.roll_combat_dice", return_value=1):
-        client.post(
-            "/combat/submit_action",
-            json={"combat_id": combat_id, "action_type": "attack"},
-            content_type="application/json",
-        )
-        client2.post(
-            "/combat/submit_action",
-            json={"combat_id": combat_id, "action_type": "attack"},
-            content_type="application/json",
-        )
-
-    combat = get_combat(combat_id)
-    true_hp = combat_enemy_hp(combat, default=55)
-    ok("reconcile test: damage applied", true_hp < 55, f"hp={true_hp}")
-
-    save_combat(combat_id, enemy_hp=55)
     st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
     payload_hp = int((st.get("enemy") or {}).get("hp") or -1)
     ok("reconcile test: status returns log HP", payload_hp == true_hp, f"{payload_hp} vs {true_hp}")
 
-    repaired = combat_enemy_hp(get_combat(combat_id), default=55)
+    repaired = combat_enemy_hp(get_combat(combat_id), default=start_hp)
     ok("reconcile test: DB repaired", repaired == true_hp, f"db={repaired}")
 
-    stats = build_enemy_combat_stats(get_combat(combat_id))
+    stats = build_enemy_combat_stats(get_combat(combat_id) or {})
     ok("reconcile test: build_enemy stats", int(stats.get("hp") or -1) == true_hp, str(stats))
 
-    teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
-    clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
+    teardown_test_combat(team_id, enc_id)
 
 
 def test_enemy_hp_updates_after_round(client, client2, team_id):
@@ -649,7 +638,44 @@ def test_encounter_list_hides_test_for_players(client, team_id):
         "enc_iggy_01_leech" in ids,
         str(ids),
     )
+    for practice_id in (
+        "practice_iggy_01_quick",
+        "practice_iggy_02_leech",
+        "practice_iggy_03_boundary",
+        "practice_iggy_04_marathon",
+    ):
+        ok(f"encounter list shows {practice_id}", practice_id in ids, str(ids))
+    practice = next((e for e in (data.get("encounters") or []) if e.get("encounter_id") == "practice_iggy_01_quick"), {})
+    ok("practice encounter is replayable", practice.get("replayable") is True, str(practice))
     ok("encounter list has progress hint", bool(data.get("progress_hint")), data.get("progress_hint"))
+
+
+def test_practice_encounter_replayable(client, team_id):
+    """Practice fights can be started again after victory without new player."""
+    from models.encounter import load_encounter
+    from models.encounter_outcomes import encounter_already_completed, record_encounter_completion
+
+    enc_id = "practice_iggy_01_quick"
+    enc = load_encounter(enc_id)
+    ok("practice encounter loads", enc is not None)
+    record_encounter_completion(team_id, enc_id, "success", narrative="prior run")
+    ok("practice marked completed in db", encounter_already_completed(team_id, enc_id))
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    data = r.get_json() or {}
+    ok("practice replay start allowed", data.get("success") and data.get("combat_id"), str(data)[:200])
+
+    from models.combat import clear_team_combat_id, get_active_combat_for_team, save_combat
+    from datetime import datetime
+
+    active = get_active_combat_for_team(team_id)
+    if active:
+        save_combat(active["id"], status="ended", winner="enemy", ended_at=datetime.now().isoformat())
+        clear_team_combat_id(team_id)
 
 
 def test_encounter_catalog():
@@ -692,6 +718,7 @@ def main():
     ok("設定 Iggy 路線", route_data.get("route") == "iggy" or route_data.get("team", {}).get("route") == "iggy", str(route_data))
 
     test_encounter_list_hides_test_for_players(client, team_id)
+    test_practice_encounter_replayable(client, team_id)
 
     # --- 玩家 2：加入隊伍 ---
     client2 = oikonomia.app.test_client()
@@ -707,7 +734,7 @@ def main():
     test_trauma_ending_thresholds()
     test_encounter_catalog()
     test_enemy_hp_updates_after_round(client, client2, team_id)
-    test_enemy_hp_reconciled_from_logs(client, client2, team_id)
+    test_enemy_hp_reconciled_from_logs(client, leader_id, team_id)
 
     # --- 開始 encounter（max_hp 測試會改 TestLeader stats，先跑主線）---
     r = client.post(
