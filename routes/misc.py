@@ -79,6 +79,8 @@ def api_version():
                 and "enemy_hp_after" in template_text,
             "enemy_hp_sync_v3": "resolveAuthoritativeEnemyHp" in template_text
                 and "Math.min(...candidates)" in template_text,
+            "enemy_hp_sync_v4": "fetchNoCache" in template_text
+                and "appendCacheBust" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

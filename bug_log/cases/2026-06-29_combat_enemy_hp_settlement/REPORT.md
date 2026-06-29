@@ -2,7 +2,7 @@
 
 | 欄位 | 值 |
 |------|-----|
-| **狀態** | **reopened** — PA 已 `641da28` 仍實機失敗；待 Gemini 第二意見 |
+| **狀態** | **fix_in_progress** — Gemini 診斷已實作（cache-bust + settlement queue） |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
 | **影響** | 單人 Iggy 線、練習/主線遭遇戰、多回合 polling；雙人未充分驗證 |
 | **修復 commit** | 見 §12.2（`3c89f62`→`641da28` 共 8+ 輪）；**全部實機未通過** |
@@ -292,6 +292,17 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 | `finishCombatVictoryFromPayload` | ~L2104 | 勝利/settlement 分叉 |
 | `reconcile_enemy_hp` | `models/combat.py` ~L943 | 後端 log→DB HP |
 | combat status zombie guard | `routes/combat.py` ~L263 | hp≤0 自動結束 |
+
+### 12.8 Gemini Architect 診斷（已實作）
+
+**雙重根因**：
+1. **Race**：poll 收到 `outcome` 時 `resetCombatSettlementState()` 中斷 settlement `_modalTimer`
+2. **Safari GET cache**：`/combat/status` 無 cache-bust → 回傳開局 140 HP JSON 覆寫 DOM
+
+**修復（`enemy_hp_sync_v4`）**：
+- `loadCombatStatus`：`outcome` 時若 `combatAwaitingSettlementAck` → `pendingVictoryAfterSettlement` 唔中斷 modal
+- `fetchNoCache` / `appendCacheBust`：`/combat/status`、`/status`、`/my_team`
+- Henry 驗證：**Safari 無痕模式**打 140 HP 敵（若正常遞減 = 快取確診）
 
 ### 12.7 建議 Henry 實機採證 checklist
 

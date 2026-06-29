@@ -1591,6 +1591,23 @@
         const COMBAT_POLL_INTERVAL_WAITING = 4000;
         const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
 
+        function appendCacheBust(url) {
+            const sep = url.includes('?') ? '&' : '?';
+            return `${url}${sep}t=${Date.now()}`;
+        }
+
+        const FETCH_NO_CACHE_HEADERS = {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+        };
+
+        function fetchNoCache(url, options = {}) {
+            return fetch(appendCacheBust(url), {
+                credentials: 'same-origin',
+                ...options,
+                headers: { ...FETCH_NO_CACHE_HEADERS, ...(options.headers || {}) },
+            });
+        }
 
         /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
         function effectiveCombatStatus(data) {
@@ -2142,7 +2159,7 @@
                     const url = currentCombatId
                         ? `/combat/status?combat_id=${currentCombatId}`
                         : '/combat/status';
-                    const res = await fetch(url, { credentials: 'same-origin' });
+                    const res = await fetchNoCache(url);
                     const fresh = await res.json();
                     if (fresh.outcome) payload = { ...payload, ...fresh };
                 } catch (_) { /* use local payload */ }
@@ -2154,7 +2171,7 @@
                 outcome,
                 active: false,
             });
-            const statusRes = await fetch('/status', { credentials: 'same-origin' });
+            const statusRes = await fetchNoCache('/status');
             updateDashboard(await statusRes.json());
             combatItemsLoaded = false;
         }
@@ -3111,7 +3128,7 @@
 
             if (!data.skip_team_prompt) {
                 try {
-                    const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
+                    const teamRes = await fetchNoCache('/my_team');
                     const teamData = await teamRes.json();
                     if (!teamData.has_team) {
                         setTimeout(async () => {
@@ -3253,7 +3270,7 @@
             setVisible(document.getElementById('combat-precheck-modal'), false);
             if (data.skipped) {
                 showCombatResult({ outcome: 'victory', narrative: data.narrative, reflection_prompt: data.reflection_prompt });
-                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                const statusRes = await fetchNoCache('/status');
                 updateDashboard(await statusRes.json());
                 return;
             }
@@ -3503,23 +3520,27 @@
                 const url = currentCombatId
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
-                const res = await fetch(url, { credentials: 'same-origin' });
+                const res = await fetchNoCache(url);
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
                 if (data.outcome) {
+                    if (combatAwaitingSettlementAck || settlementTimerPending) {
+                        pendingVictoryAfterSettlement = data;
+                        return;
+                    }
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
-                    resetCombatSettlementState();
                     hideRoundSettlementModal();
 
-                    if (shouldFinishCombatVictory(data)) {
+                    if (victoryPayloadHasSettlement(data) || shouldFinishCombatVictory(data)) {
                         await finishCombatVictoryFromPayload(data);
                     } else {
+                        resetCombatSettlementState();
                         showCombatResult(data);
                     }
 
-                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    const statusRes = await fetchNoCache('/status');
                     updateDashboard(await statusRes.json());
                     return;
                 }
@@ -3542,8 +3563,13 @@
                 }
 
                 if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    if (shouldFinishCombatVictory(data)) {
-                        await finishCombatVictoryFromPayload(data);
+                    if (data.outcome) {
+                        pendingVictoryAfterSettlement = data;
+                    } else if (shouldFinishCombatVictory(data)) {
+                        pendingVictoryAfterSettlement = {
+                            ...data,
+                            outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
+                        };
                     }
                     return;
                 }
@@ -5018,7 +5044,7 @@
             if (data.squad_id) {
                 currentSquad = data;
             } else {
-                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                const statusRes = await fetchNoCache('/status');
                 currentSquad = await statusRes.json();
             }
             updateDashboard(currentSquad);
@@ -5051,7 +5077,7 @@
             } else if (data.squad) {
                 currentSquad = { ...data.squad, route: data.route, team: data.team, protagonists: data.protagonists };
             } else {
-                const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                const statusRes = await fetchNoCache('/status');
                 currentSquad = await statusRes.json();
             }
             updateDashboard(currentSquad);
@@ -5084,7 +5110,7 @@
             const noBox = document.getElementById('no-team-box');
             const hasBox = document.getElementById('has-team-box');
             try {
-                const res = await fetch('/my_team', { credentials: 'same-origin' });
+                const res = await fetchNoCache('/my_team');
                 const data = await res.json();
 
                 updateTeamPageMode(!!data.has_team);
@@ -5260,7 +5286,7 @@
             modal.classList.add('flex');
 
             try {
-                const res = await fetch('/my_team', { credentials: 'same-origin' });
+                const res = await fetchNoCache('/my_team');
                 const data = await res.json();
                 select.innerHTML = '';
 
@@ -5318,7 +5344,7 @@
                 if (result.success) {
                     showToast(result.message || '隊長已成功轉讓！', 'success');
                     hideTransferModal();
-                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    const statusRes = await fetchNoCache('/status');
                     if (statusRes.ok) {
                         currentSquad = await statusRes.json();
                         updateDashboard(currentSquad);
@@ -5407,7 +5433,7 @@
                 showToast('成功加入 Team！', 'success');
                 if (currentSquad) {
                     currentSquad.team_id = data.team.team_id;
-                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    const statusRes = await fetchNoCache('/status');
                     currentSquad = await statusRes.json();
                     updateDashboard(currentSquad);
                 }
@@ -5570,7 +5596,10 @@
 
         async function refreshSquadFromServer() {
             try {
-                const res = await fetchWithTimeout('/status', { credentials: 'same-origin' });
+                const res = await fetchWithTimeout(appendCacheBust('/status'), {
+                    credentials: 'same-origin',
+                    headers: FETCH_NO_CACHE_HEADERS,
+                });
                 if (!res.ok) return null;
                 const data = await res.json();
                 if (data?.squad_id && data.success !== false && !data.error) {
@@ -5738,7 +5767,7 @@
                         if (result.success) {
                             persistRestoreToken(result);
                             showToast('PIN 設定成功！請記住。', 'success');
-                            const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                            const statusRes = await fetchNoCache('/status');
                             const statusData = await statusRes.json();
                             persistRestoreToken(statusData);
                             if (statusData?.squad_id && statusData.success !== false) {
@@ -6221,7 +6250,7 @@
         // 每 3 秒自動更新狀態（GM 調整後玩家介面可近乎即時反映）
         setInterval(() => {
             if (currentSquad) {
-                fetch('/status', { credentials: 'same-origin' })
+                fetchNoCache('/status')
                     .then(r => r.ok ? r.json() : null)
                     .then(d => {
                         if (d && d.squad_id && d.success !== false) {
@@ -6303,7 +6332,7 @@
                 updateDashboard({ ...currentSquad, ...pendingAppliedEffect.stats });
             } else {
                 try {
-                    const res = await fetch('/status', { credentials: 'same-origin' });
+                    const res = await fetchNoCache('/status');
                     if (res.ok) {
                         const data = await res.json();
                         if (data && data.squad_id) {

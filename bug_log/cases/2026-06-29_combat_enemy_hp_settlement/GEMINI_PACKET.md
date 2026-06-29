@@ -1,8 +1,8 @@
 # GEMINI_PACKET — BUG-2026-001（自包含，可直接貼入 Gemini）
 
-> **生成時間**：2026-06-29 15:41 UTC  
-> **Git commit**：`fd3a036`  
-> **用途**：Gemini **讀唔到** Google Drive  資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。  
+> **生成時間**：2026-06-29 15:47 UTC  
+> **Git commit**：`f65e47b`  
+> **用途**：Gemini **讀唔到** Google Drive bug_log 資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。
 > **重新生成**：`bash scripts/build_gemini_packet.sh`
 
 ---
@@ -11,9 +11,9 @@
 
 1. **最簡單**：打開本檔 `GEMINI_PACKET.md` → 全選 Copy → 貼到 Gemini
 2. **GitHub Raw**（若 Gemini 支援 URL）：
-   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/fd3a036/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/fd3a036/templates/index.html
-   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/fd3a036/routes/combat.py
+   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/f65e47b/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
+   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/f65e47b/templates/index.html
+   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/f65e47b/routes/combat.py
 3. **唔好用**：Drive 資料夾連結（Gemini API 索引唔到 .md / bug_log）
 4. **可選**：將本檔 Upload 為 **Google Doc**（單檔分享連結）再俾 Gemini
 
@@ -70,6 +70,19 @@
 ## attachments 注意
 
 `attachments/` 係 `3c89f62` 快照，**唔反映最新修復**。請以 GitHub main 為準。
+
+## 點讀（Gemini 讀唔到 Drive 時）
+
+**請用同目錄 `GEMINI_PACKET.md`**（~55KB，內嵌完整 JS/Python）：
+
+1. 打開 `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
+2. 全選 Copy → 貼入本 chat
+
+或 GitHub Raw（將 `COMMIT` 換成最新 short hash）：
+
+`https://raw.githubusercontent.com/Takjai18/oikonomia/COMMIT/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
+
+重新生成：`bash scripts/build_gemini_packet.sh`
 ---
 
 ## B. §12.5 請 Gemini 回答
@@ -97,6 +110,23 @@
 ### `templates/index.html` L1785–L2199
 
 ```javascript
+                if (m) return parseInt(m[1], 10);
+            }
+            for (let i = (logLines || []).length - 1; i >= 0; i--) {
+                const m = String(logLines[i] || '').match(/剩餘\s*HP\s*(\d+)/);
+                if (m) return parseInt(m[1], 10);
+            }
+            return null;
+        }
+
+        function parseEnemyRemainingHpFromStatus(data) {
+            return parseEnemyRemainingHpFromLogs(data?.log_entries || [], data?.log || []);
+        }
+
+        function isCombatModalBusy() {
+            return actionModalRolling || actionModalPauseTimer !== null || combatPreviewPending;
+        }
+
         function resolveAuthoritativeEnemyHp(data) {
             if (!data) return null;
             const settlement = getRoundSettlement(data);
@@ -457,7 +487,7 @@
                     const url = currentCombatId
                         ? `/combat/status?combat_id=${currentCombatId}`
                         : '/combat/status';
-                    const res = await fetch(url, { credentials: 'same-origin' });
+                    const res = await fetchNoCache(url);
                     const fresh = await res.json();
                     if (fresh.outcome) payload = { ...payload, ...fresh };
                 } catch (_) { /* use local payload */ }
@@ -469,7 +499,7 @@
                 outcome,
                 active: false,
             });
-            const statusRes = await fetch('/status', { credentials: 'same-origin' });
+            const statusRes = await fetchNoCache('/status');
             updateDashboard(await statusRes.json());
             combatItemsLoaded = false;
         }
@@ -495,28 +525,28 @@
             }
             const phase = Number(data.current_phase) || 0;
             const settled = applySettlementEnemyHp(data);
-            const settlement = getRoundSettlement(settled);
-            const hasDamage = Number(settlement.team_damage_dealt) > 0
-                || (settled.log_entries || []).some(e => e?.type === 'damage');
-            const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
-            if (!shouldShowRoundSettlement(settled) && !mustShow) {
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    return;
-                }
-                combatWaitingForRound = false;
-                hideCombatWaitingPanel();
-                updateCombatUI(settled, { damageDelay: 0 });
-                syncEnemyHpDisplay(settled);
-                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-                return;
-            }
-            showFullRoundSettlement(settled);
-        }
 ```
 
 ### `templates/index.html` L3323–L3680
 
 ```javascript
+                    ).join('');
+            } else {
+                setVisible(reflectionBox, false);
+            }
+        }
+
+        function updateNearDeathOverlay(me) {
+            const overlay = document.getElementById('combat-near-death-overlay');
+            const countdownEl = document.getElementById('near-death-countdown');
+            const inNearDeath = me?.near_death_until && new Date(me.near_death_until) > new Date();
+            setVisible(overlay, !!inNearDeath);
+            if (inNearDeath && countdownEl) {
+                const remaining = Math.max(0, Math.floor((new Date(me.near_death_until) - Date.now()) / 1000));
+                countdownEl.textContent = formatTimerDisplay(remaining);
+            }
+        }
+
         function updateCombatUI(data, options = {}) {
             if (!data) return;
             const uiData = normalizeCombatStatusData(applySettlementEnemyHp(data));
@@ -700,23 +730,27 @@
                 const url = currentCombatId
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
-                const res = await fetch(url, { credentials: 'same-origin' });
+                const res = await fetchNoCache(url);
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
                 if (data.outcome) {
+                    if (combatAwaitingSettlementAck || settlementTimerPending) {
+                        pendingVictoryAfterSettlement = data;
+                        return;
+                    }
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
-                    resetCombatSettlementState();
                     hideRoundSettlementModal();
 
-                    if (shouldFinishCombatVictory(data)) {
+                    if (victoryPayloadHasSettlement(data) || shouldFinishCombatVictory(data)) {
                         await finishCombatVictoryFromPayload(data);
                     } else {
+                        resetCombatSettlementState();
                         showCombatResult(data);
                     }
 
-                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    const statusRes = await fetchNoCache('/status');
                     updateDashboard(await statusRes.json());
                     return;
                 }
@@ -739,8 +773,13 @@
                 }
 
                 if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    if (shouldFinishCombatVictory(data)) {
-                        await finishCombatVictoryFromPayload(data);
+                    if (data.outcome) {
+                        pendingVictoryAfterSettlement = data;
+                    } else if (shouldFinishCombatVictory(data)) {
+                        pendingVictoryAfterSettlement = {
+                            ...data,
+                            outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
+                        };
                     }
                     return;
                 }
@@ -849,61 +888,35 @@
                 showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
                 showToast('已提交行動，等待隊友後先會顯示全隊傷害結算', 'info');
                 updateCombatUI({ ...data, active: true }, { initLogsOnly: true });
-                startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
-                return;
-            }
-
-            if (data.status === 'round_resolved' || data.round_resolved) {
-                if (data.enemy?.hp != null) {
-                    resetCombatEnemyHpTracking(data.enemy.hp);
-                }
-                handleCombatRoundResolved({ ...data, active: true });
-                return;
-            }
-
-            updateCombatUI({ ...data, active: true }, { damageDelay: 350 });
-        }
-
-        async function rescueNearDeath() {
-            const agreed = await showConfirmModal({
-                title: '禱告救援',
-                message: '為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）',
-                confirmLabel: '發起禱告',
-            });
-            if (!agreed) return;
-            const res = await fetch('/combat/rescue_near_death', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
 ```
 
 ### `templates/index.html` L4562–L4585
 
 ```javascript
-            safeSetText('combat-m-resilience', stats.resilience);
-        }
-
-        function resetCombatEnemyHpTracking(enemyHp = null) {
-            combatEnemyHpSeen = enemyHp;
-            lastAnimatedEnemyHp = enemyHp != null ? enemyHp : null;
-        }
-
-        function updateEnemyCombatStats(enemy, description) {
-            safeSetText('enemy-name', enemy.name || '敵人');
-            const quoteEl = document.getElementById('enemy-quote');
-            if (quoteEl) quoteEl.textContent = description || '';
-            syncEnemyHpDisplay(lastCombatStatus, enemy);
-            const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
-            const hpHintEl = document.getElementById('enemy-hp-hint');
-            if (hpHintEl) {
-                if (maxHp >= 500) {
-                    hpHintEl.textContent = '高 HP 敵人：血條變化唔明顯，請睇 HP 數字同結算畫面';
-                    setVisible(hpHintEl, true);
-                } else {
-                    hpHintEl.textContent = '';
-                    setVisible(hpHintEl, false);
-                }
+                el.textContent = showRatio ? `${v} / ${max}` : String(v);
             }
+            if (pctEl) pctEl.textContent = `(${pct}%)`;
+            if (bar) bar.style.width = `${pct}%`;
+        }
+
+        function updateCombatPlayerStats(me, squad) {
+            const maxHp = effectivePlayerMaxHp({
+                hp: combatStatValue(me.hp, squad.hp),
+                max_hp: combatStatValue(me.max_hp, squad.max_hp),
+            });
+            const stats = {
+                hp: combatStatValue(me.hp, squad.hp) ?? maxHp,
+                sanity: combatStatValue(me.sanity, squad.sanity) ?? 100,
+                power: combatStatValue(me.power, squad.power) ?? 0,
+                intellect: combatStatValue(me.intellect, squad.intellect) ?? 0,
+                resilience: combatStatValue(me.resilience, squad.resilience) ?? 0,
+            };
+            setStatBar('combat-', 'hp', stats.hp, { showRatio: true, maxHp });
+            ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
+                setStatBar('combat-', s, stats[s], { showRatio: true });
+            });
+            safeSetText('combat-player-hp', stats.hp);
+            safeSetText('combat-player-sanity', stats.sanity);
 ```
 
 ## E. 後端 Python
@@ -1277,7 +1290,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 ## G. 實機仍 fail 條件（Henry）
 
 - Iggy 線、**單人**、`practice_iggy_03_boundary`（140 HP）
-- PA `fd3a036`、`enemy_hp_sync_v3: true`
+- PA `f65e47b`、`enemy_hp_sync_v3: true`
 - 戰鬥中敵 HP **顯示**唔更新
 
 ---
