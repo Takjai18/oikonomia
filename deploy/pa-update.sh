@@ -116,7 +116,12 @@ fi
 source "$VENV_DIR/bin/activate"
 pip install -q -r requirements.txt
 echo "venv pip install -r requirements.txt (ok)"
-echo "NOTE: PythonAnywhere Web tab -> Virtualenv path should be: $VENV_DIR"
+if ! python3 -c "from PIL import Image; print('Pillow OK')" 2>&1; then
+    echo "ERROR: Pillow (PIL) not installed in venv."
+    exit 1
+fi
+echo "NOTE: PythonAnywhere Web tab -> Virtualenv path MUST be: $VENV_DIR"
+echo "NOTE: WSGI file must use: from wsgi import application (NOT from app import app)"
 
 echo ""
 echo "--- Import smoke test ---"

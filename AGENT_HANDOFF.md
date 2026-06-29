@@ -250,11 +250,25 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 
 ### PA 重要設定
 
-- **WSGI**：import `wsgi.application`
-- **Virtualenv**：`~/oikonomia/venv`（deploy script 會建立）
+- **WSGI 檔案**（Web tab → WSGI configuration）必須係：
+  ```python
+  import sys
+  sys.path.insert(0, '/home/takjai/oikonomia')
+  from wsgi import application
+  ```
+  **唔好用** `from app import app as application`（會跳過 `wsgi.py` 嘅 `DATA_DIR` 設定，且可能用錯 Python）
+- **Virtualenv**：`~/oikonomia/venv`（**必須**設喺 Web tab；否則 `ModuleNotFoundError: No module named 'PIL'`）
 - **Environment**：`SECRET_KEY`（必須）、`GM_PIN`、`DATA_DIR=data`
 - **Static files**：**唔好** map `/uploads/`（交俾 Flask route）
 - **DB migration**：`init_db()` → `migrate_db()` 自動跑
+
+### PA 常見錯誤（2026-06-29 實例）
+
+| 錯誤 | 原因 | 修法 |
+|------|------|------|
+| `No module named 'PIL'` | Web tab 未指向 venv | 跑 `pa-update.sh` → Web tab Virtualenv = `~/oikonomia/venv` → Reload |
+| `SECRET_KEY ... required` | Web tab 未設 env | Web tab → Environment variables → 加 `SECRET_KEY` |
+| WSGI import `from app import app` | 舊 WSGI 設定 | 改為 `from wsgi import application`（見上） |
 
 ---
 

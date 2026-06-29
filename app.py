@@ -20,7 +20,6 @@ import time
 import random
 import hmac
 import hashlib
-from PIL import Image
 
 from utils.env import is_production_env as _is_production_env
 

@@ -38,9 +38,26 @@ else
 fi
 
 echo ""
-echo "--- Code markers in app.py ---"
-for marker in resolve_player_phase build_combat_round_preview combat-action-modal; do
-    if grep -q "$marker" app.py 2>/dev/null; then
+echo "--- Virtualenv + Pillow ---"
+VENV_DIR="$REPO/venv"
+if [ -d "$VENV_DIR" ]; then
+    # shellcheck disable=SC1091
+    source "$VENV_DIR/bin/activate"
+    echo "  venv: $VENV_DIR"
+    if python3 -c "from PIL import Image" 2>/dev/null; then
+        echo "  OK  Pillow (PIL)"
+    else
+        echo "  NO  Pillow — run: FORCE=1 bash ~/oikonomia/deploy/pa-update.sh"
+    fi
+else
+    echo "  NO  venv at $VENV_DIR"
+fi
+
+echo ""
+echo "--- Code markers (templates/index.html + models/combat.py) ---"
+for marker in combat-action-modal resolve_player_phase build_combat_round_preview; do
+    if grep -q "$marker" templates/index.html 2>/dev/null \
+        || grep -q "$marker" models/combat.py 2>/dev/null; then
         echo "  OK  $marker"
     else
         echo "  NO  $marker"
