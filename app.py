@@ -6478,6 +6478,11 @@ HTML_TEMPLATE = """
                 autoPlayCheckbox.checked = !!settings.autoPlayStory;
             }
 
+            const disableTypewriterEl = document.getElementById('setting-disable-typewriter');
+            if (disableTypewriterEl) {
+                disableTypewriterEl.checked = !!settings.disableTypewriter;
+            }
+
             const speed = settings.typewriterSpeed || 'normal';
             const fontSize = settings.fontSize || 'medium';
             highlightSettingButton('speed', speed);
@@ -6492,6 +6497,9 @@ HTML_TEMPLATE = """
             const settings = {
                 autoPlayStory: document.getElementById('setting-auto-play')?.checked
                     ?? prev.autoPlayStory
+                    ?? false,
+                disableTypewriter: document.getElementById('setting-disable-typewriter')?.checked
+                    ?? prev.disableTypewriter
                     ?? false,
                 typewriterSpeed: getActiveSpeed(),
                 fontSize: getActiveFontSize(),
@@ -6559,12 +6567,37 @@ HTML_TEMPLATE = """
             loadSettings();
         }
 
-        function closeSettingsModal() {
-            saveSettings();
+        function closeSettingsModal(skipSave = false) {
+            if (!skipSave) saveSettings();
             const modal = document.getElementById('settings-modal');
             if (!modal) return;
             modal.classList.remove('flex');
             setVisible(modal, false);
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-2xl text-sm shadow-lg z-[80] ${
+                type === 'success' ? 'bg-emerald-600 text-white' : 'bg-zinc-700 text-white'
+            }`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.transition = 'all 0.3s ease';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 1800);
+        }
+
+        function resetAllSettings() {
+            if (!confirm('確定要重置所有設定嗎？\n此操作無法還原。')) return;
+
+            localStorage.removeItem(GAME_SETTINGS_KEY);
+            document.documentElement.style.fontSize = '16px';
+            loadSettings();
+            closeSettingsModal(true);
+            showToast('已重置所有設定', 'success');
         }
 
         function showSection(id) {
@@ -8141,6 +8174,14 @@ HTML_TEMPLATE = """
             if (!textEl) return;
             textEl.textContent = '';
             const content = text || '';
+
+            if (getGameSettings().disableTypewriter) {
+                textEl.textContent = content;
+                if (onDone) onDone();
+                scheduleStoryAutoAdvance();
+                return;
+            }
+
             if (!content.length) {
                 if (onDone) onDone();
                 scheduleStoryAutoAdvance();
@@ -10947,6 +10988,17 @@ HTML_TEMPLATE = """
                     </label>
                 </div>
 
+                <div class="flex items-center justify-between gap-x-4">
+                    <div>
+                        <div class="font-medium">關閉打字機效果</div>
+                        <div class="text-xs text-zinc-400">劇情文字即時顯示，唔使用打字機效果</div>
+                    </div>
+                    <label class="relative inline-flex shrink-0 items-center cursor-pointer">
+                        <input type="checkbox" id="setting-disable-typewriter" class="sr-only peer" onchange="saveSettings()">
+                        <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
                 <div>
                     <div class="font-medium mb-2">劇情打字機速度</div>
                     <div class="flex gap-x-2">
@@ -10978,7 +11030,24 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <div class="mt-8 text-center">
+            <div class="mt-8 pt-6 border-t border-zinc-700">
+                <button type="button" onclick="resetAllSettings()"
+                        class="w-full flex items-center justify-center gap-x-2 py-3 text-sm
+                               bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/30
+                               text-red-400 hover:text-red-300 border border-red-500/30
+                               rounded-2xl transition-all duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.595-1.858L5 7m5 4v6m4-6v6m1-10V9a1 1 0 00-1-1h-4a1 1 0 00-1 1v1M5 7h14" />
+                    </svg>
+                    <span>重置所有設定</span>
+                </button>
+                <div class="text-center text-[10px] text-zinc-500 mt-2">
+                    此操作無法還原
+                </div>
+            </div>
+
+            <div class="mt-4 text-center">
                 <button type="button" onclick="closeSettingsModal()"
                         class="px-8 py-2.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm transition-colors">
                     完成
