@@ -13,6 +13,7 @@ from services.narrative import (
 from services.story import (
     count_team_distinct_tasks,
     get_pending_story_id,
+    get_viewed_story_ids,
     is_story_viewed,
     mark_story_viewed,
     resolve_story_stage,
@@ -93,6 +94,17 @@ def api_complete_story(story_id):
 
     mark_story_viewed(session["squad_id"], story_id)
     return jsonify({"success": True, "story_id": story_id})
+
+
+@story_bp.route("/api/story/views")
+def api_story_views():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    return jsonify({
+        "success": True,
+        "viewed_story_ids": get_viewed_story_ids(session["squad_id"]),
+    })
 
 
 @story_bp.route("/api/story/pending")

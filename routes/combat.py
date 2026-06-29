@@ -304,7 +304,9 @@ def combat_submit_action_api():
             active = get_combat_by_squad(session["squad_id"])
         combat_id = active["id"] if active else None
     combat = get_combat(combat_id) if combat_id else None
-    if not combat or combat.get("status") != "player_phase":
+    if not combat or combat.get("status") not in ("player_phase",):
+        if combat and combat.get("status") == "resolving":
+            return jsonify({"success": False, "error": "回合結算中，請稍候"}), 409
         return jsonify({"success": False, "error": "沒有進行中的 Player Phase"}), 400
 
     encounter = load_encounter(combat["encounter_id"])

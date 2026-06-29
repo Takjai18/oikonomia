@@ -22,6 +22,7 @@ from services.teams_overview import (
     build_teams_overview,
     get_all_teams_with_stats,
 )
+from services.gm_auth import clear_gm_session, establish_gm_session, gm_session_valid
 from utils.env import is_production_env
 from utils.helpers import (
     hkt_timestamp,
@@ -46,13 +47,15 @@ def _get_gm_pin():
 
 
 def _require_gm():
-    if not session.get("is_gm"):
+    if not gm_session_valid(session):
+        clear_gm_session(session)
         return jsonify({"success": False, "error": "未授權"}), 403
     return None
 
 
 def _require_gm_html():
-    if not session.get("is_gm"):
+    if not gm_session_valid(session):
+        clear_gm_session(session)
         return redirect("/gm")
     return None
 
@@ -71,19 +74,24 @@ def gm_dashboard():
         return denied
 
     conn = sqlite3.connect(settings.db_path)
-    c = conn.cursor()
+    conn.row_factory = sqlite3.Row
+    submission_counts = {
+        row["squad_id"]: row["total"]
+        for row in conn.execute(
+            "SELECT squad_id, COUNT(*) AS total FROM submissions GROUP BY squad_id"
+        ).fetchall()
+    }
+    conn.close()
+
     squad_list = []
     for s in get_all_squads():
-        c.execute("SELECT COUNT(*) FROM submissions WHERE squad_id = ?", (s["squad_id"],))
-        submission_count = c.fetchone()[0]
         squad_list.append({
             **s,
             "zoo_count": len(s["zoo_skills"]),
-            "submission_count": submission_count,
+            "submission_count": submission_counts.get(s["squad_id"], 0),
             "route_label": {"iggy": "Iggy", "marah": "Marah"}.get(s.get("route"), "未選"),
         })
     last_update = datetime.now().strftime("%H:%M:%S")
-    conn.close()
     return render_template_string(GM_DASHBOARD_HTML, squads=squad_list, last_update=last_update)
 
 
@@ -130,8 +138,7 @@ def gm_squad_detail_page(squad_id):
 def gm_login():
     pin = request.form.get("pin", "")
     if pin == _get_gm_pin():
-        session.permanent = True
-        session["is_gm"] = True
+        establish_gm_session(session)
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "PIN 錯誤"}), 401
 
@@ -344,6 +351,11 @@ def gm_combat_resolve_phase():
     combat = get_combat(int(combat_id))
     if not combat:
         return jsonify({"success": False, "error": "戰鬥不存在"}), 404
+    if combat.get("status") == "resolving":
+        return jsonify({
+            "success": False,
+            "error": "回合結算中，請稍候再試",
+        }), 409
     if combat.get("status") != "player_phase":
         return jsonify({
             "success": False,

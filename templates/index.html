@@ -2979,6 +2979,7 @@
         const storyAutoShown = new Set();
         const STORY_READ_STORAGE_KEY = 'read_stories';
         const STORY_AUTOPLAY_PAUSE_MS = 1400;
+        let serverReadStories = null;
 
         function getReadStories() {
             try {
@@ -2988,8 +2989,25 @@
             }
         }
 
+        function setReadStories(readStories) {
+            localStorage.setItem(STORY_READ_STORAGE_KEY, JSON.stringify(readStories));
+        }
+
+        async function syncStoryViewsFromServer() {
+            try {
+                const res = await fetch('/api/story/views', { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.success || !Array.isArray(data.viewed_story_ids)) return;
+                serverReadStories = new Set(data.viewed_story_ids);
+                const merged = [...new Set([...getReadStories(), ...data.viewed_story_ids])];
+                setReadStories(merged);
+            } catch (_) {}
+        }
+
         function checkIfStoryRead(storyId) {
             if (!storyId) return false;
+            if (serverReadStories?.has(storyId)) return true;
             return getReadStories().includes(storyId);
         }
 
@@ -2998,8 +3016,9 @@
             const readStories = getReadStories();
             if (!readStories.includes(storyId)) {
                 readStories.push(storyId);
-                localStorage.setItem(STORY_READ_STORAGE_KEY, JSON.stringify(readStories));
+                setReadStories(readStories);
             }
+            if (serverReadStories) serverReadStories.add(storyId);
         }
 
         function isStoryRead(storyId, storyData) {
@@ -4177,7 +4196,9 @@
                 if (data.team) currentSquad.team = data.team;
             }
             initPlayerAvatar();
-            setTimeout(() => checkPendingStory(), 600);
+            syncStoryViewsFromServer().finally(() => {
+                setTimeout(() => checkPendingStory(), 600);
+            });
         }
 
         async function setTeamRoute(route) {

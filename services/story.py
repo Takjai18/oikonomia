@@ -101,6 +101,18 @@ def get_pending_story_id(squad):
     return story_id
 
 
+def get_viewed_story_ids(squad_id):
+    conn = sqlite3.connect(settings.db_path)
+    try:
+        rows = conn.execute(
+            "SELECT story_id FROM story_views WHERE squad_id = ? ORDER BY viewed_at",
+            (squad_id,),
+        ).fetchall()
+        return [row[0] for row in rows]
+    finally:
+        conn.close()
+
+
 def mark_story_viewed(squad_id, story_id):
     conn = sqlite3.connect(settings.db_path)
     try:

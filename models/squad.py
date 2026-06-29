@@ -6,6 +6,50 @@ from models.settings import settings
 from utils.helpers import normalize_team_id
 from utils.validators import parse_status_effects
 
+
+def is_near_death_active(squad):
+    until = (squad or {}).get("near_death_until")
+    if not until:
+        return False
+    try:
+        return datetime.now() < datetime.fromisoformat(until)
+    except ValueError:
+        return False
+
+
+def _bulk_team_routes(team_ids):
+    ids = [normalize_team_id(tid) for tid in dict.fromkeys(team_ids) if tid]
+    if not ids:
+        return {}
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        placeholders = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"SELECT team_id, route FROM teams WHERE team_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        return {
+            normalize_team_id(row["team_id"]): row["route"]
+            for row in rows
+            if row["route"] in ("iggy", "marah")
+        }
+    finally:
+        conn.close()
+
+
+def apply_authoritative_route(squad, team_routes=None):
+    if not squad:
+        return squad
+    team_id = squad.get("team_id")
+    if not team_id:
+        return squad
+    clean_id = normalize_team_id(team_id)
+    route = (team_routes or {}).get(clean_id)
+    if route in ("iggy", "marah"):
+        squad["route"] = route
+    return squad
+
 DEFAULT_MAX_HP = 100
 HP_STAT_CEILING = 999
 
@@ -101,7 +145,7 @@ def get_squad(squad_id):
     squad = row_to_squad(row)
 
     if squad.get("team_id"):
-        from models.team import get_team_protagonists
+        from models.team import get_team_protagonists, official_squad_route
 
         clean_team_id = normalize_team_id(squad["team_id"])
         conn = sqlite3.connect(settings.db_path)
@@ -113,11 +157,17 @@ def get_squad(squad_id):
         conn.close()
 
         if team_row:
-            if team_row["route"]:
-                squad["route"] = team_row["route"]
+            squad = apply_authoritative_route(
+                squad,
+                {clean_team_id: team_row["route"]},
+            )
             if team_row["leader_squad_id"] == squad["squad_id"]:
                 squad["is_team_leader"] = 1
             squad["protagonists"] = get_team_protagonists(clean_team_id)
+
+        route = official_squad_route(squad)
+        if route:
+            squad["route"] = route
 
     return squad
 
@@ -172,7 +222,9 @@ def get_all_squads():
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM squads ORDER BY squad_id").fetchall()
     conn.close()
-    return [row_to_squad(r) for r in rows]
+    squads = [row_to_squad(r) for r in rows]
+    team_routes = _bulk_team_routes(s["team_id"] for s in squads if s.get("team_id"))
+    return [apply_authoritative_route(s, team_routes) for s in squads]
 
 
 def get_team_members(team_id):
@@ -186,7 +238,8 @@ def get_team_members(team_id):
         (clean_team_id,),
     ).fetchall()
     conn.close()
-    return [row_to_squad(r) for r in rows]
+    team_routes = _bulk_team_routes([clean_team_id])
+    return [apply_authoritative_route(row_to_squad(r), team_routes) for r in rows]
 
 
 def get_team_average_stat(team_id, stat):

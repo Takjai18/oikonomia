@@ -8,6 +8,7 @@ import re
 from flask import current_app
 
 from models.item import get_item_by_id, get_item_by_qr_code_value
+from utils.env import is_production_env
 
 
 def qr_signing_secret():
@@ -45,7 +46,8 @@ def verify_signed_qr_token(token):
 
 
 def allow_legacy_unsigned_qr():
-    return os.environ.get("ALLOW_LEGACY_QR", "1") != "0"
+    default = "0" if is_production_env() else "1"
+    return os.environ.get("ALLOW_LEGACY_QR", default) != "0"
 
 
 def build_item_qr_payload(item):

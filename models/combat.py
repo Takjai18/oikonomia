@@ -38,7 +38,8 @@ from models.protagonist import (
     resolve_combat_protagonist_keys,
     trauma_bad_ending_narrative,
 )
-from models.team import get_team_by_id, get_team_protagonists
+from models.team import get_team_by_id, get_team_protagonists, official_squad_route
+from utils.db_tx import immediate_transaction, with_db_retry
 
 
 def _db():
@@ -49,6 +50,8 @@ COMBAT_ACTION_TYPES = settings.combat_action_types
 ATTACK_ACTION_TYPES = settings.attack_action_types
 DICE_MULTIPLIERS = settings.dice_multipliers
 COMBAT_ATTACK_BASE_DAMAGE = settings.combat_attack_base_damage
+COMBAT_STATUS_RESOLVING = "resolving"
+RESOLVING_STALE_SECONDS = 45
 
 
 def row_to_combat(row):
@@ -283,30 +286,33 @@ def combat_action_already_submitted(combat_id, squad_id, phase):
 
 
 def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, item_id=None):
-    conn = sqlite3.connect(_db())
-    try:
-        conn.execute(
-            """INSERT INTO combat_actions
-               (combat_id, squad_id, phase, action_type, dice_result, item_id, submitted_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(combat_id, squad_id, phase) DO UPDATE SET
-                   action_type = excluded.action_type,
-                   dice_result = excluded.dice_result,
-                   item_id = excluded.item_id,
-                   submitted_at = excluded.submitted_at""",
-            (
-                combat_id,
-                squad_id,
-                phase,
-                action_type,
-                dice_result,
-                item_id,
-                datetime.now().isoformat(),
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    def _write():
+        conn = sqlite3.connect(_db())
+        try:
+            conn.execute(
+                """INSERT INTO combat_actions
+                   (combat_id, squad_id, phase, action_type, dice_result, item_id, submitted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(combat_id, squad_id, phase) DO UPDATE SET
+                       action_type = excluded.action_type,
+                       dice_result = excluded.dice_result,
+                       item_id = excluded.item_id,
+                       submitted_at = excluded.submitted_at""",
+                (
+                    combat_id,
+                    squad_id,
+                    phase,
+                    action_type,
+                    dice_result,
+                    item_id,
+                    datetime.now().isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    with_db_retry(_write)
 
 def zoo_bonus_multiplier(sanity):
     sanity = int(sanity or 0)
@@ -383,7 +389,13 @@ def get_combat_participants(combat):
                )
             ORDER BY s.is_team_leader DESC, COALESCE(s.display_name, s.squad_id)
         """, (starter_id,)).fetchall()
-        participants = [row_to_squad(r) for r in rows]
+        participants = []
+        for row in rows:
+            participant = row_to_squad(row)
+            route = official_squad_route(participant)
+            if route:
+                participant["route"] = route
+            participants.append(participant)
     finally:
         conn.close()
 
@@ -522,13 +534,65 @@ def apply_damage_to_player(squad_id, damage, squad=None):
         squad = get_squad(squad_id)
     if not squad:
         return
-    new_hp = max(0, int(squad.get("hp") or 0) - damage)
+    current_hp = int(squad.get("hp") or 0)
+    new_hp = max(0, current_hp - damage)
     updates = {"hp": new_hp}
-    if new_hp <= 0:
+    if new_hp <= 0 and current_hp > 0:
+        updates["near_death_until"] = (
+            datetime.now() + timedelta(minutes=settings.near_death_minutes)
+        ).isoformat()
+    elif new_hp <= 0 and not squad.get("near_death_until"):
         updates["near_death_until"] = (
             datetime.now() + timedelta(minutes=settings.near_death_minutes)
         ).isoformat()
     update_squad(squad_id, **updates)
+
+
+def _recover_stale_resolving_combat(combat_id):
+    with immediate_transaction() as conn:
+        row = conn.execute(
+            "SELECT status, phase_started_at FROM combats WHERE id = ?",
+            (combat_id,),
+        ).fetchone()
+        if not row or row[0] != COMBAT_STATUS_RESOLVING:
+            return
+        started = row[1]
+        stale = True
+        if started:
+            try:
+                stale = (
+                    datetime.now() - datetime.fromisoformat(started)
+                ).total_seconds() > RESOLVING_STALE_SECONDS
+            except ValueError:
+                stale = True
+        if stale:
+            conn.execute(
+                "UPDATE combats SET status = 'player_phase' WHERE id = ? AND status = ?",
+                (combat_id, COMBAT_STATUS_RESOLVING),
+            )
+
+
+def _claim_player_phase_resolution(combat_id):
+    with immediate_transaction() as conn:
+        row = conn.execute(
+            "SELECT status FROM combats WHERE id = ?",
+            (combat_id,),
+        ).fetchone()
+        if not row or row[0] != "player_phase":
+            return False
+        cur = conn.execute(
+            "UPDATE combats SET status = ? WHERE id = ? AND status = 'player_phase'",
+            (COMBAT_STATUS_RESOLVING, combat_id),
+        )
+        return cur.rowcount > 0
+
+
+def _release_player_phase_resolution(combat_id):
+    with immediate_transaction() as conn:
+        conn.execute(
+            "UPDATE combats SET status = 'player_phase' WHERE id = ? AND status = ?",
+            (combat_id, COMBAT_STATUS_RESOLVING),
+        )
 
 def get_lowest_resilience_player(participants):
     best = None
@@ -556,8 +620,27 @@ def resolve_player_phase(combat_id):
     - 瀕死檢查、日誌、Phase 狀態更新
     回傳 (combat, winner)；winner 為 'squad' | 'enemy' | None
     """
+    _recover_stale_resolving_combat(combat_id)
+    if not _claim_player_phase_resolution(combat_id):
+        combat = get_combat(combat_id)
+        if not combat:
+            return None, None
+        if combat.get("status") == COMBAT_STATUS_RESOLVING:
+            return combat, None
+        if combat.get("status") == "ended":
+            return combat, combat.get("winner")
+        return combat, None
+
+    try:
+        return _resolve_player_phase_body(combat_id)
+    except Exception:
+        _release_player_phase_resolution(combat_id)
+        raise
+
+
+def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
-    if not combat or combat.get("status") != "player_phase":
+    if not combat or combat.get("status") != COMBAT_STATUS_RESOLVING:
         return combat, None
 
     encounter = load_encounter(combat["encounter_id"])
@@ -592,6 +675,14 @@ def resolve_player_phase(combat_id):
             continue
         display = player.get("display_name") or player_squad_id
         sanity = int(player.get("sanity") or 0)
+
+        if int(player.get("hp") or 0) <= 0:
+            combat = append_combat_log(
+                combat,
+                f"{display} 已無法行動",
+                log_type="incapacitated",
+            )
+            continue
 
         if is_berserk(sanity):
             berserk_players.append(player_squad_id)

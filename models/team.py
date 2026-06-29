@@ -55,6 +55,20 @@ def official_team_route(team):
     return route if route in ("iggy", "marah") else None
 
 
+def official_squad_route(squad):
+    """Single source of truth: team.route overrides squads.route when in a team."""
+    if not squad:
+        return None
+    team_id = squad.get("team_id")
+    if team_id:
+        team = get_team_by_id(team_id)
+        route = official_team_route(team)
+        if route:
+            return route
+    route = squad.get("route")
+    return route if route in ("iggy", "marah") else None
+
+
 def is_team_leader_session(team, squad_id):
     if not team or not squad_id:
         return False

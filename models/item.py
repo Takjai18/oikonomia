@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from models.settings import settings
-from models.squad import apply_hp_change, get_squad
+from models.squad import apply_hp_change, get_squad, is_near_death_active
 from utils.db_tx import immediate_transaction
 from utils.helpers import clamped_stat_delta_expr, normalize_team_id
 
@@ -71,13 +71,15 @@ def serialize_item_for_client(item):
 
 def _apply_stat_delta(c, squad_id, stat, delta):
     row = c.execute(
-        "SELECT hp, max_hp, sanity, power, intellect, resilience FROM squads WHERE squad_id = ?",
+        "SELECT hp, max_hp, sanity, power, intellect, resilience, near_death_until FROM squads WHERE squad_id = ?",
         (squad_id,),
     ).fetchone()
     if not row:
         return None
 
     if stat == "hp":
+        if delta > 0 and is_near_death_active(dict(row)):
+            return dict(row)
         new_hp, new_max_hp = apply_hp_change(row["hp"], row["max_hp"], delta)
         c.execute(
             "UPDATE squads SET hp = ?, max_hp = ? WHERE squad_id = ?",
@@ -187,50 +189,48 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
 
     is_one_time = item.get("is_one_time_use", 1)
     enforce_qr_once = source == "qr" and is_one_time
-
-    conn = sqlite3.connect(settings.db_path)
-    c = conn.cursor()
-    try:
-        if enforce_qr_once:
-            used = c.execute(
-                "SELECT squad_id FROM qr_code_uses WHERE item_id = ?",
-                (item_id,),
-            ).fetchone()
-            if used:
-                return False, "此 QR Code 已經被使用", None
-
-        existing = c.execute(
-            "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
-            (squad_id, item_id),
-        ).fetchone()
-        if existing:
-            return False, "你已經擁有此物品", None
-
-        team_id = squad.get("team_id")
-        if team_id:
-            clean_team_id = normalize_team_id(team_id)
-            team_dup = c.execute("""
-                SELECT COUNT(*) FROM player_items pi
-                JOIN squads s ON pi.squad_id = s.squad_id
-                WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
-            """, (clean_team_id, item_id)).fetchone()[0]
-            if team_dup > 0:
-                return False, "同一隊內已經有人擁有此物品", None
-
-        owned_count = c.execute(
-            "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
-            (squad_id,),
-        ).fetchone()[0]
-        max_slots = settings.max_inventory_slots
-        if owned_count >= max_slots:
-            return False, f"你已經持有 {max_slots} 樣物品，請先丟棄", None
-    finally:
-        conn.close()
-
+    team_id = squad.get("team_id")
+    clean_team_id = normalize_team_id(team_id) if team_id else None
     now = datetime.now().isoformat()
+
     try:
         with immediate_transaction() as tx:
             tc = tx.cursor()
+            if enforce_qr_once:
+                used = tc.execute(
+                    "SELECT squad_id FROM qr_code_uses WHERE item_id = ?",
+                    (item_id,),
+                ).fetchone()
+                if used:
+                    return False, "此 QR Code 已經被使用", None
+
+            existing = tc.execute(
+                "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
+                (squad_id, item_id),
+            ).fetchone()
+            if existing:
+                return False, "你已經擁有此物品", None
+
+            if clean_team_id:
+                team_dup = tc.execute(
+                    """
+                    SELECT COUNT(*) FROM player_items pi
+                    JOIN squads s ON pi.squad_id = s.squad_id
+                    WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
+                    """,
+                    (clean_team_id, item_id),
+                ).fetchone()[0]
+                if team_dup > 0:
+                    return False, "同一隊內已經有人擁有此物品", None
+
+            owned_count = tc.execute(
+                "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
+                (squad_id,),
+            ).fetchone()[0]
+            max_slots = settings.max_inventory_slots
+            if owned_count >= max_slots:
+                return False, f"你已經持有 {max_slots} 樣物品，請先丟棄", None
+
             tc.execute(
                 "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
                 (squad_id, item_id, source, now),
@@ -239,13 +239,7 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
                 tc.execute(
                     """INSERT INTO qr_code_uses (item_id, squad_id, team_id, source, used_at)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        item_id,
-                        squad_id,
-                        normalize_team_id(team_id) if team_id else None,
-                        source,
-                        now,
-                    ),
+                    (item_id, squad_id, clean_team_id, source, now),
                 )
     except sqlite3.IntegrityError:
         return False, "此 QR Code 已經被使用", None
