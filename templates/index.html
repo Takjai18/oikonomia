@@ -268,6 +268,28 @@
             #combat-screen .combat-action-btn { padding-top: 0.65rem; padding-bottom: 0.65rem; font-size: 0.8125rem; }
             #combat-log { max-height: 5.5rem; }
         }
+        #settings-modal .settings-sheet {
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        #settings-modal .settings-scroll {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
+        #settings-modal .settings-tab {
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+        #settings-modal .settings-tab.is-active {
+            background: #f59e0b;
+            color: #18181b;
+            font-weight: 600;
+        }
+        #settings-modal .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            min-height: 2.75rem;
+        }
         .log-section.is-collapsed .log-section-body { display: none; }
         .log-section.is-collapsed .log-section-header { margin-bottom: 0; }
         .log-section-toggle-icon { transition: transform 0.2s ease; }
@@ -1363,12 +1385,31 @@
             });
         }
 
+        function switchSettingsTab(tab) {
+            const tabs = ['story', 'combat', 'display'];
+            tabs.forEach((t) => {
+                const panel = document.getElementById(`settings-panel-${t}`);
+                if (panel) panel.classList.toggle('hidden', t !== tab);
+                const btn = document.getElementById(`settings-tab-${t}`);
+                if (btn) btn.classList.toggle('is-active', t === tab);
+            });
+            try {
+                localStorage.setItem('oikonomia_settings_tab', tab);
+            } catch (_) { /* ignore */ }
+        }
+
         function openSettingsModal() {
             const modal = document.getElementById('settings-modal');
             if (!modal) return;
             setVisible(modal, true);
             modal.classList.add('flex');
             loadSettings();
+            let tab = 'story';
+            try {
+                tab = localStorage.getItem('oikonomia_settings_tab') || 'story';
+            } catch (_) { /* ignore */ }
+            if (!['story', 'combat', 'display'].includes(tab)) tab = 'story';
+            switchSettingsTab(tab);
         }
 
         function closeSettingsModal(skipSave = false) {
@@ -6620,131 +6661,135 @@
         </div>
     </div>
 
-    <!-- 設定界面 -->
+    <!-- 設定界面（手機：底 sheet + 分頁；內容區可捲動） -->
     <div id="settings-modal"
          onclick="if (event.target.id === 'settings-modal') closeSettingsModal()"
-         class="hidden fixed inset-0 bg-black/90 z-[70] items-center justify-center">
-        <div class="w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-3xl p-6"
+         class="hidden fixed inset-0 bg-black/90 z-[70] flex items-end sm:items-center justify-center sm:p-4">
+        <div class="settings-sheet w-full sm:max-w-md bg-zinc-900 border-t sm:border border-zinc-700 rounded-t-3xl sm:rounded-3xl max-h-[min(88dvh,640px)] flex flex-col overflow-hidden shadow-2xl"
              onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold">設定</h2>
+            <div class="shrink-0 flex justify-between items-center px-4 pt-3 pb-2 border-b border-zinc-800">
+                <h2 class="text-lg font-bold">設定</h2>
                 <button type="button" onclick="closeSettingsModal()"
-                        class="text-2xl text-zinc-400 hover:text-white">×</button>
+                        class="w-9 h-9 flex items-center justify-center text-xl text-zinc-400 hover:text-white rounded-full hover:bg-zinc-800"
+                        aria-label="關閉">×</button>
             </div>
 
-            <div class="space-y-6">
-                <div class="flex items-center justify-between gap-x-4">
+            <div class="shrink-0 px-3 py-2 border-b border-zinc-800">
+                <div class="flex gap-1 p-1 bg-zinc-800/80 rounded-xl" role="tablist">
+                    <button type="button" id="settings-tab-story" role="tab"
+                            onclick="switchSettingsTab('story')"
+                            class="settings-tab flex-1 py-2 rounded-lg text-sm text-zinc-400">劇情</button>
+                    <button type="button" id="settings-tab-combat" role="tab"
+                            onclick="switchSettingsTab('combat')"
+                            class="settings-tab flex-1 py-2 rounded-lg text-sm text-zinc-400">戰鬥</button>
+                    <button type="button" id="settings-tab-display" role="tab"
+                            onclick="switchSettingsTab('display')"
+                            class="settings-tab flex-1 py-2 rounded-lg text-sm text-zinc-400">顯示</button>
+                </div>
+            </div>
+
+            <div class="settings-scroll flex-1 overflow-y-auto px-4 py-3 min-h-0">
+                <div id="settings-panel-story" class="space-y-4" role="tabpanel">
+                    <div class="settings-row">
+                        <div class="min-w-0">
+                            <div class="font-medium text-sm">自動播放劇情</div>
+                            <div class="text-[11px] text-zinc-500 hidden sm:block">進入劇情後自動繼續</div>
+                        </div>
+                        <label class="relative inline-flex shrink-0 items-center cursor-pointer">
+                            <input type="checkbox" id="setting-auto-play" class="sr-only peer" onchange="saveSettings()">
+                            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <div class="min-w-0">
+                            <div class="font-medium text-sm">即時顯示文字</div>
+                            <div class="text-[11px] text-zinc-500 hidden sm:block">關閉打字機效果</div>
+                        </div>
+                        <label class="relative inline-flex shrink-0 items-center cursor-pointer">
+                            <input type="checkbox" id="setting-disable-typewriter" class="sr-only peer" onchange="saveSettings()">
+                            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                        </label>
+                    </div>
                     <div>
-                        <div class="font-medium">自動劇情播放</div>
-                        <div class="text-xs text-zinc-400">永久開啟自動播放劇情</div>
-                    </div>
-                    <label class="relative inline-flex shrink-0 items-center cursor-pointer">
-                        <input type="checkbox" id="setting-auto-play" class="sr-only peer" onchange="saveSettings()">
-                        <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                </div>
-
-                <div class="flex items-center justify-between gap-x-4">
-                    <div>
-                        <div class="font-medium">關閉打字機效果</div>
-                        <div class="text-xs text-zinc-400">劇情文字即時顯示，唔使用打字機效果</div>
-                    </div>
-                    <label class="relative inline-flex shrink-0 items-center cursor-pointer">
-                        <input type="checkbox" id="setting-disable-typewriter" class="sr-only peer" onchange="saveSettings()">
-                        <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                </div>
-
-                <div>
-                    <div class="font-medium mb-2">劇情打字機速度</div>
-                    <div class="flex gap-x-2">
-                        <button type="button" onclick="setTypewriterSpeed('slow')"
-                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                data-speed="slow">慢</button>
-                        <button type="button" onclick="setTypewriterSpeed('normal')"
-                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                data-speed="normal">正常</button>
-                        <button type="button" onclick="setTypewriterSpeed('fast')"
-                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                data-speed="fast">快</button>
-                    </div>
-                </div>
-
-                <div>
-                    <div class="font-medium mb-2">界面字體大小</div>
-                    <div class="flex gap-x-2">
-                        <button type="button" onclick="setFontSize('small')"
-                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                data-size="small">小</button>
-                        <button type="button" onclick="setFontSize('medium')"
-                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                data-size="medium">中</button>
-                        <button type="button" onclick="setFontSize('large')"
-                                class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                data-size="large">大</button>
-                    </div>
-                </div>
-
-                <div class="pt-2 border-t border-zinc-800">
-                    <div class="text-xs text-amber-400/90 font-medium mb-3">戰鬥介面</div>
-
-                    <div class="mb-4">
-                        <div class="font-medium mb-1">傷害結算畫面</div>
-                        <div class="text-xs text-zinc-400 mb-2">攻擊後，浮字顯示幾耐先彈出「本回合戰果」</div>
-                        <div class="grid grid-cols-4 gap-1.5">
-                            <button type="button" onclick="setCombatSettlementDelay('fast')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="fast">快<br><span class="text-[10px] text-zinc-500">0.8秒</span></button>
-                            <button type="button" onclick="setCombatSettlementDelay('normal')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="normal">正常<br><span class="text-[10px] text-zinc-500">1.5秒</span></button>
-                            <button type="button" onclick="setCombatSettlementDelay('slow')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="slow">慢<br><span class="text-[10px] text-zinc-500">2.5秒</span></button>
-                            <button type="button" onclick="setCombatSettlementDelay('very_slow')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="very_slow">很慢<br><span class="text-[10px] text-zinc-500">3.5秒</span></button>
+                        <div class="font-medium text-sm mb-2">打字速度</div>
+                        <div class="flex gap-1.5">
+                            <button type="button" onclick="setTypewriterSpeed('slow')"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-speed="slow">慢</button>
+                            <button type="button" onclick="setTypewriterSpeed('normal')"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-speed="normal">正常</button>
+                            <button type="button" onclick="setTypewriterSpeed('fast')"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-speed="fast">快</button>
                         </div>
                     </div>
+                </div>
 
+                <div id="settings-panel-combat" class="hidden space-y-4" role="tabpanel">
                     <div>
-                        <div class="font-medium mb-1">擲骰動畫速度</div>
-                        <div class="text-xs text-zinc-400 mb-2">戰鬥行動時骰子滾動同結果停留時間</div>
-                        <div class="flex gap-x-2">
+                        <div class="font-medium text-sm mb-1">傷害結算延遲</div>
+                        <p class="text-[11px] text-zinc-500 mb-2 sm:hidden">攻擊後幾耐彈出戰果</p>
+                        <p class="text-xs text-zinc-400 mb-2 hidden sm:block">攻擊後，浮字顯示幾耐先彈出「本回合戰果」</p>
+                        <div class="grid grid-cols-4 gap-1">
+                            <button type="button" onclick="setCombatSettlementDelay('fast')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="fast">快<span class="block text-[10px] text-zinc-500">0.8s</span></button>
+                            <button type="button" onclick="setCombatSettlementDelay('normal')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="normal">正常<span class="block text-[10px] text-zinc-500">1.5s</span></button>
+                            <button type="button" onclick="setCombatSettlementDelay('slow')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="slow">慢<span class="block text-[10px] text-zinc-500">2.5s</span></button>
+                            <button type="button" onclick="setCombatSettlementDelay('very_slow')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="very_slow">很慢<span class="block text-[10px] text-zinc-500">3.5s</span></button>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-medium text-sm mb-2">擲骰速度</div>
+                        <div class="flex gap-1.5">
                             <button type="button" onclick="setDiceRollSpeed('fast')"
-                                    class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
                                     data-dice-speed="fast">快</button>
                             <button type="button" onclick="setDiceRollSpeed('normal')"
-                                    class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
                                     data-dice-speed="normal">正常</button>
                             <button type="button" onclick="setDiceRollSpeed('slow')"
-                                    class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
                                     data-dice-speed="slow">慢</button>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="mt-8 pt-6 border-t border-zinc-700">
-                <button type="button" onclick="resetAllSettings()"
-                        class="w-full flex items-center justify-center gap-x-2 py-3 text-sm
-                               bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/30
-                               text-red-400 hover:text-red-300 border border-red-500/30
-                               rounded-2xl transition-all duration-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.595-1.858L5 7m5 4v6m4-6v6m1-10V9a1 1 0 00-1-1h-4a1 1 0 00-1 1v1M5 7h14" />
-                    </svg>
-                    <span>重置所有設定</span>
-                </button>
-                <div class="text-center text-[10px] text-zinc-500 mt-2">
-                    此操作無法還原
+                <div id="settings-panel-display" class="hidden space-y-4" role="tabpanel">
+                    <div>
+                        <div class="font-medium text-sm mb-2">字體大小</div>
+                        <div class="flex gap-1.5">
+                            <button type="button" onclick="setFontSize('small')"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-size="small">小</button>
+                            <button type="button" onclick="setFontSize('medium')"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-size="medium">中</button>
+                            <button type="button" onclick="setFontSize('large')"
+                                    class="setting-btn flex-1 py-2 rounded-xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-size="large">大</button>
+                        </div>
+                    </div>
+                    <div class="pt-2 border-t border-zinc-800">
+                        <button type="button" onclick="resetAllSettings()"
+                                class="w-full py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors">
+                            重置所有設定
+                        </button>
+                        <p class="text-center text-[10px] text-zinc-600 mt-1">無法還原</p>
+                    </div>
                 </div>
             </div>
 
-            <div class="mt-4 text-center">
+            <div class="shrink-0 px-4 py-3 border-t border-zinc-800 bg-zinc-900">
                 <button type="button" onclick="closeSettingsModal()"
-                        class="px-8 py-2.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm transition-colors">
+                        class="w-full py-3 bg-amber-500 hover:bg-amber-400 text-zinc-900 font-semibold rounded-xl text-sm transition-colors">
                     完成
                 </button>
             </div>
