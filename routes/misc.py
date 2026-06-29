@@ -63,6 +63,7 @@ def api_version():
             "routes_refactored": True,
             "upload_path_hardened": True,
             "defend_team_buff": callable(count_team_defenders),
+            "combat_round_continue": "continueCombatAfterRound" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

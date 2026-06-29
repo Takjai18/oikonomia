@@ -1348,7 +1348,24 @@
         let lastCombatLogCount = 0;
         let combatWaitingForRound = false;
         let combatSubmittedPhase = 0;
+        let lastShownSettlementPhase = 0;
         let lastCombatStatus = null;
+
+        /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
+        function effectiveCombatStatus(data) {
+            if (!data) return null;
+            if ((data.status === 'round_resolved' || data.round_resolved) && data.active !== false) {
+                return 'player_phase';
+            }
+            return data.status;
+        }
+
+        function normalizeCombatStatusData(data) {
+            if (!data) return data;
+            const uiStatus = effectiveCombatStatus(data);
+            if (!uiStatus || uiStatus === data.status) return data;
+            return { ...data, status: uiStatus, round_resolved: false };
+        }
         const COMBAT_ACTION_LABELS = {
             attack: '攻擊',
             attack_physical: '攻擊',
@@ -1456,6 +1473,21 @@
             setVisible(modal, false);
         }
 
+        function continueCombatAfterRound() {
+            hideRoundSettlementModal();
+            hideSinglePlayerResultModal();
+            combatWaitingForRound = false;
+            resetCombatDiceUi();
+            selectedDice = null;
+            const phase = lastCombatStatus?.current_phase || 0;
+            if (phase) lastDicePhase = phase;
+            if (lastCombatStatus) {
+                updateCombatUI(lastCombatStatus);
+            } else {
+                loadCombatStatus(false);
+            }
+        }
+
         function showFullRoundSettlement(data) {
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
@@ -1463,12 +1495,21 @@
             showRoundSettlementModal(data);
             processCombatDamageAnimations(data, 200);
             updateCombatUI(data, { damageDelay: 350 });
-            startCombatPolling(8000);
+            startCombatPolling(3000);
         }
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
-            showFullRoundSettlement(data);
+            const phase = data.current_phase || 0;
+            if (phase > lastShownSettlementPhase) {
+                lastShownSettlementPhase = phase;
+                showFullRoundSettlement(data);
+            } else {
+                combatWaitingForRound = false;
+                hideCombatWaitingPanel();
+                updateCombatUI(normalizeCombatStatusData(data), { damageDelay: 0 });
+                startCombatPolling(3000);
+            }
         }
 
         function formatTimerDisplay(totalSeconds) {
@@ -1763,7 +1804,8 @@
                 actionModalRolling = false;
                 setCombatModalControlsLocked(false);
                 document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                    const canAct = lastCombatStatus?.status === 'player_phase' && !lastCombatStatus?.my_state?.submitted;
+                    const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
+                        && !lastCombatStatus?.my_state?.submitted;
                     el.disabled = !canAct;
                 });
 
@@ -1976,7 +2018,7 @@
             if (actionModalRolling || isCombatModalOpen()) return;
             const me = lastCombatStatus?.my_state || {};
             const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
-            if (lastCombatStatus?.status !== 'player_phase' || me.submitted || inNearDeath) return;
+            if (effectiveCombatStatus(lastCombatStatus) !== 'player_phase' || me.submitted || inNearDeath) return;
 
             selectedAction = action;
             if (action === 'use_item') {
@@ -2059,7 +2101,7 @@
             if (!combatItemsLoaded) await loadCombatItems();
             resetCombatDiceUi();
             const me = lastCombatStatus?.my_state;
-            const canAct = lastCombatStatus?.status === 'player_phase'
+            const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
                 && !(me?.near_death_until && new Date(me.near_death_until) > new Date())
                 && !me?.submitted;
             const hint = document.getElementById('combat-submit-hint');
@@ -2111,6 +2153,8 @@
         async function loadCombatPage(combatId) {
             if (combatId) currentCombatId = combatId;
             stopCombatPolling();
+            lastShownSettlementPhase = 0;
+            combatWaitingForRound = false;
             setVisible(document.getElementById('combat-lobby'), true);
             setVisible(document.getElementById('combat-screen'), false);
             await ensureCurrentSquadProfile();
@@ -2462,6 +2506,8 @@
 
         function showCombatResult(data) {
             stopCombatPolling();
+            lastShownSettlementPhase = 0;
+            combatWaitingForRound = false;
             setVisible(document.getElementById('combat-screen'), false);
             setVisible(document.getElementById('combat-near-death-overlay'), false);
             setVisible(document.getElementById('combat-precheck-modal'), false);
@@ -2498,66 +2544,67 @@
 
         function updateCombatUI(data, options = {}) {
             if (!data) return;
-            if (!data.my_state && (data.active || data.status === 'player_phase' || data.status === 'enemy_phase')) {
+            const uiData = normalizeCombatStatusData(data);
+            if (!uiData.my_state && (uiData.active || uiData.status === 'player_phase' || uiData.status === 'enemy_phase')) {
                 console.warn('Combat data missing my_state');
             }
-            lastCombatStatus = data;
+            lastCombatStatus = uiData;
             setVisible(document.getElementById('combat-result-panel'), false);
 
-            if (data.in_precheck) {
+            if (uiData.in_precheck) {
                 setVisible(document.getElementById('combat-precheck-modal'), true);
                 return;
             }
 
-            const combatLive = data.active === true
-                || ['player_phase', 'enemy_phase'].includes(data.status);
+            const combatLive = uiData.active === true
+                || ['player_phase', 'enemy_phase'].includes(uiData.status);
             if (!combatLive) {
-                if (data.outcome) showCombatResult(data);
+                if (uiData.outcome) showCombatResult(uiData);
                 return;
             }
 
-            currentCombatId = data.combat_id || currentCombatId;
+            currentCombatId = uiData.combat_id || currentCombatId;
             showCombatScreen();
-            applyCombatAccent(data.route);
+            applyCombatAccent(uiData.route);
 
-            safeSetText('combat-title', data.title || '戰鬥中');
-            const routeLabel = ROUTE_SUBTITLES[data.route] || 'Encounter';
-            const phaseNum = data.current_phase || 1;
+            safeSetText('combat-title', uiData.title || '戰鬥中');
+            const routeLabel = ROUTE_SUBTITLES[uiData.route] || 'Encounter';
+            const phaseNum = uiData.current_phase || 1;
             safeSetText('combat-subtitle', `${routeLabel} · 第 ${phaseNum} 回合`);
-            safeSetText('max-phase', data.max_phases || 5);
+            safeSetText('max-phase', uiData.max_phases || 5);
 
             const phaseLabels = {
                 player_phase: { text: 'Player Phase', color: 'text-emerald-400' },
                 enemy_phase: { text: 'Enemy Phase', color: 'text-red-400' },
             };
-            const pl = phaseLabels[data.status] || { text: data.status, color: 'text-zinc-400' };
+            const pl = phaseLabels[uiData.status] || { text: uiData.status, color: 'text-zinc-400' };
             safeSetText('phase-status-label', pl.text);
             safeSetClass('phase-status-label', `text-xs ${pl.color}`);
 
             const squad = currentSquad || {};
-            const me = buildCombatMyState(data);
-            const enemy = data.enemy || {};
+            const me = buildCombatMyState(uiData);
+            const enemy = uiData.enemy || {};
 
-            updateEnemyCombatStats(enemy, data.enemy_description || '');
+            updateEnemyCombatStats(enemy, uiData.enemy_description || '');
             updateCombatPlayerAvatar(me);
             safeSetText('combat-player-name', me.display_name || '你');
             safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
             updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
 
-            const protagonists = data.protagonists || squad.protagonists || {};
+            const protagonists = uiData.protagonists || squad.protagonists || {};
             const teamData = {
-                ...data,
-                my_squad_id: data.my_squad_id || squad.squad_id,
-                route: data.route || protagonists.active_route || squad.route,
+                ...uiData,
+                my_squad_id: uiData.my_squad_id || squad.squad_id,
+                route: uiData.route || protagonists.active_route || squad.route,
                 protagonists,
-                member_states: data.member_states || {},
+                member_states: uiData.member_states || {},
             };
             renderCombatTeamRow(teamData);
 
             const sanity = me.sanity ?? 100;
             const berserkBar = document.getElementById('combat-berserk-bar');
-            const berserkChance = data.berserk_chance || 0;
+            const berserkChance = uiData.berserk_chance || 0;
             if (sanity < 40) {
                 setVisible(berserkBar, true);
                 let berserkMsg;
@@ -2576,7 +2623,7 @@
             }
 
             setVisible(document.getElementById('combat-berserk-overlay'),
-                sanity < 10 && data.status === 'player_phase' && !me.submitted);
+                sanity < 10 && uiData.status === 'player_phase' && !me.submitted);
 
             const zooHint = document.getElementById('zoo-hint');
             if (zooHint) {
@@ -2588,20 +2635,20 @@
                 zooHint.className = sanity >= 70 ? 'text-[10px] text-orange-300 font-medium' : 'text-[10px] text-zinc-500';
             }
 
-            if (data.phase_deadline && data.status === 'player_phase') {
-                startPhaseCountdown(data.phase_deadline);
-            } else if (data.phase_expired) {
+            if (uiData.phase_deadline && uiData.status === 'player_phase') {
+                startPhaseCountdown(uiData.phase_deadline);
+            } else if (uiData.phase_expired) {
                 safeSetText('phase-timer', '0:00');
             }
 
             const logEl = document.getElementById('combat-log');
             if (logEl) {
-                logEl.innerHTML = (data.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
+                logEl.innerHTML = (uiData.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
                     || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
                 logEl.scrollTop = logEl.scrollHeight;
             }
             processCombatDamageAnimations(
-                data,
+                uiData,
                 options.damageDelay ?? 0,
                 !!options.initLogsOnly,
             );
@@ -2611,7 +2658,7 @@
 
             const hintEl = document.getElementById('combat-submit-hint');
             const actionContainer = document.getElementById('player-panel');
-            const canAct = data.status === 'player_phase' && !inNearDeath && !me.submitted;
+            const canAct = uiData.status === 'player_phase' && !inNearDeath && !me.submitted;
             if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.55';
             document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
                 el.disabled = !canAct || actionModalRolling;
@@ -2625,7 +2672,7 @@
             if (hintEl) {
                 if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
-                else if (data.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
+                else if (uiData.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
                 else if (actionModalRolling) hintEl.textContent = '系統擲骰中，請稍候…';
                 else if (isCombatModalOpen()) hintEl.textContent = '請於彈窗內確認並結束本回合';
                 else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
@@ -2756,6 +2803,7 @@
 
             if (data.status === 'round_resolved' || data.round_resolved) {
                 handleCombatRoundResolved({ ...data, active: true });
+                setTimeout(() => loadCombatStatus(false), 400);
                 return;
             }
 
@@ -5606,8 +5654,8 @@
             </div>
             <div id="round-settlement-logs" class="px-5 py-4 max-h-64 overflow-y-auto text-sm text-zinc-300 space-y-1"></div>
             <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
-                <button type="button" onclick="hideRoundSettlementModal()"
-                        class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">繼續</button>
+                <button type="button" onclick="continueCombatAfterRound()"
+                        class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">繼續下一回合</button>
             </div>
         </div>
     </div>

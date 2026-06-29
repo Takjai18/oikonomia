@@ -224,6 +224,7 @@ def main():
     ok("combat_system marker", ver.get("markers", {}).get("combat_system") is True)
     ok("server_combat_dice marker", ver.get("markers", {}).get("server_combat_dice") is True)
     ok("defend_team_buff marker", ver.get("markers", {}).get("defend_team_buff") is True)
+    ok("combat_round_continue marker", ver.get("markers", {}).get("combat_round_continue") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
