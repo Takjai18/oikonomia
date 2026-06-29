@@ -1,62 +1,44 @@
-# GEMINI_CONSULT — BUG-2026-001（Henry 實機仍失敗）
+# GEMINI_CONSULT — BUG-2026-001（Phase 2：動畫 delay）
 
-> 俾 Gemini Architect 嘅精簡入口。完整脈絡見同目錄 `REPORT.md` §12。
+> Phase 1（HP 唔跌／modal 缺失）經 v4–v6 修復後 **大幅改善**。本檔聚焦 **殘留動畫 delay**。完整脈絡見 `REPORT.md` §13。
 
 ## 一句話
 
-**PA 已 deploy `641da28`（`enemy_hp_sync_v3: true`），CI 單人 `practice_iggy_03_boundary` 多回合 API 測試全綠，但 Henry（Iggy 線、單人）實機戰鬥中敵 HP 顯示仍唔更新。**
+**PA `aecffa9`（`enemy_hp_sync_v6`）後端 HP 正確，Henry 實機 HP／settlement 大致正常，但每回合攻擊後敵 HP 更新同「本回合戰果」modal 仍覺得慢（動畫／計時器堆疊）。**
 
 ## 實機條件
 
 | 項目 | 值 |
 |------|-----|
-| 玩家 | Henry |
-| 路線 | Iggy |
-| 隊伍 | 單人 |
-| Encounter | `practice_iggy_03_boundary`（140 HP） |
-| PA version | `641da28`（2026-06-29 curl 確認） |
+| 玩家 | Henry · `PLAYER-75406` · Iggy · 單人 |
+| PA version | `aecffa9`（2026-06-30 curl） |
+| 頭先戰鬥 | Combat **#35** `practice_iggy_01_quick`（一輪勝利，後端 HP 48→0 ✓） |
+| 近期 boundary | Combat **#34** `practice_iggy_03_boundary`：R1 140→91，R2→0（後端 log ✓） |
 
-## 已排除（自動化）
+## 已確認（後台）
 
-- 後端 `submit_action` / `combat/status`：`enemy.hp` 每回合遞減（`test_solo_multi_round_poll_hp_monotonic`）
-- 開局 full HP（`test_practice_combat_start_enemy_hp_full`）
-- Killing blow settlement payload（`test_solo_killing_blow_practice_quick`）
+- `/combat/status?combat_id=34|35`：`enemy.hp`、`round_settlement.enemy_hp_after`、summary log **一致**
+- 問題 **唔係** stale cache 或 HP sync regression（v6 poll 凍結係刻意設計）
 
-## 懷疑方向（請取捨）
+## 懷疑方向（計時器堆疊）
 
-1. Safari 快取舊 `index.html`（server marker 新、client JS 舊）
-2. 前端多源 HP（`resolveAuthoritativeEnemyHp` Math.min + monotonic + `lastCombatStatus`）仍有 race
-3. `combatAwaitingSettlementAck` 卡住令 poll 唔 refresh DOM
-4. 140 HP 血條變化太細（UX 误判）— 需確認**數字**有冇變
-5. 無 DOM/integration test 覆蓋
+1. 擲骰：`DICE_ROLL_PRESETS.normal` ≈ 2.2s（提交前）
+2. HP tween：`animateCombatNumber` **420ms**；血條即時跳、數字後追
+3. Settlement：`COMBAT_SETTLEMENT_DELAY_MS.normal` **1500ms** 先彈 modal
+4. `settlementTimerPending` 期間 `loadCombatStatus` **零 DOM 更新**（修 race 副作用）
 
 ## 請產出
 
-1. 最可能單一根因 + code path（附行號）
-2. 推薦修復方案（pseudo-diff）同 trade-off
-3. Henry 最少採證步驟
-4. 建議新增測試（最好含 DOM 或 contract assert）
+1. 推薦修復方案（縮 delay / 跳過 tween / 練習模式 fast path / 分拆 poll 凍結）+ pseudo-diff
+2. 保留 v6 race 修復前提下嘅 **最低風險** 改動順序
+3. 建議新預設（`combatSettlementDelay`、practice encounter 特例）
+4. 可自動化嘅延遲上限測試（例如 round_resolved → modal visible < 1200ms）
 
-## 必讀檔案（GitHub `641da28`）
+## 必讀檔案（GitHub `aecffa9`）
 
-- `templates/index.html` — `syncEnemyHpDisplay`, `loadCombatStatus`, `handleCombatRoundResolved`
-- `routes/combat.py` — `/combat/status`, `/combat/submit_action`
-- `models/combat.py` — `reconcile_enemy_hp`, `build_enemy_combat_stats`
-- `scripts/test_combat_flow.py` — `test_solo_multi_round_poll_hp_monotonic`
+- `templates/index.html` — `animateCombatNumber`, `showFullRoundSettlement`, `getSettlementModalDelayMs`, `settlementTimerPending`, `loadCombatStatus` early return
+- `DICE_ROLL_PRESETS` / `COMBAT_SETTLEMENT_DELAY_MS` 常數（~L1238）
 
-## attachments 注意
+## 點讀
 
-`attachments/` 係 `3c89f62` 快照，**唔反映最新修復**。請以 GitHub main 為準。
-
-## 點讀（Gemini 讀唔到 Drive 時）
-
-**請用同目錄 `GEMINI_PACKET.md`**（~55KB，內嵌完整 JS/Python）：
-
-1. 打開 `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
-2. 全選 Copy → 貼入本 chat
-
-或 GitHub Raw（將 `COMMIT` 換成最新 short hash）：
-
-`https://raw.githubusercontent.com/Takjai18/oikonomia/COMMIT/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
-
-重新生成：`bash scripts/build_gemini_packet.sh`
+**`GEMINI_PACKET.md`**（`bash scripts/build_gemini_packet.sh` 重新生成）

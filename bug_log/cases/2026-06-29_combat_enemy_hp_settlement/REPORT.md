@@ -344,4 +344,99 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-*最後更新：2026-06-29 深夜 · Grok Build · PA `641da28` 實機仍 fail · 用 `GEMINI_PACKET.md` 問 Gemini*
+## 13. 後台採證 + 動畫 delay 殘留（2026-06-30 — Henry 大幅改善）
+
+### 13.1 用戶回報
+
+| 項目 | 內容 |
+|------|------|
+| 狀態 | **大幅改善**（v6 `aecffa9`）；HP／settlement 大致正常 |
+| 殘留 | **動畫 delay** — 攻擊後敵 HP／結算 modal 仍覺得慢 |
+| PA 版本 | `aecffa9`（`enemy_hp_sync_v6: true`，curl 2026-06-30 確認） |
+
+### 13.2 後台採證（PA production DB via API）
+
+| 欄位 | 值 |
+|------|-----|
+| 玩家 | **Henry** · `PLAYER-75406` · route `iggy` · team `TEAM-13`（Barca，單人） |
+| `current_combat_id` | **35**（已 `ended`） |
+| 頭先一場 | **Combat #35** · `practice_iggy_01_quick` · phase 1 · 一輪擊殺 |
+| 後端 HP | 開局 48 → 結算 **0**（正確） |
+| 傷害 log | Henry 93 + Iggy Zoo 276 = **369**；`round_settlement.enemy_hp_after=0` |
+
+**Henry 近期 `practice_iggy_03_boundary`（界線共生影）**
+
+| Combat ID | Phase | HP 時間線（summary log） | 備註 |
+|-----------|-------|--------------------------|------|
+| **#34** | 2 | 140 → **91** → **0** | 頭先多回合 boundary 戰；Henry log ✓ |
+| #32 | 3 | （僅最終 0；多為 Iggy 自動 Zoo） | |
+| #29 | 1 | 一輪 0 | |
+
+**Combat #34 逐回合（後端正確）**
+
+| 回合 | 傷害 | 剩餘 HP |
+|------|------|---------|
+| 1 | Henry 49 + Iggy 0 | **91** |
+| 2 | Henry 119 + Iggy 411 | **0**（勝利） |
+
+**結論**：後端 DB／API 合約 **無異常**；殘留問題屬 **前端計時器堆疊（UX delay）**，唔係 HP sync bug 復發。
+
+### 13.3 動畫 delay 根因分析（Grok）
+
+每回合有傷害時，`showFullRoundSettlement` 會串聯多段延遲：
+
+| 階段 | 來源 | 預設耗時（normal） |
+|------|------|-------------------|
+| 擲骰動畫 | `DICE_ROLL_PRESETS.normal` | ~14×75ms roll + **1150ms pause** ≈ **2.2s**（提交前） |
+| 傷害飄字 | `processCombatDamageAnimations(..., 120)` | 120ms + index×180ms |
+| HP 數字動畫 | `animateCombatNumber(..., 420)` | **420ms** |
+| 結算 modal 等待 | `getSettlementModalDelayMs()` | **1500ms**（`COMBAT_SETTLEMENT_DELAY_MS.normal`） |
+| 結算期 poll 凍結 | `settlementTimerPending` → `loadCombatStatus` early return | 上述 1500ms 內 **零 DOM 更新** |
+
+**體感**：confirm 攻擊 → 等 ~2s 擲骰 → 等網絡 → HP 慢慢數落（420ms）→ 再等 1.5s 先彈「本回合戰果」≈ **4s+／回合**。
+
+**額外 UX 矛盾**：血條 `width` 即時跳轉，但 `#enemy-hp-current` 數字用 420ms 補間 — 條同數字唔同步會加強「delay」感。
+
+### 13.4 待驗證假設
+
+1. Henry 設定 `combatSettlementDelay` 仍為 **normal（1500ms）** — 設定頁改 fast（800ms）會否夠？
+2. v6 `settlementTimerPending` 凍結 poll 係修 race 必要代價 — 可否 **只凍結 full `updateCombatUI`**、仍允許 `syncEnemyHpDisplay`？
+3. 練習戰（encounter id 含 `practice_`）應否預設 **fast settlement + 跳過 HP tween**？
+4. 一輪擊殺（#35）仍走完整 settlement 流水線 — killing blow 可否縮短 modalDelay？
+
+### 13.5 請 Gemini / Grok 回答（動畫 delay 專題）
+
+1. **最優解**：縮短 `modalDelay`、取消 HP tween、抑或重排 pipeline（邊個對 Henry 140 HP 多回合體驗最好）？
+2. **Trade-off**：保留 `settlementTimerPending` poll 凍結 vs 允許 poll 只更新 HP — race 風險幾大？
+3. **建議預設**：`combatSettlementDelay` 由 normal→fast？練習模式自動 fast？
+4. **實作 sketch**：`syncEnemyHpDisplay(data, { animate: false })` 喺 poll／round_resolved 路徑；`modalDelay = max(0, getSettlementModalDelayMs() - hpAnimMs)` 是否足夠？
+5. **測試**：點樣為「端到端體感延遲 < 1.5s」寫 contract／Playwright assert？
+
+### 13.6 建議 Henry 驗證（delay 專項）
+
+- [ ] 設定 → 戰鬥結算速度 → 改 **快** 再打一場 boundary，比較體感
+- [ ] 攻擊 confirm 後用秒錶：幾秒見 HP 數字變、幾秒見 settlement modal
+- [ ] 留意血條係咪先跳、數字後追（sync 問題）
+
+---
+
+## 14. Grok Architect 回覆 → 已實作（v7 動畫 delay patch）
+
+**Gemini quota 爆咗**；改由 Grok Architect 回覆 §13.5，並已落 code（`enemy_hp_sync_v7`）。
+
+| 優先 | Architect 建議 | 實作 |
+|------|----------------|------|
+| P1 | 練習戰自動 fast（800ms settlement、跳過 HP tween） | `isPracticeCombat` + `getEffectiveSettlementDelayMs` / `getEffectiveHpAnimMs` |
+| P2 | round_resolved／poll 即時 HP（`animate: false`） | `syncEnemyHpDisplay` options；`updateEnemyCombatStats` 預設 instant |
+| P3 | 分拆 poll 凍結，保留 HP sync | `syncHpOnlyFromPoll` 喺 `settlementTimerPending` 期間仍更新 HP |
+| P4 | modalDelay 扣減 hpAnimMs | `modalDelay = max(120/200, baseDelay - hpAnimMs)` |
+
+**Story encounter** 仍用設定 `combatSettlementDelay`（normal=1500ms settlement、280ms 短 tween）。
+
+**Debug**：`window.COMBAT_PERF_DEBUG = true` 會 log settlement `modalDelay`。
+
+**待 Henry 驗證**：`practice_iggy_03_boundary` 多回合 — HP 數字應即時同血條同步，modal ~800ms 內出現。
+
+---
+
+*最後更新：2026-06-30 · v7 delay patch · PA 待 deploy*

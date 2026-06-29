@@ -1,7 +1,7 @@
 # GEMINI_PACKET — BUG-2026-001（自包含，可直接貼入 Gemini）
 
-> **生成時間**：2026-06-29 15:53 UTC  
-> **Git commit**：`20b5601`  
+> **生成時間**：2026-06-29 16:07 UTC  
+> **Git commit**：`aecffa9`  
 > **用途**：Gemini **讀唔到** Google Drive bug_log 資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。
 > **重新生成**：`bash scripts/build_gemini_packet.sh`
 
@@ -11,9 +11,9 @@
 
 1. **最簡單**：打開本檔 `GEMINI_PACKET.md` → 全選 Copy → 貼到 Gemini
 2. **GitHub Raw**（若 Gemini 支援 URL）：
-   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/20b5601/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/20b5601/templates/index.html
-   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/20b5601/routes/combat.py
+   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/aecffa9/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
+   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/aecffa9/templates/index.html
+   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/aecffa9/routes/combat.py
 3. **唔好用**：Drive 資料夾連結（Gemini API 索引唔到 .md / bug_log）
 4. **可選**：將本檔 Upload 為 **Google Doc**（單檔分享連結）再俾 Gemini
 
@@ -21,76 +21,59 @@
 
 ## A. GEMINI_CONSULT（精簡摘要）
 
-# GEMINI_CONSULT — BUG-2026-001（Henry 實機仍失敗）
+# GEMINI_CONSULT — BUG-2026-001（Phase 2：動畫 delay）
 
-> 俾 Gemini Architect 嘅精簡入口。完整脈絡見同目錄 `REPORT.md` §12。
+> Phase 1（HP 唔跌／modal 缺失）經 v4–v6 修復後 **大幅改善**。本檔聚焦 **殘留動畫 delay**。完整脈絡見 `REPORT.md` §13。
 
 ## 一句話
 
-**PA 已 deploy `641da28`（`enemy_hp_sync_v3: true`），CI 單人 `practice_iggy_03_boundary` 多回合 API 測試全綠，但 Henry（Iggy 線、單人）實機戰鬥中敵 HP 顯示仍唔更新。**
+**PA `aecffa9`（`enemy_hp_sync_v6`）後端 HP 正確，Henry 實機 HP／settlement 大致正常，但每回合攻擊後敵 HP 更新同「本回合戰果」modal 仍覺得慢（動畫／計時器堆疊）。**
 
 ## 實機條件
 
 | 項目 | 值 |
 |------|-----|
-| 玩家 | Henry |
-| 路線 | Iggy |
-| 隊伍 | 單人 |
-| Encounter | `practice_iggy_03_boundary`（140 HP） |
-| PA version | `641da28`（2026-06-29 curl 確認） |
+| 玩家 | Henry · `PLAYER-75406` · Iggy · 單人 |
+| PA version | `aecffa9`（2026-06-30 curl） |
+| 頭先戰鬥 | Combat **#35** `practice_iggy_01_quick`（一輪勝利，後端 HP 48→0 ✓） |
+| 近期 boundary | Combat **#34** `practice_iggy_03_boundary`：R1 140→91，R2→0（後端 log ✓） |
 
-## 已排除（自動化）
+## 已確認（後台）
 
-- 後端 `submit_action` / `combat/status`：`enemy.hp` 每回合遞減（`test_solo_multi_round_poll_hp_monotonic`）
-- 開局 full HP（`test_practice_combat_start_enemy_hp_full`）
-- Killing blow settlement payload（`test_solo_killing_blow_practice_quick`）
+- `/combat/status?combat_id=34|35`：`enemy.hp`、`round_settlement.enemy_hp_after`、summary log **一致**
+- 問題 **唔係** stale cache 或 HP sync regression（v6 poll 凍結係刻意設計）
 
-## 懷疑方向（請取捨）
+## 懷疑方向（計時器堆疊）
 
-1. Safari 快取舊 `index.html`（server marker 新、client JS 舊）
-2. 前端多源 HP（`resolveAuthoritativeEnemyHp` Math.min + monotonic + `lastCombatStatus`）仍有 race
-3. `combatAwaitingSettlementAck` 卡住令 poll 唔 refresh DOM
-4. 140 HP 血條變化太細（UX 误判）— 需確認**數字**有冇變
-5. 無 DOM/integration test 覆蓋
+1. 擲骰：`DICE_ROLL_PRESETS.normal` ≈ 2.2s（提交前）
+2. HP tween：`animateCombatNumber` **420ms**；血條即時跳、數字後追
+3. Settlement：`COMBAT_SETTLEMENT_DELAY_MS.normal` **1500ms** 先彈 modal
+4. `settlementTimerPending` 期間 `loadCombatStatus` **零 DOM 更新**（修 race 副作用）
 
 ## 請產出
 
-1. 最可能單一根因 + code path（附行號）
-2. 推薦修復方案（pseudo-diff）同 trade-off
-3. Henry 最少採證步驟
-4. 建議新增測試（最好含 DOM 或 contract assert）
+1. 推薦修復方案（縮 delay / 跳過 tween / 練習模式 fast path / 分拆 poll 凍結）+ pseudo-diff
+2. 保留 v6 race 修復前提下嘅 **最低風險** 改動順序
+3. 建議新預設（`combatSettlementDelay`、practice encounter 特例）
+4. 可自動化嘅延遲上限測試（例如 round_resolved → modal visible < 1200ms）
 
-## 必讀檔案（GitHub `641da28`）
+## 必讀檔案（GitHub `aecffa9`）
 
-- `templates/index.html` — `syncEnemyHpDisplay`, `loadCombatStatus`, `handleCombatRoundResolved`
-- `routes/combat.py` — `/combat/status`, `/combat/submit_action`
-- `models/combat.py` — `reconcile_enemy_hp`, `build_enemy_combat_stats`
-- `scripts/test_combat_flow.py` — `test_solo_multi_round_poll_hp_monotonic`
+- `templates/index.html` — `animateCombatNumber`, `showFullRoundSettlement`, `getSettlementModalDelayMs`, `settlementTimerPending`, `loadCombatStatus` early return
+- `DICE_ROLL_PRESETS` / `COMBAT_SETTLEMENT_DELAY_MS` 常數（~L1238）
 
-## attachments 注意
+## 點讀
 
-`attachments/` 係 `3c89f62` 快照，**唔反映最新修復**。請以 GitHub main 為準。
-
-## 點讀（Gemini 讀唔到 Drive 時）
-
-**請用同目錄 `GEMINI_PACKET.md`**（~55KB，內嵌完整 JS/Python）：
-
-1. 打開 `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
-2. 全選 Copy → 貼入本 chat
-
-或 GitHub Raw（將 `COMMIT` 換成最新 short hash）：
-
-`https://raw.githubusercontent.com/Takjai18/oikonomia/COMMIT/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
-
-重新生成：`bash scripts/build_gemini_packet.sh`
+**`GEMINI_PACKET.md`**（`bash scripts/build_gemini_packet.sh` 重新生成）
 ---
 
-## B. §12.5 請 Gemini 回答
+## B. §13.5 請 Gemini 回答（Phase 2：動畫 delay）
 
-1. API 正確但 DOM 唔更新 — 最可能邊條 code path？
-2. 方案 A（前端簡化）vs B（後端 `display_enemy_hp`）vs C（cache-bust + 只用 `enemy.hp`）— 邊個風險最低？
-3. Henry 最少採證：Network JSON、Console、Safari 清快取？
-4. 架構級建議（拆 JS module、Service Worker）？
+1. 縮 `modalDelay`、取消 HP tween、重排 pipeline — 邊個對 140 HP 多回合最好？
+2. 保留 `settlementTimerPending` poll 凍結 vs 只凍結 `updateCombatUI`、仍更新 HP — race 風險？
+3. `combatSettlementDelay` 預設改 fast？`practice_*` encounter 自動 fast？
+4. `syncEnemyHpDisplay(..., { animate: false })` + `modalDelay = max(0, delay - hpAnimMs)` 是否足夠？
+5. 點樣自動化「round_resolved → modal < 1.5s」？
 
 ## C. DOM 目標（HP 顯示）
 
@@ -106,6 +89,289 @@
 
 ## D. 關鍵 JavaScript（templates/index.html）
 
+
+### `templates/index.html` L1238–L1254
+
+```javascript
+        const COMBAT_SETTLEMENT_DELAY_MS = {
+            fast: 800,
+            normal: 1500,
+            slow: 2500,
+            very_slow: 3500,
+        };
+
+        const DICE_ROLL_PRESETS = {
+            fast: { intervalMs: 45, maxRolls: 10, pauseMs: 600 },
+            normal: { intervalMs: 75, maxRolls: 14, pauseMs: 1150 },
+            slow: { intervalMs: 110, maxRolls: 18, pauseMs: 1700 },
+        };
+
+        function getSettlementModalDelayMs() {
+            const preset = getGameSettings().combatSettlementDelay || 'normal';
+            return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
+        }
+```
+
+### `templates/index.html` L1736–L1904
+
+```javascript
+        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420, formatFn = null, onComplete = null) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            const render = (v) => (formatFn ? formatFn(v) : String(v));
+            const from = Number(fromVal);
+            const to = Number(toVal);
+            if (!Number.isFinite(from) || !Number.isFinite(to)) {
+                safeSetText(elementId, render(toVal));
+                if (onComplete) onComplete(toVal);
+                return;
+            }
+            if (from === to) {
+                el.textContent = render(to);
+                if (onComplete) onComplete(to);
+                return;
+            }
+            if (enemyHpAnimFrame) cancelAnimationFrame(enemyHpAnimFrame);
+            const start = performance.now();
+            const step = (now) => {
+                const t = Math.min(1, (now - start) / durationMs);
+                const val = Math.round(from + (to - from) * t);
+                el.textContent = render(val);
+                if (t < 1) {
+                    enemyHpAnimFrame = requestAnimationFrame(step);
+                } else {
+                    enemyHpAnimFrame = null;
+                    if (onComplete) onComplete(to);
+                }
+            };
+            requestAnimationFrame(step);
+        }
+
+        function showCombatWaitingPanel(submitted, total) {
+            const panel = document.getElementById('combat-waiting-panel');
+            const countEl = document.getElementById('combat-waiting-count');
+            if (countEl) countEl.textContent = `${submitted} / ${total}`;
+            setVisible(panel, true);
+        }
+
+        function hideCombatWaitingPanel() {
+            setVisible(document.getElementById('combat-waiting-panel'), false);
+        }
+
+        function showSinglePlayerResultModal(preview) {
+            if (!preview) return;
+            const modal = document.getElementById('combat-single-result-modal');
+            const diceLabels = ['失手', '普通', '良好', '爆擊'];
+            const diceLabel = diceLabels[preview.dice_result] ?? '';
+            document.getElementById('single-result-title').textContent =
+                `${preview.player_name || '你'} · ${preview.action_label || ''}（骰 ${preview.dice_result} ${diceLabel}）`;
+            document.getElementById('single-result-summary').textContent = preview.summary || '';
+            document.getElementById('single-result-dealt').textContent = String(preview.damage_dealt ?? 0);
+
+            const takenPending = preview.damage_taken_pending;
+            const takenWrap = document.getElementById('single-result-taken-wrap');
+            const takenEl = document.getElementById('single-result-taken');
+            const takenPendingEl = document.getElementById('single-result-taken-pending');
+            if (takenPending) {
+                if (takenEl) takenEl.textContent = String(preview.estimated_counter_damage ?? '?');
+                setVisible(takenPendingEl, true);
+            } else {
+                if (takenEl) takenEl.textContent = String(preview.damage_taken ?? 0);
+                setVisible(takenPendingEl, false);
+            }
+
+            const risksEl = document.getElementById('single-result-risks');
+            if (risksEl) {
+                if (preview.risks?.length) {
+                    risksEl.innerHTML = preview.risks.map(r =>
+                        `<div class="text-orange-300 px-2 py-1 bg-orange-900/20 rounded-lg">⚠️ ${r.message}</div>`
+                    ).join('');
+                } else {
+                    risksEl.innerHTML = '';
+                }
+            }
+            setVisible(modal, true);
+            modal.classList.add('flex');
+        }
+
+        function hideSinglePlayerResultModal() {
+            const modal = document.getElementById('combat-single-result-modal');
+            if (!modal) return;
+            modal.classList.remove('flex');
+            setVisible(modal, false);
+        }
+
+        function parseEnemyRemainingHpFromLogs(logEntries, logLines) {
+            for (let i = (logEntries || []).length - 1; i >= 0; i--) {
+                const e = logEntries[i];
+                if (e?.type !== 'summary') continue;
+                const m = (e.message || '').match(/剩餘\s*HP\s*(\d+)/);
+                if (m) return parseInt(m[1], 10);
+            }
+            for (let i = (logLines || []).length - 1; i >= 0; i--) {
+                const m = String(logLines[i] || '').match(/剩餘\s*HP\s*(\d+)/);
+                if (m) return parseInt(m[1], 10);
+            }
+            return null;
+        }
+
+        function parseEnemyRemainingHpFromStatus(data) {
+            return parseEnemyRemainingHpFromLogs(data?.log_entries || [], data?.log || []);
+        }
+
+        function isCombatModalBusy() {
+            return actionModalRolling || actionModalPauseTimer !== null || combatPreviewPending;
+        }
+
+        function resolveAuthoritativeEnemyHp(data) {
+            if (!data) return null;
+            const settlement = getRoundSettlement(data);
+            const fromSettlement = Number(settlement.enemy_hp_after);
+            const fromEnemy = Number(data.enemy?.hp);
+            const fromLog = parseEnemyRemainingHpFromStatus(data);
+            const candidates = [];
+            if (Number.isFinite(fromEnemy)) candidates.push(fromEnemy);
+            if (Number.isFinite(fromSettlement)) candidates.push(fromSettlement);
+            if (fromLog != null) candidates.push(fromLog);
+            if (!candidates.length) return null;
+            // Never show inflated HP when settlement snapshot lags behind enemy.hp
+            return Math.min(...candidates);
+        }
+
+        function syncEnemyHpDisplay(data, enemyOverride = null) {
+            const ctx = enemyOverride
+                ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
+                : data;
+            let hp = resolveAuthoritativeEnemyHp(ctx);
+            if (!Number.isFinite(hp)) return;
+            // Same combat only: stale poll must not inflate HP (never bleed across combats)
+            const combatId = ctx?.combat_id || currentCombatId;
+            const sameCombat = !combatId || combatId === currentCombatId;
+            if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
+                hp = lastAnimatedEnemyHp;
+            }
+            const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
+            const prevHpRaw = Number.isFinite(lastAnimatedEnemyHp)
+                ? lastAnimatedEnemyHp
+                : resolveAuthoritativeEnemyHp(lastCombatStatus);
+            const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
+            const fmt = (n) => Number(n).toLocaleString('zh-Hant');
+            safeSetText('enemy-hp-max', fmt(maxHp));
+            const bar = document.getElementById('enemy-hp-bar');
+            const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
+            const commitHpDisplay = (displayHp) => {
+                combatEnemyHpSeen = displayHp;
+                lastAnimatedEnemyHp = displayHp;
+                safeSetText('enemy-stat-hp', fmt(displayHp));
+            };
+            if (Number.isFinite(prevHp) && prevHp !== hp) {
+                if (bar) {
+                    bar.style.width = `${targetPct}%`;
+                    if (hp < prevHp) flashEnemyHpBar();
+                }
+                animateCombatNumber('enemy-hp-current', prevHp, hp, 420, fmt, (finalHp) => {
+                    commitHpDisplay(finalHp);
+                });
+            } else {
+                safeSetText('enemy-hp-current', fmt(hp));
+                if (bar) bar.style.width = `${targetPct}%`;
+                commitHpDisplay(hp);
+            }
+            const roundDmgEl = document.getElementById('enemy-round-damage');
+            if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
+                const delta = prevHp - hp;
+                roundDmgEl.textContent = `敵人剩餘 ${fmt(hp)}（本回合 -${fmt(delta)}）`;
+                setVisible(roundDmgEl, true);
+            }
+        }
+```
+
+### `templates/index.html` L2117–L2170
+
+```javascript
+        function showFullRoundSettlement(data) {
+            data = applySettlementEnemyHp(data);
+            if (data.enemy?.hp != null) {
+                resetCombatEnemyHpTracking(data.enemy.hp);
+            }
+            const phase = Number(data?.current_phase) || 0;
+            settlementTimerPending = true;
+            combatAwaitingSettlementAck = false;
+            if (phase > lastShownSettlementPhase) {
+                lastShownSettlementPhase = phase;
+            }
+            combatWaitingForRound = false;
+            hideCombatWaitingPanel();
+            hideSinglePlayerResultModal();
+            hideCombatModal();
+            processCombatDamageAnimations(data, 120);
+            updateCombatUI(data, { damageDelay: 200, skipActionEnable: true });
+            syncEnemyHpDisplay(data);
+            lockCombatActionsForSettlement();
+            const settlement = getRoundSettlement(data);
+            const teamDealt = Number(settlement.team_damage_dealt) || 0;
+            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
+            const hasDamageLogs = (data.log_entries || []).some(e => e.type === 'damage');
+            if (teamDealt > 0) {
+                showDamageNumber('enemy-panel', teamDealt, false);
+            }
+            if (enemyDealt > 0) {
+                showDamageNumber('player-panel', enemyDealt, false);
+            }
+            const roundDmgEl = document.getElementById('enemy-round-damage');
+            if (roundDmgEl) {
+                if (teamDealt > 0) {
+                    roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
+                    setVisible(roundDmgEl, true);
+                } else {
+                    roundDmgEl.textContent = '';
+                    setVisible(roundDmgEl, false);
+                }
+            }
+            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
+                ? getSettlementModalDelayMs()
+                : Math.min(500, Math.round(getSettlementModalDelayMs() * 0.3));
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = setTimeout(() => {
+                settlementTimerPending = false;
+                combatAwaitingSettlementAck = true;
+                showRoundSettlementModal(data);
+            }, modalDelay);
+            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+        }
+
+        function victoryPayloadHasSettlement(data) {
+            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
+            if (data?.outcome && data?.round_settlement) return true;
+```
+
+### `templates/index.html` L2348–L2370
+
+```javascript
+        function processCombatDamageAnimations(data, delayMs = 300, initOnly = false) {
+            const entries = data.log_entries || [];
+            if (entries.length < lastCombatLogCount) lastCombatLogCount = 0;
+            if (initOnly) {
+                lastCombatLogCount = entries.length;
+                return;
+            }
+            const newEntries = entries.slice(lastCombatLogCount);
+            lastCombatLogCount = entries.length;
+            if (!newEntries.length) return;
+
+            const myName = currentSquad?.display_name || data.my_state?.display_name || '';
+            const hasDamageLine = newEntries.some(e => e.type === 'damage');
+
+            newEntries.forEach((entry, index) => {
+                const hit = parseLogDamageEvent(entry, myName);
+                if (!hit) return;
+                if (hit.total && hasDamageLine) return;
+                setTimeout(() => {
+                    showDamageNumber(hit.target, hit.amount, hit.crit);
+                }, delayMs + index * 180);
+            });
+        }
+```
 
 ### `templates/index.html` L1785–L2199
 
@@ -1287,11 +1553,11 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 - `test_zombie_hp_zero_status_poll_returns_victory`
 - `test_solo_killing_blow_practice_quick`
 
-## G. 實機仍 fail 條件（Henry）
+## G. 實機狀態（Henry · Phase 2）
 
-- Iggy 線、**單人**、`practice_iggy_03_boundary`（140 HP）
-- PA `20b5601`、`enemy_hp_sync_v3: true`
-- 戰鬥中敵 HP **顯示**唔更新
+- PA `aecffa9`、`enemy_hp_sync_v6: true`
+- **HP／settlement 大幅改善**；後台 Combat #34/#35 log 正確
+- **殘留**：動畫 delay（擲骰 ~2.2s + HP tween 420ms + settlement 1500ms + poll 凍結）
 
 ---
 

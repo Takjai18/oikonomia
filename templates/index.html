@@ -1253,6 +1253,40 @@
             return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
         }
 
+        const COMBAT_HP_ANIM_MS = { fast: 0, normal: 280, slow: 420, very_slow: 420 };
+
+        function isPracticeCombat(data) {
+            const id = data?.encounter_id
+                || data?.encounter?.encounter_id
+                || lastCombatStatus?.encounter_id
+                || '';
+            return String(id).startsWith('practice_')
+                || data?.encounter?.trigger_type === 'practice';
+        }
+
+        function getCombatUxPreset(data) {
+            if (isPracticeCombat(data)) return 'fast';
+            return getGameSettings().combatSettlementDelay || 'normal';
+        }
+
+        function getEffectiveSettlementDelayMs(data) {
+            const preset = getCombatUxPreset(data);
+            return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
+        }
+
+        function getEffectiveHpAnimMs(data, opts = {}) {
+            if (opts.animate === false) return 0;
+            if (Number.isFinite(opts.animMs)) return Math.max(0, opts.animMs);
+            if (isPracticeCombat(data)) return 0;
+            const preset = getGameSettings().combatSettlementDelay || 'normal';
+            return COMBAT_HP_ANIM_MS[preset] ?? COMBAT_HP_ANIM_MS.normal;
+        }
+
+        function syncHpOnlyFromPoll(data) {
+            if (!data?.enemy) return;
+            syncEnemyHpDisplay(applySettlementEnemyHp(data), { animate: false });
+        }
+
         function getDiceRollConfig() {
             const preset = getGameSettings().diceRollSpeed || 'normal';
             return DICE_ROLL_PRESETS[preset] || DICE_ROLL_PRESETS.normal;
@@ -1856,7 +1890,12 @@
             return Math.min(...candidates);
         }
 
-        function syncEnemyHpDisplay(data, enemyOverride = null) {
+        function syncEnemyHpDisplay(data, options = {}) {
+            if (options && typeof options === 'object' && options.hp != null
+                && options.enemyOverride === undefined && options.animate === undefined) {
+                options = { enemyOverride: options };
+            }
+            const enemyOverride = options.enemyOverride ?? null;
             const ctx = enemyOverride
                 ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
                 : data;
@@ -1874,6 +1913,7 @@
                 : resolveAuthoritativeEnemyHp(lastCombatStatus);
             const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
             const fmt = (n) => Number(n).toLocaleString('zh-Hant');
+            const animMs = getEffectiveHpAnimMs(ctx, options);
             safeSetText('enemy-hp-max', fmt(maxHp));
             const bar = document.getElementById('enemy-hp-bar');
             const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
@@ -1882,17 +1922,20 @@
                 lastAnimatedEnemyHp = displayHp;
                 safeSetText('enemy-stat-hp', fmt(displayHp));
             };
-            if (Number.isFinite(prevHp) && prevHp !== hp) {
+            if (Number.isFinite(prevHp) && prevHp !== hp && animMs > 0) {
                 if (bar) {
                     bar.style.width = `${targetPct}%`;
                     if (hp < prevHp) flashEnemyHpBar();
                 }
-                animateCombatNumber('enemy-hp-current', prevHp, hp, 420, fmt, (finalHp) => {
+                animateCombatNumber('enemy-hp-current', prevHp, hp, animMs, fmt, (finalHp) => {
                     commitHpDisplay(finalHp);
                 });
             } else {
                 safeSetText('enemy-hp-current', fmt(hp));
-                if (bar) bar.style.width = `${targetPct}%`;
+                if (bar) {
+                    bar.style.width = `${targetPct}%`;
+                    if (Number.isFinite(prevHp) && hp < prevHp) flashEnemyHpBar();
+                }
                 commitHpDisplay(hp);
             }
             const roundDmgEl = document.getElementById('enemy-round-damage');
@@ -2129,9 +2172,15 @@
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
             hideCombatModal();
-            processCombatDamageAnimations(data, 120);
-            updateCombatUI(data, { damageDelay: 200, skipActionEnable: true });
-            syncEnemyHpDisplay(data);
+            const practiceUx = isPracticeCombat(data);
+            const dmgAnimDelay = practiceUx ? 40 : 120;
+            processCombatDamageAnimations(data, dmgAnimDelay);
+            updateCombatUI(data, {
+                damageDelay: practiceUx ? 0 : 200,
+                skipActionEnable: true,
+            });
+            const hpAnimMs = getEffectiveHpAnimMs(data);
+            syncEnemyHpDisplay(data, { animMs: hpAnimMs, animate: hpAnimMs > 0 });
             lockCombatActionsForSettlement();
             const settlement = getRoundSettlement(data);
             const teamDealt = Number(settlement.team_damage_dealt) || 0;
@@ -2153,9 +2202,16 @@
                     setVisible(roundDmgEl, false);
                 }
             }
-            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
-                ? getSettlementModalDelayMs()
-                : Math.min(500, Math.round(getSettlementModalDelayMs() * 0.3));
+            const baseSettlementDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
+                ? getEffectiveSettlementDelayMs(data)
+                : Math.min(500, Math.round(getEffectiveSettlementDelayMs(data) * 0.3));
+            const modalDelay = Math.max(practiceUx ? 120 : 200, baseSettlementDelay - hpAnimMs);
+            if (window.COMBAT_PERF_DEBUG) {
+                performance.mark('combat_settlement_modal_scheduled');
+                console.debug('[combat] settlement modalDelay(ms)', modalDelay, {
+                    practiceUx, hpAnimMs, baseSettlementDelay,
+                });
+            }
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
                 settlementTimerPending = false;
@@ -2184,7 +2240,7 @@
                     round_resolved: true,
                     active: true,
                 });
-                syncEnemyHpDisplay(enriched);
+                syncEnemyHpDisplay(enriched, { animate: false });
                 showFullRoundSettlement(enriched);
                 return;
             }
@@ -2262,7 +2318,7 @@
                 combatWaitingForRound = false;
                 hideCombatWaitingPanel();
                 updateCombatUI(settled, { damageDelay: 0 });
-                syncEnemyHpDisplay(settled);
+                syncEnemyHpDisplay(settled, { animate: false });
                 startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 return;
             }
@@ -3591,6 +3647,7 @@
 
                 if (settlementTimerPending || combatAwaitingSettlementAck) {
                     if (queueVictoryDuringSettlement(data)) return;
+                    syncHpOnlyFromPoll(data);
                     return;
                 }
 
@@ -4665,7 +4722,7 @@
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            syncEnemyHpDisplay(lastCombatStatus, enemy);
+            syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy, animate: false });
             const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
             const hpHintEl = document.getElementById('enemy-hp-hint');
             if (hpHintEl) {
