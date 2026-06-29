@@ -134,40 +134,10 @@ def read_deploy_version():
             return f.read().strip()
     return "unknown"
 
-def normalize_photo_url(photo_path):
-    """Convert stored path to browser URL segment, e.g. uploads/foo.jpg"""
-    if not photo_path:
-        return None
-    path = str(photo_path).replace("\\", "/")
-    if path.startswith("uploads/"):
-        return path
-    return f"uploads/{os.path.basename(path)}"
-
-def photo_public_url(photo_path):
-    normalized = normalize_photo_url(photo_path)
-    return f"/{normalized}" if normalized else None
-
 def task_display_name(task_id):
     if not task_id:
         return "未知任務"
     return LOCATIONS.get(task_id, {}).get("name", task_id)
-
-def safe_zip_arcname(*parts):
-    name = "_".join(str(p or "unknown") for p in parts)
-    return re.sub(r"[^\w\-.]", "_", name)
-
-def resolve_upload_disk_path(filename):
-    basename = os.path.basename(str(filename).replace("\\", "/"))
-    if not basename:
-        return None
-    for folder in (UPLOAD_FOLDER, LEGACY_UPLOAD_FOLDER):
-        if not folder or not os.path.isdir(folder):
-            continue
-        path = os.path.join(folder, basename)
-        if os.path.isfile(path):
-            return path
-    return None
-
 
 MAX_TASK_PHOTO_BYTES = 8 * 1024 * 1024
 MAX_TASK_PHOTO_DIMENSION = 1200
@@ -311,170 +281,65 @@ ATTACK_ACTION_TYPES = frozenset({
 DICE_MULTIPLIERS = {0: 0.0, 1: 1.0, 2: 1.5, 3: 2.0}
 _encounter_cache = {}
 
-def load_encounter(encounter_id):
-    if encounter_id in _encounter_cache:
-        return _encounter_cache[encounter_id]
-    path = os.path.join(ENCOUNTERS_DIR, f"{encounter_id}.json")
-    if not os.path.isfile(path):
-        return None
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    _encounter_cache[encounter_id] = data
-    return data
+from models import configure as configure_models
 
-def list_encounter_ids():
-    if not os.path.isdir(ENCOUNTERS_DIR):
-        return []
-    return sorted(
-        name[:-5] for name in os.listdir(ENCOUNTERS_DIR)
-        if name.endswith(".json")
-    )
+configure_models(
+    db_path=DB_PATH,
+    upload_folder=UPLOAD_FOLDER,
+    legacy_upload_folder=LEGACY_UPLOAD_FOLDER,
+    default_protagonist=DEFAULT_PROTAGONIST,
+    squad_attributes=SQUAD_ATTRIBUTES,
+    max_inventory_slots=MAX_INVENTORY_SLOTS,
+    encounters_dir=ENCOUNTERS_DIR,
+    item_effect_stat_map=ITEM_EFFECT_STAT_MAP,
+    item_effect_labels=ITEM_EFFECT_LABELS,
+    encounter_cache=_encounter_cache,
+)
 
-def load_all_encounters():
-    return [load_encounter(eid) for eid in list_encounter_ids() if load_encounter(eid)]
-
-def encounter_route_matches(encounter_route, squad_route):
-    """route=test 的 encounter 對所有已選路線可見"""
-    if not encounter_route or encounter_route == "test":
-        return True
-    if not squad_route:
-        return False
-    return encounter_route == squad_route
-
-
-def normalize_team_id(team_id):
-    if not team_id:
-        return None
-    return str(team_id).strip().upper()
-
-
-def get_team_members(team_id):
-    if not team_id:
-        return []
-    clean_team_id = normalize_team_id(team_id)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT * FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
-        (clean_team_id,),
-    ).fetchall()
-    conn.close()
-    return [row_to_squad(r) for r in rows]
-
-
-def resolve_team_display_route(team_id, team_row=None):
-    """隊伍顯示用路線：teams.route → 隊長 route → 任一隊員 route。"""
-    clean_id = normalize_team_id(team_id)
-    if not clean_id:
-        return None
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        row = team_row
-        if row is None:
-            row = conn.execute(
-                "SELECT team_id, route, leader_squad_id FROM teams WHERE team_id = ?",
-                (clean_id,),
-            ).fetchone()
-        if not row:
-            return None
-
-        route = row["route"] if hasattr(row, "keys") else row.get("route")
-        if route:
-            return route
-
-        leader_id = row["leader_squad_id"] if hasattr(row, "keys") else row.get("leader_squad_id")
-        if leader_id:
-            leader = conn.execute(
-                "SELECT route FROM squads WHERE squad_id = ?", (leader_id,)
-            ).fetchone()
-            if leader and leader["route"]:
-                return leader["route"]
-
-        member_row = conn.execute(
-            """SELECT route FROM squads
-               WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
-                 AND route IS NOT NULL AND TRIM(route) != ''
-               LIMIT 1""",
-            (clean_id,),
-        ).fetchone()
-        if member_row:
-            return member_row["route"]
-        return None
-    finally:
-        conn.close()
-
-
-def official_team_route(team):
-    """隊伍正式路線（僅 teams.route，唔用成員 fallback）。"""
-    route = (team or {}).get("route")
-    return route if route in ("iggy", "marah") else None
-
-
-def is_team_leader_session(team, squad_id):
-    if not team or not squad_id:
-        return False
-    if team.get("leader_squad_id") == squad_id:
-        return True
-    squad = get_squad(squad_id)
-    return bool(squad and squad.get("is_team_leader") == 1)
-
-
-def sync_team_route(team_id, route):
-    """寫入 teams.route 並同步全隊 squads.route。"""
-    clean_id = normalize_team_id(team_id)
-    if not clean_id or route not in ("iggy", "marah"):
-        return
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        c = conn.cursor()
-        c.execute("UPDATE teams SET route = ? WHERE team_id = ?", (route, clean_id))
-        c.execute(
-            "UPDATE squads SET route = ? WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
-            (route, clean_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def backfill_team_routes_from_members():
-    """將舊隊伍嘅 teams.route 由隊長/隊員 squads.route 補回。"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        teams = conn.execute(
-            "SELECT team_id FROM teams WHERE route IS NULL OR TRIM(route) = ''"
-        ).fetchall()
-        for team in teams:
-            resolved = resolve_team_display_route(team["team_id"])
-            if resolved:
-                sync_team_route(team["team_id"], resolved)
-    finally:
-        conn.close()
-
-
-def get_team_average_stat(team_id, stat):
-    members = get_team_members(team_id)
-    if not members:
-        return 0
-    values = [int(m.get(stat) or 0) for m in members]
-    return sum(values) / len(values)
-
-def team_has_item_by_name(team_id, item_name):
-    if not team_id or not item_name:
-        return False
-    clean_team_id = normalize_team_id(team_id)
-    conn = sqlite3.connect(DB_PATH)
-    row = conn.execute("""
-        SELECT COUNT(*) FROM player_items pi
-        JOIN squads s ON pi.squad_id = s.squad_id
-        JOIN items i ON pi.item_id = i.id
-        WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND i.name = ?
-    """, (clean_team_id, item_name)).fetchone()
-    conn.close()
-    return row[0] > 0
+from utils.helpers import (
+    hkt_timestamp,
+    normalize_team_id,
+    normalize_photo_url,
+    photo_public_url,
+    safe_zip_arcname,
+    resolve_upload_disk_path,
+)
+from utils.validators import parse_status_effects, serialize_status_effects
+from models.encounter import (
+    load_encounter,
+    list_encounter_ids,
+    load_all_encounters,
+    encounter_route_matches,
+)
+from models.squad import (
+    row_to_squad,
+    get_squad,
+    update_squad,
+    get_all_squads,
+    fetch_squads_by_ids,
+    get_team_members,
+    get_team_average_stat,
+)
+from models.team import (
+    resolve_team_display_route,
+    official_team_route,
+    is_team_leader_session,
+    sync_team_route,
+    backfill_team_routes_from_members,
+    get_next_team_id,
+    get_team_by_id,
+    get_team_protagonists,
+)
+from models.item import (
+    get_item_by_id,
+    get_item_by_qr_code_value,
+    format_item_effect_text,
+    serialize_item_for_client,
+    apply_item_effect_to_squad,
+    team_has_item,
+    team_has_item_by_name,
+    grant_item_to_squad,
+)
 
 def evaluate_precheck_condition(condition, team_id):
     if not condition:
@@ -495,18 +360,6 @@ def _evaluate_precheck_clause(clause, team_id):
             return False
         return get_team_average_stat(team_id, stat) >= threshold
     return False
-
-def parse_status_effects(raw):
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, TypeError):
-        return {}
-
-def serialize_status_effects(effects):
-    return json.dumps(effects or {}, ensure_ascii=False)
 
 def apply_status_debuff(squad_id, debuff_key):
     squad = get_squad(squad_id)
@@ -2619,107 +2472,6 @@ def next_stage_threshold(current_stage):
     next_stage = current_stage + 1
     return STORY_STAGE_THRESHOLDS.get(next_stage)
 
-def get_item_by_id(item_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM items WHERE id = ? AND COALESCE(is_active, 1) = 1",
-        (item_id,),
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def get_item_by_qr_code_value(qr_code_value):
-    if not qr_code_value:
-        return None
-    clean_value = str(qr_code_value).strip()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM items WHERE qr_code_value = ? AND COALESCE(is_active, 1) = 1",
-        (clean_value,),
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def format_item_effect_text(effect_type, effect_value):
-    if not effect_type or effect_type == "mixed":
-        return None
-    label = ITEM_EFFECT_LABELS.get(effect_type)
-    if not label:
-        return None
-    try:
-        value = int(effect_value)
-    except (TypeError, ValueError):
-        return None
-    sign = "+" if value >= 0 else ""
-    return f"{sign}{value} {label}"
-
-def serialize_item_for_client(item):
-    if not item:
-        return None
-    has_ability = bool(item.get("has_ability"))
-    effect_type = item.get("effect_type")
-    effect_value = item.get("effect_value")
-    image_path = item.get("image_path") or "/static/images/default-item.svg"
-    return {
-        "id": item["id"],
-        "name": item.get("name"),
-        "description": item.get("description"),
-        "icon": item.get("icon"),
-        "image_path": image_path,
-        "item_type": item.get("item_type"),
-        "qr_code_value": item.get("qr_code_value"),
-        "has_ability": has_ability,
-        "effect_type": effect_type,
-        "effect_value": effect_value,
-        "effect_text": format_item_effect_text(effect_type, effect_value) if has_ability else None,
-    }
-
-def apply_item_effect_to_squad(squad_id, item):
-    if not item or not item.get("has_ability") or not item.get("effect_type"):
-        return None
-
-    effect_type = item.get("effect_type")
-    if effect_type == "mixed":
-        return None
-
-    stat = ITEM_EFFECT_STAT_MAP.get(effect_type)
-    if not stat or stat not in SQUAD_ATTRIBUTES:
-        return None
-
-    try:
-        delta = int(item.get("effect_value") or 0)
-    except (TypeError, ValueError):
-        return None
-    if delta == 0:
-        return None
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute(
-        f"UPDATE squads SET {stat} = MAX(0, MIN(100, {stat} + ?)) WHERE squad_id = ?",
-        (delta, squad_id),
-    )
-    row = c.execute(
-        "SELECT hp, sanity, power, intellect, resilience FROM squads WHERE squad_id = ?",
-        (squad_id,),
-    ).fetchone()
-    conn.commit()
-    conn.close()
-
-    if not row:
-        return None
-
-    return {
-        "effect_type": effect_type,
-        "effect_value": delta,
-        "effect_text": format_item_effect_text(effect_type, delta),
-        "stat": stat,
-        "stats": dict(row),
-    }
-
 QR_SIGNATURE_HEX_LEN = 16
 
 
@@ -2844,19 +2596,6 @@ def resolve_item_from_qr_payload(raw_payload):
 
     return None
 
-def team_has_item(team_id, item_id):
-    if not team_id:
-        return False
-    clean_team_id = normalize_team_id(team_id)
-    conn = sqlite3.connect(DB_PATH)
-    count = conn.execute("""
-        SELECT COUNT(*) FROM player_items pi
-        JOIN squads s ON pi.squad_id = s.squad_id
-        WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
-    """, (clean_team_id, item_id)).fetchone()[0]
-    conn.close()
-    return count > 0
-
 def qr_code_already_used(item_id):
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
@@ -2865,85 +2604,6 @@ def qr_code_already_used(item_id):
     ).fetchone()
     conn.close()
     return row
-
-def grant_item_to_squad(squad_id, item_id, source="story"):
-    squad = get_squad(squad_id)
-    if not squad:
-        return False, "找不到玩家", None
-
-    item = get_item_by_id(item_id)
-    if not item:
-        return False, "物品不存在或已停用", None
-
-    is_one_time = item.get("is_one_time_use", 1)
-    enforce_qr_once = source == "qr" and is_one_time
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    try:
-        if enforce_qr_once:
-            used = c.execute(
-                "SELECT squad_id FROM qr_code_uses WHERE item_id = ?",
-                (item_id,),
-            ).fetchone()
-            if used:
-                return False, "此 QR Code 已經被使用", None
-
-        existing = c.execute(
-            "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
-            (squad_id, item_id),
-        ).fetchone()
-        if existing:
-            return False, "你已經擁有此物品", None
-
-        team_id = squad.get("team_id")
-        if team_id:
-            clean_team_id = normalize_team_id(team_id)
-            team_dup = c.execute("""
-                SELECT COUNT(*) FROM player_items pi
-                JOIN squads s ON pi.squad_id = s.squad_id
-                WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?)) AND pi.item_id = ?
-            """, (clean_team_id, item_id)).fetchone()[0]
-            if team_dup > 0:
-                return False, "同一隊內已經有人擁有此物品", None
-
-        owned_count = c.execute(
-            "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
-            (squad_id,),
-        ).fetchone()[0]
-        if owned_count >= MAX_INVENTORY_SLOTS:
-            return False, f"你已經持有 {MAX_INVENTORY_SLOTS} 樣物品，請先丟棄", None
-
-        now = datetime.now().isoformat()
-        c.execute(
-            "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
-            (squad_id, item_id, source, now),
-        )
-        if enforce_qr_once:
-            c.execute(
-                """INSERT INTO qr_code_uses (item_id, squad_id, team_id, source, used_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    item_id,
-                    squad_id,
-                    normalize_team_id(team_id) if team_id else None,
-                    source,
-                    now,
-                ),
-            )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return False, "此 QR Code 已經被使用", None
-    finally:
-        conn.close()
-
-    applied_effect = apply_item_effect_to_squad(squad_id, item)
-    return True, f"成功獲得物品：{item['name']}", applied_effect
-
-def hkt_timestamp():
-    return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
 
 def apply_global_effect(effect_type, effect_value=0):
     if not effect_type or effect_type in ("announcement", "global_debuff"):
@@ -3025,219 +2685,6 @@ def build_player_status(squad):
         "protagonists": protagonists,
         "is_team_leader": squad.get("is_team_leader", 0),
     }
-
-def row_to_squad(row):
-    d = dict(row)
-    protagonist = DEFAULT_PROTAGONIST.copy()
-    if d.get("protagonist_stats"):
-        try:
-            protagonist = json.loads(d["protagonist_stats"])
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    return {
-        "squad_id": d["squad_id"],
-        "display_name": d.get("display_name") or d["squad_id"],
-        "sanity": d.get("sanity", 50),
-        "hp": d.get("hp", 100),
-        "power": d.get("power", 100),
-        "intellect": d.get("intellect", 100),
-        "resilience": d.get("resilience", 100),
-        "resources": d.get("resources", 0),
-        "zoo_skills": json.loads(d["zoo_skills"]) if d.get("zoo_skills") else [],
-        "route": d.get("route"),
-        "team_id": d.get("team_id"),
-        "is_team_leader": 1 if d.get("is_team_leader") else 0,
-        "has_pin": bool(d.get("pin")),
-        "avatar": d.get("avatar"),
-        "insight_fragments": d.get("insight_fragments") or 0,
-        "status_effects": parse_status_effects(d.get("status_effects")),
-        "trauma_resilience": d.get("trauma_resilience") or 0,
-        "trauma_power": d.get("trauma_power") or 0,
-        "trauma_intellect": d.get("trauma_intellect") or 0,
-        "near_death_until": d.get("near_death_until"),
-        "current_combat_id": d.get("current_combat_id"),
-        "stats_allocated": 1 if d.get("stats_allocated") else 0,
-        "protagonist": protagonist,
-    }
-
-def fetch_squads_by_ids(squad_ids):
-    """Batch squad lookup (single connection) for combat / GM hot paths."""
-    ids = [sid for sid in dict.fromkeys(squad_ids) if sid]
-    if not ids:
-        return {}
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        placeholders = ",".join("?" * len(ids))
-        rows = conn.execute(
-            f"SELECT * FROM squads WHERE squad_id IN ({placeholders})",
-            ids,
-        ).fetchall()
-        return {row["squad_id"]: row_to_squad(row) for row in rows}
-    finally:
-        conn.close()
-
-
-def get_squad(squad_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
-    conn.close()
-
-    if not row:
-        return None
-
-    squad = row_to_squad(row)
-
-    if squad.get("team_id"):
-        clean_team_id = normalize_team_id(squad["team_id"])
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        team_row = conn.execute(
-            "SELECT route, leader_squad_id FROM teams WHERE team_id = ?",
-            (clean_team_id,),
-        ).fetchone()
-        conn.close()
-
-        if team_row:
-            if team_row["route"]:
-                squad["route"] = team_row["route"]
-            if team_row["leader_squad_id"] == squad["squad_id"]:
-                squad["is_team_leader"] = 1
-            squad["protagonists"] = get_team_protagonists(clean_team_id)
-
-    return squad
-
-def get_team_protagonists(team_id):
-    clean_team_id = normalize_team_id(team_id)
-    if not clean_team_id:
-        return {
-            "iggy": DEFAULT_PROTAGONIST.copy(),
-            "marah": DEFAULT_PROTAGONIST.copy(),
-            "active_route": None,
-        }
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    team_row = conn.execute(
-        "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (clean_team_id,)
-    ).fetchone()
-    if not team_row:
-        conn.close()
-        return {
-            "iggy": DEFAULT_PROTAGONIST.copy(),
-            "marah": DEFAULT_PROTAGONIST.copy(),
-            "active_route": None,
-        }
-
-    route = team_row["route"]
-    leader_id = team_row["leader_squad_id"]
-    if leader_id:
-        squad_row = conn.execute(
-            "SELECT protagonist_stats FROM squads WHERE squad_id = ?", (leader_id,)
-        ).fetchone()
-    else:
-        squad_row = conn.execute(
-            "SELECT protagonist_stats FROM squads WHERE team_id = ? LIMIT 1", (clean_team_id,)
-        ).fetchone()
-    conn.close()
-
-    protagonist = DEFAULT_PROTAGONIST.copy()
-    if squad_row and squad_row["protagonist_stats"]:
-        try:
-            protagonist = json.loads(squad_row["protagonist_stats"])
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    iggy = DEFAULT_PROTAGONIST.copy()
-    marah = DEFAULT_PROTAGONIST.copy()
-    if route == "iggy":
-        iggy = protagonist
-    elif route == "marah":
-        marah = protagonist
-
-    return {"iggy": iggy, "marah": marah, "active_route": route}
-
-def get_all_squads():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM squads ORDER BY squad_id").fetchall()
-    conn.close()
-    return [row_to_squad(r) for r in rows]
-
-def update_squad(squad_id, **kwargs):
-    allowed = {
-        "sanity", "hp", "power", "intellect", "resilience", "resources", "route",
-        "protagonist_stats", "team_id", "is_team_leader", "display_name", "pin",
-        "avatar", "insight_fragments", "status_effects",
-        "trauma_resilience", "trauma_power", "trauma_intellect",
-        "near_death_until", "current_combat_id", "stats_allocated",
-    }
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    updates = []
-    params = []
-    for key, val in kwargs.items():
-        if key not in allowed:
-            continue
-        if key == "pin" and val is None:
-            updates.append("pin = NULL")
-        elif val is not None:
-            updates.append(f"{key} = ?")
-            params.append(val)
-    if updates:
-        updates.append("last_update = ?")
-        params.append(datetime.now().isoformat())
-        params.append(squad_id)
-        c.execute(f"UPDATE squads SET {', '.join(updates)} WHERE squad_id = ?", params)
-        conn.commit()
-    conn.close()
-
-def get_next_team_id():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT team_id FROM teams ORDER BY team_id DESC LIMIT 1")
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return "TEAM-01"
-    num = int(row[0].split("-")[1]) + 1
-    return f"TEAM-{num:02d}"
-
-def get_team_by_id(team_id):
-    if not team_id:
-        return None
-
-    clean_id = normalize_team_id(team_id)
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        """
-        SELECT t.team_id, t.team_name, t.route, t.leader_squad_id, t.created_at,
-               COUNT(s.squad_id) AS member_count
-        FROM teams t
-        LEFT JOIN squads s ON UPPER(TRIM(s.team_id)) = UPPER(TRIM(t.team_id))
-        WHERE t.team_id = ?
-        GROUP BY t.team_id
-        """,
-        (clean_id,),
-    ).fetchone()
-    conn.close()
-
-    if not row:
-        return None
-
-    return {
-        "team_id": row["team_id"],
-        "team_name": row["team_name"],
-        "route": row["route"],
-        "leader_squad_id": row["leader_squad_id"],
-        "created_at": row["created_at"],
-        "member_count": row["member_count"],
-    }
-
 
 def query_teams_list(current_team_id=None):
     conn = sqlite3.connect(DB_PATH)
@@ -3561,6 +3008,7 @@ def api_version():
             "combat_actions_table": True,
             "qr_signed_v2": callable(globals().get("sign_qr_token")),
             "task_photo_validation": callable(globals().get("save_task_submission_photo")),
+            "model_layer_phase1": True,
             "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
             "combat_ui_safe": "safeSetText" in HTML_TEMPLATE,
         },
