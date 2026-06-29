@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`dba1548`（Defend 全隊 buff）
+> 最後更新：2026-06-29 · local/GitHub：`187afca`（戰鬥結算後免 reload）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -30,7 +30,7 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py
-# 預期：26 通過 / 0 失敗（含 Defend 全隊 buff 測試）
+# 預期：27 通過 / 0 失敗
 ```
 
 ---
@@ -97,7 +97,12 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ## 本輪已完成
 
-### Defend 全隊 buff（最新）
+### 戰鬥結算後免 reload（`187afca`）
+
+結算 API 回 `round_resolved` 時，後端已進入下一 `player_phase`，但前端只認 `player_phase` 先准操作。  
+修正：`normalizeCombatStatusData()`、`continueCombatAfterRound()`（繼續下一回合）、結算後 3s 輪詢。
+
+### Defend 全隊 buff（`dba1548`）
 
 | 變更 | 說明 |
 |------|------|
