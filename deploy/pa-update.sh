@@ -124,13 +124,22 @@ echo "NOTE: PythonAnywhere Web tab -> Virtualenv path MUST be: $VENV_DIR"
 echo "NOTE: WSGI file must use: from wsgi import application (NOT from app import app)"
 
 echo ""
+echo "--- SECRET_KEY (data/.secret_key) ---"
+SECRET_FILE="$REPO/data/.secret_key"
+mkdir -p "$REPO/data"
+if [ ! -f "$SECRET_FILE" ]; then
+    python3 -c "import secrets; print(secrets.token_hex(32))" > "$SECRET_FILE"
+    chmod 600 "$SECRET_FILE"
+    echo "Created $SECRET_FILE (Web worker reads this if Web tab has no SECRET_KEY env)"
+else
+    echo "Using existing $SECRET_FILE"
+fi
+
+echo ""
 echo "--- Import smoke test ---"
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
-if [ -z "${SECRET_KEY:-}" ]; then
-    echo "WARNING: SECRET_KEY not set in shell; using deploy-check placeholder."
-    export SECRET_KEY="deploy-check-placeholder"
-fi
+unset SECRET_KEY
 if ! python3 -c "from wsgi import application; print('wsgi import ok')" 2>&1; then
     echo ""
     echo "ERROR: wsgi import failed. Fix before Web Reload."
