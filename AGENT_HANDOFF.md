@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：見下方 `git rev-parse` · PA：`0c43e04`（待 deploy）
+> 最後更新：2026-06-29 · local/GitHub：`3c89f62` · PA：請 `curl /api/version` 核對
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -12,15 +12,28 @@
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
+### Bug Log（難解 bug — Drive SSOT）
+
+| 路徑 | 用途 |
+|------|------|
+| **Drive** `My Drive/oikonomia/bug_log/` | 長篇調查檔 + attachments（**SSOT**） |
+| **Repo** `bug_log/` | 與 Drive 同步副本，方便 commit 引用 |
+
+- 先讀 **`bug_log/README.md`**（Purpose、幾時開 case）
+- 活躍 case 見 **`bug_log/INDEX.md`**
+- 與 `UPDATE_LOG.md`（短）、`decisions_log.md`（決策）分工
+
+**現有 case**：BUG-2026-001 戰鬥敵 HP／killing blow settlement → `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md`（修復 `3c89f62`）
+
 ---
 
 ## 版本狀態（開 tab 第一件事要核對）
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `5cfd895` | ✅ |
-| **GitHub `main`** | `5cfd895` | ✅ |
-| **PythonAnywhere** | `0c43e04` | ⏳ 待 deploy |
+| **Local** | `3c89f62` | ✅ |
+| **GitHub `main`** | `3c89f62` | ✅ |
+| **PythonAnywhere** | 請 curl 核對 | ⏳ 部署後應為 `3c89f62` |
 
 ```bash
 # 本地
@@ -35,9 +48,8 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ### 本地測試
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py           # 預期：93 通過 / 0 失敗
+bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（154+ 項）
 ./venv/bin/python3 scripts/test_encounter_cache.py       # 預期：3 通過 / 0 失敗
-./venv/bin/python3 scripts/test_combat_concurrency.py    # 併發結算 smoke test（需 venv）
 ```
 
 ---

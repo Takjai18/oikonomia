@@ -27,6 +27,10 @@ oikonomia/
 ├── CURRENT_STRUCTURE.md      # 本檔：專案結構快照
 ├── ARCHITECTURE_ROADMAP.md   # Grok 方向 · Phase 1–3 計劃
 ├── decisions_log.md          # 重大架構決定（Drive SSOT）
+├── bug_log/                  # 難解 bug 長篇調查（Drive SSOT：oikonomia/bug_log/）
+│   ├── README.md             # Purpose、開 case 流程
+│   ├── INDEX.md              # Case 一覽
+│   └── cases/                # 每案 REPORT.md + attachments/
 │
 ├── models/                   # 資料層 & 核心業務邏輯
 ├── routes/                   # HTTP Blueprints（API + GM HTML）

@@ -22,7 +22,8 @@
 
 | 文檔 | 內容 |
 |------|------|
-| **本檔 `UPDATE_LOG.md`** | 實際踩過嘅坑、設定、修復、假陽性 |
+| **本檔 `UPDATE_LOG.md`** | 實際踩過嘅坑、設定、修復、假陽性（**短條目**） |
+| **`bug_log/`** | 難解、多輪修復嘅 bug **長篇調查** + attachments（Drive SSOT） |
 | `decisions_log.md` | 架構取捨與 Phase 範圍決策 |
 | `AGENT_HANDOFF.md` | 部署步驟、測試指令、版本狀態 |
 | `GEMINI_REVIEW.md` | 第三方 review 紀錄（歷史快照，可能過時） |

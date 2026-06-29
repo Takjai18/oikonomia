@@ -31,7 +31,8 @@ deploy/             # PythonAnywhere 部署腳本
 
 詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。  
 目錄快照見 **[CURRENT_STRUCTURE.md](./CURRENT_STRUCTURE.md)**。  
-**已知問題、設定陷阱、已修復假陽性**見 **[UPDATE_LOG.md](./UPDATE_LOG.md)**（Grok／Gemini 必讀，避免重複錯誤建議）。
+**已知問題、設定陷阱、已修復假陽性**見 **[UPDATE_LOG.md](./UPDATE_LOG.md)**（Grok／Gemini 必讀，避免重複錯誤建議）。  
+**難解、多輪修復嘅 production bug**見 **[bug_log/](./bug_log/)**（SSOT 同步至 Google Drive `oikonomia/bug_log/`）。
 
 ## AI 開發分工
 
@@ -128,10 +129,21 @@ python3 -m py_compile app.py models/*.py routes/*.py services/*.py utils/*.py
 python3 test_combat.py          # 需本地 DB / 環境
 ```
 
+## Bug Log（難解 bug 專檔）
+
+當同一類 bug **修咗幾次仍實機出錯**，或 **CI 綠但玩家仍回報**，唔好只靠對話記憶 — 開 case 寫入 **[bug_log/](./bug_log/)**：
+
+- **[bug_log/README.md](./bug_log/README.md)** — 用途、幾時開 case、檔案結構
+- **[bug_log/INDEX.md](./bug_log/INDEX.md)** — 所有 case 一覽
+- **Drive SSOT**：`~/Library/CloudStorage/GoogleDrive-ymtwill@gmail.com/My Drive/oikonomia/bug_log/`
+
+每個 case 含 `REPORT.md`（症狀、根因、試過咩、困難、最終修復）+ `attachments/` 相關檔案快照。  
+與 `UPDATE_LOG.md`（短條目）、`decisions_log.md`（架構決策）分工，避免大檔一次 dump 入 AI context。
+
 ## 文檔索引（各角色入口）
 
 | 角色 | 先讀 |
 |------|------|
-| **Grok**（方向） | `README.md` → **[UPDATE_LOG.md](./UPDATE_LOG.md)** → **[ARCHITECTURE_ROADMAP.md](./ARCHITECTURE_ROADMAP.md)** → `AGENT_HANDOFF.md`「尚未完成」 |
-| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → **[UPDATE_LOG.md](./UPDATE_LOG.md)** → `CURRENT_STRUCTURE.md` |
-| **Gemini**（review / debug） | **[UPDATE_LOG.md](./UPDATE_LOG.md)** → **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** → `AGENT_HANDOFF.md` |
+| **Grok**（方向） | `README.md` → **[UPDATE_LOG.md](./UPDATE_LOG.md)** → **[bug_log/INDEX.md](./bug_log/INDEX.md)**（若有 active case）→ `ARCHITECTURE_ROADMAP.md` |
+| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → **UPDATE_LOG.md** → **bug_log**（若改緊相關模組） |
+| **Gemini**（review / debug） | **UPDATE_LOG.md** → **bug_log/cases/…/REPORT.md** + `attachments/` → **GEMINI_REVIEW.md** |
