@@ -1583,6 +1583,8 @@
         let lastAnimatedEnemyHp = null;
         let pendingVictoryAfterSettlement = null;
         let combatFinalizingVictory = false;
+        let victoryFinalizeInProgress = false;
+        let victorySettlementAcknowledgedCombatId = null;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let lastCombatUiSnapshotKey = '';
@@ -2074,7 +2076,6 @@
             settlementTimerPending = false;
             pendingSettlementHpPayload = null;
             pendingVictoryAfterSettlement = null;
-            combatFinalizingVictory = false;
             lastShownSettlementPhase = 0;
             lastCombatStatusJson = '';
             settlementCombatId = null;
@@ -2082,9 +2083,16 @@
             showFullRoundSettlement._modalTimer = null;
         }
 
+        function resetCombatVictoryFlowState() {
+            combatFinalizingVictory = false;
+            victoryFinalizeInProgress = false;
+            victorySettlementAcknowledgedCombatId = null;
+        }
+
         function resetCombatSessionState() {
             stopCombatPolling();
             resetCombatSettlementState();
+            resetCombatVictoryFlowState();
             combatWaitingForRound = false;
             combatSubmittedPhase = 0;
             setCombatPhaseLock(false);
@@ -2154,14 +2162,12 @@
             const panel = document.getElementById('player-panel');
             if (panel) panel.style.opacity = '1';
             if (pendingVictoryAfterSettlement) {
-                stopCombatPolling();
-                combatFinalizingVictory = true;
                 const victoryPayload = pendingVictoryAfterSettlement;
                 pendingVictoryAfterSettlement = null;
                 combatAwaitingSettlementAck = false;
-                void finalizeCombatVictoryFromPayload(victoryPayload).finally(() => {
-                    combatFinalizingVictory = false;
-                });
+                victorySettlementAcknowledgedCombatId =
+                    victoryPayload.combat_id || currentCombatId || victorySettlementAcknowledgedCombatId;
+                void finalizeCombatVictoryFromPayload(victoryPayload);
                 return;
             }
             combatAwaitingSettlementAck = false;
@@ -2172,10 +2178,13 @@
             loadCombatStatus(false);
         }
 
-        // combat_flow_v4: v3 + 勝利不重複結算、已確認回合可進下一輪
+        // combat_flow_v5: v4 + 勝利確認後不再重複結算（victory flow lock）
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
+            if (combatFinalizingVictory || victoryFinalizeInProgress) return;
+            if (victorySettlementAcknowledgedCombatId
+                && combatId === victorySettlementAcknowledgedCombatId) return;
             if (combatAwaitingSettlementAck) {
                 return;
             }
@@ -2216,8 +2225,21 @@
             return (data.log_entries || []).some(e => e?.type === 'damage');
         }
 
+        function isVictoryFlowLocked(combatId) {
+            const cid = combatId || currentCombatId;
+            return combatFinalizingVictory
+                || victoryFinalizeInProgress
+                || (victorySettlementAcknowledgedCombatId && cid === victorySettlementAcknowledgedCombatId);
+        }
+
         async function finishCombatVictoryFromPayload(data) {
-            if (combatFinalizingVictory) return;
+            const combatId = data?.combat_id || currentCombatId;
+            if (isVictoryFlowLocked(combatId)) {
+                if (!victoryFinalizeInProgress) {
+                    await finalizeCombatVictoryFromPayload(data);
+                }
+                return;
+            }
             if (combatAwaitingSettlementAck) {
                 if (!pendingVictoryAfterSettlement) {
                     pendingVictoryAfterSettlement = data;
@@ -2226,10 +2248,10 @@
             }
             const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
             const phase = Number(data?.current_phase) || 0;
-            const combatId = data?.combat_id || currentCombatId;
             if (victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome)) {
                 if (phase > 0 && phase <= lastShownSettlementPhase
                     && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
+                    victorySettlementAcknowledgedCombatId = combatId || victorySettlementAcknowledgedCombatId;
                     await finalizeCombatVictoryFromPayload(data);
                     return;
                 }
@@ -2247,42 +2269,55 @@
         }
 
         async function finalizeCombatVictoryFromPayload(data) {
-            resetCombatSettlementState();
+            if (victoryFinalizeInProgress) return;
+            victoryFinalizeInProgress = true;
+            combatFinalizingVictory = true;
+            stopCombatPolling();
+            combatAwaitingSettlementAck = false;
+            settlementTimerPending = false;
+            pendingSettlementHpPayload = null;
             pendingVictoryAfterSettlement = null;
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = null;
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideRoundSettlementModal();
             hideSinglePlayerResultModal();
             hideCombatModal();
-            if (data?.log_entries?.length) {
-                processCombatDamageAnimations(data, 120);
+            try {
+                if (data?.log_entries?.length) {
+                    processCombatDamageAnimations(data, 120);
+                }
+                resetCombatEnemyHpTracking(0);
+                updateEnemyCombatStats(
+                    { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
+                    data.enemy_description || lastCombatStatus?.enemy_description || '',
+                );
+                let payload = data;
+                if (!payload.outcome) {
+                    try {
+                        const url = currentCombatId
+                            ? `/combat/status?combat_id=${currentCombatId}`
+                            : '/combat/status';
+                        const res = await fetchNoCache(url);
+                        const fresh = await res.json();
+                        if (fresh.outcome) payload = { ...payload, ...fresh };
+                    } catch (_) { /* use local payload */ }
+                }
+                const outcome = payload.outcome
+                    || (payload.winner === 'enemy' ? 'defeat' : 'victory');
+                showCombatResult({
+                    ...payload,
+                    outcome,
+                    active: false,
+                });
+                const statusRes = await fetchNoCache('/status');
+                updateDashboard(await statusRes.json());
+                combatItemsLoaded = false;
+            } finally {
+                victoryFinalizeInProgress = false;
+                combatFinalizingVictory = false;
             }
-            resetCombatEnemyHpTracking(0);
-            updateEnemyCombatStats(
-                { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
-                data.enemy_description || lastCombatStatus?.enemy_description || '',
-            );
-            let payload = data;
-            if (!payload.outcome) {
-                try {
-                    const url = currentCombatId
-                        ? `/combat/status?combat_id=${currentCombatId}`
-                        : '/combat/status';
-                    const res = await fetchNoCache(url);
-                    const fresh = await res.json();
-                    if (fresh.outcome) payload = { ...payload, ...fresh };
-                } catch (_) { /* use local payload */ }
-            }
-            const outcome = payload.outcome
-                || (payload.winner === 'enemy' ? 'defeat' : 'victory');
-            showCombatResult({
-                ...payload,
-                outcome,
-                active: false,
-            });
-            const statusRes = await fetchNoCache('/status');
-            updateDashboard(await statusRes.json());
-            combatItemsLoaded = false;
         }
 
         function shouldFinishCombatVictory(data) {
@@ -2295,7 +2330,7 @@
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
-            if (combatFinalizingVictory) return;
+            if (isVictoryFlowLocked(data?.combat_id)) return;
             if (combatAwaitingSettlementAck || settlementTimerPending) {
                 return;
             }
@@ -3295,7 +3330,9 @@
             if (!combatLive) {
                 if (uiData.outcome) {
                     if (shouldFinishCombatVictory(uiData)) {
-                        void finishCombatVictoryFromPayload(uiData);
+                        if (!isVictoryFlowLocked(uiData.combat_id)) {
+                            void finishCombatVictoryFromPayload(uiData);
+                        }
                     } else {
                         showCombatResult(uiData);
                     }
@@ -3449,6 +3486,7 @@
 
         async function loadCombatStatus(showLoading, options = {}) {
             try {
+                if (victoryFinalizeInProgress) return;
                 if (combatFinalizingVictory) return;
                 if (!options.skipSquadRefresh) {
                     await refreshSquadFromServer();
@@ -3471,6 +3509,13 @@
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
+
+                    if (isVictoryFlowLocked(data.combat_id)) {
+                        if (!victoryFinalizeInProgress) {
+                            await finalizeCombatVictoryFromPayload(data);
+                        }
+                        return;
+                    }
 
                     if (combatAwaitingSettlementAck || settlementTimerPending) {
                         queueVictoryDuringSettlement(data);
