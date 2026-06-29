@@ -770,11 +770,34 @@ def combat_phase_expired(combat, settings):
     return datetime.now() >= datetime.fromisoformat(deadline)
 
 def get_combat_participants(combat):
-    squad = get_squad(combat["squad_id"])
-    if squad and squad.get("team_id"):
-        return get_team_members(squad["team_id"])
-    s = get_squad(combat["squad_id"])
-    return [s] if s else []
+    """Single-connection participant lookup (avoids duplicate get_squad + get_team_members)."""
+    if not combat:
+        return []
+    starter_id = combat.get("squad_id")
+    if not starter_id:
+        return []
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        starter_row = conn.execute(
+            "SELECT * FROM squads WHERE squad_id = ?",
+            (starter_id,),
+        ).fetchone()
+        if not starter_row:
+            return []
+
+        team_id = starter_row["team_id"]
+        if team_id and str(team_id).strip():
+            rows = conn.execute(
+                "SELECT * FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+                (normalize_team_id(team_id),),
+            ).fetchall()
+            return [row_to_squad(r) for r in rows]
+
+        return [row_to_squad(starter_row)]
+    finally:
+        conn.close()
 
 def get_active_combat_member_ids(participants):
     """存活且可行動的隊員 squad_id（非瀕死）。"""
@@ -862,6 +885,7 @@ def resolve_player_phase(combat_id):
     encounter = load_encounter(combat["encounter_id"])
     settings = (encounter or {}).get("combat_settings", {})
     participants = get_combat_participants(combat)
+    participant_by_id = {p["squad_id"]: p for p in participants}
     actions = combat.get("phase_actions") or {}
 
     enemy_hp = int(combat.get("enemy_hp") or 0)
@@ -874,7 +898,7 @@ def resolve_player_phase(combat_id):
     berserk_players = []
 
     for player_squad_id, action_data in actions.items():
-        player = get_squad(player_squad_id)
+        player = participant_by_id.get(player_squad_id)
         if not player:
             continue
         display = player.get("display_name") or player_squad_id
@@ -968,9 +992,11 @@ def resolve_player_phase(combat_id):
     )
     combat["status"] = "enemy_phase"
 
-    target = get_lowest_resilience_player(
-        [get_squad(p["squad_id"]) or p for p in participants]
-    )
+    fresh_by_id = fetch_squads_by_ids([p["squad_id"] for p in participants])
+    fresh_participants = [
+        fresh_by_id.get(p["squad_id"], p) for p in participants
+    ]
+    target = get_lowest_resilience_player(fresh_participants)
     if target:
         target_id = target["squad_id"]
         defending = (actions.get(target_id) or {}).get("action_type") == "defend"
@@ -2965,6 +2991,24 @@ def row_to_squad(row):
         "protagonist": protagonist,
     }
 
+def fetch_squads_by_ids(squad_ids):
+    """Batch squad lookup (single connection) for combat / GM hot paths."""
+    ids = [sid for sid in dict.fromkeys(squad_ids) if sid]
+    if not ids:
+        return {}
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        placeholders = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"SELECT * FROM squads WHERE squad_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        return {row["squad_id"]: row_to_squad(row) for row in rows}
+    finally:
+        conn.close()
+
+
 def get_squad(squad_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -3095,22 +3139,25 @@ def get_team_by_id(team_id):
     if not team_id:
         return None
 
-    clean_id = team_id.strip().upper()
+    clean_id = normalize_team_id(team_id)
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
-        "SELECT * FROM teams WHERE team_id = ?", (clean_id,)
+        """
+        SELECT t.team_id, t.team_name, t.route, t.leader_squad_id, t.created_at,
+               COUNT(s.squad_id) AS member_count
+        FROM teams t
+        LEFT JOIN squads s ON UPPER(TRIM(s.team_id)) = UPPER(TRIM(t.team_id))
+        WHERE t.team_id = ?
+        GROUP BY t.team_id
+        """,
+        (clean_id,),
     ).fetchone()
+    conn.close()
 
     if not row:
-        conn.close()
         return None
-
-    member_count = conn.execute(
-        "SELECT COUNT(*) FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))", (clean_id,)
-    ).fetchone()[0]
-    conn.close()
 
     return {
         "team_id": row["team_id"],
@@ -3118,140 +3165,211 @@ def get_team_by_id(team_id):
         "route": row["route"],
         "leader_squad_id": row["leader_squad_id"],
         "created_at": row["created_at"],
-        "member_count": member_count,
+        "member_count": row["member_count"],
     }
+
 
 def query_teams_list(current_team_id=None):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM teams ORDER BY created_at DESC").fetchall()
+    rows = conn.execute(
+        """
+        SELECT t.team_id, t.team_name, t.route, t.created_at,
+               COUNT(s.squad_id) AS member_count
+        FROM teams t
+        LEFT JOIN squads s ON UPPER(TRIM(s.team_id)) = UPPER(TRIM(t.team_id))
+        GROUP BY t.team_id
+        ORDER BY t.created_at DESC
+        """
+    ).fetchall()
+    conn.close()
 
-    teams = []
-    for row in rows:
-        member_count = conn.execute(
-            "SELECT COUNT(*) FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))", (row["team_id"],)
-        ).fetchone()[0]
-
-        teams.append({
+    current_clean = normalize_team_id(current_team_id) if current_team_id else None
+    return [
+        {
             "team_id": row["team_id"],
             "team_name": row["team_name"],
             "route": row["route"],
             "created_at": row["created_at"],
-            "member_count": member_count,
-            "is_joined": row["team_id"] == current_team_id,
-        })
-
-    conn.close()
-    return teams
+            "member_count": row["member_count"],
+            "is_joined": row["team_id"] == current_clean,
+        }
+        for row in rows
+    ]
 
 def get_all_teams_with_stats():
     return query_teams_list()
 
+
+def _bulk_submission_stats_by_team(conn):
+    rows = conn.execute("""
+        SELECT UPPER(TRIM(s.team_id)) AS team_key,
+               COUNT(*) AS total,
+               MAX(sub.timestamp) AS last_ts
+        FROM submissions sub
+        INNER JOIN squads s ON s.squad_id = sub.squad_id
+        WHERE s.team_id IS NOT NULL AND TRIM(s.team_id) != ''
+        GROUP BY team_key
+    """).fetchall()
+    return {
+        row["team_key"]: {"total": row["total"], "last_ts": row["last_ts"]}
+        for row in rows
+    }
+
+
+def _bulk_distinct_tasks_by_team(conn):
+    rows = conn.execute("""
+        SELECT UPPER(TRIM(s.team_id)) AS team_key, sub.task_id
+        FROM submissions sub
+        INNER JOIN squads s ON s.squad_id = sub.squad_id
+        WHERE s.team_id IS NOT NULL AND TRIM(s.team_id) != ''
+        GROUP BY team_key, sub.task_id
+    """).fetchall()
+    task_ids_by_team = {}
+    for row in rows:
+        task_ids_by_team.setdefault(row["team_key"], set()).add(row["task_id"])
+    return {key: (len(ids), ids) for key, ids in task_ids_by_team.items()}
+
+
+def _bulk_submission_stats_by_squad(conn):
+    rows = conn.execute("""
+        SELECT sub.squad_id, COUNT(*) AS total, MAX(sub.timestamp) AS last_ts
+        FROM submissions sub
+        INNER JOIN squads s ON s.squad_id = sub.squad_id
+        WHERE s.team_id IS NULL OR TRIM(s.team_id) = ''
+        GROUP BY sub.squad_id
+    """).fetchall()
+    return {
+        row["squad_id"]: {"total": row["total"], "last_ts": row["last_ts"]}
+        for row in rows
+    }
+
+
+def _bulk_distinct_tasks_by_squad(conn):
+    rows = conn.execute("""
+        SELECT sub.squad_id, sub.task_id
+        FROM submissions sub
+        INNER JOIN squads s ON s.squad_id = sub.squad_id
+        WHERE s.team_id IS NULL OR TRIM(s.team_id) = ''
+        GROUP BY sub.squad_id, sub.task_id
+    """).fetchall()
+    task_ids_by_squad = {}
+    for row in rows:
+        task_ids_by_squad.setdefault(row["squad_id"], set()).add(row["task_id"])
+    return {sid: (len(ids), ids) for sid, ids in task_ids_by_squad.items()}
+
+
 def build_teams_overview():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    team_rows = conn.execute("SELECT * FROM teams ORDER BY created_at DESC").fetchall()
-
-    teams = []
-    for team_row in team_rows:
-        team_id = team_row["team_id"]
-        clean_id = normalize_team_id(team_id)
-        members = conn.execute(
-            "SELECT * FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
-            (clean_id,),
+    try:
+        team_rows = conn.execute(
+            "SELECT * FROM teams ORDER BY created_at DESC"
         ).fetchall()
+        member_rows = conn.execute("""
+            SELECT * FROM squads
+            WHERE team_id IS NOT NULL AND TRIM(team_id) != ''
+        """).fetchall()
+        unassigned_rows = conn.execute("""
+            SELECT * FROM squads
+            WHERE team_id IS NULL OR TRIM(team_id) = ''
+            ORDER BY COALESCE(display_name, squad_id)
+        """).fetchall()
 
-        member_count = len(members)
-        stat_fields = ["hp", "sanity", "power", "intellect", "resilience", "resources"]
+        members_by_team = {}
+        for member in member_rows:
+            members_by_team.setdefault(
+                normalize_team_id(member["team_id"]), []
+            ).append(member)
 
-        def team_avg(field):
-            if not members:
-                return 0
-            return round(sum((m[field] or 0) for m in members) / member_count)
+        submission_stats_by_team = _bulk_submission_stats_by_team(conn)
+        task_stats_by_team = _bulk_distinct_tasks_by_team(conn)
+        submission_stats_by_squad = _bulk_submission_stats_by_squad(conn)
+        task_stats_by_squad = _bulk_distinct_tasks_by_squad(conn)
 
-        leader_name = None
-        leader_id = team_row["leader_squad_id"]
-        if leader_id:
-            leader = get_squad(leader_id)
-            if leader:
-                leader_name = leader.get("display_name") or leader["squad_id"]
+        route_labels = {"iggy": "🔥 Iggy", "marah": "🌊 Marah"}
+        teams = []
+        for team_row in team_rows:
+            team_id = team_row["team_id"]
+            clean_id = normalize_team_id(team_id)
+            members = members_by_team.get(clean_id, [])
+            member_count = len(members)
 
-        distinct_tasks, task_ids = count_team_distinct_tasks(None, clean_id)
-        story_stage = resolve_story_stage(distinct_tasks, task_ids)
+            def team_avg(field):
+                if not members:
+                    return 0
+                return round(sum((m[field] or 0) for m in members) / member_count)
 
-        sub_row = conn.execute("""
-            SELECT COUNT(*) AS total, MAX(timestamp) AS last_ts
-            FROM submissions
-            WHERE squad_id IN (
-                SELECT squad_id FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
-            )
-        """, (clean_id,)).fetchone()
+            leader_id = team_row["leader_squad_id"]
+            leader_name = None
+            if leader_id:
+                for member in members:
+                    if member["squad_id"] == leader_id:
+                        leader_name = member["display_name"] or member["squad_id"]
+                        break
 
-        route = team_row["route"]
-        teams.append({
-            "team_id": team_id,
-            "team_name": team_row["team_name"],
-            "route": route,
-            "route_label": {"iggy": "🔥 Iggy", "marah": "🌊 Marah"}.get(route, "未選路線"),
-            "leader_squad_id": leader_id,
-            "leader_name": leader_name or "未設定",
-            "member_count": member_count,
-            "avg_hp": team_avg("hp"),
-            "avg_sanity": team_avg("sanity"),
-            "avg_power": team_avg("power"),
-            "avg_intellect": team_avg("intellect"),
-            "avg_resilience": team_avg("resilience"),
-            "avg_resources": team_avg("resources"),
-            "distinct_tasks": distinct_tasks,
-            "story_stage": story_stage,
-            "submission_count": sub_row["total"] if sub_row else 0,
-            "last_submission": sub_row["last_ts"] if sub_row else None,
-            "members": [
-                {
-                    "squad_id": m["squad_id"],
-                    "display_name": m["display_name"] or m["squad_id"],
-                    "hp": m["hp"],
-                    "sanity": m["sanity"],
-                    "power": m["power"],
-                    "intellect": m["intellect"],
-                    "resilience": m["resilience"],
-                    "is_leader": 1 if leader_id and m["squad_id"] == leader_id else 0,
-                }
-                for m in members
-            ],
-        })
+            distinct_tasks, task_ids = task_stats_by_team.get(clean_id, (0, set()))
+            story_stage = resolve_story_stage(distinct_tasks, task_ids)
+            sub_stats = submission_stats_by_team.get(clean_id, {})
+            route = team_row["route"]
+            teams.append({
+                "team_id": team_id,
+                "team_name": team_row["team_name"],
+                "route": route,
+                "route_label": route_labels.get(route, "未選路線"),
+                "leader_squad_id": leader_id,
+                "leader_name": leader_name or "未設定",
+                "member_count": member_count,
+                "avg_hp": team_avg("hp"),
+                "avg_sanity": team_avg("sanity"),
+                "avg_power": team_avg("power"),
+                "avg_intellect": team_avg("intellect"),
+                "avg_resilience": team_avg("resilience"),
+                "avg_resources": team_avg("resources"),
+                "distinct_tasks": distinct_tasks,
+                "story_stage": story_stage,
+                "submission_count": sub_stats.get("total", 0),
+                "last_submission": sub_stats.get("last_ts"),
+                "members": [
+                    {
+                        "squad_id": m["squad_id"],
+                        "display_name": m["display_name"] or m["squad_id"],
+                        "hp": m["hp"],
+                        "sanity": m["sanity"],
+                        "power": m["power"],
+                        "intellect": m["intellect"],
+                        "resilience": m["resilience"],
+                        "is_leader": 1 if leader_id and m["squad_id"] == leader_id else 0,
+                    }
+                    for m in members
+                ],
+            })
 
-    solo_players = []
-    unassigned_rows = conn.execute("""
-        SELECT * FROM squads
-        WHERE team_id IS NULL OR TRIM(team_id) = ''
-        ORDER BY COALESCE(display_name, squad_id)
-    """).fetchall()
-    for row in unassigned_rows:
-        distinct_tasks, task_ids = count_team_distinct_tasks(row["squad_id"], None)
-        sub_row = conn.execute(
-            "SELECT COUNT(*) AS total, MAX(timestamp) AS last_ts FROM submissions WHERE squad_id = ?",
-            (row["squad_id"],),
-        ).fetchone()
-        solo_players.append({
-            "squad_id": row["squad_id"],
-            "display_name": row["display_name"] or row["squad_id"],
-            "route": row["route"],
-            "route_label": {"iggy": "🔥 Iggy", "marah": "🌊 Marah"}.get(row["route"], "未選路線"),
-            "hp": row["hp"],
-            "sanity": row["sanity"],
-            "power": row["power"],
-            "intellect": row["intellect"],
-            "resilience": row["resilience"],
-            "resources": row["resources"],
-            "distinct_tasks": distinct_tasks,
-            "story_stage": resolve_story_stage(distinct_tasks, task_ids),
-            "submission_count": sub_row["total"] if sub_row else 0,
-            "last_submission": sub_row["last_ts"] if sub_row else None,
-        })
+        solo_players = []
+        for row in unassigned_rows:
+            squad_id = row["squad_id"]
+            distinct_tasks, task_ids = task_stats_by_squad.get(squad_id, (0, set()))
+            sub_stats = submission_stats_by_squad.get(squad_id, {})
+            solo_players.append({
+                "squad_id": squad_id,
+                "display_name": row["display_name"] or squad_id,
+                "route": row["route"],
+                "route_label": route_labels.get(row["route"], "未選路線"),
+                "hp": row["hp"],
+                "sanity": row["sanity"],
+                "power": row["power"],
+                "intellect": row["intellect"],
+                "resilience": row["resilience"],
+                "resources": row["resources"],
+                "distinct_tasks": distinct_tasks,
+                "story_stage": resolve_story_stage(distinct_tasks, task_ids),
+                "submission_count": sub_stats.get("total", 0),
+                "last_submission": sub_stats.get("last_ts"),
+            })
 
-    conn.close()
-    return {"teams": teams, "solo_players": solo_players}
+        return {"teams": teams, "solo_players": solo_players}
+    finally:
+        conn.close()
 
 def build_active_combats_overview():
     conn = sqlite3.connect(DB_PATH)
