@@ -896,6 +896,7 @@
                                         </div>
                                     </div>
                                     <div id="enemy-round-damage" class="hidden text-[10px] lg:text-xs text-amber-400 font-mono mt-0.5"></div>
+                                    <div id="enemy-hp-hint" class="hidden text-[10px] text-amber-400/90 mt-0.5 leading-snug"></div>
                                 </div>
                             </div>
                             <div class="grid grid-cols-5 gap-1 text-center">
@@ -1856,6 +1857,23 @@
             safeSetText('round-settlement-team-dealt', teamDealt.toLocaleString('zh-Hant'));
             safeSetText('round-settlement-enemy-dealt', enemyDealt.toLocaleString('zh-Hant'));
 
+            const enemy = data.enemy || preview.enemy || lastCombatStatus?.enemy || {};
+            const enemyHp = Number(enemy.hp);
+            const enemyMax = Number(enemy.max_hp || enemy.hp);
+            const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
+            safeSetText('round-settlement-enemy-hp', fmtHp(enemyHp));
+            safeSetText('round-settlement-enemy-hp-max', Number.isFinite(enemyMax) ? ` / ${fmtHp(enemyMax)}` : '');
+            const hpNote = document.getElementById('round-settlement-hp-note');
+            if (hpNote) {
+                if (teamDealt <= 0) {
+                    hpNote.textContent = '本回合對敵方造成 0 點傷害（失手或暴走）';
+                } else if (Number.isFinite(enemyMax) && enemyMax >= 500) {
+                    hpNote.textContent = '高 HP 敵人血條幾乎唔郁，請以數字同本回合傷害為準';
+                } else {
+                    hpNote.textContent = '';
+                }
+            }
+
             const counterNote = document.getElementById('round-settlement-counter-note');
             if (counterNote) {
                 const hits = settlement.counter_hits || [];
@@ -1944,6 +1962,16 @@
             }
             if (enemyDealt > 0) {
                 showDamageNumber('player-panel', enemyDealt, false);
+            }
+            const roundDmgEl = document.getElementById('enemy-round-damage');
+            if (roundDmgEl) {
+                if (teamDealt > 0) {
+                    roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
+                    setVisible(roundDmgEl, true);
+                } else {
+                    roundDmgEl.textContent = '';
+                    setVisible(roundDmgEl, false);
+                }
             }
             const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
                 ? getSettlementModalDelayMs()
@@ -3030,6 +3058,8 @@
                 return;
             }
             currentCombatId = data.combat_id;
+            resetCombatSettlementState();
+            resetCombatEnemyHpTracking(null);
             showSection('combat');
             if (data.can_skip && data.status === 'precheck') {
                 document.getElementById('precheck-modal-title').textContent = data.encounter?.title || '前置判定';
@@ -3065,6 +3095,8 @@
                 return;
             }
             currentCombatId = data.combat_id;
+            resetCombatSettlementState();
+            resetCombatEnemyHpTracking(null);
             showCombatScreen();
             await loadCombatStatus(true);
         }
@@ -3428,6 +3460,7 @@
                 combatSubmittedPhase = data.current_phase || lastCombatStatus?.current_phase || 0;
                 showSinglePlayerResultModal(data.single_preview);
                 showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
+                showToast('已提交行動，等待隊友後先會顯示全隊傷害結算', 'info');
                 updateCombatUI({ ...data, active: true }, { initLogsOnly: true });
                 startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
                 return;
@@ -4370,6 +4403,16 @@
             safeSetText('enemy-stat-power', enemy.power);
             safeSetText('enemy-stat-intellect', enemy.intellect);
             safeSetText('enemy-stat-resilience', enemy.resilience);
+            const hpHintEl = document.getElementById('enemy-hp-hint');
+            if (hpHintEl) {
+                if (maxHp >= 500) {
+                    hpHintEl.textContent = '高 HP 敵人：血條變化唔明顯，請睇 HP 數字同結算畫面';
+                    setVisible(hpHintEl, true);
+                } else {
+                    hpHintEl.textContent = '';
+                    setVisible(hpHintEl, false);
+                }
+            }
             const enemyHpBar = document.getElementById('enemy-hp-bar');
             const prevEnemyHp = lastCombatStatus?.enemy?.hp;
             if (enemyHpBar) {
@@ -6569,6 +6612,12 @@
                     <div class="text-3xl font-bold text-red-400">-<span id="round-settlement-enemy-dealt">0</span></div>
                     <div id="round-settlement-counter-note" class="text-[10px] text-zinc-500 mt-1">本回合無反擊</div>
                 </div>
+            </div>
+            <div class="px-5 pb-2 text-sm text-zinc-300">
+                敵人剩餘 HP：
+                <span id="round-settlement-enemy-hp" class="text-red-400 font-mono font-semibold">—</span>
+                <span id="round-settlement-enemy-hp-max" class="text-zinc-500 font-mono text-xs"></span>
+                <span id="round-settlement-hp-note" class="block text-[10px] text-amber-400/90 mt-1"></span>
             </div>
             <div id="round-settlement-breakdown" class="px-5 pb-2 text-xs space-y-0.5"></div>
             <div class="px-5 pt-1 pb-1 text-[10px] text-zinc-500 uppercase tracking-wide">戰鬥紀錄</div>
