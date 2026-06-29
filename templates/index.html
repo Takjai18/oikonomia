@@ -1556,17 +1556,18 @@
             }
         }
 
-        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420) {
+        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420, formatFn = null) {
             const el = document.getElementById(elementId);
             if (!el) return;
+            const render = (v) => (formatFn ? formatFn(v) : String(v));
             const from = Number(fromVal);
             const to = Number(toVal);
             if (!Number.isFinite(from) || !Number.isFinite(to)) {
-                safeSetText(elementId, toVal);
+                safeSetText(elementId, render(toVal));
                 return;
             }
             if (from === to) {
-                el.textContent = String(to);
+                el.textContent = render(to);
                 return;
             }
             if (enemyHpAnimFrame) cancelAnimationFrame(enemyHpAnimFrame);
@@ -1574,7 +1575,7 @@
             const step = (now) => {
                 const t = Math.min(1, (now - start) / durationMs);
                 const val = Math.round(from + (to - from) * t);
-                el.textContent = String(val);
+                el.textContent = render(val);
                 if (t < 1) {
                     enemyHpAnimFrame = requestAnimationFrame(step);
                 } else {
@@ -1692,6 +1693,11 @@
             if (data.enemy?.hp != null) {
                 resetCombatEnemyHpTracking(data.enemy.hp);
             }
+            const roundDmg = parseInt(data.round_enemy_damage, 10);
+            if (roundDmg > 0) {
+                showDamageNumber('enemy-panel', roundDmg, false);
+                showToast(`本回合對敵人造成 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`, 'info');
+            }
             const phase = data.current_phase || 0;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
@@ -1757,10 +1763,10 @@
         function parseLogDamageEvent(entry, myDisplayName) {
             const msg = entry.message || '';
             const type = entry.type || 'event';
-            const dmgMatch = msg.match(/造成\\s*(\\d+)\\s*點傷害/);
+            const dmgMatch = msg.match(/造成\s*(\d+)\s*點傷害/);
             if (!dmgMatch) return null;
             const amount = parseInt(dmgMatch[1], 10);
-            const crit = /骰\\s*3[）)]/.test(msg);
+            const crit = /骰\s*3[）)]/.test(msg);
 
             if (type === 'damage') {
                 return { target: 'enemy-panel', amount, crit };
@@ -4020,9 +4026,10 @@
             }
             const prevDisplayed = parseInt(document.getElementById('enemy-hp-current')?.textContent, 10);
             const fromHp = Number.isFinite(prevDisplayed) ? prevDisplayed : (combatEnemyHpSeen ?? hp);
-            animateCombatNumber('enemy-hp-current', fromHp, hp);
-            safeSetText('enemy-hp-max', maxHp);
-            safeSetText('enemy-stat-hp', hp);
+            const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
+            animateCombatNumber('enemy-hp-current', fromHp, hp, 420, fmtHp);
+            safeSetText('enemy-hp-max', fmtHp(maxHp));
+            safeSetText('enemy-stat-hp', fmtHp(hp));
             safeSetText('enemy-stat-sanity', enemy.sanity);
             safeSetText('enemy-stat-power', enemy.power);
             safeSetText('enemy-stat-intellect', enemy.intellect);

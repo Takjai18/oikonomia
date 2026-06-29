@@ -2,6 +2,7 @@
 import json
 import math
 import random
+import re
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -1369,12 +1370,25 @@ def _build_full_preview_from_status(status_payload):
     }
 
 
+def _round_enemy_damage_from_logs(logs):
+    """Parse latest phase summary for UI feedback (e.g. high-HP test enemies)."""
+    for entry in reversed(logs or []):
+        if not isinstance(entry, dict) or entry.get("type") != "summary":
+            continue
+        msg = entry.get("message") or ""
+        match = re.search(r"受到共\s*(\d+)\s*點傷害", msg)
+        if match:
+            return int(match.group(1))
+    return 0
+
+
 def _build_round_resolved_response(combat, encounter, squad_id):
     payload = build_combat_status_response(combat, encounter, squad_id)
     payload["status"] = "round_resolved"
     payload["round_resolved"] = True
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     payload["full_preview"] = _build_full_preview_from_status(payload)
+    payload["round_enemy_damage"] = _round_enemy_damage_from_logs(payload.get("log_entries"))
     return payload
 
 

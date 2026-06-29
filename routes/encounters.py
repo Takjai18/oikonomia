@@ -1,4 +1,6 @@
 """Encounter listing and detail routes."""
+import os
+
 from flask import Blueprint, jsonify, session
 
 from models.combat import get_active_combat_for_team, get_combat_by_squad
@@ -30,8 +32,14 @@ def list_encounters_api():
     else:
         active_session = get_combat_by_squad(session["squad_id"])
 
+    show_test = (
+        session.get("is_gm")
+        or os.environ.get("OIKONOMIA_SHOW_TEST_ENCOUNTERS", "").lower() in ("1", "true", "yes")
+    )
     encounters = []
     for enc in load_all_encounters():
+        if enc.get("route") == "test" and not show_test:
+            continue
         if not encounter_route_matches(enc.get("route"), route):
             continue
         if enc.get("story_stage", 0) > stage:

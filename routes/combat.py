@@ -1,4 +1,5 @@
 """Combat API routes (migrated from app.py)."""
+import os
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request, session
@@ -68,6 +69,13 @@ def combat_start_api(encounter_id=None):
     encounter = load_encounter(encounter_id)
     if not encounter:
         return jsonify({"success": False, "error": "Encounter 不存在"}), 404
+
+    show_test = (
+        session.get("is_gm")
+        or os.environ.get("OIKONOMIA_SHOW_TEST_ENCOUNTERS", "").lower() in ("1", "true", "yes")
+    )
+    if encounter.get("route") == "test" and not show_test:
+        return jsonify({"success": False, "error": "此 Encounter 僅供開發測試"}), 403
 
     team_id = squad["team_id"]
     if encounter_already_completed(team_id, encounter_id):
