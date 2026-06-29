@@ -2,12 +2,12 @@
 
 | 欄位 | 值 |
 |------|-----|
-| **狀態** | **fix_in_progress** — Gemini 診斷已實作（cache-bust + settlement queue） |
+| **狀態** | **resolved** — Henry 實機 checklist 全通過（2026-06-30） |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
 | **影響** | 單人 Iggy 線、練習/主線遭遇戰、多回合 polling；雙人未充分驗證 |
-| **修復 commit** | 見 §12.2（`3c89f62`→`641da28` 共 8+ 輪）；**全部實機未通過** |
-| **PA 實測 version** | **`641da28`**（2026-06-29 23:35 curl）；`enemy_hp_sync_v3: true` |
-| **決策記錄** | `decisions_log.md` § 方案1 + § Bug Reopened（統一勝利入口） |
+| **修復 commit** | `3c89f62`→`12e1edd`（含 `combat_flow_v2`–`v7`、`settlement_breakdown_v1`、`enemy_hp_sync_v7`） |
+| **PA 實測 version** | **`12e1edd`**；`combat_flow_v7: true`、`settlement_breakdown_v1: true`、`enemy_hp_sync_v7: true` |
+| **決策記錄** | `decisions_log.md` § Combat Flow v2–v7 · § instant settlement · § Henry resolved |
 
 ---
 
@@ -464,17 +464,39 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 | breakdown | Player／主角／隊友／敵人 分類傷害 |
 | v5 | 按「確定，查看勝利」後唔再彈 1～2 次結算（victory flow lock） |
 
-**狀態**：**fix_in_progress**（嚴禁標 resolved，直至 Henry checklist pass）
-
-**暫停**：任何 poll／monotonic guard 重複 patch 建議；等實機數據。
+**狀態**：已 supersede by §16（Henry resolved）
 
 ### Henry checklist（`cc5671d` 環境 · Safari 硬刷新）
 
-- [ ] `practice_iggy_04_marathon` 贏：結算 modal 只 1 次 → 勝利畫面
-- [ ] `practice_iggy_03_boundary`：R2 攻擊有反應；再開同一 encounter 正常
-- [ ] 結算有 Player／主角／隊友 輸出＋承受明細
-- [ ] 無 zombie combat（返回列表後新戰正常）
+- [x] `practice_iggy_04_marathon` 贏：結算 modal 只 1 次 → 勝利畫面
+- [x] `practice_iggy_03_boundary`：R2 攻擊有反應；再開同一 encounter 正常
+- [x] 結算有 Player／主角／隊友 輸出＋承受明細
+- [x] 無 zombie combat（返回列表後新戰正常）
 
 ---
 
-*最後更新：2026-06-30 · §15 cc5671d · PA 待 Henry 驗證*
+## 16. Henry 實機通過 · resolved（2026-06-30）
+
+| 欄位 | 值 |
+|------|-----|
+| **玩家** | Henry · `PLAYER-75406` · Iggy solo · Safari 硬刷新 |
+| **PA version** | `12e1edd`（local / GitHub `main` / PA 三邊一致） |
+| **結果** | **全部 checklist 通過** — HP 即時更新、結算 modal 正常、勝利後無重複結算 |
+| **最終修復鏈** | `cc5671d`（v2–v5 + breakdown）→ `ebe49ff`（v6 一輪擊殺必出 modal）→ `12e1edd`（v7 勝利結算停 poll、確認後唔重彈） |
+| **CI** | `pre_deploy_checks.sh` 全綠（192+39+23） |
+| **狀態** | **resolved** — 營會前進入 **monitoring**（雙人隊／主線 encounter 仍待觀察） |
+
+### instant settlement 實機（Architect §13 建議）
+
+| 項目 | Henry 觀察 |
+|------|------------|
+| `practice_iggy_03_boundary` 多回合 HP | ✅ 即時更新 |
+| 傷害結算 modal | ✅ 即時出現（無明顯人工 delay） |
+| `practice_iggy_04_marathon` 長戰勝利 | ✅ 結算只 1 次 →「確定，查看勝利」→ 直接勝利 |
+| Player／主角／隊友 breakdown | ✅ 輸出＋承受＋敵人總計 |
+
+**勿重複 patch**：poll race、monotonic guard、killing blow payload 已多輪修復；新問題應開新 case 或子議題，唔好 reopen 同一條路。
+
+---
+
+*最後更新：2026-06-30 · §16 Henry resolved · `12e1edd`*

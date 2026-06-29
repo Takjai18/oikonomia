@@ -46,17 +46,29 @@
 
 ---
 
-## 2026-06-30 — BUG-2026-001 更新至 `cc5671d`（fix_in_progress）
+## 2026-06-30 — BUG-2026-001 resolved（Henry 實機通過 · `12e1edd`）
+
+| 項目 | 內容 |
+|------|------|
+| **最終版本** | `12e1edd`（`combat_flow_v7` + `settlement_breakdown_v1` + `enemy_hp_sync_v7` + instant settlement） |
+| **實機** | Henry（`PLAYER-75406`，Iggy solo，Safari 硬刷新）— marathon / boundary / breakdown 全通過 |
+| **狀態** | **resolved**；營會期 **monitoring**（雙人隊、主線 encounter 未充分驗） |
+| **詳細** | `bug_log/.../REPORT.md` §16 · `decisions_log.md` § Henry resolved |
+
+**勿重複建議**：poll race、killing blow payload、monotonic guard 已多輪修；若再現應附 encounter + Network JSON 開新子議題。
+
+---
+
+## 2026-06-30 — BUG-2026-001 更新至 `cc5671d`（已 supersede）
 
 | 項目 | 內容 |
 |------|------|
 | **新版本** | `cc5671d`（`combat_flow_v2`–`v5` + `settlement_breakdown_v1`） |
 | **已 patch** | 勝利後重複結算 modal（v5）；第二場／下一回合無反應（v4）；取消預計傷害預覽（v3） |
-| **狀態** | fix_in_progress — Henry 待 `cc5671d` 實機 checklist |
-| **指示** | 暫停 poll／monotonic guard 重複建議；code 真相以 GitHub + `curl /api/version` 為準 |
-| **詳細** | `bug_log/.../REPORT.md` §15 · `decisions_log.md` § Combat Flow v2–v5 |
+| **狀態** | 已由 `12e1edd` + Henry 實機取代 |
+| **詳細** | `bug_log/.../REPORT.md` §15 |
 
-**勿重複建議**：再改 killing blow payload 或 poll 勝利捷徑而唔睇 v4/v5 鎖；舊「本回合戰果」字眼已改「傷害結算」。
+**勿重複建議**：再改 killing blow payload 或 poll 勝利捷徑而唔睇 v4/v5/v7 鎖；舊「本回合戰果」字眼已改「傷害結算」。
 
 ---
 

@@ -139,6 +139,7 @@ flowchart LR
 | 2026-06-29 | **Phase 2 完成**：`services/combat_outcomes.py`、`ProtagonistLifeState`、`CONDITIONAL_NARRATIVE_FRAGMENTS`、`database.py` 拆出 migrations | Grok Build |
 | 2026-06-29 | Grok Phase 1 spec 確認：營會前只做低風險 ending 收斂；Drive SSOT | Tak + Grok |
 | 2026-06-29 | **Phase 1 spec 補齊**：`apply_ending`、`trauma_summary`、`protagonist_control_status`、`OIKONOMIA_ENDING_ENABLED`、`test_ending_flow.py`、`decisions_log.md` | Grok Build |
+| 2026-06-30 | **BUG-2026-001 resolved**（`12e1edd`）：Combat UX instant settlement + v7；Henry 實機通過；營會前 monitoring | Tak + Grok Build |
 
 ---
 

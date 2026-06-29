@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-30 · local/GitHub：`cc5671d` · PA：請 `curl /api/version` 核對
+> 最後更新：2026-06-30 · local/GitHub/PA：`12e1edd` · BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -23,7 +23,7 @@
 - 活躍 case 見 **`bug_log/INDEX.md`**
 - 與 `UPDATE_LOG.md`（短）、`decisions_log.md`（決策）分工
 
-**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **fix_in_progress**（GitHub `cc5671d`；PA 待 deploy；Henry 實機驗證中 — 見 REPORT + 下方 Combat UX 一節）
+**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **resolved**（`12e1edd`；Henry 實機通過 — 見 `bug_log/.../REPORT.md` §16；營會期 monitoring）
 
 ---
 
@@ -31,9 +31,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `cc5671d` | ✅ |
-| **GitHub `main`** | `cc5671d` | ✅ |
-| **PythonAnywhere** | 請 curl 核對 | ⏳ 部署後應為 `cc5671d` |
+| **Local** | `12e1edd` | ✅ |
+| **GitHub `main`** | `12e1edd` | ✅ |
+| **PythonAnywhere** | `12e1edd` | ✅（`combat_flow_v7`、`settlement_breakdown_v1`、`enemy_hp_sync_v7`） |
 
 ```bash
 # 本地
@@ -122,21 +122,23 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ---
 
-## 本輪已完成（2026-06-30 最新 — BUG-2026-001 Combat UX）
+## 本輪已完成（2026-06-30 最新 — BUG-2026-001 **resolved**）
 
-### 戰鬥流程重構（`387c89b` → `cc5671d`）
+### 戰鬥流程重構（`387c89b` → `12e1edd`）
 
 | Commit | Marker | 摘要 |
 |--------|--------|------|
 | `66f70c6` | `enemy_hp_sync_v7` | Practice fast settlement；poll HP 同步 |
-| `d061aa2` | `combat_instant_settlement` | 移除人工 delay（modal／HP tween／擲骰 pause） |
+| `d061aa2` | — | 移除人工 delay（instant settlement；marker 字串已移除） |
 | `387c89b` | `combat_flow_v2` | 精簡結算 modal；按「確定」先扣主畫面 HP |
 | `03cf917` | `combat_flow_v3` | **取消**「本回合預計傷害」預覽（唔再 call `preview_action`） |
 | `46cc3a5` | `combat_flow_v4` | 勝利不重複結算；已確認回合可進下一輪 |
 | `c621354` | `settlement_breakdown_v1` | 結算畫面：Player／主角／隊友 輸出＋承受＋敵人總計 |
 | `cc5671d` | `combat_flow_v5` | 按「確定，查看勝利」後唔再彈 1～2 次結算（victory flow lock） |
+| `ebe49ff` | `combat_flow_v6` | 一輪擊殺必出 settlement modal |
+| `12e1edd` | `combat_flow_v7` | 勝利結算期停 poll；確認後唔重彈結算 |
 
-**現行玩家流程（`combat_flow_v5`）**：
+**現行玩家流程（`combat_flow_v7`）**：
 
 ```
 選行動 → 擲骰（攻擊/Zoo）→ 確認並結束本回合 → (等隊友) → 傷害結算 modal → 確定 → 主畫面扣血 → 下一輪
@@ -157,13 +159,14 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 **後端** `models/combat.py` → `_round_settlement_from_logs()` 回傳 `breakdown.dealt/taken/enemy` + `player_hits[].role`。
 
-**Henry 實機待驗**（2026-06-30 回報）：
+**Henry 實機**（2026-06-30 · **通過** · Safari 硬刷新 · `PLAYER-75406`）：
 
-| 場景 | 預期 |
+| 場景 | 結果 |
 |------|------|
-| `practice_iggy_04_marathon` 長戰打到贏 | 結算只 1 次 → 勝利 |
-| `practice_iggy_03_boundary` 多回合 | R2 攻擊有反應；再開同一 encounter 正常 |
-| 勝利後 | **唔再** 彈 1～2 次傷害結算 |
+| `practice_iggy_04_marathon` 長戰打到贏 | ✅ 結算只 1 次 → 勝利 |
+| `practice_iggy_03_boundary` 多回合 | ✅ R2 攻擊有反應；再開同一 encounter 正常 |
+| 結算 breakdown | ✅ Player／主角／隊友 輸出＋承受＋敵人總計 |
+| 勝利後 | ✅ 唔再彈重複傷害結算 |
 
 ---
 
@@ -379,9 +382,11 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 
 `combat_system`, `server_combat_dice`, `defend_team_buff`, `combat_round_continue`, `player_max_hp`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `upload_path_hardened`, `encounter_logs`, `qr_signed_v2`
 
-**BUG-2026-001 戰鬥 UX（2026-06-30 起）** — deploy 後應全為 `true`：
+**BUG-2026-001 戰鬥 UX（2026-06-30 · resolved）** — deploy 後應為 `true`：
 
-`enemy_hp_sync_v7`, `combat_instant_settlement`, `combat_flow_v2`, `combat_flow_v3`, `combat_flow_v4`, `combat_flow_v5`, `settlement_breakdown_v1`
+`enemy_hp_sync_v7`, `combat_flow_v7`, `settlement_breakdown_v1`
+
+（`combat_flow_v2`–`v5` marker 字串已被 v7 取代；instant settlement 為行為，無獨立 marker 字串）
 
 Reload Web worker 後 markers 先會更新（`version` 可能已新但 markers 仍舊）。
 
@@ -461,6 +466,8 @@ python3 app.py                    # → :5001
 ## 近期 commit（參考）
 
 ```
+12e1edd combat_flow_v7: stop poll on victory settlement, fix post-confirm duplicate
+ebe49ff combat_flow_v6: always show settlement modal on one-shot kills
 cc5671d combat_flow_v5: fix duplicate settlement after victory confirm
 c621354 settlement_breakdown_v1: role-based damage detail in round modal
 46cc3a5 combat_flow_v4: fix duplicate victory settlement and stuck next round
@@ -485,39 +492,17 @@ d061aa2 combat_instant_settlement: remove artificial animation delays
 2. 確保 GitHub 同 PythonAnywhere 版本同 local 一致
 
 開工前先核對版本：
-- local: cd /Users/mingtakyau/Documents/oikonomia && git rev-parse --short HEAD（應為 cc5671d）
+- local: cd /Users/mingtakyau/Documents/oikonomia && git rev-parse --short HEAD
 - PA: curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
-  確認 version=cc5671d 且 markers 含 combat_flow_v5、settlement_breakdown_v1
+  確認 version 與 local 相同；markers 含 combat_flow_v7、settlement_breakdown_v1、enemy_hp_sync_v7
 
 PA 若落後：我會喺 PA Bash 跑 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh + Web Reload，你再 curl 確認。
 
 然後做我指定嘅任務：[在這裡寫你的任務]
 ```
 
-### 建議：BUG-2026-001 Henry 實機收尾（2026-06-30）
-
-```
-請讀 @AGENT_HANDOFF.md 同 bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md。
-
-背景：BUG-2026-001 戰鬥 HP／結算 UX。GitHub main 已 cc5671d（combat_flow_v5 + settlement_breakdown_v1）。
-主測：Henry（PLAYER-75406，Iggy solo）。
-
-你先做：
-1. curl /api/version — 若 PA 唔係 cc5671d，請我 deploy 後再驗
-2. bash scripts/pre_deploy_checks.sh
-
-Henry 待驗清單（實機 Safari，硬重新整理）：
-- practice_iggy_04_marathon：打到贏 → 結算 modal 只 1 次 → 按「確定，查看勝利」→ 直接勝利（唔再彈結算）
-- practice_iggy_03_boundary：R1 結算 → 確定 → R2 攻擊有反應；打完再開同一場正常
-- 結算 modal 有 Player／主角／隊友 輸出＋承受＋敵人總計
-
-若仍有 bug：查 templates/index.html 嘅 isVictoryFlowLocked、finishCombatVictoryFromPayload、loadCombatStatus poll 路徑；修完 push + 請我 deploy。
-
-我嘅回報／新任務：[貼 Henry 測試結果或下一項需求]
-```
-
 ### 若不確定任務（健康檢查）
 
 ```
-…然後做 P0：curl 確認 PA version=cc5671d、markers.combat_flow_v5=true；跑 pre_deploy_checks.sh 全綠；簡述 BUG-2026-001 現狀同下一步。
+…然後做 P0：curl 確認 PA version 與 local 一致；跑 pre_deploy_checks.sh 全綠；讀 UPDATE_LOG.md + bug_log/INDEX.md 了解已知問題。
 ```
