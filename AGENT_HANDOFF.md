@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`4dadfa0` · PA：`3cdb207`（待 deploy）
+> 最後更新：2026-06-29 · local/GitHub：`4c14e8d` · PA：`3cdb207`（待 deploy）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -12,8 +12,8 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `4dadfa0` | ✅ |
-| **GitHub `main`** | `4dadfa0` | ✅ |
+| **Local** | `4c14e8d` | ✅ |
+| **GitHub `main`** | `4c14e8d` | ✅ |
 | **PythonAnywhere** | `3cdb207` | ⏳ 待 deploy |
 
 ```bash
@@ -411,7 +411,7 @@ fc53d73 fix: combat victory crash + stable smoke test + PA deploy checks
 2. 確保 GitHub 同 PythonAnywhere 版本同 local 一致
 
 開工前先核對版本：
-- local: git rev-parse --short HEAD（應為 4dadfa0）
+- local: git rev-parse --short HEAD（應為 4c14e8d）
 - PA: curl https://takjai.pythonanywhere.com/api/version
 
 PA 若 500 或 version 落後：請我跑 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh + Web Reload，你再 curl 確認。
