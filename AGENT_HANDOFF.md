@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：待 push（功能：Defend 全隊 buff）
+> 最後更新：2026-06-29 · local/GitHub：`dba1548`（Defend 全隊 buff）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -314,6 +314,8 @@ python3 app.py                    # → :5001
 ## 近期 commit（參考）
 
 ```
+dba1548 feat(combat): Defend grants team-wide counter-attack damage reduction
+f8c4356 fix(deploy): add pa-ensure-secret.sh for Web worker SECRET_KEY
 050c842 docs: update AGENT_HANDOFF for fc53d73 refactor + PA deploy status
 fc53d73 fix: combat victory crash + stable smoke test + PA deploy checks
 5d195c6 fix: BEGIN IMMEDIATE transactions + upload secure_filename
