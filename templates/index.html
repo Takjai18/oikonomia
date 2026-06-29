@@ -1582,6 +1582,7 @@
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
         let pendingVictoryAfterSettlement = null;
+        let combatFinalizingVictory = false;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let lastCombatUiSnapshotKey = '';
@@ -1954,11 +1955,30 @@
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             pendingSettlementHpPayload = null;
+            pendingVictoryAfterSettlement = null;
+            combatFinalizingVictory = false;
             lastShownSettlementPhase = 0;
             lastCombatStatusJson = '';
             settlementCombatId = null;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
+        }
+
+        function resetCombatSessionState() {
+            stopCombatPolling();
+            resetCombatSettlementState();
+            combatWaitingForRound = false;
+            combatSubmittedPhase = 0;
+            setCombatPhaseLock(false);
+            hideRoundSettlementModal();
+            hideSinglePlayerResultModal();
+            hideCombatModal();
+            resetCombatDiceUi();
+            lastDicePhase = 0;
+            lastCombatUiSnapshotKey = '';
+            selectedAction = null;
+            selectedDice = null;
+            selectedItemId = null;
         }
 
         function lockCombatActionsForSettlement() {
@@ -2023,7 +2043,6 @@
 
         function continueCombatAfterRound() {
             applyPendingSettlementHp();
-            combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
@@ -2035,17 +2054,25 @@
             const panel = document.getElementById('player-panel');
             if (panel) panel.style.opacity = '1';
             if (pendingVictoryAfterSettlement) {
+                stopCombatPolling();
+                combatFinalizingVictory = true;
                 const victoryPayload = pendingVictoryAfterSettlement;
                 pendingVictoryAfterSettlement = null;
-                void finalizeCombatVictoryFromPayload(victoryPayload);
+                combatAwaitingSettlementAck = false;
+                void finalizeCombatVictoryFromPayload(victoryPayload).finally(() => {
+                    combatFinalizingVictory = false;
+                });
                 return;
             }
+            combatAwaitingSettlementAck = false;
+            lastCombatStatusJson = '';
+            lastCombatUiSnapshotKey = '';
             const phase = lastCombatStatus?.current_phase || 0;
             if (phase) lastDicePhase = phase;
             loadCombatStatus(false);
         }
 
-        // combat_flow_v3: 行動→擲骰→確認→(等隊友)→結算畫面→確定→即刻扣血→下一輪（無預計傷害預覽）
+        // combat_flow_v4: v3 + 勝利不重複結算、已確認回合可進下一輪
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
@@ -2090,11 +2117,22 @@
         }
 
         async function finishCombatVictoryFromPayload(data) {
-            if (combatAwaitingSettlementAck && pendingVictoryAfterSettlement) {
+            if (combatFinalizingVictory) return;
+            if (combatAwaitingSettlementAck) {
+                if (!pendingVictoryAfterSettlement) {
+                    pendingVictoryAfterSettlement = data;
+                }
                 return;
             }
             const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
+            const phase = Number(data?.current_phase) || 0;
+            const combatId = data?.combat_id || currentCombatId;
             if (victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome)) {
+                if (phase > 0 && phase <= lastShownSettlementPhase
+                    && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
+                    await finalizeCombatVictoryFromPayload(data);
+                    return;
+                }
                 pendingVictoryAfterSettlement = data;
                 const enriched = applySettlementEnemyHp({
                     ...data,
@@ -2157,6 +2195,7 @@
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
+            if (combatFinalizingVictory) return;
             if (combatAwaitingSettlementAck || settlementTimerPending) {
                 return;
             }
@@ -2172,11 +2211,14 @@
                 || (settled.log_entries || []).some(e => e?.type === 'damage');
             const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
             if (!shouldShowRoundSettlement(settled)) {
+                combatWaitingForRound = false;
+                hideCombatWaitingPanel();
                 if (!mustShow) {
-                    combatWaitingForRound = false;
-                    hideCombatWaitingPanel();
                     updateCombatUI(settled, { damageDelay: 0 });
                     syncEnemyHpDisplay(settled);
+                    startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+                } else if (settled.status === 'player_phase') {
+                    updateCombatUI(settled, { damageDelay: 0, forceRefresh: true });
                     startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 }
                 return;
@@ -2588,9 +2630,7 @@
             setVisible(document.getElementById('combat-precheck-modal'), false);
             setVisible(document.getElementById('combat-near-death-overlay'), false);
             setVisible(document.getElementById('combat-lobby'), true);
-            stopCombatPolling();
-            resetCombatDiceUi();
-            lastDicePhase = 0;
+            resetCombatSessionState();
             lastCombatLogCount = 0;
             loadEncounters();
         }
@@ -3020,9 +3060,8 @@
                 return;
             }
             currentCombatId = data.combat_id;
-            resetCombatSettlementState();
+            resetCombatSessionState();
             resetCombatEnemyHpTracking(null);
-            stopCombatPolling();
             showSection('combat', { skipCombatLobbyLoad: true });
             if (data.can_skip && data.status === 'precheck') {
                 setVisible(document.getElementById('combat-lobby'), false);
@@ -3059,16 +3098,14 @@
                 return;
             }
             currentCombatId = data.combat_id;
-            resetCombatSettlementState();
+            resetCombatSessionState();
             resetCombatEnemyHpTracking(null);
             showCombatScreen();
             await loadCombatStatus(true, { skipSquadRefresh: true });
         }
 
         function showCombatResult(data) {
-            stopCombatPolling();
-            resetCombatSettlementState();
-            combatWaitingForRound = false;
+            resetCombatSessionState();
             resetCombatEnemyHpTracking(null);
             controllingProtagonist = false;
             setVisible(document.getElementById('combat-screen'), false);
@@ -3312,6 +3349,7 @@
 
         async function loadCombatStatus(showLoading, options = {}) {
             try {
+                if (combatFinalizingVictory) return;
                 if (!options.skipSquadRefresh) {
                     await refreshSquadFromServer();
                 }
