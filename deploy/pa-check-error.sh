@@ -47,7 +47,7 @@ SECRET_FILE="$REPO/data/.secret_key"
 if [ -f "$SECRET_FILE" ]; then
     echo "  OK  $SECRET_FILE exists"
 else
-    echo "  NO  $SECRET_FILE — run: FORCE=1 bash ~/oikonomia/deploy/pa-update.sh"
+    echo "  NO  $SECRET_FILE — run: bash ~/oikonomia/deploy/pa-ensure-secret.sh"
 fi
 
 echo ""

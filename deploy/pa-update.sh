@@ -125,18 +125,10 @@ echo "NOTE: WSGI file must use: from wsgi import application (NOT from app impor
 
 echo ""
 echo "--- SECRET_KEY (data/.secret_key) ---"
-SECRET_FILE="$REPO/data/.secret_key"
-mkdir -p "$REPO/data"
-if [ ! -f "$SECRET_FILE" ]; then
-    python3 -c "import secrets; print(secrets.token_hex(32))" > "$SECRET_FILE"
-    chmod 600 "$SECRET_FILE"
-    echo "Created $SECRET_FILE (Web worker reads this if Web tab has no SECRET_KEY env)"
-else
-    echo "Using existing $SECRET_FILE"
-fi
+bash "$REPO/deploy/pa-ensure-secret.sh"
 
 echo ""
-echo "--- Import smoke test ---"
+echo "--- Import smoke test (no shell SECRET_KEY) ---"
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
 unset SECRET_KEY
