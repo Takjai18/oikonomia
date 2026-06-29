@@ -325,7 +325,8 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 - `UPDATE_LOG.md` — 可補短條目「killing blow settlement」
 - Desktop `For Gemini and Grok/` — 2026-06-29 附件包
 - Gemini Architect 分析 — killing blow payload 假設（2026-06-29 chat）
+- **`GEMINI_PACKET.md`** — 自包含 code 包（Gemini 讀唔到 Drive 時 **Copy 貼上**）
 
 ---
 
-*最後更新：2026-06-29 深夜 · Grok Build · PA `641da28` 實機仍 fail · 待 Gemini 諮詢*
+*最後更新：2026-06-29 深夜 · Grok Build · PA `641da28` 實機仍 fail · 用 `GEMINI_PACKET.md` 問 Gemini*

@@ -47,3 +47,16 @@
 ## attachments 注意
 
 `attachments/` 係 `3c89f62` 快照，**唔反映最新修復**。請以 GitHub main 為準。
+
+## 點讀（Gemini 讀唔到 Drive 時）
+
+**請用同目錄 `GEMINI_PACKET.md`**（~55KB，內嵌完整 JS/Python）：
+
+1. 打開 `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
+2. 全選 Copy → 貼入本 chat
+
+或 GitHub Raw（將 `COMMIT` 換成最新 short hash）：
+
+`https://raw.githubusercontent.com/Takjai18/oikonomia/COMMIT/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
+
+重新生成：`bash scripts/build_gemini_packet.sh`
