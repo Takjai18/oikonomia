@@ -27,6 +27,7 @@ run_test() {
 echo "Pre-deploy checks (Python: $PYTHON)"
 echo "Repo: $ROOT"
 
+run_test scripts/test_combat_engine.py "Combat engine (pure calculation unit)"
 run_test scripts/test_combat_flow.py "Combat flow (API + HP sync + practice)"
 run_test scripts/test_combat_audit.py "Combat audit (settlement + solo + protagonist)"
 run_test scripts/test_combat_concurrency.py "Combat concurrency smoke"

@@ -141,6 +141,7 @@
 | 2026-06-30 | `cc5671d` | Combat flow v2–v5 + settlement_breakdown_v1；Henry sub-problem patch |
 | 2026-06-30 | `ebe49ff` | `combat_flow_v6`：一輪擊殺必出 settlement modal |
 | 2026-06-30 | `12e1edd` | `combat_flow_v7`：勝利結算停 poll、確認後唔重彈；**BUG-2026-001 resolved**（Henry 實機） |
+| 2026-06-30 | — | Phase 1.5 Step 1 spec 鎖定；Henry instant settlement 專項 checklist（§17） |
 
 ## 2026-06-30 — 取消戰鬥動畫 Delay 設計
 
@@ -188,3 +189,44 @@
 - [x] 結算 modal 有 Player／主角／隊友分類 + 敵人總計
 
 **記錄者**：Grok Architect（Tak 確認）· Grok Build 實作 v2–v7 · Henry 實機 resolved
+
+---
+
+## 2026-06-30 — Henry instant settlement 專項 checklist（線 A · 待驗）
+
+**決策（Architect + Tak 鎖定）**：BUG-2026-001 主 checklist 已 resolved；另開 **instant settlement 專項**驗證（`combat_instant_settlement` 行為 + `enemy_hp_sync_v7`），戶外實用向。
+
+**Encounter**：`practice_iggy_01_quick`（一輪殺）→ `practice_iggy_03_boundary`（多回合 140 HP）
+
+**通過標準**：
+- HP 數字即時更新（無明顯 tween delay）
+- 傷害結算 modal **< 1.5s**
+- 無嚴重 race（poll 搶先勝利、flicker）
+- 青年體感「打完有即時反應」
+
+**Henry 回報欄位**：encounter、單/雙人、HP 即時性、modal 秒數、flicker、整體體感（好/一般/lag）
+
+**詳細步驟表**：`bug_log/.../REPORT.md` §17 · `AGENT_HANDOFF.md` Henry instant 一節
+
+**通過後**：更新 `decisions_log` + `UPDATE_LOG`；維持 monitoring
+
+---
+
+## 2026-06-30 — Phase 1.5 Step 1：`services/combat_engine.py`（線 B · 已鎖定 spec）
+
+**決策（Architect + Tak）**：營會後／低風險窗口抽取 `models/combat.py` 純計算層；**唔改行為**，只搬邏輯。
+
+| 項目 | 內容 |
+|------|------|
+| **新檔** | `services/combat_engine.py`（目標 ≤450 行） |
+| **職責** | 傷害計算、骰子倍率、defend 計數、單回合 `resolve_round_calculation` |
+| **禁止** | 讀 DB、改 state、import `services.ending` / trauma side effects |
+| **dataclass** | `Combatant`、`RoundResult` |
+| **常數** | `COMBAT_ATTACK_BASE_DAMAGE=10`、`DEFEND_TEAM_DAMAGE_FACTOR=0.5`；骰子表 `{0:0, 1:1, 2:1.5, 3:2}`（同 `app.py`） |
+| **行為 SSOT** | 必須同 `models/combat.py` 現有 `calculate_attack_damage` / `calculate_incoming_damage` / `dice_multiplier` 一致 |
+| **測試** | `scripts/test_combat_engine.py` + 現有 `test_combat_flow.py` 仍全綠 |
+| **下一步** | Step 2 `trauma_service.py`、Step 3 `protagonist_combat.py`、Step 4 `combat_flow.py`（營會後） |
+
+**完整 spec**：`ARCHITECTURE_ROADMAP.md` § Phase 1.5
+
+**實作（2026-06-30）**：`services/combat_engine.py` + `models/combat.py` 委派；`scripts/test_combat_engine.py`；`pre_deploy_checks` 全綠。行為不變。

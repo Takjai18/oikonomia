@@ -9,6 +9,15 @@ from datetime import datetime, timedelta
 
 from models.settings import settings
 from models.encounter import load_encounter
+from services.combat_engine import (
+    COMBAT_ATTACK_BASE_DAMAGE,
+    DEFEND_TEAM_DAMAGE_FACTOR,
+    Combatant,
+    calculate_incoming_damage as _engine_calculate_incoming_damage,
+    count_team_defenders,
+    dice_multiplier as _engine_dice_multiplier,
+    team_defend_damage_multiplier,
+)
 from services.combat_outcomes import (
     build_defeat_outcome_payload,
     build_victory_outcome_payload,
@@ -55,7 +64,6 @@ def _db():
 COMBAT_ACTION_TYPES = settings.combat_action_types
 ATTACK_ACTION_TYPES = settings.attack_action_types
 DICE_MULTIPLIERS = settings.dice_multipliers
-COMBAT_ATTACK_BASE_DAMAGE = settings.combat_attack_base_damage
 COMBAT_STATUS_RESOLVING = "resolving"
 RESOLVING_STALE_SECONDS = 45
 
@@ -167,13 +175,30 @@ def describe_attack_stat(squad):
         return {"stat": "intellect", "value": intellect, "label": "智力"}
     return {"stat": "power", "value": power, "label": "力量/智力"}
 
+
+def _combatant_from_squad(squad, item_bonus=0):
+    return Combatant(
+        id=str(squad.get("squad_id") or squad.get("id") or ""),
+        power=get_effective_stat(squad, "power"),
+        intellect=get_effective_stat(squad, "intellect"),
+        resilience=get_effective_stat(squad, "resilience"),
+        sanity=int(squad.get("sanity") or 100),
+        item_bonus=int(item_bonus or 0),
+    )
+
+
 def calculate_attack_damage(player, enemy_resilience, multiplier=1.0, item_bonus=0,
                             base_damage=settings.combat_attack_base_damage):
-    if multiplier <= 0:
-        return 0
-    attack_stat = get_effective_attack_stat(player)
-    raw = ((attack_stat * 1.5) + base_damage + item_bonus) * multiplier - (enemy_resilience * 0.8)
-    return max(1, int(raw))
+    from services.combat_engine import calculate_attack_damage as _engine_calculate_attack_damage
+
+    attacker = _combatant_from_squad(player, item_bonus=item_bonus)
+    return _engine_calculate_attack_damage(
+        attacker,
+        enemy_resilience,
+        multiplier=multiplier,
+        item_bonus=item_bonus,
+        base_damage=base_damage,
+    )
 
 def calculate_damage_simple(attacker, target, base_damage=settings.combat_attack_base_damage,
                             multiplier=1.0, is_critical=False, apply_sanity_penalty=False,
@@ -207,46 +232,23 @@ def calculate_damage(attacker_stat, multiplier, enemy_armor, item_bonus=0):
     damage = math.floor(base * multiplier) - enemy_armor
     return max(0, damage)
 
-DEFEND_TEAM_DAMAGE_FACTOR = 0.5
-
-
-def count_team_defenders(actions):
-    """Count players who chose Defend this phase (team-wide shield)."""
-    if not actions:
-        return 0
-    return sum(
-        1 for action_data in actions.values()
-        if (action_data.get("action_type") or action_data.get("action")) == "defend"
-    )
-
-
-def team_defend_damage_multiplier(defender_count):
-    if defender_count > 0:
-        return DEFEND_TEAM_DAMAGE_FACTOR
-    return 1.0
-
-
 def calculate_incoming_damage(
     enemy_base_damage,
     player_resilience,
     defending=False,
     team_defend_multiplier=None,
 ):
-    reduction = math.floor(player_resilience * 0.6)
-    damage = max(0, enemy_base_damage - reduction)
-    multiplier = team_defend_multiplier
-    if multiplier is None:
-        multiplier = DEFEND_TEAM_DAMAGE_FACTOR if defending else 1.0
-    if multiplier < 1.0:
-        damage = max(0, math.floor(damage * multiplier))
-    return damage
+    return _engine_calculate_incoming_damage(
+        enemy_base_damage,
+        player_resilience,
+        defending=defending,
+        team_defend_multiplier=team_defend_multiplier,
+    )
+
 
 def dice_multiplier(dice_result):
-    try:
-        dice = int(dice_result)
-    except (TypeError, ValueError):
-        dice = 2
-    return settings.dice_multipliers.get(max(0, min(3, dice)), 1.0)
+    table = settings.dice_multipliers or None
+    return _engine_dice_multiplier(dice_result, dice_multipliers=table)
 
 
 def roll_combat_dice():
@@ -1749,5 +1751,4 @@ def create_combat_record(squad_id, encounter_id, encounter, initial_status="prec
 COMBAT_ACTION_TYPES = settings.combat_action_types
 ATTACK_ACTION_TYPES = settings.attack_action_types
 DICE_MULTIPLIERS = settings.dice_multipliers
-COMBAT_ATTACK_BASE_DAMAGE = settings.combat_attack_base_damage
 NEAR_DEATH_MINUTES = settings.near_death_minutes

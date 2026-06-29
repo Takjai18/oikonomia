@@ -499,4 +499,29 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-*最後更新：2026-06-30 · §16 Henry resolved · `12e1edd`*
+## 17. Henry instant settlement 專項 checklist（2026-06-30 · 線 A）
+
+**目標**：確認即時 HP + 即時「傷害結算」modal + 無明顯 lag/flicker（戶外網絡）。
+
+**Encounter**（易→難）：`practice_iggy_01_quick` → `practice_iggy_03_boundary`
+
+| Step | 操作 | 預期（instant） | 失敗請記 |
+|------|------|-----------------|----------|
+| 1 | Safari/Chrome 硬刷新（清 cache） | — | — |
+| 2 | 單人隊開始 `practice_iggy_01_quick` | 即時開戰 | — |
+| 3 | 第一擊提交 | 極短擲骰 → HP 即降 + modal 即彈（<1.5s） | modal 幾時出？HP 有冇即時跳？ |
+| 4 | Killing blow | 勝利 + settlement 即時；唔跳過 settlement | 有冇跳過 modal？ |
+| 5 | `practice_iggy_03_boundary` 打 3–4 回合 | 每回合 HP 即更新 + modal <1.5s | tween/delay？ |
+| 6 | 觀察血條與數字 | 同步、無覆寫 | HP 唔郁？modal 錯？ |
+| 7 | Console（如有） | 無 error | error 內容 |
+| 8 | 回報 | 截圖或文字 + 體感 | — |
+
+**Henry 回報欄位**：encounter、單/雙人、HP 即時性、modal 秒數、flicker/race、體感（好/一般/lag）
+
+**通過標準**：HP 即時 · modal <1.5s · 無嚴重 race · 「打完有即時反應」
+
+**狀態**：⏳ 待 Henry 專項回報（§16 主 checklist 已 pass）
+
+---
+
+*最後更新：2026-06-30 · §17 instant 專項 · Phase 1.5 Step 1 spec*

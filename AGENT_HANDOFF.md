@@ -168,6 +168,23 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 | 結算 breakdown | ✅ Player／主角／隊友 輸出＋承受＋敵人總計 |
 | 勝利後 | ✅ 唔再彈重複傷害結算 |
 
+### Henry instant settlement 專項（線 A · ⏳ 待驗）
+
+主 checklist（§16）已 pass；Architect 另開 **instant 專項** — 詳見 `bug_log/.../REPORT.md` §17。
+
+| Encounter | 測咩 |
+|-----------|------|
+| `practice_iggy_01_quick` | 一輪殺 + killing blow settlement 即時 |
+| `practice_iggy_03_boundary` | 多回合 HP 即時 + modal <1.5s |
+
+**通過標準**：HP 即時 · modal <1.5s · 無 flicker/race · 體感「打完有反應」
+
+### Phase 1.5 Step 1 — `services/combat_engine.py`（線 B · ✅ 已實作）
+
+**狀態**：`services/combat_engine.py` 已建立；`models/combat.py` 計算函數委派至 engine；`scripts/test_combat_engine.py`（14 項）+ `pre_deploy_checks.sh`。
+
+**下一步**：Step 2 `trauma_service.py`（營會後）；Step 4 `combat_flow.py` 將呼叫 `resolve_round_calculation`。
+
 ---
 
 ## 早前已完成（2026-06-29）

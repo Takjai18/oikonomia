@@ -90,6 +90,47 @@ flowchart LR
 
 **唔做（Phase 1）**：大規模搬移 `models/combat.py`、Event Bus、拆 `index.html`。
 
+### Phase 1.5 — Context 减负（營會後優先 · Step 1 可先做）
+
+> **目標**：單檔 400–600 行；Grok Build 改 combat 只 read 2–3 小檔。  
+> **原則**：抽取時**行為不變**；先 engine，後 flow orchestrator。
+
+| Step | 模組 | 職責 | 原本屬於 | 優先 |
+|------|------|------|----------|------|
+| **1** | `services/combat_engine.py` | 純計算：傷害、骰子倍率、defend、`resolve_round_calculation` | `models/combat.py` L170–249 等 | **P0** |
+| 2 | `services/trauma_service.py` | `apply_trauma`、band、narrative fragment | `protagonist.py` + `ending.py` | P1 |
+| 3 | `services/protagonist_combat.py` | control、AI 行動、trauma→control | `protagonist.py` + `combat_outcomes.py` | P1 |
+| 4 | `services/combat_flow.py` | 開始戰鬥、submit、round 推進、settlement 觸發 | `routes/combat.py` + `combat_outcomes.py` | P1 |
+| 5 | 測試 + `decisions_log` | regression 全綠 | — | P0 |
+
+#### Step 1 介面（已鎖定 · 2026-06-30）
+
+```python
+@dataclass
+class Combatant:
+    id: str
+    power: int
+    intellect: int
+    resilience: int
+    sanity: int = 100
+    item_bonus: int = 0
+
+@dataclass
+class RoundResult:
+    damage_dealt: int
+    damage_taken: int
+    is_critical: bool
+    dice_multiplier: float
+    defender_count: int
+    notes: List[str]
+```
+
+**必須函數**：`get_effective_attack_stat`、`calculate_attack_damage`、`calculate_incoming_damage`、`dice_multiplier`、`count_team_defenders`、`resolve_round_calculation`
+
+**骰子**：`dice_result` 0–3，倍率表同 `app.py` `DICE_MULTIPLIERS`（唔用簡化 1–6 骰 spec）。
+
+**測試**：`test_calculate_attack_damage_basic`、`test_resolve_round_calculation_with_defend`、`test_dice_multiplier_edge_cases`
+
 ### Phase 2 — 營會後／下個版本（半天）
 
 | # | 任務 | 產出 |
@@ -140,6 +181,7 @@ flowchart LR
 | 2026-06-29 | Grok Phase 1 spec 確認：營會前只做低風險 ending 收斂；Drive SSOT | Tak + Grok |
 | 2026-06-29 | **Phase 1 spec 補齊**：`apply_ending`、`trauma_summary`、`protagonist_control_status`、`OIKONOMIA_ENDING_ENABLED`、`test_ending_flow.py`、`decisions_log.md` | Grok Build |
 | 2026-06-30 | **BUG-2026-001 resolved**（`12e1edd`）：Combat UX instant settlement + v7；Henry 實機通過；營會前 monitoring | Tak + Grok Build |
+| 2026-06-30 | **Phase 1.5 Step 1 spec 鎖定**：`services/combat_engine.py` 抽取計劃；Henry instant settlement 專項 checklist | Grok Architect + Tak |
 
 ---
 
