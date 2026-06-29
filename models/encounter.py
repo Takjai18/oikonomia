@@ -7,20 +7,50 @@ from models.settings import settings
 from models.squad import get_team_average_stat
 
 
-def load_encounter(encounter_id):
-    # Read-only cache of static JSON files (encounters/*.json).
-    # Safe across workers when JSON does not change during the camp.
-    # Set SKIP_ENCOUNTER_CACHE=1 to always read from disk (e.g. live GM edits).
-    import os
-    cache = settings.encounter_cache
-    if not os.environ.get("SKIP_ENCOUNTER_CACHE") and encounter_id in cache:
-        return cache[encounter_id]
-    path = os.path.join(settings.encounters_dir, f"{encounter_id}.json")
-    if not os.path.isfile(path):
-        return None
+def _encounter_json_path(encounter_id):
+    return os.path.join(settings.encounters_dir, f"{encounter_id}.json")
+
+
+def _read_encounter_file(path):
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    cache[encounter_id] = data
+        return json.load(f)
+
+
+def _encounter_file_mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
+
+
+def load_encounter(encounter_id):
+    """Load encounter JSON; cache invalidates when file mtime changes."""
+    path = _encounter_json_path(encounter_id)
+    if not os.path.isfile(path):
+        cache = settings.encounter_cache
+        if cache is not None:
+            cache.pop(encounter_id, None)
+        return None
+
+    if os.environ.get("SKIP_ENCOUNTER_CACHE"):
+        return _read_encounter_file(path)
+
+    cache = settings.encounter_cache
+    if cache is None:
+        return _read_encounter_file(path)
+
+    mtime = _encounter_file_mtime(path)
+    if mtime is None:
+        return None
+
+    cached = cache.get(encounter_id)
+    if isinstance(cached, tuple) and len(cached) == 2:
+        cached_mtime, data = cached
+        if cached_mtime == mtime:
+            return data
+
+    data = _read_encounter_file(path)
+    cache[encounter_id] = (mtime, data)
     return data
 
 

@@ -2,7 +2,7 @@
 
 > **用途**：畀 Gemini（或其他外部 Engineer）做 code review 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-06-29 · 架構 commit `54eb415` 起
+> **最後更新**：2026-06-29 · 架構 commit `f210202` 起（含主角參戰、trauma 陰影結局）
 
 ---
 
@@ -27,7 +27,7 @@
 ### Layer 0 — 入口與設定
 ```
 wsgi.py                 # PA 入口；DATA_DIR=data/
-app.py                  # Flask init、migrate_db、register_blueprints（~940 行）
+app.py                  # Flask init、migrate_db、register_blueprints（~980 行，無 @app.route）
 models/settings.py      # configure_models() 注入的 runtime config
 requirements.txt
 ```
@@ -106,7 +106,7 @@ deploy/pa-update.sh
 
 | 檢查項 | 睇邊度 | 已修復／現行設計 |
 |--------|--------|------------------|
-| **Multi-worker 狀態** | `services/announcements.py`, `models/encounter.py` | 遊戲狀態（戰鬥、隊伍、物品、global_events）全在 SQLite；公告已改讀 `global_events` 表（唔再用 in-memory list）。`_encounter_cache` 只 cache 靜態 `encounters/*.json`，各 worker 內容一致，可安全共用 |
+| **Multi-worker 狀態** | `services/announcements.py`, `models/encounter.py` | 遊戲狀態（戰鬥、隊伍、物品、global_events）全在 SQLite；公告讀寫 `global_events`（`effect_type='announcement'`），**無** in-memory `ANNOUNCEMENTS` list。Encounter JSON 用 `(mtime, data)` cache，檔案改動後自動失效；`SKIP_ENCOUNTER_CACHE=1` 可強制每次讀碟 |
 | **Client 信任** | `routes/combat.py` `submit_action` | 骰子由 `roll_combat_dice()` 後端產生；client `dice_result` 忽略 |
 | **Race condition** | `models/combat.py` `upsert_combat_action` | `combat_actions` 表 + `UNIQUE(combat_id,squad_id,phase)` |
 | **GM 認證** | `routes/gm.py` | Production 要 `GM_PIN` env；唔好 hardcode 喺 production |
@@ -120,11 +120,11 @@ deploy/pa-update.sh
 
 | 檢查項 | 說明 |
 |--------|------|
-| **半重構殘留** | `app.py` 應只剩 init + migrate；新 route 放 `routes/` |
+| **半重構殘留** | ✅ 已完成：`app.py` 只剩 init + migrate + `register_blueprints()`；**無** `app_3.py`、**無** 重複 `@app.route` |
 | **Circular import** | `routes/*` 唔好 `from app import ...`；用 `models/` / `services/` |
 | **變數遮蔽** | `models/combat.py` 內 `combat_settings` vs `settings`（ModelSettings） |
 | **N+1 查詢** | `get_team_members`、GM overview 大量 squad 時 |
-| **原生 alert** | 玩家端 `showToast` / `showInputModal`（`templates/index.html`）；GM 用 `showGmToast` / `showGmInputModal`（`gm_templates.py`，0 個 `alert()`） |
+| **原生 alert** | 玩家端已無 `alert()`/`prompt()`，用 `showToast` / `showInputModal`；仍有少量 `confirm()`（路線確認等）。GM 用 `showGmToast` / `showGmInputModal` |
 | **Render 持久化** | `render.yaml` | 已設 `disk` mount `/data`；Free tier 無 persistent disk，營會正式環境用 PA |
 | **Defend 機制** | 已實作全隊 buff：任一同隊 Defend → 反擊減半（`defend_team_buff` marker） |
 
@@ -172,12 +172,13 @@ deploy/pa-update.sh
 ```bash
 cd /path/to/oikonomia
 python3 -m py_compile app.py models/*.py routes/*.py services/*.py utils/*.py
-./venv/bin/python3 scripts/test_combat_flow.py   # 戰鬥 API 煙霧測試
+./venv/bin/python3 scripts/test_combat_flow.py      # 戰鬥 API 煙霧測試（53 項）
+./venv/bin/python3 scripts/test_encounter_cache.py  # Encounter mtime cache
 curl -s http://localhost:5001/api/version | python3 -m json.tool
 ```
 
 `/api/version` 的 `markers` 可確認部署功能開關，例如：
-`server_combat_dice`, `task_photo_validation`, `qr_signed_v2`, `routes_refactored`, `upload_path_hardened`
+`server_combat_dice`, `task_photo_validation`, `qr_signed_v2`, `routes_refactored`, `upload_path_hardened`, `protagonist_combat`, `trauma_ending`
 
 ---
 
@@ -206,7 +207,34 @@ High 項要寫清 exploit 場景同具體修復建議。
 
 ---
 
-## 9. 聯絡脈絡
+## 9. Gemini 2026-06 Review 對照表
+
+> 以下回應 Gemini 對**舊版 snapshot**（`app_3.py`、`ANNOUNCEMENTS = []`、`HTML_TEMPLATE`）嘅評價。  
+> 請 Gemini 重新 review 時以 **`main` 分支現行檔案**為準，唔好再引用已刪除嘅 `app_3.py`。
+
+| Gemini 項目 | 嚴重度 | 現況（`main`） | 備註 |
+|-------------|--------|----------------|------|
+| In-memory `ANNOUNCEMENTS` | 🔴 Critical | ✅ **已修** | `services/announcements.py` → `global_events` 表；`/announcements` 查 DB |
+| 重複 `@app.route` / `app_3.py` | 🔴 Critical | ✅ **已修** | 無 `app_3.py`；路由全在 `routes/*` Blueprint |
+| Team API 無 `rollback` | 🟠 High | ✅ **已修** | `utils/db_tx.immediate_transaction()`；`models/team.py` join／轉讓／建隊 |
+| `_encounter_cache` 熱更新 | 🟡 Medium | ✅ **已修** | `load_encounter()` 比對 `os.path.getmtime()`，檔案改動自動 reload |
+| `alert()` / `prompt()` | 🟡 Medium | ⚠️ **大部分已修** | 無 `alert()`/`prompt()`；仍有 ~8 個 `confirm()` |
+| `HTML_TEMPLATE` in Python | 🟢 Low | ✅ **已修** | `templates/index.html` + `render_template` |
+| Render Free tier 無 disk | 🟢 Low | ℹ️ **設計選擇** | 正式環境用 PythonAnywhere；`render.yaml` 僅備用 |
+
+**整體健康度（現行 codebase）**：約 **8.5–9 / 10**（20 人營會 ARG 規模）。Gemini 當時 7.5/10 合理，但多項 Critical／High 已在後續 commit 解決。
+
+**Gemini Top 3 優先項 — 現時狀態**：
+
+1. Multi-worker 公告 → ✅ 已完成  
+2. 刪除 `app_3.py` 重複 routes → ✅ 已完成  
+3. Team transaction rollback → ✅ 已完成  
+
+**仍值得做（非阻營會）**：將剩餘 `confirm()` 換自訂 modal；拆 `index.html` JS；Salvio Boss encounter。
+
+---
+
+## 10. 聯絡脈絡
 
 | 項目 | 值 |
 |------|-----|
