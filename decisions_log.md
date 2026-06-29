@@ -55,7 +55,7 @@
 
 **驗證**：`bash scripts/pre_deploy_checks.sh` 全綠；Henry 實機 `practice_iggy_01_quick` checklist
 
-**狀態**：Grok Build 實作中 → Gemini review → PA deploy
+**狀態**：`3c89f62` 已 deploy；**實機未通過（reopened）** — 見 `bug_log` REPORT §10；下一輪修 poll `outcome` 捷徑
 
 ---
 
