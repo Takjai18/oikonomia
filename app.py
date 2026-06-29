@@ -686,18 +686,31 @@ def get_combat_participants(combat):
     s = get_squad(combat["squad_id"])
     return [s] if s else []
 
-def all_phase_actions_submitted(combat, participants):
-    actions = combat.get("phase_actions") or {}
+def get_active_combat_member_ids(participants):
+    """存活且可行動的隊員 squad_id（非瀕死）。"""
     active = []
     for p in participants:
         sid = p["squad_id"]
+        if int(p.get("hp") or 0) <= 0:
+            continue
         if p.get("near_death_until"):
             try:
-                if datetime.now() >= datetime.fromisoformat(p["near_death_until"]):
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
                     continue
             except ValueError:
                 pass
         active.append(sid)
+    return active
+
+
+def get_active_combat_members(participants):
+    ids = set(get_active_combat_member_ids(participants))
+    return [p for p in participants if p["squad_id"] in ids]
+
+
+def all_phase_actions_submitted(combat, participants):
+    actions = combat.get("phase_actions") or {}
+    active = get_active_combat_member_ids(participants)
     if not active:
         return True
     return all(sid in actions for sid in active)
@@ -1353,6 +1366,124 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
         "attack_stat_value": my_meta.get("attack_stat_value"),
         "risks": risks,
     }
+
+
+def build_single_player_preview(combat_id, squad_id):
+    """多人模式：只顯示該玩家自己相關的行動預覽。"""
+    combat = get_combat(combat_id)
+    squad = get_squad(squad_id)
+    if not combat or not squad:
+        return None
+
+    action_data = (combat.get("phase_actions") or {}).get(squad_id)
+    if not action_data:
+        return None
+
+    action_type = action_data.get("action_type") or action_data.get("action") or "pass"
+    dice_result = action_data.get("dice_result", action_data.get("dice", 1))
+    item_id = action_data.get("item_id")
+
+    base = build_combat_round_preview(
+        combat_id, squad_id, action_type, dice_result, item_id,
+    )
+    if not base:
+        return None
+
+    display_name = squad.get("display_name") or squad_id
+    counter_target = base.get("counter_target_name") or ""
+    me_is_target = counter_target == display_name or counter_target == squad_id
+    counter_pending = bool(base.get("counter_pending"))
+    damage_taken = 0
+    if me_is_target and not counter_pending:
+        damage_taken = int(base.get("enemy_counter_damage") or 0)
+
+    team_id = squad.get("team_id")
+    protagonists = get_team_protagonists(team_id) if team_id else {}
+    active_route = protagonists.get("active_route") or squad.get("route")
+    protagonist_name = None
+    if active_route == "iggy":
+        protagonist_name = (protagonists.get("iggy") or {}).get("name") or "Iggy"
+    elif active_route == "marah":
+        protagonist_name = (protagonists.get("marah") or {}).get("name") or "Marah"
+
+    damage_dealt = int(base.get("my_damage_to_enemy") or 0)
+    summary_parts = []
+    if damage_dealt > 0:
+        summary_parts.append(f"你對敵人造成 {damage_dealt} 點傷害")
+    elif base.get("action_label") == "堅守界線":
+        summary_parts.append("你進入防禦姿態")
+    elif base.get("action_label") == "觀望":
+        summary_parts.append("你選擇觀望")
+    else:
+        summary_parts.append(f"你完成「{base.get('action_label', '行動')}」")
+
+    if protagonist_name and damage_dealt > 0:
+        summary_parts.append(f"（{protagonist_name} 路線加成已計入）")
+
+    if counter_pending and me_is_target:
+        est = int(base.get("enemy_counter_damage") or 0)
+        summary_parts.append(f"敵人可能對你反擊約 {est} 點（待全隊提交後結算）")
+    elif damage_taken > 0:
+        summary_parts.append(f"你受到 {damage_taken} 點反擊傷害")
+
+    return {
+        "player_name": display_name,
+        "action_type": base.get("action_type"),
+        "action_label": base.get("action_label"),
+        "dice_result": base.get("dice_result"),
+        "damage_dealt": damage_dealt,
+        "damage_taken": damage_taken,
+        "damage_taken_pending": counter_pending and me_is_target,
+        "estimated_counter_damage": int(base.get("enemy_counter_damage") or 0) if me_is_target else 0,
+        "counter_pending": counter_pending,
+        "protagonist_name": protagonist_name,
+        "berserk_risk": base.get("berserk_risk", False),
+        "damage_if_normal": base.get("damage_if_normal", damage_dealt),
+        "attack_stat_label": base.get("attack_stat_label"),
+        "attack_stat_value": base.get("attack_stat_value"),
+        "summary": "，".join(summary_parts) + "。",
+        "risks": base.get("risks") or [],
+    }
+
+
+def _combat_outcome_json(winner, encounter):
+    if winner == "squad":
+        return {
+            "success": True,
+            "status": "ended",
+            "outcome": "victory",
+            "winner": "squad",
+            "narrative": (encounter or {}).get("success", {}).get("narrative"),
+            "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+        }
+    if winner == "enemy":
+        return {
+            "success": True,
+            "status": "ended",
+            "outcome": "defeat",
+            "winner": "enemy",
+            "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+        }
+    return None
+
+
+def _build_full_preview_from_status(status_payload):
+    return {
+        "log_entries": status_payload.get("log_entries") or [],
+        "log": status_payload.get("log") or [],
+        "current_phase": status_payload.get("current_phase"),
+        "enemy": status_payload.get("enemy"),
+        "member_states": status_payload.get("member_states"),
+    }
+
+
+def _build_round_resolved_response(combat, encounter, squad_id):
+    payload = build_combat_status_response(combat, encounter, squad_id)
+    payload["status"] = "round_resolved"
+    payload["round_resolved"] = True
+    payload["active"] = combat.get("status") not in ("ended", "precheck")
+    payload["full_preview"] = _build_full_preview_from_status(payload)
+    return payload
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -3249,6 +3380,7 @@ def combat_status_api():
     encounter = load_encounter(combat["encounter_id"])
     settings = (encounter or {}).get("combat_settings", {})
 
+    round_just_resolved = False
     if combat.get("status") == "player_phase":
         participants = get_combat_participants(combat)
         should_resolve = (
@@ -3256,28 +3388,35 @@ def combat_status_api():
             or combat_phase_expired(combat, settings)
         )
         if should_resolve:
+            prev_phase = int(combat.get("current_phase") or 0)
+            prev_log_len = len(combat.get("logs") or [])
             combat, winner = resolve_player_phase(combat["id"])
-            if winner == "squad":
-                return jsonify({
-                    "success": True,
-                    "active": False,
-                    "outcome": "victory",
-                    "winner": "squad",
-                    "narrative": (encounter or {}).get("success", {}).get("narrative"),
-                    "reflection_prompt": (encounter or {}).get("reflection_prompt"),
-                })
-            if winner == "enemy":
-                return jsonify({
-                    "success": True,
-                    "active": False,
-                    "outcome": "defeat",
-                    "winner": "enemy",
-                    "narrative": (encounter or {}).get("failure", {}).get("narrative"),
-                })
+            outcome = _combat_outcome_json(winner, encounter)
+            if outcome:
+                return jsonify({**outcome, "active": False})
+            combat = get_combat(combat["id"]) or combat
+            round_just_resolved = (
+                int(combat.get("current_phase") or 0) > prev_phase
+                or len(combat.get("logs") or []) > prev_log_len
+            )
 
     payload = build_combat_status_response(combat, encounter, session["squad_id"])
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     payload["in_precheck"] = combat.get("status") == "precheck"
+
+    if round_just_resolved:
+        payload["status"] = "round_resolved"
+        payload["round_resolved"] = True
+        payload["full_preview"] = _build_full_preview_from_status(payload)
+    elif combat.get("status") == "player_phase":
+        participants = get_combat_participants(combat)
+        active_ids = get_active_combat_member_ids(participants)
+        phase_actions = combat.get("phase_actions") or {}
+        if session["squad_id"] in phase_actions and len(phase_actions) < len(active_ids):
+            payload["waiting_for_teammates"] = True
+            payload["submitted_count"] = len(phase_actions)
+            payload["total_active"] = len(active_ids)
+
     return jsonify(payload)
 
 @app.route("/combat/preview_action", methods=["POST"])
@@ -3390,30 +3529,39 @@ def combat_submit_action_api():
     combat["phase_actions"] = phase_actions
 
     participants = get_combat_participants(combat)
+    active_ids = get_active_combat_member_ids(participants)
     winner = None
     if all_phase_actions_submitted(combat, participants) or combat_phase_expired(combat, settings):
         combat, winner = resolve_player_phase(combat_id)
 
-    if winner == "squad":
-        return jsonify({
-            "success": True,
-            "outcome": "victory",
-            "winner": "squad",
-            "narrative": (encounter or {}).get("success", {}).get("narrative"),
-            "reflection_prompt": (encounter or {}).get("reflection_prompt"),
-        })
-    if winner == "enemy":
-        return jsonify({
-            "success": True,
-            "outcome": "defeat",
-            "winner": "enemy",
-            "narrative": (encounter or {}).get("failure", {}).get("narrative"),
-        })
+    outcome = _combat_outcome_json(winner, encounter)
+    if outcome:
+        return jsonify(outcome)
 
     combat = get_combat(combat_id)
-    payload = build_combat_status_response(combat, encounter, session["squad_id"])
-    payload["active"] = True
-    payload["message"] = f"已提交行動：{action_type}（骰 {dice_result}）"
+    if len(active_ids) > 1 and len(phase_actions) < len(active_ids):
+        single_preview = build_single_player_preview(combat_id, session["squad_id"])
+        status = build_combat_status_response(combat, encounter, session["squad_id"])
+        return jsonify({
+            "success": True,
+            "status": "waiting_for_teammates",
+            "single_preview": single_preview,
+            "submitted_count": len(phase_actions),
+            "total_active": len(active_ids),
+            "combat_id": combat_id,
+            "current_phase": combat.get("current_phase", 0),
+            "message": "行動已提交，等待其他隊友行動中...",
+            "active": True,
+            "my_state": status.get("my_state"),
+            "member_states": status.get("member_states"),
+            "enemy": status.get("enemy"),
+            "title": status.get("title"),
+            "log": status.get("log"),
+            "log_entries": status.get("log_entries"),
+        })
+
+    payload = _build_round_resolved_response(combat, encounter, session["squad_id"])
+    payload["message"] = f"本回合已結算：{action_type}（骰 {dice_result}）"
     return jsonify(payload)
 
 @app.route("/combat/resolve_phase", methods=["POST"])
@@ -5725,6 +5873,13 @@ HTML_TEMPLATE = """
                         <div id="team-status-row" class="flex gap-x-4 overflow-x-auto combat-team-scroll pb-1"></div>
                     </div>
 
+                    <div id="combat-waiting-panel" class="hidden mt-4 cartoon-box p-5 text-center border border-amber-600/30 bg-amber-950/20">
+                        <div class="text-sm text-amber-300 mb-1">等待隊友行動中…</div>
+                        <div id="combat-waiting-count" class="text-3xl font-bold text-amber-400">0 / 0</div>
+                        <div class="text-xs text-zinc-400 mt-1">已行動 / 存活隊員</div>
+                        <p class="text-[10px] text-zinc-500 mt-3">全隊提交後將顯示完整傷害結算</p>
+                    </div>
+
                     <p id="combat-submit-hint" class="text-[10px] lg:text-xs text-zinc-500 text-center mt-3 lg:mt-4"></p>
 
                     <div class="mt-3 lg:mt-6 bg-zinc-950 border border-zinc-800 rounded-2xl lg:rounded-3xl p-3 lg:p-4 max-h-48 overflow-y-auto text-xs lg:text-sm text-zinc-300" id="combat-log"></div>
@@ -5918,6 +6073,8 @@ HTML_TEMPLATE = """
         let combatItemsLoaded = false;
         let lastDicePhase = 0;
         let lastCombatLogCount = 0;
+        let combatWaitingForRound = false;
+        let combatSubmittedPhase = 0;
         let lastCombatStatus = null;
         const COMBAT_ACTION_LABELS = {
             attack: '攻擊',
@@ -5944,9 +6101,101 @@ HTML_TEMPLATE = """
             }
         }
 
-        function startCombatPolling() {
+        function startCombatPolling(intervalMs = 8000) {
             stopCombatPolling();
-            combatPollTimer = setInterval(() => loadCombatStatus(false), 8000);
+            combatPollTimer = setInterval(() => loadCombatStatus(false), intervalMs);
+        }
+
+        function showCombatWaitingPanel(submitted, total) {
+            const panel = document.getElementById('combat-waiting-panel');
+            const countEl = document.getElementById('combat-waiting-count');
+            if (countEl) countEl.textContent = `${submitted} / ${total}`;
+            setVisible(panel, true);
+        }
+
+        function hideCombatWaitingPanel() {
+            setVisible(document.getElementById('combat-waiting-panel'), false);
+        }
+
+        function showSinglePlayerResultModal(preview) {
+            if (!preview) return;
+            const modal = document.getElementById('combat-single-result-modal');
+            const diceLabels = ['失手', '普通', '良好', '爆擊'];
+            const diceLabel = diceLabels[preview.dice_result] ?? '';
+            document.getElementById('single-result-title').textContent =
+                `${preview.player_name || '你'} · ${preview.action_label || ''}（骰 ${preview.dice_result} ${diceLabel}）`;
+            document.getElementById('single-result-summary').textContent = preview.summary || '';
+            document.getElementById('single-result-dealt').textContent = String(preview.damage_dealt ?? 0);
+
+            const takenPending = preview.damage_taken_pending;
+            const takenWrap = document.getElementById('single-result-taken-wrap');
+            const takenEl = document.getElementById('single-result-taken');
+            const takenPendingEl = document.getElementById('single-result-taken-pending');
+            if (takenPending) {
+                if (takenEl) takenEl.textContent = String(preview.estimated_counter_damage ?? '?');
+                setVisible(takenPendingEl, true);
+            } else {
+                if (takenEl) takenEl.textContent = String(preview.damage_taken ?? 0);
+                setVisible(takenPendingEl, false);
+            }
+
+            const risksEl = document.getElementById('single-result-risks');
+            if (risksEl) {
+                if (preview.risks?.length) {
+                    risksEl.innerHTML = preview.risks.map(r =>
+                        `<div class="text-orange-300 px-2 py-1 bg-orange-900/20 rounded-lg">⚠️ ${r.message}</div>`
+                    ).join('');
+                } else {
+                    risksEl.innerHTML = '';
+                }
+            }
+            setVisible(modal, true);
+            modal.classList.add('flex');
+        }
+
+        function hideSinglePlayerResultModal() {
+            const modal = document.getElementById('combat-single-result-modal');
+            if (!modal) return;
+            modal.classList.remove('flex');
+            setVisible(modal, false);
+        }
+
+        function showRoundSettlementModal(data) {
+            const modal = document.getElementById('combat-round-settlement-modal');
+            const logsEl = document.getElementById('round-settlement-logs');
+            const preview = data.full_preview || {};
+            const entries = preview.log_entries || data.log_entries || [];
+            const recent = entries.slice(-8);
+            if (logsEl) {
+                logsEl.innerHTML = recent.length
+                    ? recent.map(e => `<div class="py-0.5">• ${e.message || e}</div>`).join('')
+                    : (preview.log || data.log || []).slice(-8).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
+                      || '<div class="text-zinc-500">本回合已結算</div>';
+            }
+            setVisible(modal, true);
+            modal.classList.add('flex');
+        }
+
+        function hideRoundSettlementModal() {
+            const modal = document.getElementById('combat-round-settlement-modal');
+            if (!modal) return;
+            modal.classList.remove('flex');
+            setVisible(modal, false);
+        }
+
+        function showFullRoundSettlement(data) {
+            combatWaitingForRound = false;
+            hideCombatWaitingPanel();
+            hideSinglePlayerResultModal();
+            showRoundSettlementModal(data);
+            processCombatDamageAnimations(data, 200);
+            updateCombatUI(data, { damageDelay: 350 });
+            startCombatPolling(8000);
+        }
+
+        function handleCombatRoundResolved(data) {
+            if (!data) return;
+            showFullRoundSettlement(data);
         }
 
         function formatTimerDisplay(totalSeconds) {
@@ -7118,11 +7367,32 @@ HTML_TEMPLATE = """
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
                 if (data.outcome) {
+                    combatWaitingForRound = false;
+                    hideCombatWaitingPanel();
+                    hideSinglePlayerResultModal();
+                    hideRoundSettlementModal();
                     showCombatResult(data);
                     const statusRes = await fetch('/status', { credentials: 'same-origin' });
                     updateDashboard(await statusRes.json());
                     return;
                 }
+
+                const roundResolved = data.status === 'round_resolved' || data.round_resolved;
+                const phaseAdvanced = combatWaitingForRound
+                    && data.current_phase > combatSubmittedPhase
+                    && !data.my_state?.submitted;
+
+                if (roundResolved || phaseAdvanced) {
+                    handleCombatRoundResolved(data);
+                    return;
+                }
+
+                if (data.waiting_for_teammates || data.status === 'waiting_for_teammates') {
+                    combatWaitingForRound = true;
+                    showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
+                    startCombatPolling(4000);
+                }
+
                 if (data.active) {
                     setVisible(document.getElementById('combat-lobby'), false);
                 }
@@ -7133,8 +7403,11 @@ HTML_TEMPLATE = """
                 } else {
                     applyCombatUi();
                 }
-                if (data.active || data.in_precheck) startCombatPolling();
-                else stopCombatPolling();
+                if (data.active || data.in_precheck) {
+                    startCombatPolling(combatWaitingForRound ? 4000 : 8000);
+                } else {
+                    stopCombatPolling();
+                }
             } catch (e) {
                 if (showLoading) console.error('載入戰鬥狀態失敗', e);
             }
@@ -7181,6 +7454,8 @@ HTML_TEMPLATE = """
                 return;
             }
             if (data.outcome) {
+                combatWaitingForRound = false;
+                hideCombatWaitingPanel();
                 if (data.log_entries?.length) {
                     processCombatDamageAnimations(data, 200);
                 }
@@ -7190,8 +7465,25 @@ HTML_TEMPLATE = """
                 combatItemsLoaded = false;
                 return;
             }
+
             resetCombatDiceUi();
             lastDicePhase = 0;
+
+            if (data.status === 'waiting_for_teammates') {
+                combatWaitingForRound = true;
+                combatSubmittedPhase = data.current_phase || lastCombatStatus?.current_phase || 0;
+                showSinglePlayerResultModal(data.single_preview);
+                showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
+                updateCombatUI({ ...data, active: true }, { initLogsOnly: true });
+                startCombatPolling(4000);
+                return;
+            }
+
+            if (data.status === 'round_resolved' || data.round_resolved) {
+                handleCombatRoundResolved({ ...data, active: true });
+                return;
+            }
+
             updateCombatUI({ ...data, active: true }, { damageDelay: 350 });
         }
 
@@ -9518,6 +9810,54 @@ HTML_TEMPLATE = """
             <div class="p-4 border-t border-zinc-700">
                 <button onclick="stopQRScanner()"
                         class="w-full py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 單人行動結果 Modal（多人提交後） -->
+    <div id="combat-single-result-modal"
+         onclick="if (event.target.id === 'combat-single-result-modal') hideSinglePlayerResultModal()"
+         class="hidden fixed inset-0 bg-black/85 z-[72] flex items-center justify-center p-4">
+        <div onclick="event.stopPropagation()"
+             class="bg-zinc-900 w-full max-w-md rounded-3xl border border-zinc-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-zinc-700">
+                <div class="text-xs text-emerald-400">你的行動結果</div>
+                <div id="single-result-title" class="font-semibold text-lg mt-0.5"></div>
+                <div id="single-result-summary" class="text-sm text-zinc-300 mt-2 leading-relaxed"></div>
+            </div>
+            <div class="px-5 py-4 grid grid-cols-2 gap-3">
+                <div class="bg-zinc-800 rounded-2xl p-3 text-center">
+                    <div class="text-emerald-400 text-xs">你造成傷害</div>
+                    <div class="text-3xl font-bold text-emerald-400">-<span id="single-result-dealt">0</span></div>
+                </div>
+                <div class="bg-zinc-800 rounded-2xl p-3 text-center">
+                    <div class="text-red-400 text-xs">你受到傷害</div>
+                    <div id="single-result-taken-wrap" class="text-3xl font-bold text-red-400">-<span id="single-result-taken">0</span></div>
+                    <div id="single-result-taken-pending" class="hidden text-[10px] text-zinc-500 mt-1">待全隊提交</div>
+                </div>
+            </div>
+            <div id="single-result-risks" class="px-5 pb-3 text-xs space-y-1"></div>
+            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
+                <button type="button" onclick="hideSinglePlayerResultModal()"
+                        class="w-full py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">知道了，等待隊友</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全隊回合結算 Modal -->
+    <div id="combat-round-settlement-modal"
+         onclick="if (event.target.id === 'combat-round-settlement-modal') hideRoundSettlementModal()"
+         class="hidden fixed inset-0 bg-black/85 z-[73] flex items-center justify-center p-4">
+        <div onclick="event.stopPropagation()"
+             class="bg-zinc-900 w-full max-w-lg rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-zinc-700">
+                <div class="text-xs text-emerald-400">全隊傷害結算</div>
+                <div class="font-semibold text-lg">本回合戰果</div>
+            </div>
+            <div id="round-settlement-logs" class="px-5 py-4 max-h-64 overflow-y-auto text-sm text-zinc-300 space-y-1"></div>
+            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
+                <button type="button" onclick="hideRoundSettlementModal()"
+                        class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">繼續</button>
             </div>
         </div>
     </div>
