@@ -42,20 +42,27 @@ else
 fi
 
 echo ""
-echo "--- SECRET_KEY file ---"
+echo "--- Secret files (Web workers read via wsgi.py) ---"
 SECRET_FILE="$REPO/data/.secret_key"
+GM_PIN_FILE="$REPO/data/.gm_pin"
 if [ -f "$SECRET_FILE" ]; then
     echo "  OK  $SECRET_FILE exists"
 else
     echo "  NO  $SECRET_FILE — run: bash ~/oikonomia/deploy/pa-ensure-secret.sh"
 fi
+if [ -f "$GM_PIN_FILE" ]; then
+    echo "  OK  $GM_PIN_FILE exists"
+else
+    echo "  NO  $GM_PIN_FILE — run: bash ~/oikonomia/deploy/pa-ensure-secret.sh"
+fi
 
 echo ""
-echo "--- Python import test (wsgi, no shell SECRET_KEY) ---"
+echo "--- Python import test (wsgi, no shell SECRET_KEY/GM_PIN) ---"
 cd "$REPO" || exit 1
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
 unset SECRET_KEY
+unset GM_PIN
 python3 -c "from wsgi import application; from utils.app_state import DB_INIT_ERROR; print('wsgi import ok'); print('db_init_error:', DB_INIT_ERROR)" 2>&1
 
 echo ""
@@ -64,8 +71,8 @@ echo "1. Source code path: $REPO"
 echo "2. Virtualenv path:  $VENV_DIR"
 echo "3. WSGI file: copy deploy/pa-wsgi-web-tab.py into Web tab WSGI config"
 echo "   (Do NOT use: from app import app as application)"
-echo "4. SECRET_KEY: Web tab env var OR data/.secret_key (pa-update.sh creates it)"
-echo "   NOTE: venv/bin/activate exports do NOT apply to Web workers"
+echo "4. Secrets: data/.secret_key + data/.gm_pin (pa-ensure-secret.sh) OR Web tab env vars"
+echo "   NOTE: pa-update.sh shell exports do NOT apply to Web workers — use wsgi file loader"
 
 echo ""
 echo "--- Git HEAD ---"

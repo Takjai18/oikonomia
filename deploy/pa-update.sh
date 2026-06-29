@@ -124,31 +124,31 @@ echo "NOTE: PythonAnywhere Web tab -> Virtualenv path MUST be: $VENV_DIR"
 echo "NOTE: WSGI file must use: from wsgi import application (NOT from app import app)"
 
 echo ""
-echo "--- SECRET_KEY (data/.secret_key) ---"
+echo "--- Secrets (data/.secret_key + data/.gm_pin for Web workers) ---"
 bash "$REPO/deploy/pa-ensure-secret.sh"
 
 echo ""
 echo "--- Database bootstrap (once per deploy, before Web Reload) ---"
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
-export GM_PIN="${GM_PIN:-gm2026}"
 unset SECRET_KEY
-if ! python3 -c "from app import bootstrap_app_data; bootstrap_app_data(); print('DB bootstrap ok')" 2>&1; then
+unset GM_PIN
+if ! python3 -c "from wsgi import application; from app import bootstrap_app_data; bootstrap_app_data(); print('DB bootstrap ok')" 2>&1; then
     echo "ERROR: database bootstrap failed. Fix before Web Reload."
     exit 1
 fi
 
 echo ""
-echo "--- Import smoke test (no shell SECRET_KEY) ---"
+echo "--- Import smoke test (no shell SECRET_KEY/GM_PIN) ---"
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
-export GM_PIN="${GM_PIN:-gm2026}"
 unset SECRET_KEY
+unset GM_PIN
 if ! python3 -c "from wsgi import application; print('wsgi import ok')" 2>&1; then
     echo ""
     echo "ERROR: wsgi import failed. Fix before Web Reload."
     echo "Check Web tab -> Virtualenv: $VENV_DIR"
-    echo "Check Web tab -> Environment: SECRET_KEY, GM_PIN, DATA_DIR=data"
+    echo "Check data/.secret_key + data/.gm_pin exist (pa-ensure-secret.sh)"
     exit 1
 fi
 
