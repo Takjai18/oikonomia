@@ -5,8 +5,8 @@
 | **狀態** | **fix_in_progress** — 方案1 不足；Henry 實機重現已記錄 |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
 | **影響** | 單人 + 主角、低 HP 練習戰、一輪擊殺；可能亦影響多回合 + polling |
-| **修復 commit** | `3c89f62`（方案1，**實機未通過**）；前期 `4bbb885`、`e2e6dc7` |
-| **PA 實測 version** | `3c89f62`（`curl /api/version` 2026-06-29，`enemy_hp_sync_v2: true`） |
+| **修復 commit** | `0247f9c`（第二輪 UI）；`3c89f62` 方案1 **實機未通過** |
+| **PA 實測 version** | **`3c89f62` 仍上線**（2026-06-29 晚 curl）；`0247f9c` **未 deploy／未 Web Reload** |
 | **決策記錄** | `decisions_log.md` § 2026-06-29 Combat Killing Blow |
 
 ---
@@ -183,7 +183,15 @@ flowchart TD
 | 2026-06-29 PM | Architect 確認方案1；Grok Build 實作 `3c89f62` |
 | 2026-06-29 PM | PA `3c89f62` deploy；curl 確認 |
 | 2026-06-29 PM | 用戶：問題仍然存在 → case **reopened** |
-| 2026-06-29 晚 | Henry：**單人、多回合、無 modal、HP 唔跌** → 第二輪 UI 修復 |
+| 2026-06-29 晚 | Henry：**單人、多回合、無 modal、HP 唔跌** → 第二輪 UI 修復 `0247f9c` |
+| 2026-06-29 晚 | curl PA 仍 `3c89f62`：用戶 deploy 可能早於 push，或漏 **Web Reload** |
+
+### 10.6 部署檢查（Henry 必做）
+
+1. PA Bash：`FORCE=1 bash ~/oikonomia/deploy/pa-update.sh`（等腳本顯示 commit **`0247f9c` 或更新**）
+2. **Web tab → Reload**（唔做呢步 workers 仍跑舊 code）
+3. 手機 Safari：**硬刷新**或清網站資料
+4. 驗證：`curl -s https://takjai.pythonanywhere.com/api/version` → `version` 新 commit + `markers.enemy_hp_sync_v3: true`
 
 ---
 

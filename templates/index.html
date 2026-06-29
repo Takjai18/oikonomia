@@ -1801,8 +1801,12 @@
             const ctx = enemyOverride
                 ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
                 : data;
-            const hp = resolveAuthoritativeEnemyHp(ctx);
+            let hp = resolveAuthoritativeEnemyHp(ctx);
             if (!Number.isFinite(hp)) return;
+            // During live combat, never let a stale poll inflate displayed enemy HP
+            if (Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
+                hp = lastAnimatedEnemyHp;
+            }
             const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
             const prevHp = Number.isFinite(lastAnimatedEnemyHp)
                 ? lastAnimatedEnemyHp
