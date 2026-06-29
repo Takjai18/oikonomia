@@ -1468,7 +1468,7 @@ GM_SQUAD_DETAIL_HTML = """
                 </div>
                 <div>
                     <span class="text-zinc-400">Resource</span><br>
-                    <span class="font-mono text-purple-400">{{ squad.resources }}</span>
+                    <span id="gm-stat-resources" class="font-mono text-purple-400">{{ squad.resources }}</span>
                 </div>
                 <div>
                     <span class="text-zinc-400">PIN 狀態</span><br>
@@ -1478,11 +1478,11 @@ GM_SQUAD_DETAIL_HTML = """
                 </div>
                 
                 <div class="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mt-2 pt-4 border-t border-zinc-700">
-                    <div>生命值: <span class="font-mono text-red-400">{{ squad.hp }}</span></div>
-                    <div>神智: <span class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
-                    <div>力量: <span class="font-mono text-orange-400">{{ squad.power }}</span></div>
-                    <div>智力: <span class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
-                    <div>韌性: <span class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
+                    <div>生命值: <span id="gm-stat-hp" class="font-mono text-red-400">{{ squad.hp }}{% if squad.max_hp and squad.max_hp > 100 %} / {{ squad.max_hp }}{% endif %}</span></div>
+                    <div>神智: <span id="gm-stat-sanity" class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
+                    <div>力量: <span id="gm-stat-power" class="font-mono text-orange-400">{{ squad.power }}</span></div>
+                    <div>智力: <span id="gm-stat-intellect" class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
+                    <div>韌性: <span id="gm-stat-resilience" class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
                 </div>
             </div>
         </div>
@@ -1584,6 +1584,42 @@ GM_SQUAD_DETAIL_HTML = """
             });
         }
 
+        function formatGmHpDisplay(hp, maxHp) {
+            const current = Number(hp) || 0;
+            const cap = Math.max(100, Number(maxHp) || 100, current);
+            return cap > 100 ? `${current} / ${cap}` : String(current);
+        }
+
+        function updateGmStatDisplay(squad) {
+            if (!squad) return;
+            const map = {
+                hp: formatGmHpDisplay(squad.hp, squad.max_hp),
+                sanity: squad.sanity,
+                power: squad.power,
+                intellect: squad.intellect,
+                resilience: squad.resilience,
+                resources: squad.resources,
+            };
+            Object.entries(map).forEach(([key, val]) => {
+                const el = document.getElementById('gm-stat-' + key);
+                if (el) el.textContent = val ?? '—';
+            });
+            const inputs = {
+                hp: 'hp-value',
+                sanity: 'sanity-value',
+                power: 'power-value',
+                intellect: 'intellect-value',
+                resilience: 'resilience-value',
+                resources: 'resource-value',
+            };
+            Object.entries(inputs).forEach(([key, id]) => {
+                const input = document.getElementById(id);
+                if (input && squad[key] !== undefined && squad[key] !== null) {
+                    input.value = squad[key];
+                }
+            });
+        }
+
         function adjustValue(field) {
             let valueInput;
             const ids = {hp:'hp-value', sanity:'sanity-value', power:'power-value', intellect:'intellect-value', resilience:'resilience-value', resources:'resource-value'};
@@ -1604,8 +1640,8 @@ GM_SQUAD_DETAIL_HTML = """
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    showGmToast(field + ' 已更新', 'success');
-                    location.reload();
+                    updateGmStatDisplay(data.squad);
+                    showGmToast((data.message || field + ' 已更新'), 'success');
                 } else {
                     showGmToast('更新失敗: ' + data.error, 'success');
                 }

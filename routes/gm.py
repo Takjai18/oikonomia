@@ -489,9 +489,11 @@ def gm_adjust():
         return jsonify({"success": False, "error": "數值必須為整數"}), 400
 
     update_squad(squad_id, **{field: value})
+    squad = get_squad(squad_id)
     return jsonify({
         "success": True,
         "message": f"{squad_id} 的 {field} 已更新為 {value}",
+        "squad": squad,
     })
 
 

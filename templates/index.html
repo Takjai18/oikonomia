@@ -5440,7 +5440,7 @@
             loadAnnouncements();
         }, 10000);
 
-        // 每 12 秒自動更新狀態
+        // 每 3 秒自動更新狀態（GM 調整後玩家介面可近乎即時反映）
         setInterval(() => {
             if (currentSquad) {
                 fetch('/status', { credentials: 'same-origin' })
@@ -5452,7 +5452,7 @@
                         }
                     });
             }
-        }, 12000);
+        }, 3000);
 
         let currentAvatar = null;
 
