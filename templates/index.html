@@ -1212,6 +1212,29 @@
             }
         }
 
+        const COMBAT_SETTLEMENT_DELAY_MS = {
+            fast: 800,
+            normal: 1500,
+            slow: 2500,
+            very_slow: 3500,
+        };
+
+        const DICE_ROLL_PRESETS = {
+            fast: { intervalMs: 45, maxRolls: 10, pauseMs: 600 },
+            normal: { intervalMs: 75, maxRolls: 14, pauseMs: 1150 },
+            slow: { intervalMs: 110, maxRolls: 18, pauseMs: 1700 },
+        };
+
+        function getSettlementModalDelayMs() {
+            const preset = getGameSettings().combatSettlementDelay || 'normal';
+            return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
+        }
+
+        function getDiceRollConfig() {
+            const preset = getGameSettings().diceRollSpeed || 'normal';
+            return DICE_ROLL_PRESETS[preset] || DICE_ROLL_PRESETS.normal;
+        }
+
         function loadSettings() {
             const settings = getGameSettings();
 
@@ -1227,8 +1250,12 @@
 
             const speed = settings.typewriterSpeed || 'normal';
             const fontSize = settings.fontSize || 'medium';
+            const settlementDelay = settings.combatSettlementDelay || 'normal';
+            const diceRollSpeed = settings.diceRollSpeed || 'normal';
             highlightSettingButton('speed', speed);
             highlightSettingButton('size', fontSize);
+            highlightSettingButton('settlement', settlementDelay);
+            highlightSettingButton('dice', diceRollSpeed);
             applyFontSize(fontSize);
 
             return settings;
@@ -1245,6 +1272,8 @@
                     ?? false,
                 typewriterSpeed: getActiveSpeed(),
                 fontSize: getActiveFontSize(),
+                combatSettlementDelay: getActiveCombatSettlementDelay(),
+                diceRollSpeed: getActiveDiceRollSpeed(),
             };
 
             localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify(settings));
@@ -1276,6 +1305,16 @@
             saveSettings();
         }
 
+        function setCombatSettlementDelay(preset) {
+            highlightSettingButton('settlement', preset);
+            saveSettings();
+        }
+
+        function setDiceRollSpeed(preset) {
+            highlightSettingButton('dice', preset);
+            saveSettings();
+        }
+
         function getActiveFontSize() {
             const activeBtn = document.querySelector('.setting-btn[data-size].border-amber-500');
             if (activeBtn) return activeBtn.dataset.size;
@@ -1288,14 +1327,37 @@
             return getGameSettings().typewriterSpeed || 'normal';
         }
 
+        function getActiveCombatSettlementDelay() {
+            const activeBtn = document.querySelector('.setting-btn[data-settlement-delay].border-amber-500');
+            if (activeBtn) return activeBtn.dataset.settlementDelay;
+            return getGameSettings().combatSettlementDelay || 'normal';
+        }
+
+        function getActiveDiceRollSpeed() {
+            const activeBtn = document.querySelector('.setting-btn[data-dice-speed].border-amber-500');
+            if (activeBtn) return activeBtn.dataset.diceSpeed;
+            return getGameSettings().diceRollSpeed || 'normal';
+        }
+
         function highlightSettingButton(kind, value) {
-            const selector = kind === 'speed'
-                ? '.setting-btn[data-speed]'
-                : '.setting-btn[data-size]';
+            const selectorMap = {
+                speed: '.setting-btn[data-speed]',
+                size: '.setting-btn[data-size]',
+                settlement: '.setting-btn[data-settlement-delay]',
+                dice: '.setting-btn[data-dice-speed]',
+            };
+            const keyMap = {
+                speed: 'speed',
+                size: 'size',
+                settlement: 'settlementDelay',
+                dice: 'diceSpeed',
+            };
+            const selector = selectorMap[kind];
+            const dataKey = keyMap[kind];
+            if (!selector || !dataKey) return;
             document.querySelectorAll(selector).forEach(btn => {
                 btn.classList.remove('border-amber-500', 'bg-amber-500/10');
-                const key = kind === 'speed' ? btn.dataset.speed : btn.dataset.size;
-                if (key === value) {
+                if (btn.dataset[dataKey] === value) {
                     btn.classList.add('border-amber-500', 'bg-amber-500/10');
                 }
             });
@@ -1459,7 +1521,7 @@
         let actionModalRolling = false;
         let actionModalRollTimer = null;
         let actionModalPauseTimer = null;
-        const DICE_RESULT_PAUSE_MS = 1150;
+
         const DICE_RESULT_DESCRIPTIONS = {
             0: '失手 (0%)',
             1: '普通攻擊 (100%)',
@@ -1481,7 +1543,7 @@
         const COMBAT_POLL_INTERVAL_NORMAL = 3000;
         const COMBAT_POLL_INTERVAL_WAITING = 4000;
         const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
-        const ROUND_SETTLEMENT_MODAL_DELAY_MS = 1500;
+
 
         /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
         function effectiveCombatStatus(data) {
@@ -1809,8 +1871,8 @@
                 showDamageNumber('player-panel', enemyDealt, false);
             }
             const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
-                ? ROUND_SETTLEMENT_MODAL_DELAY_MS
-                : 400;
+                ? getSettlementModalDelayMs()
+                : Math.min(500, Math.round(getSettlementModalDelayMs() * 0.3));
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
                 showRoundSettlementModal(data);
@@ -2099,8 +2161,9 @@
             }
             document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
 
+            const diceCfg = getDiceRollConfig();
             let rollCount = 0;
-            const maxRolls = 14;
+            const maxRolls = diceCfg.maxRolls;
             clearActionModalRollTimer();
             actionModalRollTimer = setInterval(() => {
                 diceValue.textContent = String(Math.floor(Math.random() * 4));
@@ -2142,8 +2205,8 @@
                 actionModalPauseTimer = setTimeout(() => {
                     actionModalPauseTimer = null;
                     fetchAndShowCombatPreview();
-                }, DICE_RESULT_PAUSE_MS);
-            }, 75);
+                }, diceCfg.pauseMs);
+            }, diceCfg.intervalMs);
         }
 
         function zooBonusMultiplier(sanity) {
@@ -6565,6 +6628,45 @@
                         <button type="button" onclick="setFontSize('large')"
                                 class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
                                 data-size="large">大</button>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-zinc-800">
+                    <div class="text-xs text-amber-400/90 font-medium mb-3">戰鬥介面</div>
+
+                    <div class="mb-4">
+                        <div class="font-medium mb-1">傷害結算畫面</div>
+                        <div class="text-xs text-zinc-400 mb-2">攻擊後，浮字顯示幾耐先彈出「本回合戰果」</div>
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button type="button" onclick="setCombatSettlementDelay('fast')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="fast">快<br><span class="text-[10px] text-zinc-500">0.8秒</span></button>
+                            <button type="button" onclick="setCombatSettlementDelay('normal')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="normal">正常<br><span class="text-[10px] text-zinc-500">1.5秒</span></button>
+                            <button type="button" onclick="setCombatSettlementDelay('slow')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="slow">慢<br><span class="text-[10px] text-zinc-500">2.5秒</span></button>
+                            <button type="button" onclick="setCombatSettlementDelay('very_slow')"
+                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-settlement-delay="very_slow">很慢<br><span class="text-[10px] text-zinc-500">3.5秒</span></button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="font-medium mb-1">擲骰動畫速度</div>
+                        <div class="text-xs text-zinc-400 mb-2">戰鬥行動時骰子滾動同結果停留時間</div>
+                        <div class="flex gap-x-2">
+                            <button type="button" onclick="setDiceRollSpeed('fast')"
+                                    class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-dice-speed="fast">快</button>
+                            <button type="button" onclick="setDiceRollSpeed('normal')"
+                                    class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-dice-speed="normal">正常</button>
+                            <button type="button" onclick="setDiceRollSpeed('slow')"
+                                    class="setting-btn flex-1 py-2 rounded-2xl text-sm border border-zinc-600 hover:bg-zinc-800 transition-colors"
+                                    data-dice-speed="slow">慢</button>
+                        </div>
                     </div>
                 </div>
             </div>
