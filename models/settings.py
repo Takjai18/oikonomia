@@ -12,6 +12,11 @@ class ModelSettings:
     item_effect_stat_map = None
     item_effect_labels = None
     encounter_cache = None
+    near_death_minutes = 15
+    combat_action_types = None
+    attack_action_types = None
+    dice_multipliers = None
+    combat_attack_base_damage = 10
 
 
 settings = ModelSettings()

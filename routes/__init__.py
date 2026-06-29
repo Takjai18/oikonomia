@@ -1,0 +1,1 @@
+# Route blueprints (Phase 2 migration). Production combat routes remain in app.py.
