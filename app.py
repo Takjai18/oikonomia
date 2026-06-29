@@ -596,14 +596,25 @@ def migrate_db():
         c.execute('''CREATE TABLE protagonist_states (
             team_id TEXT NOT NULL,
             protagonist TEXT NOT NULL,
-            hp INTEGER DEFAULT 100,
-            max_hp INTEGER DEFAULT 100,
-            sanity INTEGER DEFAULT 100,
-            trauma_count INTEGER DEFAULT 0,
+            hp INTEGER NOT NULL DEFAULT 100,
+            max_hp INTEGER NOT NULL DEFAULT 100,
+            sanity INTEGER NOT NULL DEFAULT 100,
+            trauma_count INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
             near_death_until TEXT,
             last_updated TEXT,
             PRIMARY KEY (team_id, protagonist)
         )''')
+    else:
+        c.execute("PRAGMA table_info(protagonist_states)")
+        ps_cols = {row[1] for row in c.fetchall()}
+        if "is_active" not in ps_cols:
+            try:
+                c.execute(
+                    "ALTER TABLE protagonist_states ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"
+                )
+            except sqlite3.OperationalError:
+                pass
     if "stats_allocated" not in cols:
         try:
             c.execute("ALTER TABLE squads ADD COLUMN stats_allocated INTEGER DEFAULT 0")

@@ -108,8 +108,14 @@ def test_defend_team_buff_integration(client, client2, leader_id, member_id):
     Low-resilience leader is counter target; high-resilience teammate Defends.
     Counter damage should be halved even though the target attacked.
     """
+    from models.protagonist import update_protagonist_state
+
     update_squad(leader_id, resilience=10)
     update_squad(member_id, resilience=80)
+    leader_team = (get_squad(leader_id) or {}).get("team_id")
+    if leader_team:
+        # Protagonist auto-attack can kill the test enemy before counter resolves.
+        update_protagonist_state(leader_team, "iggy", is_active=0)
 
     r = client.post(
         "/combat/start",

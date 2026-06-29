@@ -77,6 +77,9 @@ def sync_team_route(team_id, route):
             "UPDATE squads SET route = ? WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
             (route, clean_id),
         )
+    from models.protagonist import initialize_protagonist_for_team
+
+    initialize_protagonist_for_team(clean_id, route)
 
 
 def backfill_team_routes_from_members():

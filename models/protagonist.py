@@ -63,6 +63,69 @@ def get_team_story_stage(team_id):
     return resolve_story_stage(count, tasks)
 
 
+def initialize_protagonist_for_team(team_id, protagonist_key):
+    """Create protagonist row when team picks a route (idempotent)."""
+    clean_team = (team_id or "").strip().upper()
+    if not clean_team or protagonist_key not in ("iggy", "marah"):
+        return None
+    existing = get_protagonist_state(clean_team, protagonist_key, create=False)
+    if existing:
+        return existing
+    base = settings.default_protagonist.copy()
+    now = datetime.now().isoformat()
+    hp = int(base.get("hp", 100))
+    max_hp = int(base.get("hp", DEFAULT_MAX_HP))
+    sanity = int(base.get("sanity", 100))
+    conn = sqlite3.connect(_db())
+    try:
+        conn.execute(
+            """INSERT OR IGNORE INTO protagonist_states
+               (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
+               VALUES (?, ?, ?, ?, ?, 0, 1, ?)""",
+            (clean_team, protagonist_key, hp, max_hp, sanity, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_protagonist_state(clean_team, protagonist_key, create=False)
+
+
+def get_active_protagonists(team_id):
+    """Rows with is_active=1 (combat-eligible protagonists)."""
+    clean_team = (team_id or "").strip().upper()
+    if not clean_team:
+        return []
+    conn = sqlite3.connect(_db())
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """SELECT team_id, protagonist, hp, max_hp, sanity, trauma_count,
+                      is_active, near_death_until, last_updated
+               FROM protagonist_states
+               WHERE team_id = ? AND COALESCE(is_active, 1) = 1""",
+            (clean_team,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def apply_trauma(team_id, protagonist_key, amount=1):
+    state = get_protagonist_state(team_id, protagonist_key, create=False)
+    if not state:
+        return None
+    new_trauma = int(state.get("trauma_count") or 0) + int(amount)
+    update_protagonist_state(team_id, protagonist_key, trauma_count=new_trauma)
+    return new_trauma
+
+
+def check_ending_condition(team_id):
+    """Return 'bad_ending' if protagonist trauma exceeds limit, else 'normal_ending'."""
+    if has_trauma_bad_ending(team_id):
+        return "bad_ending"
+    return "normal_ending"
+
+
 def get_protagonist_state(team_id, protagonist_key, create=True):
     clean_team = (team_id or "").strip().upper()
     if not clean_team or protagonist_key not in ("iggy", "marah"):
@@ -73,7 +136,7 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
     try:
         row = conn.execute(
             """SELECT team_id, protagonist, hp, max_hp, sanity, trauma_count,
-                      near_death_until, last_updated
+                      is_active, near_death_until, last_updated
                FROM protagonist_states
                WHERE team_id = ? AND protagonist = ?""",
             (clean_team, protagonist_key),
@@ -92,8 +155,8 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
         sanity = int(base.get("sanity", 100))
         conn.execute(
             """INSERT INTO protagonist_states
-               (team_id, protagonist, hp, max_hp, sanity, trauma_count, last_updated)
-               VALUES (?, ?, ?, ?, ?, 0, ?)""",
+               (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
+               VALUES (?, ?, ?, ?, ?, 0, 1, ?)""",
             (clean_team, protagonist_key, hp, max_hp, sanity, now),
         )
         conn.commit()
@@ -104,6 +167,7 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
             "max_hp": max_hp,
             "sanity": sanity,
             "trauma_count": 0,
+            "is_active": 1,
             "near_death_until": None,
             "last_updated": now,
         }
@@ -112,7 +176,7 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
 
 
 def update_protagonist_state(team_id, protagonist_key, **kwargs):
-    allowed = {"hp", "max_hp", "sanity", "trauma_count", "near_death_until"}
+    allowed = {"hp", "max_hp", "sanity", "trauma_count", "is_active", "near_death_until"}
     updates, params = [], []
     for key, val in kwargs.items():
         if key not in allowed:
@@ -190,17 +254,25 @@ def resolve_combat_protagonist_keys(team_id, encounter, story_stage):
     if cfg.get("enabled") is False:
         return []
 
-    keys = []
     dual = story_stage >= FINAL_STAGE_THRESHOLD or cfg.get("dual_protagonists")
     if dual:
-        if cfg.get("iggy", True):
-            keys.append("iggy")
-        if cfg.get("marah", True):
-            keys.append("marah")
+        candidates = [k for k in ("iggy", "marah") if cfg.get(k, True)]
     elif route == "iggy" and cfg.get("iggy", True):
-        keys.append("iggy")
+        candidates = ["iggy"]
     elif route == "marah" and cfg.get("marah", True):
-        keys.append("marah")
+        candidates = ["marah"]
+    else:
+        return []
+
+    keys = []
+    for key in candidates:
+        state = get_protagonist_state(team_id, key, create=False)
+        if state and not int(state.get("is_active") or 0):
+            continue
+        if not state:
+            state = initialize_protagonist_for_team(team_id, key)
+        if state and int(state.get("is_active") or 1):
+            keys.append(key)
     return keys
 
 
@@ -305,7 +377,7 @@ def apply_damage_to_protagonist(team_id, protagonist_key, damage, participant=No
         updates["near_death_until"] = (
             datetime.now() + timedelta(minutes=settings.near_death_minutes)
         ).isoformat()
-        updates["trauma_count"] = int(state.get("trauma_count") or 0) + 1
+        updates["trauma_count"] = apply_trauma(team_id, protagonist_key, 1)
     return update_protagonist_state(team_id, protagonist_key, **updates)
 
 
