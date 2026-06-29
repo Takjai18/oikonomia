@@ -85,8 +85,8 @@ def api_version():
                 and "combatUiSnapshotKey" in template_text,
             "enemy_hp_sync_v6": "queueVictoryDuringSettlement" in template_text
                 and "X-Requested-With" in template_text,
-            "enemy_hp_sync_v7": "getEffectiveSettlementDelayMs" in template_text
-                and "syncHpOnlyFromPoll" in template_text,
+            "enemy_hp_sync_v7": "syncHpOnlyFromPoll" in template_text,
+            "combat_instant_settlement": "combat_instant_settlement" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

@@ -137,3 +137,15 @@
 | 2026-06-29 | `fd4e0e1` | Model bootstrap fallback（encounters_dir、default_protagonist） |
 | 2026-06-29 | — | Grok Phase 1 spec 補齊：apply_ending、trauma_summary、test_ending_flow、decisions_log |
 | 2026-06-30 | `66f70c6` | Combat UX Delay Phase 2（fixes 1+2+3）；`enemy_hp_sync_v7` |
+| 2026-06-30 | — | **取消**戰鬥動畫 delay 設計 → `combat_instant_settlement`（即時 HP、即時戰果 modal、零擲骰 pause、移除設定頁結算延遲） |
+
+## 2026-06-30 — 取消戰鬥動畫 Delay 設計
+
+**決策（Tak）**：整套 artificial delay（結算 modal 等待、HP tween、練習戰 fast path、設定頁「傷害結算延遲」）**全部移除**。
+
+**改為**：
+- `combat_instant_settlement`：回合結算後 HP 同「本回合戰果」modal **即時**
+- 擲骰 `pauseMs = 0`（仍保留短 roll 動畫，預覽即刻載入）
+- 敵血條移除 CSS `transition` 延遲
+
+**保留**：v6 race fix（`combatAwaitingSettlementAck`、`queueVictoryDuringSettlement`、`syncHpOnlyFromPoll`）。

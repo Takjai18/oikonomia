@@ -889,7 +889,7 @@
                                     <div class="hidden lg:block text-sm text-zinc-400">Enemy</div>
                                     <div class="flex items-center gap-x-2 mt-1.5">
                                         <div class="flex-1 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                            <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-500" style="width:100%"></div>
+                                            <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400" style="width:100%"></div>
                                         </div>
                                         <div class="font-mono text-xs lg:text-sm text-red-400 whitespace-nowrap">
                                             <span id="enemy-hp-current">0</span>/<span id="enemy-hp-max">0</span>
@@ -1235,66 +1235,15 @@
             }
         }
 
-        const COMBAT_SETTLEMENT_DELAY_MS = {
-            fast: 800,
-            normal: 1500,
-            slow: 2500,
-            very_slow: 3500,
-        };
-
         const DICE_ROLL_PRESETS = {
-            fast: { intervalMs: 45, maxRolls: 10, pauseMs: 600 },
-            normal: { intervalMs: 75, maxRolls: 14, pauseMs: 1150 },
-            slow: { intervalMs: 110, maxRolls: 18, pauseMs: 1700 },
+            fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
+            normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
+            slow: { intervalMs: 75, maxRolls: 10, pauseMs: 0 },
         };
-
-        function getSettlementModalDelayMs() {
-            const preset = getGameSettings().combatSettlementDelay || 'normal';
-            return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
-        }
-
-        const COMBAT_HP_ANIM_MS = { fast: 0, normal: 280, slow: 420, very_slow: 420 };
-
-        function isPracticeCombat(data) {
-            const id = data?.encounter_id
-                || data?.encounter?.encounter_id
-                || lastCombatStatus?.encounter_id
-                || '';
-            return String(id).startsWith('practice_')
-                || data?.encounter?.trigger_type === 'practice';
-        }
-
-        function getCombatUxPreset(data) {
-            if (isPracticeCombat(data)) return 'fast';
-            return getGameSettings().combatSettlementDelay || 'normal';
-        }
-
-        function getEffectiveSettlementDelayMs(data) {
-            const preset = getCombatUxPreset(data);
-            return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
-        }
-
-        function getEffectiveHpAnimMs(data, opts = {}) {
-            if (opts.animate === false) return 0;
-            if (Number.isFinite(opts.animMs)) return Math.max(0, opts.animMs);
-            if (isPracticeCombat(data)) return 0;
-            const preset = getGameSettings().combatSettlementDelay || 'normal';
-            return COMBAT_HP_ANIM_MS[preset] ?? COMBAT_HP_ANIM_MS.normal;
-        }
 
         function syncHpOnlyFromPoll(data) {
-            if (!data?.enemy || pendingSettlementHpPayload) return;
-            syncEnemyHpDisplay(applySettlementEnemyHp(data), { animate: false });
-        }
-
-        /** BUG-2026-001 Phase 2b: HP drop on settlement confirm — 零延遲觸發，短 tween 即時開始 */
-        function applyDeferredSettlementHpAnimation() {
-            const data = pendingSettlementHpPayload;
-            pendingSettlementHpPayload = null;
             if (!data?.enemy) return;
-            const enriched = applySettlementEnemyHp(data);
-            const animMs = isPracticeCombat(enriched) ? 220 : 280;
-            syncEnemyHpDisplay(enriched, { animate: true, animMs });
+            syncEnemyHpDisplay(applySettlementEnemyHp(data));
         }
 
         function getDiceRollConfig() {
@@ -1317,11 +1266,9 @@
 
             const speed = settings.typewriterSpeed || 'normal';
             const fontSize = settings.fontSize || 'medium';
-            const settlementDelay = settings.combatSettlementDelay || 'normal';
             const diceRollSpeed = settings.diceRollSpeed || 'normal';
             highlightSettingButton('speed', speed);
             highlightSettingButton('size', fontSize);
-            highlightSettingButton('settlement', settlementDelay);
             highlightSettingButton('dice', diceRollSpeed);
             applyFontSize(fontSize);
 
@@ -1339,7 +1286,6 @@
                     ?? false,
                 typewriterSpeed: getActiveSpeed(),
                 fontSize: getActiveFontSize(),
-                combatSettlementDelay: getActiveCombatSettlementDelay(),
                 diceRollSpeed: getActiveDiceRollSpeed(),
             };
 
@@ -1372,11 +1318,6 @@
             saveSettings();
         }
 
-        function setCombatSettlementDelay(preset) {
-            highlightSettingButton('settlement', preset);
-            saveSettings();
-        }
-
         function setDiceRollSpeed(preset) {
             highlightSettingButton('dice', preset);
             saveSettings();
@@ -1394,12 +1335,6 @@
             return getGameSettings().typewriterSpeed || 'normal';
         }
 
-        function getActiveCombatSettlementDelay() {
-            const activeBtn = document.querySelector('.setting-btn[data-settlement-delay].border-amber-500');
-            if (activeBtn) return activeBtn.dataset.settlementDelay;
-            return getGameSettings().combatSettlementDelay || 'normal';
-        }
-
         function getActiveDiceRollSpeed() {
             const activeBtn = document.querySelector('.setting-btn[data-dice-speed].border-amber-500');
             if (activeBtn) return activeBtn.dataset.diceSpeed;
@@ -1410,7 +1345,6 @@
             const selectorMap = {
                 speed: '.setting-btn[data-speed]',
                 size: '.setting-btn[data-size]',
-                settlement: '.setting-btn[data-settlement-delay]',
                 dice: '.setting-btn[data-dice-speed]',
             };
             const keyMap = {
@@ -1624,14 +1558,12 @@
         let settlementCombatId = null;
         let combatAwaitingSettlementAck = false;
         let settlementTimerPending = false;
-        let pendingSettlementHpPayload = null;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
         let pendingVictoryAfterSettlement = null;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
-        let enemyHpAnimFrame = null;
         let lastCombatUiSnapshotKey = '';
         let lastCombatStatusJson = '';
         const COMBAT_POLL_INTERVAL_NORMAL = 3000;
@@ -1778,38 +1710,6 @@
             return Number.isFinite(n) ? n : NaN;
         }
 
-        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420, formatFn = null, onComplete = null) {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            const render = (v) => (formatFn ? formatFn(v) : String(v));
-            const from = Number(fromVal);
-            const to = Number(toVal);
-            if (!Number.isFinite(from) || !Number.isFinite(to)) {
-                safeSetText(elementId, render(toVal));
-                if (onComplete) onComplete(toVal);
-                return;
-            }
-            if (from === to) {
-                el.textContent = render(to);
-                if (onComplete) onComplete(to);
-                return;
-            }
-            if (enemyHpAnimFrame) cancelAnimationFrame(enemyHpAnimFrame);
-            const start = performance.now();
-            const step = (now) => {
-                const t = Math.min(1, (now - start) / durationMs);
-                const val = Math.round(from + (to - from) * t);
-                el.textContent = render(val);
-                if (t < 1) {
-                    enemyHpAnimFrame = requestAnimationFrame(step);
-                } else {
-                    enemyHpAnimFrame = null;
-                    if (onComplete) onComplete(to);
-                }
-            };
-            requestAnimationFrame(step);
-        }
-
         function showCombatWaitingPanel(submitted, total) {
             const panel = document.getElementById('combat-waiting-panel');
             const countEl = document.getElementById('combat-waiting-count');
@@ -1903,7 +1803,7 @@
 
         function syncEnemyHpDisplay(data, options = {}) {
             if (options && typeof options === 'object' && options.hp != null
-                && options.enemyOverride === undefined && options.animate === undefined) {
+                && options.enemyOverride === undefined) {
                 options = { enemyOverride: options };
             }
             const enemyOverride = options.enemyOverride ?? null;
@@ -1912,7 +1812,6 @@
                 : data;
             let hp = resolveAuthoritativeEnemyHp(ctx);
             if (!Number.isFinite(hp)) return;
-            // Same combat only: stale poll must not inflate HP (never bleed across combats)
             const combatId = ctx?.combat_id || currentCombatId;
             const sameCombat = !combatId || combatId === currentCombatId;
             if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
@@ -1924,31 +1823,17 @@
                 : resolveAuthoritativeEnemyHp(lastCombatStatus);
             const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
             const fmt = (n) => Number(n).toLocaleString('zh-Hant');
-            const animMs = getEffectiveHpAnimMs(ctx, options);
             safeSetText('enemy-hp-max', fmt(maxHp));
+            safeSetText('enemy-hp-current', fmt(hp));
             const bar = document.getElementById('enemy-hp-bar');
             const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
-            const commitHpDisplay = (displayHp) => {
-                combatEnemyHpSeen = displayHp;
-                lastAnimatedEnemyHp = displayHp;
-                safeSetText('enemy-stat-hp', fmt(displayHp));
-            };
-            if (Number.isFinite(prevHp) && prevHp !== hp && animMs > 0) {
-                if (bar) {
-                    bar.style.width = `${targetPct}%`;
-                    if (hp < prevHp) flashEnemyHpBar();
-                }
-                animateCombatNumber('enemy-hp-current', prevHp, hp, animMs, fmt, (finalHp) => {
-                    commitHpDisplay(finalHp);
-                });
-            } else {
-                safeSetText('enemy-hp-current', fmt(hp));
-                if (bar) {
-                    bar.style.width = `${targetPct}%`;
-                    if (Number.isFinite(prevHp) && hp < prevHp) flashEnemyHpBar();
-                }
-                commitHpDisplay(hp);
+            if (bar) {
+                bar.style.width = `${targetPct}%`;
+                if (Number.isFinite(prevHp) && hp < prevHp) flashEnemyHpBar();
             }
+            combatEnemyHpSeen = hp;
+            lastAnimatedEnemyHp = hp;
+            safeSetText('enemy-stat-hp', fmt(hp));
             const roundDmgEl = document.getElementById('enemy-round-damage');
             if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
                 const delta = prevHp - hp;
@@ -2048,7 +1933,6 @@
         function resetCombatSettlementState() {
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
-            pendingSettlementHpPayload = null;
             lastShownSettlementPhase = 0;
             lastCombatStatusJson = '';
             settlementCombatId = null;
@@ -2149,7 +2033,6 @@
         }
 
         function continueCombatAfterRound() {
-            applyDeferredSettlementHpAnimation();
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             clearTimeout(showFullRoundSettlement._modalTimer);
@@ -2170,12 +2053,12 @@
             loadCombatStatus(false);
         }
 
+        // combat_instant_settlement: HP + 戰果 modal 即時，無 artificial delay
         function showFullRoundSettlement(data) {
             data = applySettlementEnemyHp(data);
-            pendingSettlementHpPayload = data;
             const phase = Number(data?.current_phase) || 0;
-            settlementTimerPending = true;
-            combatAwaitingSettlementAck = false;
+            settlementTimerPending = false;
+            combatAwaitingSettlementAck = true;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
             }
@@ -2183,19 +2066,15 @@
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
             hideCombatModal();
-            const practiceUx = isPracticeCombat(data);
-            const dmgAnimDelay = practiceUx ? 0 : 80;
-            processCombatDamageAnimations(data, dmgAnimDelay);
-            updateCombatUI(data, {
-                damageDelay: practiceUx ? 0 : 120,
-                skipActionEnable: true,
-                deferEnemyHp: true,
-            });
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = null;
+            processCombatDamageAnimations(data, 0);
+            updateCombatUI(data, { damageDelay: 0, skipActionEnable: true });
+            syncEnemyHpDisplay(data);
             lockCombatActionsForSettlement();
             const settlement = getRoundSettlement(data);
             const teamDealt = Number(settlement.team_damage_dealt) || 0;
             const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
-            const hasDamageLogs = (data.log_entries || []).some(e => e.type === 'damage');
             if (teamDealt > 0) {
                 showDamageNumber('enemy-panel', teamDealt, false);
             }
@@ -2212,17 +2091,7 @@
                     setVisible(roundDmgEl, false);
                 }
             }
-            const modalDelay = 0;
-            if (window.COMBAT_PERF_DEBUG) {
-                performance.mark('combat_settlement_modal_scheduled');
-                console.debug('[combat] settlement modal immediate; HP deferred until confirm');
-            }
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = setTimeout(() => {
-                settlementTimerPending = false;
-                combatAwaitingSettlementAck = true;
-                showRoundSettlementModal(data);
-            }, modalDelay);
+            showRoundSettlementModal(data);
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
@@ -2319,7 +2188,7 @@
                 combatWaitingForRound = false;
                 hideCombatWaitingPanel();
                 updateCombatUI(settled, { damageDelay: 0 });
-                syncEnemyHpDisplay(settled, { animate: false });
+                syncEnemyHpDisplay(settled);
                 startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 return;
             }
@@ -2416,13 +2285,15 @@
             const myName = currentSquad?.display_name || data.my_state?.display_name || '';
             const hasDamageLine = newEntries.some(e => e.type === 'damage');
 
-            newEntries.forEach((entry, index) => {
+            newEntries.forEach((entry) => {
                 const hit = parseLogDamageEvent(entry, myName);
                 if (!hit) return;
                 if (hit.total && hasDamageLine) return;
-                setTimeout(() => {
+                if (delayMs > 0) {
+                    setTimeout(() => showDamageNumber(hit.target, hit.amount, hit.crit), delayMs);
+                } else {
                     showDamageNumber(hit.target, hit.amount, hit.crit);
-                }, delayMs + index * 180);
+                }
             });
         }
 
@@ -2630,10 +2501,14 @@
                     el.disabled = !canAct;
                 });
 
-                actionModalPauseTimer = setTimeout(() => {
-                    actionModalPauseTimer = null;
+                if (diceCfg.pauseMs > 0) {
+                    actionModalPauseTimer = setTimeout(() => {
+                        actionModalPauseTimer = null;
+                        fetchAndShowCombatPreview();
+                    }, diceCfg.pauseMs);
+                } else {
                     fetchAndShowCombatPreview();
-                }, diceCfg.pauseMs);
+                }
             }, diceCfg.intervalMs);
         }
 
@@ -3529,9 +3404,7 @@
             const me = buildCombatMyState(uiData);
             const enemy = uiData.enemy || {};
 
-            updateEnemyCombatStats(enemy, uiData.enemy_description || '', {
-                deferHp: !!options.deferEnemyHp,
-            });
+            updateEnemyCombatStats(enemy, uiData.enemy_description || '');
             updateCombatPlayerAvatar(me);
             safeSetText('combat-player-name', me.display_name || '你');
             safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
@@ -3817,7 +3690,7 @@
                 return;
             }
 
-            updateCombatUI({ ...data, active: true }, { damageDelay: 350 });
+            updateCombatUI({ ...data, active: true }, { damageDelay: 0 });
         }
 
         async function rescueNearDeath() {
@@ -4720,13 +4593,11 @@
             lastAnimatedEnemyHp = enemyHp != null ? enemyHp : null;
         }
 
-        function updateEnemyCombatStats(enemy, description, hpOpts = {}) {
+        function updateEnemyCombatStats(enemy, description) {
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            if (!hpOpts.deferHp) {
-                syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy, animate: false });
-            }
+            syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy });
             const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
             const hpHintEl = document.getElementById('enemy-hp-hint');
             if (hpHintEl) {
@@ -7137,25 +7008,6 @@
                 </div>
 
                 <div id="settings-panel-combat" class="hidden space-y-4" role="tabpanel">
-                    <div>
-                        <div class="font-medium text-sm mb-1">傷害結算延遲</div>
-                        <p class="text-[11px] text-zinc-500 mb-2 sm:hidden">攻擊後幾耐彈出戰果</p>
-                        <p class="text-xs text-zinc-400 mb-2 hidden sm:block">攻擊後，浮字顯示幾耐先彈出「本回合戰果」</p>
-                        <div class="grid grid-cols-4 gap-1">
-                            <button type="button" onclick="setCombatSettlementDelay('fast')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="fast">快<span class="block text-[10px] text-zinc-500">0.8s</span></button>
-                            <button type="button" onclick="setCombatSettlementDelay('normal')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="normal">正常<span class="block text-[10px] text-zinc-500">1.5s</span></button>
-                            <button type="button" onclick="setCombatSettlementDelay('slow')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="slow">慢<span class="block text-[10px] text-zinc-500">2.5s</span></button>
-                            <button type="button" onclick="setCombatSettlementDelay('very_slow')"
-                                    class="setting-btn py-2 rounded-xl text-xs border border-zinc-600 hover:bg-zinc-800 transition-colors"
-                                    data-settlement-delay="very_slow">很慢<span class="block text-[10px] text-zinc-500">3.5s</span></button>
-                        </div>
-                    </div>
                     <div>
                         <div class="font-medium text-sm mb-2">擲骰速度</div>
                         <div class="flex gap-1.5">
