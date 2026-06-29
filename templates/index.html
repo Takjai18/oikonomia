@@ -1036,6 +1036,12 @@
                         <p class="text-[10px] text-zinc-500 mt-3">全隊提交後將顯示完整傷害結算</p>
                     </div>
 
+                    <div id="combat-resolving-panel" class="hidden mt-4 cartoon-box p-5 text-center border border-sky-600/30 bg-sky-950/20">
+                        <div class="inline-block w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-3" aria-hidden="true"></div>
+                        <div class="text-sm text-sky-300 mb-1">回合結算中…</div>
+                        <p class="text-[10px] text-zinc-500">請稍候，敵方 HP 將於結算完成後更新</p>
+                    </div>
+
                     <p id="combat-submit-hint" class="text-[10px] lg:text-xs text-zinc-500 text-center mt-3 lg:mt-4"></p>
 
                     <div class="mt-3 lg:mt-6 bg-zinc-950 border border-zinc-800 rounded-2xl lg:rounded-3xl p-3 lg:p-4 max-h-48 overflow-y-auto text-xs lg:text-sm text-zinc-300" id="combat-log"></div>
@@ -1467,6 +1473,12 @@
         let lastShownSettlementPhase = 0;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
+        let combatPhaseLocked = false;
+        let combatPhaseLockedRound = 0;
+        let enemyHpAnimFrame = null;
+        const COMBAT_POLL_INTERVAL_NORMAL = 3000;
+        const COMBAT_POLL_INTERVAL_WAITING = 4000;
+        const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
 
         /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
         function effectiveCombatStatus(data) {
@@ -1508,9 +1520,68 @@
             }
         }
 
-        function startCombatPolling(intervalMs = 8000) {
+        function getCombatPollInterval(data) {
+            if (!data) return COMBAT_POLL_INTERVAL_NORMAL;
+            if (data.status === 'resolving') return COMBAT_POLL_INTERVAL_RESOLVING;
+            if (data.waiting_for_teammates || combatWaitingForRound) return COMBAT_POLL_INTERVAL_WAITING;
+            return COMBAT_POLL_INTERVAL_NORMAL;
+        }
+
+        function startCombatPolling(intervalMs = COMBAT_POLL_INTERVAL_NORMAL) {
             stopCombatPolling();
             combatPollTimer = setInterval(() => loadCombatStatus(false), intervalMs);
+        }
+
+        function showCombatResolvingPanel(show) {
+            setVisible(document.getElementById('combat-resolving-panel'), !!show);
+        }
+
+        function setCombatPhaseLock(locked, data) {
+            combatPhaseLocked = !!locked;
+            if (locked && data) {
+                combatPhaseLockedRound = data.current_phase || combatPhaseLockedRound || 0;
+            }
+            if (!locked) {
+                combatPhaseLockedRound = 0;
+            }
+            showCombatResolvingPanel(locked);
+            if (locked) {
+                hideCombatWaitingPanel();
+                hideCombatModal();
+                document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
+                    el.disabled = true;
+                });
+                const panel = document.getElementById('player-panel');
+                if (panel) panel.style.opacity = '0.45';
+            }
+        }
+
+        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            const from = Number(fromVal);
+            const to = Number(toVal);
+            if (!Number.isFinite(from) || !Number.isFinite(to)) {
+                safeSetText(elementId, toVal);
+                return;
+            }
+            if (from === to) {
+                el.textContent = String(to);
+                return;
+            }
+            if (enemyHpAnimFrame) cancelAnimationFrame(enemyHpAnimFrame);
+            const start = performance.now();
+            const step = (now) => {
+                const t = Math.min(1, (now - start) / durationMs);
+                const val = Math.round(from + (to - from) * t);
+                el.textContent = String(val);
+                if (t < 1) {
+                    enemyHpAnimFrame = requestAnimationFrame(step);
+                } else {
+                    enemyHpAnimFrame = null;
+                }
+            };
+            requestAnimationFrame(step);
         }
 
         function showCombatWaitingPanel(submitted, total) {
@@ -1612,11 +1683,15 @@
             showRoundSettlementModal(data);
             processCombatDamageAnimations(data, 200);
             updateCombatUI(data, { damageDelay: 350 });
-            startCombatPolling(3000);
+            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
+            setCombatPhaseLock(false);
+            if (data.enemy?.hp != null) {
+                resetCombatEnemyHpTracking(data.enemy.hp);
+            }
             const phase = data.current_phase || 0;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
@@ -1625,7 +1700,7 @@
                 combatWaitingForRound = false;
                 hideCombatWaitingPanel();
                 updateCombatUI(normalizeCombatStatusData(data), { damageDelay: 0 });
-                startCombatPolling(3000);
+                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
             }
         }
 
@@ -2726,8 +2801,18 @@
                 return;
             }
 
+            const isResolving = uiData.status === 'resolving';
+            if (isResolving) {
+                setCombatPhaseLock(true, uiData);
+            } else if (combatPhaseLocked) {
+                const phase = uiData.current_phase || 0;
+                if (uiData.status === 'player_phase' && phase > combatPhaseLockedRound) {
+                    setCombatPhaseLock(false);
+                }
+            }
+
             const combatLive = uiData.active === true
-                || ['player_phase', 'enemy_phase'].includes(uiData.status);
+                || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status);
             if (!combatLive) {
                 if (uiData.outcome) showCombatResult(uiData);
                 return;
@@ -2746,6 +2831,7 @@
             const phaseLabels = {
                 player_phase: { text: 'Player Phase', color: 'text-emerald-400' },
                 enemy_phase: { text: 'Enemy Phase', color: 'text-red-400' },
+                resolving: { text: '結算中', color: 'text-sky-400' },
             };
             const pl = phaseLabels[uiData.status] || { text: uiData.status, color: 'text-zinc-400' };
             safeSetText('phase-status-label', pl.text);
@@ -2829,10 +2915,14 @@
 
             const hintEl = document.getElementById('combat-submit-hint');
             const actionContainer = document.getElementById('player-panel');
-            const canAct = uiData.status === 'player_phase' && !inNearDeath && !me.submitted;
-            if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.55';
+            const canAct = uiData.status === 'player_phase'
+                && !combatPhaseLocked
+                && !isResolving
+                && !inNearDeath
+                && !me.submitted;
+            if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.45';
             document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                el.disabled = !canAct || actionModalRolling;
+                el.disabled = !canAct || actionModalRolling || combatPhaseLocked || isResolving;
             });
             if (canAct && phaseNum !== lastDicePhase) {
                 lastDicePhase = phaseNum;
@@ -2843,6 +2933,7 @@
             if (hintEl) {
                 if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
+                else if (isResolving || combatPhaseLocked) hintEl.textContent = '回合結算中，請稍候…';
                 else if (uiData.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
                 else if (actionModalRolling) hintEl.textContent = '系統擲骰中，請稍候…';
                 else if (isCombatModalOpen()) hintEl.textContent = '請於彈窗內確認並結束本回合';
@@ -2881,10 +2972,14 @@
                     return;
                 }
 
-                if (data.waiting_for_teammates || data.status === 'waiting_for_teammates') {
+                if (data.status === 'resolving') {
+                    setCombatPhaseLock(true, data);
+                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
+                } else if (data.waiting_for_teammates || data.status === 'waiting_for_teammates') {
                     combatWaitingForRound = true;
+                    showCombatResolvingPanel(false);
                     showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
-                    startCombatPolling(4000);
+                    startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
                 }
 
                 if (data.active) {
@@ -2898,7 +2993,7 @@
                     applyCombatUi();
                 }
                 if (data.active || data.in_precheck) {
-                    startCombatPolling(combatWaitingForRound ? 4000 : 8000);
+                    startCombatPolling(getCombatPollInterval(data));
                 } else {
                     stopCombatPolling();
                 }
@@ -2908,6 +3003,10 @@
         }
 
         async function submitAction() {
+            if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
+                showToast('回合結算中，請稍候', 'error');
+                return;
+            }
             if (selectedAction === 'use_item' && !selectedItemId) {
                 showToast('請先選擇要使用的物品', 'error');
                 return;
@@ -2946,6 +3045,10 @@
             }
             if (!data.success && data.error) {
                 if (confirmBtn) confirmBtn.disabled = false;
+                if (data.error.includes('結算中')) {
+                    setCombatPhaseLock(true, lastCombatStatus || { current_phase: combatSubmittedPhase });
+                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
+                }
                 showToast(data.error, 'error');
                 return;
             }
@@ -2978,7 +3081,7 @@
                 showSinglePlayerResultModal(data.single_preview);
                 showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
                 updateCombatUI({ ...data, active: true }, { initLogsOnly: true });
-                startCombatPolling(4000);
+                startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
                 return;
             }
 
@@ -3898,8 +4001,11 @@
             if (quoteEl) quoteEl.textContent = description || '';
             let hp = enemy.hp ?? 0;
             const maxHp = enemy.max_hp || enemy.hp || 1;
+            const rawStatus = lastCombatStatus?.status;
             const status = effectiveCombatStatus(lastCombatStatus);
-            if (
+            if (rawStatus === 'resolving' && combatEnemyHpSeen !== null) {
+                hp = combatEnemyHpSeen;
+            } else if (
                 currentCombatId
                 && combatEnemyHpSeen !== null
                 && hp > combatEnemyHpSeen
@@ -3912,7 +4018,9 @@
                     ? hp
                     : Math.min(combatEnemyHpSeen, hp);
             }
-            safeSetText('enemy-hp-current', hp);
+            const prevDisplayed = parseInt(document.getElementById('enemy-hp-current')?.textContent, 10);
+            const fromHp = Number.isFinite(prevDisplayed) ? prevDisplayed : (combatEnemyHpSeen ?? hp);
+            animateCombatNumber('enemy-hp-current', fromHp, hp);
             safeSetText('enemy-hp-max', maxHp);
             safeSetText('enemy-stat-hp', hp);
             safeSetText('enemy-stat-sanity', enemy.sanity);

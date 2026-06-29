@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from models.settings import settings
 from models.item import get_item_by_qr_code_value, grant_item_to_squad
 from models.squad import get_squad, get_team_members, update_squad
+from utils.db_tx import immediate_transaction
 from utils.helpers import normalize_team_id
 from utils.validators import parse_status_effects, serialize_status_effects
 
@@ -43,12 +44,18 @@ def apply_status_debuff(squad_id, debuff_key):
 def add_insight_fragments(team_id, amount):
     if not team_id or amount <= 0:
         return
-    for member in get_team_members(team_id):
-        squad = get_squad(member["squad_id"])
-        if squad:
-            update_squad(
-                member["squad_id"],
-                insight_fragments=int(squad.get("insight_fragments") or 0) + amount,
+    with immediate_transaction() as conn:
+        for member in get_team_members(team_id):
+            row = conn.execute(
+                "SELECT insight_fragments FROM squads WHERE squad_id = ?",
+                (member["squad_id"],),
+            ).fetchone()
+            if not row:
+                continue
+            new_val = int(row[0] or 0) + int(amount)
+            conn.execute(
+                "UPDATE squads SET insight_fragments = ? WHERE squad_id = ?",
+                (new_val, member["squad_id"]),
             )
 
 
@@ -228,7 +235,6 @@ def apply_trauma_on_failure(squad_id, stat, amount):
 def apply_encounter_success(team_id, encounter, started_by):
     success = encounter.get("success", {})
     insight = int(success.get("insight_fragment", 0))
-    add_insight_fragments(team_id, insight)
     unlocks = []
     if success.get("next_story_unlock"):
         unlocks.append(success["next_story_unlock"])
@@ -237,6 +243,30 @@ def apply_encounter_success(team_id, encounter, started_by):
         "items": [],
         "unlocks": list(unlocks),
     }
+    with immediate_transaction() as conn:
+        c = conn.cursor()
+        if insight > 0:
+            for member in get_team_members(team_id):
+                row = c.execute(
+                    "SELECT insight_fragments FROM squads WHERE squad_id = ?",
+                    (member["squad_id"],),
+                ).fetchone()
+                if not row:
+                    continue
+                new_val = int(row[0] or 0) + insight
+                c.execute(
+                    "UPDATE squads SET insight_fragments = ? WHERE squad_id = ?",
+                    (new_val, member["squad_id"]),
+                )
+        _record_encounter_completion_conn(
+            c,
+            team_id,
+            encounter["encounter_id"],
+            "success",
+            unlocks=unlocks,
+            narrative=success.get("narrative"),
+            rewards=rewards,
+        )
     for reward in success.get("rewards", []):
         if reward.get("type") == "item" and random.random() <= float(reward.get("chance", 1)):
             item = get_item_by_qr_code_value(reward.get("item_id"))
@@ -247,52 +277,112 @@ def apply_encounter_success(team_id, encounter, started_by):
                         "name": item.get("name"),
                         "item_id": item.get("id"),
                     })
-    record_encounter_completion(
-        team_id,
-        encounter["encounter_id"],
-        "success",
-        unlocks=unlocks,
-        narrative=success.get("narrative"),
-        rewards=rewards,
-    )
 
 
-def apply_failure_side_effects(squad_id, failure):
-    """失敗附加效果：trauma、debuff、神智傷害、強制瀕死"""
+def _apply_failure_side_effects_conn(c, squad_id, failure):
+    """失敗附加效果（在既有 transaction 內執行）。"""
     if not squad_id or not failure:
         return
+    row = c.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
+    if not row:
+        return
+    squad = dict(row)
+
     trauma = failure.get("trauma", {})
     stat = trauma.get("stat", "resilience")
     amount = int(trauma.get("amount", 0))
     if amount:
-        apply_trauma_on_failure(squad_id, stat, amount)
+        trauma_key = {
+            "resilience": "trauma_resilience",
+            "power": "trauma_power",
+            "intellect": "trauma_intellect",
+        }.get(stat)
+        if trauma_key:
+            new_trauma = int(squad.get(trauma_key) or 0) + amount
+            c.execute(
+                f"UPDATE squads SET {trauma_key} = ? WHERE squad_id = ?",
+                (new_trauma, squad_id),
+            )
+            squad[trauma_key] = new_trauma
+
     if failure.get("debuff"):
-        apply_status_debuff(squad_id, failure["debuff"])
+        debuff_key = failure["debuff"]
+        effects = parse_status_effects(squad.get("status_effects"))
+        effects[debuff_key] = {"applied_at": datetime.now().isoformat()}
+        c.execute(
+            "UPDATE squads SET status_effects = ? WHERE squad_id = ?",
+            (serialize_status_effects(effects), squad_id),
+        )
+        if debuff_key == "resilience_-8_until_healed":
+            trauma_key = "trauma_resilience"
+            new_trauma = int(squad.get(trauma_key) or 0) + 8
+            c.execute(
+                "UPDATE squads SET trauma_resilience = ? WHERE squad_id = ?",
+                (new_trauma, squad_id),
+            )
+
     sanity_dmg = int(failure.get("sanity_damage") or 0)
     if sanity_dmg:
-        squad = get_squad(squad_id)
-        if squad:
-            new_sanity = max(0, int(squad.get("sanity") or 0) - sanity_dmg)
-            update_squad(squad_id, sanity=new_sanity)
-    if failure.get("force_near_death"):
-        update_squad(
-            squad_id,
-            hp=0,
-            near_death_until=(datetime.now() + timedelta(minutes=settings.near_death_minutes)).isoformat(),
+        new_sanity = max(0, int(squad.get("sanity") or 0) - sanity_dmg)
+        c.execute(
+            "UPDATE squads SET sanity = ? WHERE squad_id = ?",
+            (new_sanity, squad_id),
         )
+
+    if failure.get("force_near_death"):
+        c.execute(
+            "UPDATE squads SET hp = 0, near_death_until = ? WHERE squad_id = ?",
+            (
+                (datetime.now() + timedelta(minutes=settings.near_death_minutes)).isoformat(),
+                squad_id,
+            ),
+        )
+
+
+def apply_failure_side_effects(squad_id, failure):
+    """失敗附加效果：trauma、debuff、神智傷害、強制瀕死"""
+    with immediate_transaction() as conn:
+        _apply_failure_side_effects_conn(conn.cursor(), squad_id, failure)
+
+
+def _record_encounter_completion_conn(
+    c, team_id, encounter_id, outcome, unlocks=None, narrative=None, rewards=None,
+):
+    clean_team_id = normalize_team_id(team_id)
+    rewards_payload = dict(rewards or {})
+    if unlocks and not rewards_payload.get("unlocks"):
+        rewards_payload["unlocks"] = list(unlocks)
+    c.execute(
+        """INSERT OR REPLACE INTO encounter_completions
+           (team_id, encounter_id, outcome, unlocks, narrative, rewards, completed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            clean_team_id,
+            encounter_id,
+            outcome,
+            json.dumps(unlocks or rewards_payload.get("unlocks") or [], ensure_ascii=False),
+            narrative,
+            _serialize_rewards(rewards_payload),
+            datetime.now().isoformat(),
+        ),
+    )
 
 
 def apply_encounter_failure(team_id, encounter):
     failure = encounter.get("failure", {})
-    for member in get_team_members(team_id):
-        apply_failure_side_effects(member["squad_id"], failure)
-    record_encounter_completion(
-        team_id,
-        encounter["encounter_id"],
-        "failure",
-        narrative=failure.get("narrative"),
-        rewards=_failure_rewards_from_config(failure),
-    )
+    rewards_meta = _failure_rewards_from_config(failure)
+    with immediate_transaction() as conn:
+        c = conn.cursor()
+        for member in get_team_members(team_id):
+            _apply_failure_side_effects_conn(c, member["squad_id"], failure)
+        _record_encounter_completion_conn(
+            c,
+            team_id,
+            encounter["encounter_id"],
+            "failure",
+            narrative=failure.get("narrative"),
+            rewards=rewards_meta,
+        )
 
 
 def apply_encounter_success_solo(squad_id, encounter):

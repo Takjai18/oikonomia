@@ -551,3 +551,21 @@ python3 -m py_compile models/combat.py routes/combat.py
 已修項對照 §9–§12，唔好重複報。
 High 項要寫清 exploit 或 bug 重現步驟，同具體修復建議（交 Grok Build）。
 ```
+
+---
+
+## 15. Gemini 第五輪 Review 對照表（前端同步 + 結算事務）
+
+> 範圍：`templates/index.html` §13.4、`models/encounter_outcomes.py`、routes 防禦性檢查。
+
+| Gemini 項目 | 嚴重度 | 現況 | 備註 |
+|-------------|--------|------|------|
+| `resolving` 期間 UI 誤判敵方 HP | 🟡 Medium | ✅ **已修** | `combatPhaseLocked` + resolving panel；凍結 HP 顯示；`round_resolved` 時用 server `enemy.hp` |
+| 結算中仍可提交行動 | 🟡 Medium | ✅ **已修** | 禁用按鈕；`submitAction` 擋 resolving；409 觸發 1s polling |
+| Polling 太慢 | 🟢 Low | ✅ **已修** | `resolving` → 1s；等待隊友 4s；一般 3s |
+| 敵方 HP 視覺突兀 | 🟢 Low | ✅ **已修** | `animateCombatNumber()` 過渡；嚴格跟 server 值（防 stale 回升） |
+| `apply_encounter_success/failure` 事務 | 🟡 Medium | ✅ **已修** | insight + completion + 全隊 failure 副作用包 `immediate_transaction` |
+| `get_combat_participants` None | 🟢 Low | ✅ **已防護** | routes 用 `or []`；model 本身回 `[]` |
+| Double-resolve 鎖 | — | ✅ **已確認** | §14 維持；`payload.resolving=true` 輔助前端 |
+
+**Reviewer 結論（Grok Build）**：戰鬥模組在 `main` 上可視為 **Production Ready**；部署後請實機驗證 resolving spinner 與敵 HP 動畫。

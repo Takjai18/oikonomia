@@ -213,6 +213,8 @@ def combat_status_api():
     )
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     payload["in_precheck"] = combat.get("status") == "precheck"
+    if combat.get("status") == "resolving":
+        payload["resolving"] = True
 
     if round_just_resolved:
         payload["status"] = "round_resolved"
@@ -220,8 +222,8 @@ def combat_status_api():
         payload["full_preview"] = _build_full_preview_from_status(payload)
     elif combat.get("status") == "player_phase":
         if participants is None:
-            participants = get_combat_participants(combat)
-        active_ids = get_active_combat_member_ids(participants)
+            participants = get_combat_participants(combat) or []
+        active_ids = get_active_combat_member_ids(participants or [])
         phase_actions = combat.get("phase_actions") or {}
         if session["squad_id"] in phase_actions and len(phase_actions) < len(active_ids):
             payload["waiting_for_teammates"] = True
@@ -331,7 +333,7 @@ def combat_submit_action_api():
     else:
         acting_id = session["squad_id"]
 
-    participants = get_combat_participants(combat)
+    participants = get_combat_participants(combat) or []
     actor_state = next(
         (p for p in participants if p["squad_id"] == acting_id),
         squad if acting_id == session["squad_id"] else None,
@@ -368,7 +370,7 @@ def combat_submit_action_api():
     combat["phase_actions"] = phase_actions
     save_combat(combat_id, phase_actions=phase_actions)
 
-    participants = get_combat_participants(combat)
+    participants = get_combat_participants(combat) or []
     required_ids = get_phase_submit_required_ids(combat, participants)
     winner = None
     if all_phase_actions_submitted(combat, participants) or combat_phase_expired(combat, settings):
