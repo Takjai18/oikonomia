@@ -30,6 +30,21 @@
 
 ---
 
+## 2026-06-29 — 戰鬥敵 HP／結算（BUG-2026-001 reopened）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | Henry 打練習速戰殘影等，敵 HP 唔跌／冇完整結算 modal（與早前 Saliba 相同類） |
+| **已做** | 方案1 `3c89f62`：`build_victory_outcome_response` + 前端先 settlement 再勝利 |
+| **PA** | `curl /api/version` 已為 `3c89f62`，`enemy_hp_sync_v2: true` |
+| **結果** | **實機仍失敗** — case 改 **reopened** |
+| **下一輪懷疑** | `loadCombatStatus` poll 見 `outcome` 直接 `showCombatResult`，跳過 settlement（見 `bug_log` REPORT §10） |
+| **詳細** | **[bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md](./bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md)** |
+
+**勿重複建議**：只改 `build_victory_outcome_payload` 而唔統一 poll 勝利路徑，已證明不足。
+
+---
+
 ## 設定與環境變數速查（易出問題）
 
 | 設定 | 位置 | 常見問題 | 正確做法 |

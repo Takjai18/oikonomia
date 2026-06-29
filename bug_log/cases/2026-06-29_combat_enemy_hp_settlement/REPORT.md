@@ -2,10 +2,11 @@
 
 | 欄位 | 值 |
 |------|-----|
-| **狀態** | resolved（待 Henry 實機確認） |
+| **狀態** | **reopened** — 方案1（`3c89f62`）已上 PA，Henry 仍回報問題 |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
-| **影響** | 單人 + 主角、低 HP 練習戰、一輪擊殺 |
-| **修復 commit** | `3c89f62`（方案1）；前期 `4bbb885`、`e2e6dc7` |
+| **影響** | 單人 + 主角、低 HP 練習戰、一輪擊殺；可能亦影響多回合 + polling |
+| **修復 commit** | `3c89f62`（方案1，**實機未通過**）；前期 `4bbb885`、`e2e6dc7` |
+| **PA 實測 version** | `3c89f62`（`curl /api/version` 2026-06-29，`enemy_hp_sync_v2: true`） |
 | **決策記錄** | `decisions_log.md` § 2026-06-29 Combat Killing Blow |
 
 ---
@@ -115,12 +116,55 @@ flowchart TD
 
 ## 7. 實機 checklist（Henry）
 
-- [ ] PA deploy `3c89f62` + Web Reload + 硬刷新
-- [ ] `curl /api/version` → `version: 3c89f62`
-- [ ] 【練習】速戰情緒殘影：第一擊贏
+- [x] PA deploy `3c89f62` + Web Reload（`curl` 已確認 version）
+- [x] `curl /api/version` → `version: 3c89f62`，`enemy_hp_sync_v2: true`
+- [ ] 【練習】速戰情緒殘影：第一擊贏 — **用戶仍見 HP／結算異常**
 - [ ] 見 HP 跌到 0 + 「本回合戰果」modal
 - [ ] 勝利 narrative + reflection
 - [ ] F5 後無 zombie combat
+
+---
+
+## 10. 方案1 部署後仍失敗（2026-06-29 更新）
+
+**用戶回報**：更新後 Henry 打速戰殘影等練習戰，**問題仍然存在**。
+
+**已排除**：
+
+| 假設 | 證據 |
+|------|------|
+| PA 未 deploy 新 code | `curl https://takjai.pythonanywhere.com/api/version` → `3c89f62` |
+| CI 未跑 | `pre_deploy_checks.sh` 154 項全綠 |
+| killing blow 無 settlement（API） | 本地 `test_solo_killing_blow_practice_quick` 通過 |
+
+**結論**：`3c89f62` 修咗 **submit_action 直接勝利** 一條路，但**不足以覆蓋實機全部路徑**。主根因可能係 **多條前端入口**，唔止 killing blow payload。
+
+### 10.1 新一輪首要懷疑（待驗證）
+
+| 優先 | 懷疑路徑 | 說明 |
+|------|----------|------|
+| P0 | **`loadCombatStatus` poll 見 `outcome` 即 `showCombatResult`** | `templates/index.html` ~L3484：`if (data.outcome) { showCombatResult(data); return; }` — **完全跳過** `finishCombatVictoryFromPayload` 同 settlement modal。戶外 Wi‑Fi 慢時，poll 可能比 submit 回應先返，或結算後 poll 搶先顯示勝利。 |
+| P0 | **多回合（非 killing blow）HP 同步** | `practice_iggy_03_boundary`（140 HP）每回合 -4，血條幾乎唔郁；`round_resolved` 路徑 poll 仍可能覆寫 `syncEnemyHpDisplay`。 |
+| P1 | **手機瀏覽器快取舊 JS** | `/api/version` 新但 `index.html` 被 aggressive cache（需 hard refresh／無痕驗證） |
+| P1 | **雙人隊 `waiting_for_teammates`** | Henry 若二人隊，第一擊只 preview／等待，體感似「冇結算」 |
+| P2 | **擲骰 preview 與提交時序** | `combatPreviewPending` 期間 poll／modal 互斥仍可能有漏 case |
+| P2 | **`shouldShowRoundSettlement` phase 條件** | `phase < 1` return false；邊界 case 可能唔出 modal |
+
+### 10.2 建議下一輪修復方向（未實作）
+
+1. **統一勝利入口**：`loadCombatStatus` 見 `outcome` 時改 call `finishCombatVictoryFromPayload(data)`，唔好直接 `showCombatResult`。
+2. **poll 期間唔用 stale `enemy.hp`**：`combatAwaitingSettlementAck` 時拒絕 `updateCombatUI` 改敵 HP。
+3. **實機採證**：請 Henry 提供 encounter 名、單人/雙人、有冇見 settlement modal、Safari 開發者遠端 console（如有）。
+4. **新增測試**：模擬「poll 先返 outcome」順序嘅前端 integration 或 API contract test。
+
+### 10.3 時間線
+
+| 時間 | 事件 |
+|------|------|
+| 2026-06-29 AM | Saliba / Henry 初次回報；多輪 frontend + backend 修復 |
+| 2026-06-29 PM | Architect 確認方案1；Grok Build 實作 `3c89f62` |
+| 2026-06-29 PM | PA `3c89f62` deploy；curl 確認 |
+| 2026-06-29 PM | **用戶：問題仍然存在** → case **reopened** |
 
 ---
 
@@ -149,4 +193,4 @@ flowchart TD
 
 ---
 
-*最後更新：2026-06-29 · Grok Build*
+*最後更新：2026-06-29（reopened）· Grok Build · 下一輪優先：poll `outcome` 捷徑*

@@ -23,7 +23,7 @@
 - 活躍 case 見 **`bug_log/INDEX.md`**
 - 與 `UPDATE_LOG.md`（短）、`decisions_log.md`（決策）分工
 
-**現有 case**：BUG-2026-001 戰鬥敵 HP／killing blow settlement → `bug_log/cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md`（修復 `3c89f62`）
+**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **reopened**（PA `3c89f62` 已 deploy，Henry 仍失敗；見 REPORT §10 poll `outcome` 捷徑）
 
 ---
 
