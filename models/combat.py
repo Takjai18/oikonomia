@@ -882,13 +882,15 @@ def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)
     squad = get_squad(combat["squad_id"])
     team_id = squad.get("team_id") if squad else None
-    save_combat(
-        combat_id,
-        status="ended",
-        winner=winner,
-        ended_at=datetime.now().isoformat(),
-        logs=combat.get("logs"),
-    )
+    end_fields = {
+        "status": "ended",
+        "winner": winner,
+        "ended_at": datetime.now().isoformat(),
+        "logs": combat.get("logs"),
+    }
+    if winner == "squad":
+        end_fields["enemy_hp"] = 0
+    save_combat(combat_id, **end_fields)
     starter_id = combat.get("squad_id")
     if team_id:
         clear_team_combat_id(team_id)
