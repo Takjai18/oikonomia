@@ -39,6 +39,26 @@
 
 ---
 
+## 2026-06-29 — Combat Killing Blow HP/Settlement Bug 修復（方案1）
+
+**問題**：低 HP 練習敵人（`practice_iggy_01_quick`，48 HP）+ 主角自動 Zoo 極易一輪秒殺。`submit_action` 喺 `winner == "squad"` 時直接 return `build_victory_outcome_payload()`（極簡，無 `round_settlement`、`enemy.hp`、`log_entries`），前端 `submitAction()` 見 `data.outcome` 即跳 `finishCombatVictoryFromPayload()`，跳過 `showFullRoundSettlement()` + `syncEnemyHpDisplay()`。DB 正確但 UI 唔顯示 HP 下降同完整結算 modal。
+
+**決策**：採用**方案1（後端為主）**
+
+- killing blow 用 `build_victory_outcome_response()`：合併 `round_settlement` + `enemy.hp=0` + `log_entries` + victory narrative
+- 前端 `finishCombatVictoryFromPayload`：若有 settlement，先顯示結算 modal，再顯示勝利
+- 測試：`test_solo_killing_blow_practice_quick` + killing blow assert settlement
+
+**Trade-off**：victory payload 稍大；前端改動輕微；polling 穩定。
+
+**影響範圍**：`routes/combat.py`、`models/combat.py`、`templates/index.html`、`scripts/test_combat_flow.py`
+
+**驗證**：`bash scripts/pre_deploy_checks.sh` 全綠；Henry 實機 `practice_iggy_01_quick` checklist
+
+**狀態**：Grok Build 實作中 → Gemini review → PA deploy
+
+---
+
 ## 變更紀錄
 
 | 日期 | Commit | 摘要 |

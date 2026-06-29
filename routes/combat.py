@@ -33,6 +33,7 @@ from models.combat import (
     _build_round_resolved_response,
     _combat_outcome_json,
     _attach_round_settlement,
+    build_victory_outcome_response,
     combat_outcome_if_finished,
 )
 from models.encounter import (
@@ -183,8 +184,10 @@ def combat_status_api():
         squad = get_squad(session["squad_id"])
         team_id = squad.get("team_id") if squad else None
         if winner == "squad":
-            outcome = _combat_outcome_json(winner, encounter, team_id=team_id)
-            return jsonify({**outcome, "active": False})
+            payload = build_victory_outcome_response(
+                combat, encounter, session["squad_id"], team_id=team_id,
+            )
+            return jsonify(payload)
         if winner == "enemy":
             return jsonify({
                 "success": True,
@@ -211,14 +214,20 @@ def combat_status_api():
             prev_log_len = len(combat.get("logs") or [])
             combat, winner = resolve_player_phase(combat["id"])
             actor = get_squad(session["squad_id"])
-            outcome = _combat_outcome_json(
-                winner, encounter, team_id=actor.get("team_id") if actor else None,
-            )
-            if outcome:
-                return jsonify({**outcome, "active": False})
+            actor_team_id = actor.get("team_id") if actor else None
+            if winner == "squad":
+                combat = get_combat(combat["id"]) or combat
+                return jsonify(build_victory_outcome_response(
+                    combat, encounter, session["squad_id"], team_id=actor_team_id,
+                ))
+            if winner == "enemy":
+                return jsonify({**_combat_outcome_json("enemy", encounter), "active": False})
             combat = get_combat(combat["id"]) or combat
             finished = combat_outcome_if_finished(
-                combat, encounter, team_id=actor.get("team_id") if actor else None,
+                combat,
+                encounter,
+                team_id=actor_team_id,
+                squad_id=session["squad_id"],
             )
             if finished:
                 return jsonify({**finished, "active": False})
@@ -397,12 +406,23 @@ def combat_submit_action_api():
     if all_phase_actions_submitted(combat, participants) or combat_phase_expired(combat, settings):
         combat, winner = resolve_player_phase(combat_id)
 
-    outcome = _combat_outcome_json(winner, encounter, team_id=squad.get("team_id"))
-    if outcome:
-        return jsonify(outcome)
+    if winner == "squad":
+        combat = get_combat(combat_id) or combat
+        payload = build_victory_outcome_response(
+            combat, encounter, session["squad_id"], team_id=squad.get("team_id"),
+        )
+        payload["dice_result"] = dice_result
+        return jsonify(payload)
+    if winner == "enemy":
+        return jsonify(_combat_outcome_json("enemy", encounter))
 
     combat = get_combat(combat_id)
-    finished = combat_outcome_if_finished(combat, encounter, team_id=squad.get("team_id"))
+    finished = combat_outcome_if_finished(
+        combat,
+        encounter,
+        team_id=squad.get("team_id"),
+        squad_id=session["squad_id"],
+    )
     if finished:
         return jsonify(finished)
 

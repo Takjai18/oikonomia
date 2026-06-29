@@ -1417,16 +1417,47 @@ def _combat_outcome_json(winner, encounter, team_id=None):
     return None
 
 
-def combat_outcome_if_finished(combat, encounter, team_id=None):
+def build_victory_outcome_response(combat, encounter, squad_id, team_id=None):
+    """
+    Victory JSON that includes the final round settlement (logs, enemy.hp, round_settlement).
+    Used on killing-blow so the client can sync HP and show the settlement modal before victory.
+    """
+    if not combat or not squad_id:
+        return build_victory_outcome_payload(encounter, team_id=team_id)
+    round_payload = _build_round_resolved_response(combat, encounter, squad_id)
+    meta = build_victory_outcome_payload(encounter, team_id=team_id)
+    payload = {**round_payload, **meta}
+    payload["outcome"] = "victory"
+    payload["winner"] = "squad"
+    payload["status"] = "ended"
+    payload["active"] = False
+    payload["round_resolved"] = True
+    enemy = dict(payload.get("enemy") or {})
+    enemy["hp"] = 0
+    payload["enemy"] = enemy
+    settlement = dict(payload.get("round_settlement") or {})
+    settlement["enemy_hp_after"] = 0
+    payload["round_settlement"] = settlement
+    payload["round_enemy_damage"] = settlement.get("team_damage_dealt") or payload.get("round_enemy_damage") or 0
+    return payload
+
+
+def combat_outcome_if_finished(combat, encounter, team_id=None, squad_id=None):
     """Return victory/defeat JSON when combat already ended or enemy HP is 0."""
     if not combat:
         return None
+    squad_id = squad_id or combat.get("squad_id")
     if combat.get("status") == "ended":
-        return _combat_outcome_json(combat.get("winner"), encounter, team_id=team_id)
+        winner = combat.get("winner")
+        if winner == "squad" and squad_id:
+            return build_victory_outcome_response(combat, encounter, squad_id, team_id=team_id)
+        return _combat_outcome_json(winner, encounter, team_id=team_id)
     if int(combat.get("enemy_hp") or 0) <= 0:
         combat_id = combat.get("id")
         if combat_id:
-            _end_combat(combat_id, "squad", encounter)
+            combat = _end_combat(combat_id, "squad", encounter)
+        if squad_id:
+            return build_victory_outcome_response(combat, encounter, squad_id, team_id=team_id)
         return _combat_outcome_json("squad", encounter, team_id=team_id)
     return None
 

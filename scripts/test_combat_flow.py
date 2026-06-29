@@ -478,6 +478,13 @@ def test_solo_killing_blow_returns_victory(client, client2, team_id):
             content_type="application/json",
         ).get_json() or {}
     ok("killing blow: victory outcome", data.get("outcome") == "victory", str(data)[:240])
+    settlement = data.get("round_settlement") or {}
+    ok("killing blow: round_settlement on victory", bool(settlement), str(settlement)[:200])
+    ok(
+        "killing blow: enemy_hp_after zero",
+        settlement.get("enemy_hp_after") == 0,
+        str(settlement.get("enemy_hp_after")),
+    )
     ok(
         "killing blow: combat ended in db",
         (get_combat(combat_id) or {}).get("status") == "ended",
@@ -496,6 +503,70 @@ def test_solo_killing_blow_returns_victory(client, client2, team_id):
     teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
     clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", is_active=1)
+
+
+def test_solo_killing_blow_practice_quick():
+    """Solo team + protagonist on practice_iggy_01_quick: one-round win includes settlement."""
+    from models.protagonist import update_protagonist_state
+    from models.squad import get_team_members, update_squad
+
+    enc_id = "practice_iggy_01_quick"
+    client = oikonomia.app.test_client()
+    login(client, "QuickKillSolo")
+    r = client.post("/team/create", data={"team_name": "QuickKillSolo"})
+    team_id = (r.get_json() or {}).get("team_id")
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    update_protagonist_state(team_id, "iggy", is_active=1)
+    for member in get_team_members(team_id):
+        update_squad(member["squad_id"], power=12, intellect=12)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("quick kill: start", start.get("success") and combat_id, str(start)[:120])
+    start_hp = combat_enemy_hp(get_combat(combat_id), default=-1)
+    ok("quick kill: enemy hp ~48", 40 <= start_hp <= 55, str(start_hp))
+
+    with patch("routes.combat.roll_combat_dice", return_value=1), patch(
+        "models.combat.roll_combat_dice", return_value=1
+    ):
+        data = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        ).get_json() or {}
+
+    ok("quick kill: victory outcome", data.get("outcome") == "victory", str(data)[:200])
+    settlement = data.get("round_settlement") or {}
+    ok("quick kill: round_settlement present", bool(settlement), str(settlement)[:200])
+    ok(
+        "quick kill: team_damage_dealt > 0",
+        int(settlement.get("team_damage_dealt") or 0) > 0,
+        str(settlement),
+    )
+    ok("quick kill: enemy_hp_after is 0", settlement.get("enemy_hp_after") == 0, str(settlement))
+    payload_hp = (data.get("enemy") or {}).get("hp")
+    ok(
+        "quick kill: payload enemy hp 0",
+        payload_hp is not None and int(payload_hp) == 0,
+        str(data.get("enemy")),
+    )
+    ok("quick kill: log_entries present", len(data.get("log_entries") or []) > 0, "empty logs")
+    ok("quick kill: db enemy_hp 0", combat_enemy_hp(get_combat(combat_id), default=-1) == 0, "db hp")
+    ok(
+        "quick kill: combat ended",
+        (get_combat(combat_id) or {}).get("status") == "ended",
+        str((get_combat(combat_id) or {}).get("status")),
+    )
+
+    teardown_test_combat(team_id, enc_id)
 
 
 def fight_until_victory(client, client2, combat_id):
@@ -818,6 +889,7 @@ def main():
     test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id)
     test_protagonist_player_control(client, client2, team_id, route="iggy")
     test_solo_killing_blow_returns_victory(client, client2, team_id)
+    test_solo_killing_blow_practice_quick()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")

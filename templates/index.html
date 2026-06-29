@@ -1583,6 +1583,7 @@
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
+        let pendingVictoryAfterSettlement = null;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let enemyHpAnimFrame = null;
@@ -1995,6 +1996,12 @@
             hideCombatModal();
             setVisible(modal, true);
             modal.classList.add('flex');
+            const continueBtn = modal?.querySelector('.px-5.py-4 button');
+            if (continueBtn) {
+                continueBtn.textContent = pendingVictoryAfterSettlement
+                    ? '確認戰果，查看勝利'
+                    : '繼續下一回合';
+            }
         }
 
         function hideRoundSettlementModal() {
@@ -2014,6 +2021,12 @@
             combatWaitingForRound = false;
             resetCombatDiceUi();
             selectedDice = null;
+            if (pendingVictoryAfterSettlement) {
+                const victoryPayload = pendingVictoryAfterSettlement;
+                pendingVictoryAfterSettlement = null;
+                void finalizeCombatVictoryFromPayload(victoryPayload);
+                return;
+            }
             const phase = lastCombatStatus?.current_phase || 0;
             if (phase) lastDicePhase = phase;
             loadCombatStatus(false);
@@ -2069,8 +2082,32 @@
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
+        function victoryPayloadHasSettlement(data) {
+            const settlement = getRoundSettlement(data);
+            if (!settlement) return false;
+            if (Number(settlement.team_damage_dealt) > 0) return true;
+            return (data.log_entries || []).some(e => e?.type === 'damage');
+        }
+
         async function finishCombatVictoryFromPayload(data) {
+            if (victoryPayloadHasSettlement(data)) {
+                pendingVictoryAfterSettlement = data;
+                const enriched = applySettlementEnemyHp({
+                    ...data,
+                    enemy: { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
+                    round_resolved: true,
+                    active: true,
+                });
+                syncEnemyHpDisplay(enriched);
+                showFullRoundSettlement(enriched);
+                return;
+            }
+            await finalizeCombatVictoryFromPayload(data);
+        }
+
+        async function finalizeCombatVictoryFromPayload(data) {
             resetCombatSettlementState();
+            pendingVictoryAfterSettlement = null;
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideRoundSettlementModal();
