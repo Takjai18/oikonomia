@@ -520,8 +520,19 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 **通過標準**：HP 即時 · modal <1.5s · 無嚴重 race · 「打完有即時反應」
 
-**狀態**：⏳ 待 Henry 專項回報（§16 主 checklist 已 pass）
+**狀態**：✅ Henry checklist **OK**（2026-06-30）
 
 ---
 
-*最後更新：2026-06-30 · §17 instant 專項 · Phase 1.5 Step 1 spec*
+## 18. Settlement modal 殘留 + v8 patch（2026-06-30）
+
+| 症狀 | Encounter | 修復 |
+|------|-----------|------|
+| 攻擊後完全無 modal | `practice_iggy_01_quick` | `handleCombatRoundResolved`：`mustShow` 時強制 `showFullRoundSettlement` |
+| 勝利後重複傷害結算 | killing blow 路徑 | `settlementDisplayKey` + `victorySettlementModalCombatId` 防重複；`combat_flow_v8` |
+
+**502 備註**：PA `curl /api/version` 200 + `98441cd`；若 502 多為 Web tab 未 Reload。
+
+---
+
+*最後更新：2026-06-30 · §18 combat_flow_v8*

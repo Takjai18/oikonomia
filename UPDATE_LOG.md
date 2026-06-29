@@ -46,6 +46,16 @@
 
 ---
 
+## 2026-06-30 — combat_flow_v8 settlement guard（instant 殘留）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 速戰殘影有時無 modal；勝利後偶發重複傷害結算 |
+| **修復** | `settlementDisplayKey`；`mustShow` 強制 modal；`combat_instant_settlement` marker 字串 |
+| **Henry instant 專項** | checklist OK；v8 針對殘留 edge case |
+
+---
+
 ## 2026-06-30 — BUG-2026-001 resolved（Henry 實機通過 · `12e1edd`）
 
 | 項目 | 內容 |

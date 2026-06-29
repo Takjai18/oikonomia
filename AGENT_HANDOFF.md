@@ -168,7 +168,7 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 | 結算 breakdown | ✅ Player／主角／隊友 輸出＋承受＋敵人總計 |
 | 勝利後 | ✅ 唔再彈重複傷害結算 |
 
-### Henry instant settlement 專項（線 A · ⏳ 待驗）
+### Henry instant settlement 專項（線 A · ✅ checklist OK · v8 deploy 驗殘留）
 
 主 checklist（§16）已 pass；Architect 另開 **instant 專項** — 詳見 `bug_log/.../REPORT.md` §17。
 

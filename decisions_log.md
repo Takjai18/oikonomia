@@ -192,23 +192,21 @@
 
 ---
 
-## 2026-06-30 — Henry instant settlement 專項 checklist（線 A · 待驗）
+## 2026-06-30 — Henry instant settlement 專項 checklist（線 A · **通過**）
 
-**決策（Architect + Tak 鎖定）**：BUG-2026-001 主 checklist 已 resolved；另開 **instant settlement 專項**驗證（`combat_instant_settlement` 行為 + `enemy_hp_sync_v7`），戶外實用向。
+**決策（Architect + Tak 鎖定）**：instant settlement 專項驗證完成。
 
-**Encounter**：`practice_iggy_01_quick`（一輪殺）→ `practice_iggy_03_boundary`（多回合 140 HP）
+**Encounter**：`practice_iggy_01_quick` → `practice_iggy_03_boundary`
 
-**通過標準**：
-- HP 數字即時更新（無明顯 tween delay）
-- 傷害結算 modal **< 1.5s**
-- 無嚴重 race（poll 搶先勝利、flicker）
-- 青年體感「打完有即時反應」
+**Henry 結果（2026-06-30）**：checklist **OK** — HP 即時、modal <1.5s、體感「打完有反應」
 
-**Henry 回報欄位**：encounter、單/雙人、HP 即時性、modal 秒數、flicker、整體體感（好/一般/lag）
+**殘留（Tak 回報 · 需 v8 patch）**：
+- `practice_iggy_01_quick`（速戰情緒殘影）：有時攻擊後**完全無**傷害結算 modal
+- 勝利確認後**偶發**再彈一次傷害結算
 
-**詳細步驟表**：`bug_log/.../REPORT.md` §17 · `AGENT_HANDOFF.md` Henry instant 一節
+**修復**：`combat_flow_v8` — `settlementDisplayKey` 防重複；`handleCombatRoundResolved` `mustShow` 強制出 modal；`combat_instant_settlement` marker 字串
 
-**通過後**：更新 `decisions_log` + `UPDATE_LOG`；維持 monitoring
+**詳細**：`bug_log/.../REPORT.md` §17–§18
 
 ---
 
@@ -229,4 +227,68 @@
 
 **完整 spec**：`ARCHITECTURE_ROADMAP.md` § Phase 1.5
 
-**實作（2026-06-30）**：`services/combat_engine.py` + `models/combat.py` 委派；`scripts/test_combat_engine.py`；`pre_deploy_checks` 全綠。行為不變。
+**實作（2026-06-30）**：`services/combat_engine.py` + `models/combat.py` 委派；`scripts/test_combat_engine.py`；`pre_deploy_checks` 全綠。行為不變。**Spec 已確認鎖定**（Architect + Tak）。
+
+---
+
+## 2026-06-30 — 確認 Combat + Trauma + Ending 細粒度架構重構
+
+**決策（Grok Architect + Tak）**：為降低 context window 負擔，將 `models/combat.py`（~1750 行）與 trauma/ending 牽扯邏輯拆入 `services/` 層。
+
+### Context 管理原則
+
+| 原則 | 內容 |
+|------|------|
+| SSOT | Google Drive `oikonomia/`；chat 唔 paste 整檔 |
+| 每輪 scope | 1–2 個 module |
+| 大 refactor 前 | 更新 `ARCHITECTURE_ROADMAP.md` + `decisions_log.md` |
+| 複雜域 | Combat / Protagonist / Trauma / Ending 繼續拆細 |
+
+### 目標模組（Phase 1.5）
+
+| 模組 | 職責 | 狀態 |
+|------|------|------|
+| `services/combat_engine.py` | 純計算（傷害、骰子、defend、round calc） | ✅ Step 1 完成（`98441cd`） |
+| `services/trauma_service.py` | `apply_trauma`、band、narrative fragment | ⏳ Step 2 spec 待 Architect |
+| `services/protagonist_combat.py` | Iggy/Marah control、AI 行動 | ⏳ Step 3 |
+| `services/combat_flow.py` | round 編排 + side effects | ⏳ Step 4 |
+| `services/ending.py` | judge + apply + preview（維持） | ✅ 已有 |
+
+### 建議資料結構（Step 2+）
+
+```python
+@dataclass
+class TraumaEvent:
+    timestamp: datetime
+    delta: int
+    reason: str
+    narrative_fragment: str | None
+    band: str  # low | medium | high
+
+@dataclass
+class ProtagonistCombatState:
+    protagonist_id: str
+    is_participating: bool
+    control_level: float
+    last_action: str | None
+    trauma_impact_this_round: int
+```
+
+### 系統流程（目標）
+
+```
+submit_action → combat_flow.resolve_round()
+  → combat_engine.calculate_round_outcome()
+  → trauma_service.apply_trauma_if_needed()
+  → protagonist_combat.update_control_status()
+  → ending_orchestrator.judge_ending()（如需要）
+  → round_settlement payload（instant UI）
+```
+
+### 營會前約束
+
+- P0 = 穩定性（BUG-2026-001 monitoring + v8 settlement patch）
+- 唔開新功能；Phase 1.5 Step 2+ 營會後
+- `combat_instant_settlement` 只影響 UI；trauma/ending 後端時機不變
+
+**記錄者**：Grok Architect · Tak 確認 · Grok Build 實作 Step 1

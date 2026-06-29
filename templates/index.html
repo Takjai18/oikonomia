@@ -1574,6 +1574,8 @@
         let combatWaitingForRound = false;
         let combatSubmittedPhase = 0;
         let lastShownSettlementPhase = 0;
+        let lastSettlementDisplayKey = '';
+        let victorySettlementModalCombatId = null;
         let settlementCombatId = null;
         let combatAwaitingSettlementAck = false;
         let settlementTimerPending = false;
@@ -2060,6 +2062,13 @@
                 };
         }
 
+        function settlementDisplayKey(data) {
+            const cid = data?.combat_id || currentCombatId || '';
+            const phase = Number(data?.current_phase) || 0;
+            const victory = !!(data?.outcome || pendingVictoryAfterSettlement);
+            return `${cid}:p${phase}:v${victory ? 1 : 0}`;
+        }
+
         function shouldShowRoundSettlement(data) {
             if (combatAwaitingSettlementAck || settlementTimerPending) return false;
             const phase = Number(data?.current_phase) || 0;
@@ -2077,6 +2086,8 @@
             pendingSettlementHpPayload = null;
             pendingVictoryAfterSettlement = null;
             lastShownSettlementPhase = 0;
+            lastSettlementDisplayKey = '';
+            victorySettlementModalCombatId = null;
             lastCombatStatusJson = '';
             settlementCombatId = null;
             clearTimeout(showFullRoundSettlement._modalTimer);
@@ -2087,6 +2098,7 @@
             combatFinalizingVictory = false;
             victoryFinalizeInProgress = false;
             victorySettlementAcknowledgedCombatId = null;
+            victorySettlementModalCombatId = null;
         }
 
         function resetCombatSessionState() {
@@ -2179,16 +2191,21 @@
             loadCombatStatus(false);
         }
 
+        // combat_instant_settlement: 零人工 delay；HP + 傷害結算 modal 即時
         // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
+        // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
             const isVictorySettlement = !!pendingVictoryAfterSettlement
                 || !!data?.outcome
                 || shouldFinishCombatVictory(data);
+            const displayKey = settlementDisplayKey(data);
             if (combatFinalizingVictory || victoryFinalizeInProgress) return;
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) return;
+            if (isVictorySettlement && victorySettlementModalCombatId === combatId) return;
+            if (lastSettlementDisplayKey === displayKey) return;
             if (combatAwaitingSettlementAck) {
                 return;
             }
@@ -2211,6 +2228,10 @@
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
             lockCombatActionsForSettlement();
+            lastSettlementDisplayKey = displayKey;
+            if (isVictorySettlement && combatId) {
+                victorySettlementModalCombatId = combatId;
+            }
             showRoundSettlementModal(data);
             updateCombatUI(data, {
                 damageDelay: 0,
@@ -2274,7 +2295,9 @@
 
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) {
-                await finalizeCombatVictoryFromPayload(data);
+                if (!combatAwaitingSettlementAck && !victoryFinalizeInProgress) {
+                    await finalizeCombatVictoryFromPayload(data);
+                }
                 return;
             }
             if (combatFinalizingVictory) return;
@@ -2291,8 +2314,12 @@
             const hasSettlementUi = victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome);
 
             if (hasSettlementUi) {
+                if (combatAwaitingSettlementAck && pendingVictoryAfterSettlement) return;
+                if (victorySettlementModalCombatId === combatId) return;
                 if (victorySettlementAlreadyShown(combatId, phase)) {
-                    pendingVictoryAfterSettlement = data;
+                    if (!combatAwaitingSettlementAck) {
+                        pendingVictoryAfterSettlement = data;
+                    }
                     return;
                 }
                 pendingVictoryAfterSettlement = data;
@@ -2385,20 +2412,15 @@
             const hasDamage = Number(settlement.team_damage_dealt) > 0
                 || (settled.log_entries || []).some(e => e?.type === 'damage');
             const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
-            if (!shouldShowRoundSettlement(settled)) {
-                combatWaitingForRound = false;
-                hideCombatWaitingPanel();
-                if (!mustShow) {
-                    updateCombatUI(settled, { damageDelay: 0 });
-                    syncEnemyHpDisplay(settled);
-                    startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-                } else if (settled.status === 'player_phase') {
-                    updateCombatUI(settled, { damageDelay: 0, forceRefresh: true });
-                    startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-                }
+            if (mustShow || shouldShowRoundSettlement(settled)) {
+                showFullRoundSettlement(settled);
                 return;
             }
-            showFullRoundSettlement(settled);
+            combatWaitingForRound = false;
+            hideCombatWaitingPanel();
+            updateCombatUI(settled, { damageDelay: 0 });
+            syncEnemyHpDisplay(settled);
+            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
         function formatTimerDisplay(totalSeconds) {
@@ -3384,6 +3406,8 @@
             if (uiData.combat_id && uiData.combat_id !== settlementCombatId) {
                 settlementCombatId = uiData.combat_id;
                 lastShownSettlementPhase = 0;
+                lastSettlementDisplayKey = '';
+                victorySettlementModalCombatId = null;
                 lastCombatUiSnapshotKey = '';
                 lastCombatStatusJson = '';
                 combatAwaitingSettlementAck = false;
