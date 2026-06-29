@@ -364,3 +364,26 @@ Bug 描述：<用戶描述>
 | Grok（方向） | `README.md` § AI 開發分工 |
 | Grok Build（實作） | `AGENT_HANDOFF.md` |
 | Gemini（你） | 本文 `GEMINI_REVIEW.md` |
+
+---
+
+## 12. Gemini 第三輪 Review 對照表（2026-06-29 基礎架構）
+
+> 範圍：`app.py`、`wsgi.py`、`test_combat.py`（Gemini 健康度 **8.0/10**）。  
+> 修復 commit：見 `git log --oneline -1`（Grok Build 落地）。
+
+| Gemini 項目 | 嚴重度 | 現況 | 備註 |
+|-------------|--------|------|------|
+| 多 Worker 啟動競爭（`init_db` / `migrate_upload_files`） | 🔴 High | ✅ **已修** | Production worker 跳過 auto-bootstrap；`deploy/pa-update.sh` 部署前單次 `bootstrap_app_data()`（fcntl 鎖） |
+| `migrate_db()` `OperationalError` 被吞 | 🟡 Medium | ✅ **已修** | `_add_column_if_missing()`；已檢查欄位則直接 `ALTER`，fail fast |
+| `wsgi.py` 預設 `GM_PIN=gm2026` | 🟡 Medium | ✅ **已修** | 移除 `setdefault`；`app.py` production 啟動檢查 `GM_PIN`（同 `SECRET_KEY`） |
+| `app.py` God file | 🟢 Low | ℹ️ **技術債** | 可之後抽 `database.py` / `migrations.py` |
+| `test_combat.py` 從 `app` import | 🟢 Low | ✅ **已修** | 改為 `from models.combat import ...` |
+
+**第三輪 Top 3 — 現時狀態**：
+
+1. 多 Worker DB migration 競爭 → ✅ 部署腳本單次 bootstrap + worker 跳過  
+2. `migrate_db` exception masking → ✅ 已移除多餘 try-except  
+3. 預設 GM PIN → ✅ production 必須 env 注入  
+
+**下一步（Gemini 建議）**：進入「心臟地帶」— `models/combat.py`、`routes/combat.py`、`templates/index.html` 戰鬥 UI 全棧 review。

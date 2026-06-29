@@ -29,6 +29,8 @@ app.secret_key = os.environ.get("SECRET_KEY") or (
 )
 if _is_production_env() and not app.secret_key:
     raise RuntimeError("SECRET_KEY environment variable is required in production")
+if _is_production_env() and not os.environ.get("GM_PIN"):
+    raise RuntimeError("GM_PIN environment variable is required in production")
 app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") == "production",
     SESSION_COOKIE_SAMESITE="Lax",
@@ -107,7 +109,31 @@ def migrate_upload_files():
             moved += 1
     return moved
 
-migrate_upload_files()
+
+def should_auto_bootstrap_db():
+    """Production workers skip DB/file migration; deploy script runs bootstrap once."""
+    if os.environ.get("OIKONOMIA_SKIP_DB_BOOTSTRAP", "").lower() in ("1", "true", "yes"):
+        return False
+    if _is_production_env():
+        return False
+    return True
+
+
+def bootstrap_app_data():
+    """Legacy upload migration + DB schema (file-locked). Deploy script calls this in production."""
+    import fcntl
+
+    lock_path = os.path.join(DATA_DIR, ".db_bootstrap.lock")
+    with open(lock_path, "a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            moved = migrate_upload_files()
+            if moved:
+                print(f"[oikonomia] migrated {moved} upload file(s) to {UPLOAD_FOLDER}", flush=True)
+            init_db()
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
 
 # ==================== Utils Layer Imports ====================
 from utils.uploads import save_task_submission_photo
@@ -523,6 +549,11 @@ def init_db():
     conn.close()
     migrate_db()
 
+def _add_column_if_missing(cursor, table, column, typedef, existing_cols):
+    if column not in existing_cols:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {typedef}")
+
+
 def migrate_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -539,37 +570,12 @@ def migrate_db():
         "is_team_leader": "INTEGER DEFAULT 0",
     }
     for col, typedef in squad_additions.items():
-        if col not in cols:
-            try:
-                c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
-            except sqlite3.OperationalError:
-                pass
-    if "display_name" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN display_name TEXT")
-        except sqlite3.OperationalError:
-            pass
-    # === 新增 PIN 欄位 ===
-    if "pin" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN pin TEXT")
-        except sqlite3.OperationalError:
-            pass
-    if "avatar" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN avatar TEXT")
-        except sqlite3.OperationalError:
-            pass
-    if "insight_fragments" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN insight_fragments INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass
-    if "status_effects" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN status_effects TEXT DEFAULT '{}'")
-        except sqlite3.OperationalError:
-            pass
+        _add_column_if_missing(c, "squads", col, typedef, cols)
+    _add_column_if_missing(c, "squads", "display_name", "TEXT", cols)
+    _add_column_if_missing(c, "squads", "pin", "TEXT", cols)
+    _add_column_if_missing(c, "squads", "avatar", "TEXT", cols)
+    _add_column_if_missing(c, "squads", "insight_fragments", "INTEGER DEFAULT 0", cols)
+    _add_column_if_missing(c, "squads", "status_effects", "TEXT DEFAULT '{}'", cols)
     squad_trauma_cols = {
         "trauma_resilience": "INTEGER DEFAULT 0",
         "trauma_power": "INTEGER DEFAULT 0",
@@ -578,20 +584,13 @@ def migrate_db():
         "current_combat_id": "INTEGER",
     }
     for col, typedef in squad_trauma_cols.items():
-        if col not in cols:
-            try:
-                c.execute(f"ALTER TABLE squads ADD COLUMN {col} {typedef}")
-            except sqlite3.OperationalError:
-                pass
+        _add_column_if_missing(c, "squads", col, typedef, cols)
     if "max_hp" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN max_hp INTEGER DEFAULT 100")
-            c.execute(
-                "UPDATE squads SET max_hp = MAX(COALESCE(hp, 100), 100) "
-                "WHERE max_hp IS NULL OR max_hp < 100"
-            )
-        except sqlite3.OperationalError:
-            pass
+        c.execute("ALTER TABLE squads ADD COLUMN max_hp INTEGER DEFAULT 100")
+        c.execute(
+            "UPDATE squads SET max_hp = MAX(COALESCE(hp, 100), 100) "
+            "WHERE max_hp IS NULL OR max_hp < 100"
+        )
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='protagonist_states'")
     if not c.fetchone():
         c.execute('''CREATE TABLE protagonist_states (
@@ -609,24 +608,17 @@ def migrate_db():
     else:
         c.execute("PRAGMA table_info(protagonist_states)")
         ps_cols = {row[1] for row in c.fetchall()}
-        if "is_active" not in ps_cols:
-            try:
-                c.execute(
-                    "ALTER TABLE protagonist_states ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"
-                )
-            except sqlite3.OperationalError:
-                pass
+        _add_column_if_missing(
+            c, "protagonist_states", "is_active", "INTEGER NOT NULL DEFAULT 1", ps_cols
+        )
     if "stats_allocated" not in cols:
-        try:
-            c.execute("ALTER TABLE squads ADD COLUMN stats_allocated INTEGER DEFAULT 0")
-            c.execute(
-                "UPDATE squads SET stats_allocated = 1 "
-                "WHERE COALESCE(stats_allocated, 0) = 0 "
-                "AND (COALESCE(power, 100) != 10 OR COALESCE(intellect, 100) != 10 "
-                "OR COALESCE(resilience, 100) != 10 OR pin IS NOT NULL)"
-            )
-        except sqlite3.OperationalError:
-            pass
+        c.execute("ALTER TABLE squads ADD COLUMN stats_allocated INTEGER DEFAULT 0")
+        c.execute(
+            "UPDATE squads SET stats_allocated = 1 "
+            "WHERE COALESCE(stats_allocated, 0) = 0 "
+            "AND (COALESCE(power, 100) != 10 OR COALESCE(intellect, 100) != 10 "
+            "OR COALESCE(resilience, 100) != 10 OR pin IS NOT NULL)"
+        )
     c.execute(
         "UPDATE squads SET protagonist_stats = ? WHERE protagonist_stats IS NULL",
         (json.dumps(DEFAULT_PROTAGONIST),),
@@ -686,11 +678,7 @@ def migrate_db():
         "ending_locked_at": "TEXT",
     }
     for col, typedef in team_additions.items():
-        if col not in team_cols:
-            try:
-                c.execute(f"ALTER TABLE teams ADD COLUMN {col} {typedef}")
-            except sqlite3.OperationalError:
-                pass
+        _add_column_if_missing(c, "teams", col, typedef, team_cols)
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='items'")
     if not c.fetchone():
@@ -718,11 +706,7 @@ def migrate_db():
         "image_path": "TEXT",
     }
     for col, typedef in item_additions.items():
-        if col not in item_cols:
-            try:
-                c.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
-            except sqlite3.OperationalError:
-                pass
+        _add_column_if_missing(c, "items", col, typedef, item_cols)
 
     missing_qr_rows = c.execute("""
         SELECT id FROM items
@@ -734,14 +718,11 @@ def migrate_db():
             (f"item-{row[0]:03d}", row[0]),
         )
 
-    try:
-        c.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_items_qr_code_value
-            ON items(qr_code_value)
-            WHERE qr_code_value IS NOT NULL AND TRIM(qr_code_value) != ''
-        """)
-    except sqlite3.OperationalError:
-        pass
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_items_qr_code_value
+        ON items(qr_code_value)
+        WHERE qr_code_value IS NOT NULL AND TRIM(qr_code_value) != ''
+    """)
 
     c.execute("UPDATE items SET is_active = 1 WHERE is_active IS NULL")
     c.execute("UPDATE items SET is_one_time_use = 1 WHERE is_one_time_use IS NULL")
@@ -789,11 +770,7 @@ def migrate_db():
     else:
         c.execute("PRAGMA table_info(encounter_completions)")
         ec_cols = {row[1] for row in c.fetchall()}
-        if "rewards" not in ec_cols:
-            try:
-                c.execute("ALTER TABLE encounter_completions ADD COLUMN rewards TEXT")
-            except sqlite3.OperationalError:
-                pass
+        _add_column_if_missing(c, "encounter_completions", "rewards", "TEXT", ec_cols)
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='combats'")
     if not c.fetchone():
@@ -825,11 +802,7 @@ def migrate_db():
         "enemy_power": "INTEGER",
         "enemy_intellect": "INTEGER",
     }.items():
-        if col not in combat_cols:
-            try:
-                c.execute(f"ALTER TABLE combats ADD COLUMN {col} {typedef}")
-            except sqlite3.OperationalError:
-                pass
+        _add_column_if_missing(c, "combats", col, typedef, combat_cols)
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='story_views'")
     if not c.fetchone():
@@ -938,8 +911,10 @@ def migrate_db():
 
 def _safe_init_db():
     import utils.app_state as app_state
+    if not should_auto_bootstrap_db():
+        return
     try:
-        init_db()
+        bootstrap_app_data()
     except Exception as e:
         app_state.DB_INIT_ERROR = str(e)
         print(f"[oikonomia] init_db failed: {e}", flush=True)

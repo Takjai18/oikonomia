@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quick combat resolve smoke test — imports from app.py (not a separate module)."""
+"""Quick combat resolve smoke test."""
 import os
 import sys
 
@@ -7,7 +7,8 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_DIR)
 os.chdir(PROJECT_DIR)
 
-from app import resolve_player_phase, get_combat, DB_PATH
+from app import DB_PATH
+from models.combat import get_combat, resolve_player_phase
 
 COMBAT_ID = int(os.environ.get("COMBAT_ID", "1"))
 

@@ -13,7 +13,6 @@ DATA_DIR = os.path.join(PROJECT_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.environ.setdefault("DATA_DIR", DATA_DIR)
 os.environ.setdefault("FLASK_ENV", "production")
-os.environ.setdefault("GM_PIN", "gm2026")
 
 if not os.environ.get("SECRET_KEY"):
     secret_file = os.path.join(DATA_DIR, ".secret_key")

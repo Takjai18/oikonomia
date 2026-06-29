@@ -128,9 +128,21 @@ echo "--- SECRET_KEY (data/.secret_key) ---"
 bash "$REPO/deploy/pa-ensure-secret.sh"
 
 echo ""
+echo "--- Database bootstrap (once per deploy, before Web Reload) ---"
+export DATA_DIR="$REPO/data"
+export FLASK_ENV=production
+export GM_PIN="${GM_PIN:-gm2026}"
+unset SECRET_KEY
+if ! python3 -c "from app import bootstrap_app_data; bootstrap_app_data(); print('DB bootstrap ok')" 2>&1; then
+    echo "ERROR: database bootstrap failed. Fix before Web Reload."
+    exit 1
+fi
+
+echo ""
 echo "--- Import smoke test (no shell SECRET_KEY) ---"
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
+export GM_PIN="${GM_PIN:-gm2026}"
 unset SECRET_KEY
 if ! python3 -c "from wsgi import application; print('wsgi import ok')" 2>&1; then
     echo ""

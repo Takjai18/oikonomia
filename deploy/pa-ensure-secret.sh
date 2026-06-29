@@ -20,5 +20,6 @@ cd "$REPO"
 [ -d "$REPO/venv" ] && source "$REPO/venv/bin/activate"
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
+export GM_PIN="${GM_PIN:-gm2026}"
 unset SECRET_KEY
 python3 -c "from wsgi import application; print('wsgi import ok (via .secret_key)')"
