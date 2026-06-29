@@ -30,7 +30,8 @@ deploy/             # PythonAnywhere 部署腳本
 ```
 
 詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。  
-目錄快照見 **[CURRENT_STRUCTURE.md](./CURRENT_STRUCTURE.md)**。
+目錄快照見 **[CURRENT_STRUCTURE.md](./CURRENT_STRUCTURE.md)**。  
+**已知問題、設定陷阱、已修復假陽性**見 **[UPDATE_LOG.md](./UPDATE_LOG.md)**（Grok／Gemini 必讀，避免重複錯誤建議）。
 
 ## AI 開發分工
 
@@ -49,11 +50,21 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 ```
 
 1. **Grok** 定義「做咩、點解、邊度改」；唔直接改 repo。
-2. **Grok Build** 讀 `AGENT_HANDOFF.md`，執行改動並更新版本狀態。
+2. **Grok Build** 讀 `AGENT_HANDOFF.md`，執行改動並更新版本狀態；**修復 production 問題後更新 [UPDATE_LOG.md](./UPDATE_LOG.md)**。
 3. **Gemini** 按 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** 做 review 或追查 bug；輸出 High/Medium/Low 清單。
 4. 修復項交回 **Grok Build**；重大方向改動再諮詢 **Grok**。
 
 **避免**：三個角色同時改同一功能；Gemini review 應對準已 push 嘅 commit，唔好對未落地嘅計劃 review。
+
+### Update Log（必讀）
+
+**[UPDATE_LOG.md](./UPDATE_LOG.md)** 記錄：
+
+- 邊啲 **設定／環境變數** 曾導致 PA 掛站、登入失敗、測試誤入等問題  
+- 邊啲 **玩家回報** 其實係 UI 假陽性（例如永恆崩壞影「打唔入」）  
+- 邊啲係 **刻意設計**（測試 encounter、骰 0 無傷害等），唔應當 bug 修  
+
+若 Grok 或 Gemini 嘅意見與 Update Log 矛盾，用戶可以話：**「請先讀 UPDATE_LOG.md 再答」**——佢哋應引用相關章節，並說明點解仍建議改動。
 
 ## 本地運行
 
@@ -121,6 +132,6 @@ python3 test_combat.py          # 需本地 DB / 環境
 
 | 角色 | 先讀 |
 |------|------|
-| **Grok**（方向） | `README.md` → **[ARCHITECTURE_ROADMAP.md](./ARCHITECTURE_ROADMAP.md)** → `AGENT_HANDOFF.md`「尚未完成」 |
-| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → `CURRENT_STRUCTURE.md` |
-| **Gemini**（review / debug） | **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** → `AGENT_HANDOFF.md` |
+| **Grok**（方向） | `README.md` → **[UPDATE_LOG.md](./UPDATE_LOG.md)** → **[ARCHITECTURE_ROADMAP.md](./ARCHITECTURE_ROADMAP.md)** → `AGENT_HANDOFF.md`「尚未完成」 |
+| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → **[UPDATE_LOG.md](./UPDATE_LOG.md)** → `CURRENT_STRUCTURE.md` |
+| **Gemini**（review / debug） | **[UPDATE_LOG.md](./UPDATE_LOG.md)** → **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** → `AGENT_HANDOFF.md` |
