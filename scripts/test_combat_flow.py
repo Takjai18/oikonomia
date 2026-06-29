@@ -723,6 +723,53 @@ def test_zombie_hp_zero_status_poll_returns_victory():
     teardown_test_combat(team_id, enc_id)
 
 
+def test_practice_combat_start_enemy_hp_full():
+    """Fresh practice combat must start with full enemy HP (not 0 from stale reconcile)."""
+    from models.protagonist import update_protagonist_state
+
+    cases = (
+        ("practice_iggy_01_quick", 48),
+        ("practice_iggy_03_boundary", 140),
+    )
+    for enc_id, expected_hp in cases:
+        client = oikonomia.app.test_client()
+        login(client, f"StartHp_{enc_id[-6:]}")
+        client.post("/team/create", data={"team_name": f"StartHp_{enc_id[-6:]}"})
+        client.post("/set_team_route_by_leader", data={"route": "iggy"})
+        import sqlite3
+
+        conn = sqlite3.connect(_test_db_path())
+        team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+        conn.close()
+        update_protagonist_state(team_id, "iggy", is_active=0)
+        teardown_test_combat(team_id, enc_id)
+        clear_encounter_completion(team_id, enc_id)
+
+        start = client.post(
+            "/combat/start",
+            json={"encounter_id": enc_id},
+            content_type="application/json",
+        ).get_json() or {}
+        combat_id = start.get("combat_id")
+        ok(f"start hp {enc_id}: created", bool(combat_id), str(start)[:120])
+        db_hp = combat_enemy_hp(get_combat(combat_id), default=-1)
+        ok(f"start hp {enc_id}: db", db_hp == expected_hp, f"db={db_hp}")
+
+        st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+        payload_hp = (st.get("enemy") or {}).get("hp")
+        ok(
+            f"start hp {enc_id}: status poll",
+            payload_hp is not None and int(payload_hp) == expected_hp,
+            f"poll={payload_hp}",
+        )
+        ok(
+            f"start hp {enc_id}: still active",
+            st.get("active") is True and not st.get("outcome"),
+            str(st)[:160],
+        )
+        teardown_test_combat(team_id, enc_id)
+
+
 def fight_until_victory(client, client2, combat_id):
     """
     Both players attack each player_phase until victory or max rounds.
@@ -1046,6 +1093,7 @@ def main():
     test_solo_killing_blow_practice_quick()
     test_solo_multi_round_poll_hp_monotonic()
     test_zombie_hp_zero_status_poll_returns_victory()
+    test_practice_combat_start_enemy_hp_full()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")

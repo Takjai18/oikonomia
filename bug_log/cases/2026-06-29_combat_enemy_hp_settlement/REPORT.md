@@ -218,6 +218,14 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 | 根因 | ① `reconcile_enemy_hp` 從 log 將 `enemy.hp` 顯示為 0，但 `/combat/status` poll **唔 call** `combat_outcome_if_finished`；② 前端 poll 見 `hp<=0` 唔觸發 `finishCombatVictoryFromPayload`；③ `victoryPayloadHasSettlement` 誤將每次 poll 嘅 `round_settlement` 當要出 modal |
 | 修復 | 後端 status zombie guard + 前端 poll `shouldFinishCombatVictory` + 收窄 settlement 判斷 |
 
+### 11.2 練習敵開局 0 血（regression）
+
+| 項目 | 內容 |
+|------|------|
+| 症狀 | 每個練習敵 **一開始就顯示 0 HP** |
+| 根因 | `resetCombatEnemyHpTracking(null)` 冇清 `lastAnimatedEnemyHp`；上一場 0 血被 monotonic guard 鎖到新戰鬥 |
+| 修復 | `lastAnimatedEnemyHp = null` on reset；monotonic guard 限同一 `combat_id`；新 combat 時 reset HP tracking |
+
 ---
 
 ## 8. attachments 清單

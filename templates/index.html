@@ -1803,8 +1803,10 @@
                 : data;
             let hp = resolveAuthoritativeEnemyHp(ctx);
             if (!Number.isFinite(hp)) return;
-            // During live combat, never let a stale poll inflate displayed enemy HP
-            if (Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
+            // Same combat only: stale poll must not inflate HP (never bleed across combats)
+            const combatId = ctx?.combat_id || currentCombatId;
+            const sameCombat = !combatId || combatId === currentCombatId;
+            if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
                 hp = lastAnimatedEnemyHp;
             }
             const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
@@ -3363,6 +3365,7 @@
                 settlementTimerPending = false;
                 clearTimeout(showFullRoundSettlement._modalTimer);
                 showFullRoundSettlement._modalTimer = null;
+                resetCombatEnemyHpTracking(null);
             }
             showCombatScreen();
             applyCombatAccent(uiData.route);
@@ -4561,7 +4564,7 @@
 
         function resetCombatEnemyHpTracking(enemyHp = null) {
             combatEnemyHpSeen = enemyHp;
-            if (enemyHp != null) lastAnimatedEnemyHp = enemyHp;
+            lastAnimatedEnemyHp = enemyHp != null ? enemyHp : null;
         }
 
         function updateEnemyCombatStats(enemy, description) {
