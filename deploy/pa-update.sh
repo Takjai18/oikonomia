@@ -101,6 +101,15 @@ if ! grep -q "combat-action-modal" app.py 2>/dev/null; then
 fi
 
 echo ""
+echo "--- Python dependencies ---"
+if command -v pip3 >/dev/null 2>&1; then
+    pip3 install -q -r requirements.txt --user
+    echo "pip install -r requirements.txt (ok)"
+else
+    echo "WARNING: pip3 not found; install requirements manually if deploy fails"
+fi
+
+echo ""
 echo "--- Upload folders ---"
 mkdir -p uploads data/uploads
 if [ -d data/uploads ]; then

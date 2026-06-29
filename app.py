@@ -20,6 +20,7 @@ import time
 import random
 import hmac
 import hashlib
+from PIL import Image
 
 def _is_production_env():
     return (
@@ -41,7 +42,13 @@ app.config.update(
     SESSION_COOKIE_PATH="/",
     SESSION_COOKIE_NAME="oikonomia_session",
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
+
+
+@app.errorhandler(413)
+def upload_too_large(_exc):
+    return jsonify({"success": False, "error": "相片檔案太大（上限 8MB）"}), 413
 RESTORE_TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
 _restore_serializer = None
 
@@ -160,6 +167,57 @@ def resolve_upload_disk_path(filename):
         if os.path.isfile(path):
             return path
     return None
+
+
+MAX_TASK_PHOTO_BYTES = 8 * 1024 * 1024
+MAX_TASK_PHOTO_DIMENSION = 1200
+TASK_PHOTO_JPEG_QUALITY = 85
+
+
+def save_task_submission_photo(file_storage, squad_id):
+    """
+    Validate, resize, and persist a task submission photo as JPEG.
+    Returns {"ok": True, "photo_path": "uploads/..."} or
+            {"ok": False, "error": "...", "status": 400|413}.
+    """
+    if not file_storage or not file_storage.filename:
+        return {"ok": False, "error": "未選擇相片", "status": 400}
+
+    try:
+        img_bytes = file_storage.read()
+        if len(img_bytes) > MAX_TASK_PHOTO_BYTES:
+            return {
+                "ok": False,
+                "error": "相片檔案太大（上限 8MB）",
+                "status": 413,
+            }
+
+        img = Image.open(io.BytesIO(img_bytes))
+        img.verify()
+        img = Image.open(io.BytesIO(img_bytes))
+        img = img.convert("RGB")
+
+        if max(img.size) > MAX_TASK_PHOTO_DIMENSION:
+            ratio = MAX_TASK_PHOTO_DIMENSION / max(img.size)
+            new_size = (
+                max(1, int(img.size[0] * ratio)),
+                max(1, int(img.size[1] * ratio)),
+            )
+            resample = getattr(Image, "Resampling", Image).LANCZOS
+            img = img.resize(new_size, resample)
+
+        ts = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        safe_name = f"{squad_id}_{ts}_{random.randint(1000, 9999)}.jpg"
+        save_path = os.path.join(UPLOAD_FOLDER, safe_name)
+        img.save(save_path, "JPEG", quality=TASK_PHOTO_JPEG_QUALITY, optimize=True)
+
+        return {"ok": True, "photo_path": f"uploads/{safe_name}"}
+    except Exception:
+        return {
+            "ok": False,
+            "error": "只接受有效嘅 JPEG / PNG 圖片",
+            "status": 400,
+        }
 
 DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
 SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
@@ -3502,6 +3560,7 @@ def api_version():
             "server_combat_dice": callable(globals().get("roll_combat_dice")),
             "combat_actions_table": True,
             "qr_signed_v2": callable(globals().get("sign_qr_token")),
+            "task_photo_validation": callable(globals().get("save_task_submission_photo")),
             "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
             "combat_ui_safe": "safeSetText" in HTML_TEMPLATE,
         },
@@ -4823,10 +4882,13 @@ def submit_task():
         if "photo" in request.files:
             photo = request.files["photo"]
             if photo.filename:
-                ts = datetime.now().strftime('%Y%m%d%H%M%S%f')
-                filename = f"{session['squad_id']}_{ts}_{random.randint(1000, 9999)}.jpg"
-                photo.save(os.path.join(UPLOAD_FOLDER, filename))
-                photo_path = f"uploads/{filename}"
+                upload_result = save_task_submission_photo(photo, session["squad_id"])
+                if not upload_result["ok"]:
+                    return jsonify({
+                        "success": False,
+                        "error": upload_result["error"],
+                    }), upload_result["status"]
+                photo_path = upload_result["photo_path"]
 
         c.execute("""INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
                      VALUES (?, ?, ?, ?, ?)""",
