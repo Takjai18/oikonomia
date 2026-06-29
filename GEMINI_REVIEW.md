@@ -386,4 +386,154 @@ Bug 描述：<用戶描述>
 2. `migrate_db` exception masking → ✅ 已移除多餘 try-except  
 3. 預設 GM PIN → ✅ production 必須 env 注入  
 
-**下一步（Gemini 建議）**：進入「心臟地帶」— `models/combat.py`、`routes/combat.py`、`templates/index.html` 戰鬥 UI 全棧 review。
+**下一步（Gemini 建議）**：進入「心臟地帶」— `models/combat.py`、`routes/combat.py`、`templates/index.html` 戰鬥 UI 全棧 review（見 §13）。
+
+---
+
+## 13. Combat Review 檔案包（Full Stack）
+
+> **基準 commit**：`d649903`（或 `git rev-parse --short HEAD`）  
+> **範圍**：戰鬥結算、多人 phase、前端 polling、GM 強制結算  
+> **唔使提供**：`*.db`、`uploads/`、`venv/`、`static/avatars/` 二進制
+
+### 13.1 三層檔案包
+
+#### 🎯 標準集（推薦 — 全棧 combat review）
+
+```
+# 必讀文檔
+GEMINI_REVIEW.md          # 本文 §4 High 清單、§9–§12 已修對照
+AGENT_HANDOFF.md          # 戰鬥公式、狀態機、API 速查
+CURRENT_STRUCTURE.md      # 模組職責快照
+
+# 後端核心（心臟）
+models/combat.py          # ~1470 行：resolve、preview、status、resolving 鎖
+routes/combat.py          # ~503 行：/combat/* HTTP 層
+utils/db_tx.py            # immediate_transaction、with_db_retry
+
+# 戰鬥相關依賴（抽查）
+models/encounter.py       # encounter JSON 載入
+models/encounter_outcomes.py  # 勝利/失敗、trauma ending
+models/protagonist.py     # 主角 HP、瀕死、參戰
+models/squad.py           # squad enrich、max_hp 正規化
+models/team.py            # official_squad_route、隊伍成員
+models/item.py            # 戰鬥道具使用（submit action item_id）
+
+# GM 戰鬥監控
+routes/gm.py              # /gm/combat/resolve_phase
+routes/gm_templates.py    # GM 戰鬥 tab（~1130–1200 行 JS）
+
+# 前端（大檔 — 可按 §13.2 行號抽查，唔使全讀）
+templates/index.html      # ~6370 行；戰鬥 UI + JS
+
+# 測試（驗證 reviewer 建議）
+scripts/test_combat_flow.py       # ~503 行；API 煙霧 + 回歸
+scripts/test_combat_concurrency.py  # 併發 submit/resolve
+
+# 樣本 encounter（平衡參考，非 security 主戰場）
+encounters/test_combat_01.json
+encounters/test_lose_trauma.json
+encounters/test_protagonist_control.json
+```
+
+#### 🔴 最小集（只做 Security / API）
+
+```
+models/combat.py
+routes/combat.py
+utils/db_tx.py
+routes/gm.py              # 只睇 /gm/combat/resolve_phase
+scripts/test_combat_concurrency.py
+```
+
+#### 🟢 加選集（完整 UX / 邊界）
+
+```
+標準集 +
+routes/encounters.py      # encounter 列表、logs
+routes/player.py          # /status 戰鬥欄位
+services/player_status.py
+services/teams_overview.py  # GM active combats overview
+templates/index.html      # 全檔
+routes/gm_templates.py      # 全檔
+encounters/*.json           # 全部 encounter 定義
+```
+
+### 13.2 `index.html` 戰鬥區塊（唔使由頭讀）
+
+| 區塊 | 約略行號 | 重點 |
+|------|----------|------|
+| 戰鬥 HTML（lobby + screen + modal） | 830–1100 | DOM 結構、HP 條、隊伍列 |
+| 戰鬥狀態變數 | 1465–1490 | `combatEnemyHpSeen`、`effectiveCombatStatus` |
+| Polling / 回合結算 | 1500–1660 | `startCombatPolling`、`handleCombatRoundResolved` |
+| Modal / Preview | 1779–2180 | `openCombatModal`、`fetchAndShowCombatPreview` |
+| 戰鬥頁載入 | 2216–2320 | `showCombatScreen`、`loadCombatPage` |
+| **提交行動** | **2910–3000** | `submitAction` → `/combat/submit_action` |
+| **UI 更新核心** | **2715–2900** | `updateCombatUI`、`loadCombatStatus` |
+| 玩家/敵方 HP 顯示 | 3810–3920 | `effectivePlayerMaxHp`、`updateEnemyCombatStats` |
+| 戰鬥結果 | 2659–2710 | `showCombatResult` |
+
+**快速 grep**（在 `index.html`）：
+```
+combatEnemyHpSeen
+submitAction
+updateCombatUI
+loadCombatStatus
+handleCombatRoundResolved
+effectiveCombatStatus
+fetch('/combat
+round_resolved
+```
+
+### 13.3 `models/combat.py` 閱讀順序
+
+```
+1. resolve_player_phase()      # resolving 鎖、多人等待
+2. _resolve_player_phase_body()
+3. upsert_combat_action()      # UNIQUE(combat_id,squad_id,phase)
+4. build_combat_status_response()
+5. build_combat_round_preview() / submit 相關傷害計算
+6. _end_combat()               # 勝利時 enemy_hp=0
+7. get_combat_participants()   # 隊伍成員 SSOT
+8. apply_damage_to_player()    # 瀕死、暴走
+```
+
+### 13.4 Review 重點（本輪專屬）
+
+| 檢查項 | 睇邊度 | 背景 |
+|--------|--------|------|
+| 敵方 HP 延遲更新 | `index.html` `combatEnemyHpSeen`；`models/combat.py` `_end_combat` | 曾出現第一擊後 UI 仍滿血 |
+| 多人 phase 等待 | `resolve_player_phase`；`index.html` polling | 第一人 submit 後敵 HP 唔變屬正常 |
+| Client 信任 | `routes/combat.py` `submit_action` | 骰子必須 server-side `roll_combat_dice` |
+| Double-resolve | `models/combat.py` resolving 鎖 | §10 已修，確認無 regression |
+| round_resolved 語意 | `index.html` `effectiveCombatStatus` | UI status vs backend status 不一致 |
+| GM 強制結算 | `routes/gm.py`、`gm_templates.py` | 未提交隊員處理 |
+| Defend 全隊 buff | `models/combat.py` `defend_team_buff` | 任一同隊 Defend → 反擊減半 |
+| 瀕死/救援 | `rescue_near_death` route；`protagonist.py` | HP≤0 行動限制 |
+| max_hp 顯示 | `squad.py` `squad_max_hp`；`effectivePlayerMaxHp` | GM 調整 HP 後 UI 上限 |
+
+### 13.5 驗證指令（Reviewer 可建議跑）
+
+```bash
+cd /path/to/oikonomia
+./venv/bin/python3 scripts/test_combat_flow.py
+./venv/bin/python3 scripts/test_combat_concurrency.py
+python3 -m py_compile models/combat.py routes/combat.py
+```
+
+### 13.6 Copy-paste 開場白（Combat Full Stack）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 負責方向，Grok Build 負責實作；你負責 review，唔改 repo。
+
+請讀 GEMINI_REVIEW.md §13（Combat 檔案包）同 §4 High 清單。
+基準 commit：d649903
+範圍：Full stack combat（models/combat.py、routes/combat.py、templates/index.html 戰鬥區塊）
+
+我已附上檔案：[貼 repo path 或 zip]
+
+請跟 §5 Code Review 格式輸出。
+§13.4 各檢查項要逐項回覆（✅ 無問題 / ⚠️ 風險 / 🔴 需修）。
+已修項對照 §9–§12，唔好重複報。
+High 項要寫清 exploit 或 bug 重現步驟，同具體修復建議（交 Grok Build）。
+```
