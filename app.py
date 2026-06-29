@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 import math
 import time
 import random
+import hmac
+import hashlib
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "oikonomia-2026-prototype")
@@ -503,7 +505,15 @@ def get_combat(combat_id):
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM combats WHERE id = ?", (combat_id,)).fetchone()
     conn.close()
-    return row_to_combat(row) if row else None
+    if not row:
+        return None
+    combat = row_to_combat(row)
+    phase = combat.get("current_phase", 0)
+    json_actions = combat.get("phase_actions") or {}
+    combat["phase_actions"] = get_combat_phase_actions(
+        combat_id, phase, json_fallback=json_actions
+    )
+    return combat
 
 def get_combat_by_squad(squad_id):
     squad = get_squad(squad_id)
@@ -641,6 +651,75 @@ def dice_multiplier(dice_result):
     except (TypeError, ValueError):
         dice = 2
     return DICE_MULTIPLIERS.get(max(0, min(3, dice)), 1.0)
+
+
+def roll_combat_dice():
+    """Server-authoritative combat dice (0=miss, 1=normal, 2=strong, 3=crit)."""
+    return random.randint(0, 3)
+
+
+def get_combat_phase_actions(combat_id, phase, json_fallback=None):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """SELECT squad_id, action_type, dice_result, item_id
+               FROM combat_actions
+               WHERE combat_id = ? AND phase = ?""",
+            (combat_id, phase),
+        ).fetchall()
+        if rows:
+            return {
+                row["squad_id"]: {
+                    "action_type": row["action_type"],
+                    "dice_result": row["dice_result"],
+                    "item_id": row["item_id"],
+                }
+                for row in rows
+            }
+    finally:
+        conn.close()
+    return dict(json_fallback or {})
+
+
+def combat_action_already_submitted(combat_id, squad_id, phase):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            """SELECT 1 FROM combat_actions
+               WHERE combat_id = ? AND squad_id = ? AND phase = ?""",
+            (combat_id, squad_id, phase),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, item_id=None):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            """INSERT INTO combat_actions
+               (combat_id, squad_id, phase, action_type, dice_result, item_id, submitted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(combat_id, squad_id, phase) DO UPDATE SET
+                   action_type = excluded.action_type,
+                   dice_result = excluded.dice_result,
+                   item_id = excluded.item_id,
+                   submitted_at = excluded.submitted_at""",
+            (
+                combat_id,
+                squad_id,
+                phase,
+                action_type,
+                dice_result,
+                item_id,
+                datetime.now().isoformat(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 def zoo_bonus_multiplier(sanity):
     sanity = int(sanity or 0)
@@ -1881,6 +1960,49 @@ def migrate_db():
             FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
         )''')
 
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='combat_actions'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE combat_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            combat_id INTEGER NOT NULL,
+            squad_id TEXT NOT NULL,
+            phase INTEGER NOT NULL,
+            action_type TEXT,
+            dice_result INTEGER,
+            item_id INTEGER,
+            submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(combat_id, squad_id, phase),
+            FOREIGN KEY (combat_id) REFERENCES combats(id)
+        )''')
+        try:
+            active_rows = c.execute(
+                "SELECT id, current_phase, phase_actions FROM combats WHERE status = 'player_phase'"
+            ).fetchall()
+            for crow in active_rows:
+                try:
+                    actions = json.loads(crow["phase_actions"] or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    actions = {}
+                for squad_id, ad in actions.items():
+                    if not isinstance(ad, dict):
+                        continue
+                    c.execute(
+                        """INSERT OR IGNORE INTO combat_actions
+                           (combat_id, squad_id, phase, action_type, dice_result, item_id, submitted_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            crow["id"],
+                            squad_id,
+                            crow["current_phase"] or 0,
+                            ad.get("action_type"),
+                            ad.get("dice_result"),
+                            ad.get("item_id"),
+                            datetime.now().isoformat(),
+                        ),
+                    )
+        except sqlite3.Error:
+            pass
+
     item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
     if item_count == 0:
         now = datetime.now().isoformat()
@@ -2491,15 +2613,52 @@ def apply_item_effect_to_squad(squad_id, item):
         "stats": dict(row),
     }
 
+def qr_signing_secret():
+    return os.environ.get("QR_SECRET") or os.environ.get("SECRET_KEY") or app.secret_key
+
+
+def sign_qr_token(qr_value):
+    if not qr_value:
+        return None
+    signature = hmac.new(
+        qr_signing_secret().encode(),
+        str(qr_value).encode(),
+        hashlib.sha256,
+    ).hexdigest()[:12]
+    return f"{qr_value}.{signature}"
+
+
+def verify_signed_qr_token(token):
+    if not token or "." not in token:
+        return None
+    payload, signature = token.rsplit(".", 1)
+    expected = hmac.new(
+        qr_signing_secret().encode(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:12]
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return payload
+
+
+def allow_legacy_unsigned_qr():
+    return os.environ.get("ALLOW_LEGACY_QR", "1") != "0"
+
+
 def build_item_qr_payload(item):
     if not item:
         return None
+    qr_value = item.get("qr_code_value")
+    signed = sign_qr_token(qr_value) if qr_value else None
     return json.dumps({
         "type": "item",
         "id": item["id"],
-        "qr": item.get("qr_code_value"),
-        "v": 1,
+        "qr": qr_value,
+        "token": signed,
+        "v": 2,
     }, ensure_ascii=False)
+
 
 def resolve_item_from_qr_payload(raw_payload):
     text = (raw_payload or "").strip()
@@ -2510,14 +2669,35 @@ def resolve_item_from_qr_payload(raw_payload):
         try:
             obj = json.loads(text)
             if obj.get("type") == "item":
+                token = obj.get("token")
+                if token:
+                    verified = verify_signed_qr_token(token)
+                    if not verified:
+                        return None
+                    item = get_item_by_qr_code_value(verified)
+                    if item:
+                        return item
                 if obj.get("qr"):
+                    if not allow_legacy_unsigned_qr():
+                        return None
                     item = get_item_by_qr_code_value(obj["qr"])
                     if item:
                         return item
-                if obj.get("id") is not None:
+                if obj.get("id") is not None and allow_legacy_unsigned_qr():
                     return get_item_by_id(int(obj["id"]))
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
+
+    if "." in text and not text.startswith("http"):
+        verified = verify_signed_qr_token(text)
+        if verified:
+            item = get_item_by_qr_code_value(verified)
+            if item:
+                return item
+            if verified.isdigit():
+                return get_item_by_id(int(verified))
+        if not allow_legacy_unsigned_qr():
+            return None
 
     claim_qr_match = re.search(r"/claim_qr/([^/?#]+)", text, re.I)
     if claim_qr_match:
@@ -2530,6 +2710,8 @@ def resolve_item_from_qr_payload(raw_payload):
         return get_item_by_id(int(claim_id_match.group(1)))
 
     if re.match(r"^item-\d{3}$", text, re.I):
+        if not allow_legacy_unsigned_qr():
+            return None
         return get_item_by_qr_code_value(text.lower())
 
     if text.lower().startswith("oiko-item-"):
@@ -3159,6 +3341,9 @@ def api_version():
             "session_restore_v2": "tryLoginWithStoredSquad" in HTML_TEMPLATE,
             "settings_modal": "openSettingsModal" in HTML_TEMPLATE,
             "settings_js_safe": "resetAllSettings" in HTML_TEMPLATE and ".join('\\n')" in HTML_TEMPLATE,
+            "server_combat_dice": callable(globals().get("roll_combat_dice")),
+            "combat_actions_table": True,
+            "qr_signed_v2": callable(globals().get("sign_qr_token")),
             "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
             "combat_ui_safe": "safeSetText" in HTML_TEMPLATE,
         },
@@ -3840,11 +4025,8 @@ def combat_preview_action_api():
     if action_type not in COMBAT_ACTION_TYPES:
         return jsonify({"success": False, "error": "無效行動"}), 400
 
-    try:
-        dice_result = int(body.get("dice_result", body.get("dice", 1)))
-    except (TypeError, ValueError):
-        dice_result = 1
-    dice_result = max(0, min(3, dice_result))
+    # Preview uses neutral dice=1; authoritative roll happens on submit.
+    dice_result = 1
 
     item_id = body.get("item_id")
     squad = get_squad(session["squad_id"])
@@ -3868,6 +4050,8 @@ def combat_preview_action_api():
     if not preview:
         return jsonify({"success": False, "error": "無法預覽此回合"}), 400
 
+    preview["is_estimate"] = True
+    preview["preview_note"] = "此為估算（普通骰）；實際結果於提交後由系統擲骰決定"
     return jsonify({"success": True, "preview": preview})
 
 @app.route("/combat/submit_action", methods=["POST"])
@@ -3887,11 +4071,7 @@ def combat_submit_action_api():
     if action_type not in COMBAT_ACTION_TYPES:
         return jsonify({"success": False, "error": "無效行動"}), 400
 
-    try:
-        dice_result = int(body.get("dice_result", body.get("dice", 2)))
-    except (TypeError, ValueError):
-        dice_result = 2
-    dice_result = max(0, min(3, dice_result))
+    dice_result = roll_combat_dice()
 
     item_id = body.get("item_id")
     squad = get_squad(session["squad_id"])
@@ -3921,17 +4101,21 @@ def combat_submit_action_api():
     if action_type == "use_zoo" and not settings.get("allow_zoo", True):
         return jsonify({"success": False, "error": "此戰鬥不允許 Zoo 能力"}), 400
 
-    phase_actions = dict(combat.get("phase_actions") or {})
-    if session["squad_id"] in phase_actions:
+    current_phase = int(combat.get("current_phase") or 0)
+    if combat_action_already_submitted(combat_id, session["squad_id"], current_phase):
         return jsonify({"success": False, "error": "你已提交本回合行動"}), 400
 
-    phase_actions[session["squad_id"]] = {
-        "action_type": action_type,
-        "dice_result": dice_result,
-        "item_id": item_id,
-    }
-    save_combat(combat_id, phase_actions=phase_actions)
+    upsert_combat_action(
+        combat_id,
+        session["squad_id"],
+        current_phase,
+        action_type,
+        dice_result,
+        item_id,
+    )
+    phase_actions = get_combat_phase_actions(combat_id, current_phase)
     combat["phase_actions"] = phase_actions
+    save_combat(combat_id, phase_actions=phase_actions)
 
     participants = get_combat_participants(combat)
     active_ids = get_active_combat_member_ids(participants)
@@ -4678,7 +4862,14 @@ def claim_qr_page(qr_value):
 
 # ==================== GM Routes ====================
 
-GM_PIN = "gm2026"  # GM 登入 PIN，你可以之後改
+def get_gm_pin():
+    pin = os.environ.get("GM_PIN")
+    if pin:
+        return pin
+    if os.environ.get("FLASK_ENV") == "production" or os.environ.get("PYTHONANYWHERE_SITE"):
+        raise RuntimeError("GM_PIN environment variable is required in production")
+    return "gm2026"
+
 
 @app.route("/gm")
 def gm_login_page():
@@ -4687,7 +4878,7 @@ def gm_login_page():
 @app.route("/gm/login", methods=["POST"])
 def gm_login():
     pin = request.form.get("pin", "")
-    if pin == GM_PIN:
+    if pin == get_gm_pin():
         session.permanent = True
         session["is_gm"] = True
         return jsonify({"success": True})
@@ -7050,7 +7241,7 @@ HTML_TEMPLATE = """
                 finalContainer?.classList.remove('hidden');
 
                 document.getElementById('modal-status-hint').textContent =
-                    `擲出 ${result} — ${description}`;
+                    `演示擲出 ${result} — ${description}（提交後以系統擲骰為準）`;
 
                 actionModalRolling = false;
                 setCombatModalControlsLocked(false);
@@ -7166,9 +7357,10 @@ HTML_TEMPLATE = """
             const labels = ['失手', '普通', '良好', '爆擊'];
             const diceLabel = labels[preview.dice_result] ?? '';
             document.getElementById('modal-preview-summary').textContent =
-                `${preview.action_label || ''} · 骰 ${preview.dice_result}（${diceLabel}）`;
+                `${preview.action_label || ''} · 估算骰 ${preview.dice_result}（${diceLabel}）`;
+            const estimateNote = preview.preview_note || '實際結果於提交後由系統擲骰決定';
             document.getElementById('modal-status-hint').textContent =
-                `擲出 ${preview.dice_result}（${diceLabel}）· 請確認後結束本回合`;
+                `${estimateNote} · 請確認後結束本回合`;
             document.getElementById('preview-damage-enemy').textContent = preview.total_damage_to_enemy ?? 0;
             document.getElementById('preview-damage-player').textContent = preview.enemy_counter_damage ?? 0;
 
@@ -7214,7 +7406,6 @@ HTML_TEMPLATE = """
             const payload = {
                 combat_id: combatId,
                 action_type: selectedAction,
-                dice_result: selectedDice ?? 1,
             };
             if (selectedAction === 'use_item' && selectedItemId) {
                 payload.item_id = selectedItemId;
@@ -7995,7 +8186,6 @@ HTML_TEMPLATE = """
             const payload = {
                 combat_id: currentCombatId,
                 action_type: selectedAction,
-                dice_result: selectedDice,
             };
             if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
 
