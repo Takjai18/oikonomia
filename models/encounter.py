@@ -8,6 +8,8 @@ from models.squad import get_team_average_stat
 
 
 def load_encounter(encounter_id):
+    # Read-only cache of static JSON files (encounters/*.json).
+    # Safe across uWSGI/Gunicorn workers — never stores mutable game state.
     cache = settings.encounter_cache
     if encounter_id in cache:
         return cache[encounter_id]

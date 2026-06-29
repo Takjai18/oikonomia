@@ -14,7 +14,7 @@ from models.settings import settings
 from models.squad import get_all_squads, get_squad, update_squad
 from models.team import get_next_team_id, get_team_by_id, sync_team_route
 from routes.gm_templates import GM_DASHBOARD_HTML, GM_LOGIN_HTML, GM_SQUAD_DETAIL_HTML
-from services.announcements import add_announcement
+
 from services.global_events import apply_global_effect, create_global_event
 from services.gm_admin import RESET_GAME_PASSWORD, clear_all_submission_images, reset_game_data
 from services.teams_overview import (
@@ -641,8 +641,6 @@ def gm_send_announcement():
     if not message:
         return jsonify({"success": False, "error": "訊息不能為空"})
 
-    timestamp = hkt_timestamp()
-    add_announcement(message, timestamp)
     create_global_event("公告", message, "announcement", 0, "GM")
     return jsonify({"success": True, "message": "公告已發送"})
 

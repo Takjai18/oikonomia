@@ -106,13 +106,14 @@ deploy/pa-update.sh
 
 | 檢查項 | 睇邊度 | 已修復／現行設計 |
 |--------|--------|------------------|
+| **Multi-worker 狀態** | `services/announcements.py`, `models/encounter.py` | 遊戲狀態（戰鬥、隊伍、物品、global_events）全在 SQLite；公告已改讀 `global_events` 表（唔再用 in-memory list）。`_encounter_cache` 只 cache 靜態 `encounters/*.json`，各 worker 內容一致，可安全共用 |
 | **Client 信任** | `routes/combat.py` `submit_action` | 骰子由 `roll_combat_dice()` 後端產生；client `dice_result` 忽略 |
 | **Race condition** | `models/combat.py` `upsert_combat_action` | `combat_actions` 表 + `UNIQUE(combat_id,squad_id,phase)` |
 | **GM 認證** | `routes/gm.py` | Production 要 `GM_PIN` env；唔好 hardcode 喺 production |
 | **QR 偽造** | `utils/qr.py` | v2 含 HMAC `token`；`ALLOW_LEGACY_QR=1` 時舊 QR 仍可用 |
 | **上傳濫用** | `utils/uploads.py`, `app.py` MAX_CONTENT_LENGTH | PIL verify + 8MB + resize；413 handler |
-| **Path traversal** | `utils/helpers.py` `resolve_upload_disk_path` | `secure_filename` + realpath + 拒絕 `..` |
-| **多語句 SQL 一致性** | `models/team.py` join/transfer, `routes/team.py` | 要用 transaction + rollback；join 用 `join_squad_to_team()` |
+| **Path traversal** | `utils/helpers.py` `resolve_upload_disk_path` | `secure_filename` + URL decode + realpath + 拒絕 `..`（marker: `upload_path_hardened`） |
+| **多語句 SQL 一致性** | `models/team.py`, `models/item.py` `grant_item_to_squad`, `services/global_events.py` | transaction + `rollback()`；join 用 `join_squad_to_team()`；轉讓用 `transfer_team_leadership()` |
 | **Session / PIN** | `routes/auth.py`, `services/session_auth.py` | 登入、restore token、PIN 驗證 |
 
 ### 🟡 Medium — 技術債／架構
@@ -123,7 +124,8 @@ deploy/pa-update.sh
 | **Circular import** | `routes/*` 唔好 `from app import ...`；用 `models/` / `services/` |
 | **變數遮蔽** | `models/combat.py` 內 `combat_settings` vs `settings`（ModelSettings） |
 | **N+1 查詢** | `get_team_members`、GM overview 大量 squad 時 |
-| **原生 alert** | 玩家端應用 `showToast`；GM 用 `showGmToast`（`gm_templates.py`） |
+| **原生 alert** | 玩家端 `showToast` / `showInputModal`（`templates/index.html`）；GM 用 `showGmToast` / `showGmInputModal`（`gm_templates.py`，0 個 `alert()`） |
+| **Render 持久化** | `render.yaml` | 已設 `disk` mount `/data`；Free tier 無 persistent disk，營會正式環境用 PA |
 | **Defend 機制** | 目前只對被反擊目標減傷 50%，唔係全隊 buff（已知設計差距） |
 
 ### 🟢 Low — 可記錄、唔阻營會

@@ -215,6 +215,9 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
     except sqlite3.IntegrityError:
         conn.rollback()
         return False, "此 QR Code 已經被使用", None
+    except sqlite3.Error:
+        conn.rollback()
+        return False, "物品發放失敗，請稍後再試", None
     finally:
         conn.close()
 
