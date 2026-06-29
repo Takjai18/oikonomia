@@ -21,8 +21,19 @@ import random
 import hmac
 import hashlib
 
+def _is_production_env():
+    return (
+        os.environ.get("FLASK_ENV") == "production"
+        or bool(os.environ.get("PYTHONANYWHERE_SITE"))
+    )
+
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "oikonomia-2026-prototype")
+app.secret_key = os.environ.get("SECRET_KEY") or (
+    None if _is_production_env() else "oikonomia-2026-prototype"
+)
+if _is_production_env() and not app.secret_key:
+    raise RuntimeError("SECRET_KEY environment variable is required in production")
 app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") == "production",
     SESSION_COOKIE_SAMESITE="Lax",
@@ -2613,8 +2624,16 @@ def apply_item_effect_to_squad(squad_id, item):
         "stats": dict(row),
     }
 
+QR_SIGNATURE_HEX_LEN = 16
+
+
 def qr_signing_secret():
-    return os.environ.get("QR_SECRET") or os.environ.get("SECRET_KEY") or app.secret_key
+    secret = os.environ.get("QR_SIGNING_SECRET") or os.environ.get("QR_SECRET")
+    if secret:
+        return secret
+    if _is_production_env():
+        raise RuntimeError("QR_SIGNING_SECRET environment variable is required in production")
+    return os.environ.get("SECRET_KEY") or app.secret_key
 
 
 def sign_qr_token(qr_value):
@@ -2624,7 +2643,7 @@ def sign_qr_token(qr_value):
         qr_signing_secret().encode(),
         str(qr_value).encode(),
         hashlib.sha256,
-    ).hexdigest()[:12]
+    ).hexdigest()[:QR_SIGNATURE_HEX_LEN]
     return f"{qr_value}.{signature}"
 
 
@@ -2636,7 +2655,7 @@ def verify_signed_qr_token(token):
         qr_signing_secret().encode(),
         payload.encode(),
         hashlib.sha256,
-    ).hexdigest()[:12]
+    ).hexdigest()[:QR_SIGNATURE_HEX_LEN]
     if not hmac.compare_digest(signature, expected):
         return None
     return payload
@@ -4134,6 +4153,7 @@ def combat_submit_action_api():
         return jsonify({
             "success": True,
             "status": "waiting_for_teammates",
+            "dice_result": dice_result,
             "single_preview": single_preview,
             "submitted_count": len(phase_actions),
             "total_active": len(active_ids),
@@ -4150,6 +4170,7 @@ def combat_submit_action_api():
         })
 
     payload = _build_round_resolved_response(combat, encounter, session["squad_id"])
+    payload["dice_result"] = dice_result
     payload["message"] = f"本回合已結算：{action_type}（骰 {dice_result}）"
     return jsonify(payload)
 
@@ -4866,7 +4887,7 @@ def get_gm_pin():
     pin = os.environ.get("GM_PIN")
     if pin:
         return pin
-    if os.environ.get("FLASK_ENV") == "production" or os.environ.get("PYTHONANYWHERE_SITE"):
+    if _is_production_env():
         raise RuntimeError("GM_PIN environment variable is required in production")
     return "gm2026"
 
