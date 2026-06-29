@@ -2045,7 +2045,45 @@ NARRATIVE_STORIES = {
         "lines": [
             {"character": "Iggy", "text": "這裡的空氣……有種熟悉的沉重。我好像曾經來過。"},
             {"character": "Iggy", "text": "界線不是用來囚禁誰的，是用來保護還未準備好的人。"},
+            {
+                "character": "Iggy",
+                "text": "你想先從邊度開始？",
+                "choices": [
+                    {"text": "🔥 去裂縫起點", "next_story_id": "iggy_branch_start"},
+                    {"text": "🛡️ 守住營地邊緣", "next_story_id": "iggy_branch_edge"},
+                ],
+            },
             {"character": "旁白", "text": "你踏入了 Iggy 路線。第一個任務，將會喚醒一段被遺忘的記憶。"},
+        ],
+    },
+    "iggy_branch_start": {
+        "story_id": "iggy_branch_start",
+        "chapter": "CHAPTER 01 — 裂縫",
+        "title": "裂縫起點",
+        "current_stage": 1,
+        "total_stages": 4,
+        "route": "iggy",
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Iggy", "text": "籃球場旁邊嘅大樹下……記憶開始回流。"},
+            {"character": "旁白", "text": "你選擇直面裂縫起點。任務會帶你更接近 Judas 的低語。"},
+        ],
+    },
+    "iggy_branch_edge": {
+        "story_id": "iggy_branch_edge",
+        "chapter": "CHAPTER 01 — 裂縫",
+        "title": "營地邊緣",
+        "current_stage": 1,
+        "total_stages": 4,
+        "route": "iggy",
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Iggy", "text": "先守住邊緣。界線唔係退縮，係為全隊爭取時間。"},
+            {"character": "旁白", "text": "你選擇穩守營地。隊友完成任務時，你會係佢哋嘅後盾。"},
         ],
     },
     "iggy_stage1": {
@@ -2105,7 +2143,45 @@ NARRATIVE_STORIES = {
         "replayable": True,
         "lines": [
             {"character": "Marah", "text": "智慧不是答案本身，而是知道何時該開口、何時該沉默。"},
+            {
+                "character": "Marah",
+                "text": "你會點樣回應深淵的低語？",
+                "choices": [
+                    {"text": "🌊 靜聽與分析", "next_story_id": "marah_branch_listen"},
+                    {"text": "🤝 先連結隊友", "next_story_id": "marah_branch_team"},
+                ],
+            },
             {"character": "旁白", "text": "你選擇了 Marah 路線。深淵的低語，需要用韌性去聆聽。"},
+        ],
+    },
+    "marah_branch_listen": {
+        "story_id": "marah_branch_listen",
+        "chapter": "CHAPTER 01 — 深淵",
+        "title": "靜聽深淵",
+        "current_stage": 1,
+        "total_stages": 4,
+        "route": "marah",
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Marah", "text": "我會先聽清楚——每一句低語背後，可能藏住一個未被聽見的請求。"},
+            {"character": "Judas", "text": "聰明。但記住，理解太多有時也是一種負擔。"},
+        ],
+    },
+    "marah_branch_team": {
+        "story_id": "marah_branch_team",
+        "chapter": "CHAPTER 01 — 深淵",
+        "title": "連結隊友",
+        "current_stage": 1,
+        "total_stages": 4,
+        "route": "marah",
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Marah", "text": "韌性唔係一個人硬撐，而係全隊一齊分擔。"},
+            {"character": "旁白", "text": "你選擇先穩住隊伍。故事會隨全隊任務一齊推進。"},
         ],
     },
     "marah_stage1": {
@@ -7844,37 +7920,122 @@ HTML_TEMPLATE = """
         let currentStory = null;
         let currentLineIndex = 0;
         let storyTypewriterTimer = null;
+        let storyAutoPlayTimer = null;
+        let isStoryTyping = false;
+        let isStoryAutoPlaying = false;
         const storyAutoShown = new Set();
+        const STORY_TYPEWRITER_MS = 55;
+        const STORY_AUTOPLAY_PAUSE_MS = 1200;
 
         function clearStoryTypewriter() {
             if (storyTypewriterTimer) {
                 clearInterval(storyTypewriterTimer);
                 storyTypewriterTimer = null;
             }
+            isStoryTyping = false;
+        }
+
+        function stopStoryAutoPlay(resetToggle = true) {
+            if (resetToggle) isStoryAutoPlaying = false;
+            if (storyAutoPlayTimer) {
+                clearTimeout(storyAutoPlayTimer);
+                storyAutoPlayTimer = null;
+            }
+            if (resetToggle) {
+                const autoplayText = document.getElementById('autoplay-text');
+                if (autoplayText) autoplayText.textContent = '自動播放';
+            }
+        }
+
+        function scheduleStoryAutoAdvance() {
+            if (!isStoryAutoPlaying || isStoryTyping) return;
+            const line = currentStory?.lines?.[currentLineIndex];
+            if (line?.choices?.length) return;
+            if (storyAutoPlayTimer) clearTimeout(storyAutoPlayTimer);
+            storyAutoPlayTimer = setTimeout(() => {
+                storyAutoPlayTimer = null;
+                if (isStoryAutoPlaying && !isStoryTyping) nextStoryLine();
+            }, STORY_AUTOPLAY_PAUSE_MS);
         }
 
         function typewriterStoryText(textEl, text, onDone) {
             clearStoryTypewriter();
             if (!textEl) return;
             textEl.textContent = '';
-            let i = 0;
             const content = text || '';
             if (!content.length) {
                 if (onDone) onDone();
+                scheduleStoryAutoAdvance();
                 return;
             }
+            isStoryTyping = true;
+            let i = 0;
             storyTypewriterTimer = setInterval(() => {
-                textEl.textContent += content[i];
-                i += 1;
-                if (i >= content.length) {
+                if (i < content.length) {
+                    textEl.textContent += content.charAt(i);
+                    i += 1;
+                } else {
                     clearStoryTypewriter();
                     if (onDone) onDone();
+                    scheduleStoryAutoAdvance();
                 }
-            }, 28);
+            }, STORY_TYPEWRITER_MS);
+        }
+
+        function renderStoryChoices(line) {
+            const choicesContainer = document.getElementById('story-choices');
+            const continueBtn = document.getElementById('story-continue-btn');
+            if (!choicesContainer) return;
+
+            choicesContainer.innerHTML = '';
+            const choices = line?.choices || [];
+            if (!choices.length) {
+                setVisible(choicesContainer, false);
+                if (continueBtn) setVisible(continueBtn, true);
+                return;
+            }
+
+            setVisible(choicesContainer, true);
+            if (continueBtn) setVisible(continueBtn, false);
+            stopStoryAutoPlay();
+
+            choices.forEach(choice => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'w-full py-3 px-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl text-left text-sm text-zinc-100 transition-colors';
+                btn.textContent = choice.text || '選擇';
+                btn.onclick = () => handleStoryChoice(choice);
+                choicesContainer.appendChild(btn);
+            });
+        }
+
+        async function handleStoryChoice(choice) {
+            if (isStoryTyping) return;
+            clearStoryTypewriter();
+            stopStoryAutoPlay();
+
+            if (choice.next_story_id) {
+                const parentId = currentStory?.story_id;
+                closeStoryModal(false);
+                if (parentId) {
+                    try {
+                        await fetch(`/api/story/${encodeURIComponent(parentId)}/complete`, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                        });
+                    } catch (_) {}
+                }
+                fetchStoryAndShow(choice.next_story_id);
+                return;
+            }
+
+            currentLineIndex += 1;
+            showCurrentStoryLine();
         }
 
         function showStory(storyData) {
             if (!storyData?.lines?.length) return;
+            stopStoryAutoPlay();
             currentStory = storyData;
             currentLineIndex = 0;
 
@@ -7903,6 +8064,8 @@ HTML_TEMPLATE = """
             const nameEl = document.getElementById('story-character-name');
             const progressEl = document.getElementById('story-line-progress');
 
+            renderStoryChoices(line);
+
             if (portraitEl) {
                 if (line.portrait) {
                     portraitEl.src = line.portrait;
@@ -7916,11 +8079,16 @@ HTML_TEMPLATE = """
                 progressEl.textContent = `${currentLineIndex + 1} / ${currentStory.lines.length}`;
             }
 
-            typewriterStoryText(textEl, line.text || '');
+            typewriterStoryText(textEl, line.text || '', () => {
+                if (line.choices?.length) renderStoryChoices(line);
+            });
         }
 
         function nextStoryLine() {
-            if (!currentStory) return;
+            if (!currentStory || isStoryTyping) return;
+            const line = currentStory.lines[currentLineIndex];
+            if (line?.choices?.length) return;
+
             clearStoryTypewriter();
             currentLineIndex += 1;
             if (currentLineIndex < currentStory.lines.length) {
@@ -7930,8 +8098,23 @@ HTML_TEMPLATE = """
             }
         }
 
+        function toggleStoryAutoPlay() {
+            isStoryAutoPlaying = !isStoryAutoPlaying;
+            const autoplayText = document.getElementById('autoplay-text');
+            if (autoplayText) {
+                autoplayText.textContent = isStoryAutoPlaying ? '停止播放' : '自動播放';
+            }
+            if (isStoryAutoPlaying) {
+                if (!isStoryTyping) scheduleStoryAutoAdvance();
+            } else if (storyAutoPlayTimer) {
+                clearTimeout(storyAutoPlayTimer);
+                storyAutoPlayTimer = null;
+            }
+        }
+
         async function finishStoryModal() {
             const storyId = currentStory?.story_id;
+            const onComplete = currentStory?.onComplete;
             closeStoryModal(false);
             if (storyId) {
                 try {
@@ -7941,16 +8124,21 @@ HTML_TEMPLATE = """
                     });
                 } catch (_) {}
             }
-            if (currentStory?.onComplete) currentStory.onComplete();
-            currentStory = null;
+            if (onComplete) onComplete();
         }
 
         function closeStoryModal(markComplete = true) {
             clearStoryTypewriter();
+            stopStoryAutoPlay();
             const modal = document.getElementById('story-modal');
             if (modal) {
                 modal.classList.remove('flex');
                 setVisible(modal, false);
+            }
+            const choicesContainer = document.getElementById('story-choices');
+            if (choicesContainer) {
+                choicesContainer.innerHTML = '';
+                setVisible(choicesContainer, false);
             }
             if (markComplete && currentStory?.story_id) {
                 fetch(`/api/story/${encodeURIComponent(currentStory.story_id)}/complete`, {
@@ -7964,6 +8152,10 @@ HTML_TEMPLATE = """
         function tryCloseStoryModal() {
             if (currentStory?.skippable === false) return;
             closeStoryModal(true);
+        }
+
+        function loadStory(storyId) {
+            fetchStoryAndShow(storyId);
         }
 
         async function fetchStoryAndShow(storyId) {
@@ -10462,21 +10654,27 @@ HTML_TEMPLATE = """
                 <div id="story-character-name" class="text-xs text-amber-400/90 tracking-wide"></div>
             </div>
 
-            <div class="bg-zinc-900 border border-zinc-700 rounded-3xl px-6 py-7 min-h-[130px] flex items-center">
+            <div class="bg-zinc-900 border border-zinc-700 rounded-3xl px-6 py-7 min-h-[140px] flex items-center">
                 <div id="story-text" class="text-white text-[15px] leading-relaxed text-center w-full"></div>
             </div>
+
+            <div id="story-choices" class="mt-4 space-y-3 hidden"></div>
 
             <div class="mt-2 text-center text-[10px] text-zinc-600">
                 <span id="story-line-progress"></span>
             </div>
 
-            <div class="mt-6 flex justify-center gap-x-4 items-center">
+            <div class="mt-6 flex justify-center gap-x-3 items-center flex-wrap">
                 <button type="button" id="story-skip-btn" onclick="closeStoryModal()"
-                        class="px-6 py-2.5 text-sm text-zinc-400 hover:text-white transition-colors">
+                        class="hidden px-5 py-2 text-sm text-zinc-400 hover:text-white transition-colors">
                     跳過
                 </button>
-                <button type="button" onclick="nextStoryLine()"
-                        class="px-8 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-sm tracking-wider transition-colors">
+                <button type="button" onclick="toggleStoryAutoPlay()"
+                        class="px-5 py-2 text-sm border border-zinc-600 hover:bg-zinc-800 rounded-2xl text-zinc-300 transition-colors">
+                    <span id="autoplay-text">自動播放</span>
+                </button>
+                <button type="button" id="story-continue-btn" onclick="nextStoryLine()"
+                        class="px-8 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-sm tracking-wider transition-colors">
                     繼續
                 </button>
             </div>
