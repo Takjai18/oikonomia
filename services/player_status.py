@@ -1,4 +1,5 @@
 """Player status payload builders."""
+from models.protagonist import get_team_ending_state
 from models.team import get_team_by_id, get_team_protagonists, official_team_route
 
 
@@ -26,5 +27,6 @@ def build_player_status(squad):
         "route": route,
         "team": team,
         "protagonists": protagonists,
+        "ending": get_team_ending_state(squad["team_id"]),
         "is_team_leader": squad.get("is_team_leader", 0),
     }

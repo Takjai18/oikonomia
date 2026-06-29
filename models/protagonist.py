@@ -126,6 +126,67 @@ def check_ending_condition(team_id):
     return "normal_ending"
 
 
+def get_team_ending_type(team_id):
+    clean_team = (team_id or "").strip().upper()
+    if not clean_team:
+        return None
+    conn = sqlite3.connect(_db())
+    try:
+        row = conn.execute(
+            "SELECT ending_type FROM teams WHERE team_id = ?",
+            (clean_team,),
+        ).fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        conn.close()
+
+
+def record_team_ending(team_id, ending_type, source=None):
+    """Persist irreversible bad ending on teams row (source = encounter_id, optional)."""
+    clean_team = (team_id or "").strip().upper()
+    if not clean_team or ending_type != "bad_ending":
+        return False
+    if get_team_ending_type(clean_team) == "bad_ending":
+        return True
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(_db())
+    try:
+        conn.execute(
+            "UPDATE teams SET ending_type = ?, ending_locked_at = ? WHERE team_id = ?",
+            (ending_type, now, clean_team),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return True
+
+
+def get_team_ending_state(team_id):
+    """Snapshot for APIs/UI: trauma totals, condition, locked ending."""
+    clean_team = (team_id or "").strip().upper()
+    empty = {
+        "ending_condition": "normal_ending",
+        "ending_type": None,
+        "protagonist_trauma_total": 0,
+        "trauma_bad_ending": False,
+        "trauma_limit": TRAUMA_BAD_ENDING_LIMIT,
+        "trauma_until_bad": TRAUMA_BAD_ENDING_LIMIT + 1,
+    }
+    if not clean_team:
+        return empty
+    trauma_total = get_team_protagonist_trauma_total(clean_team)
+    locked = get_team_ending_type(clean_team)
+    condition = locked if locked else check_ending_condition(clean_team)
+    return {
+        "ending_condition": condition,
+        "ending_type": locked,
+        "protagonist_trauma_total": trauma_total,
+        "trauma_bad_ending": condition == "bad_ending",
+        "trauma_limit": TRAUMA_BAD_ENDING_LIMIT,
+        "trauma_until_bad": max(0, TRAUMA_BAD_ENDING_LIMIT + 1 - trauma_total),
+    }
+
+
 def get_protagonist_state(team_id, protagonist_key, create=True):
     clean_team = (team_id or "").strip().upper()
     if not clean_team or protagonist_key not in ("iggy", "marah"):

@@ -681,6 +681,8 @@ def migrate_db():
     team_additions = {
         "leader_squad_id": "TEXT",
         "gm_notes": "TEXT DEFAULT ''",
+        "ending_type": "TEXT",
+        "ending_locked_at": "TEXT",
     }
     for col, typedef in team_additions.items():
         if col not in team_cols:

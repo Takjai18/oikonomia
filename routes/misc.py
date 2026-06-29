@@ -67,6 +67,8 @@ def api_version():
             "combat_round_continue": "continueCombatAfterRound" in template_text,
             "player_max_hp": "max_hp" in template_text and "DEFAULT_PLAYER_MAX_HP" in template_text,
             "protagonist_combat": callable(build_protagonist_participant),
+            "trauma_ending": "combat-result-trauma-badge" in template_text
+                and "renderTeamEndingBanner" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

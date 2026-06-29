@@ -120,6 +120,7 @@ def get_team_by_id(team_id):
     row = conn.execute(
         """
         SELECT t.team_id, t.team_name, t.route, t.leader_squad_id, t.created_at,
+               t.ending_type, t.ending_locked_at,
                COUNT(s.squad_id) AS member_count
         FROM teams t
         LEFT JOIN squads s ON UPPER(TRIM(s.team_id)) = UPPER(TRIM(t.team_id))
@@ -139,6 +140,8 @@ def get_team_by_id(team_id):
         "route": row["route"],
         "leader_squad_id": row["leader_squad_id"],
         "created_at": row["created_at"],
+        "ending_type": row["ending_type"],
+        "ending_locked_at": row["ending_locked_at"],
         "member_count": row["member_count"],
     }
 

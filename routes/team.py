@@ -60,6 +60,8 @@ def my_team():
         if member:
             member["is_leader"] = member.get("is_team_leader") == 1
             members.append(member)
+    from models.protagonist import get_team_ending_state
+
     protagonists = get_team_protagonists(squad["team_id"])
     official_route = official_team_route(team)
     team_payload = {**team, "route": official_route}
@@ -72,6 +74,7 @@ def my_team():
         "is_team_leader": squad.get("is_team_leader", 0),
         "current_squad_id": session["squad_id"],
         "protagonists": protagonists,
+        "ending": get_team_ending_state(squad["team_id"]),
     })
 
 

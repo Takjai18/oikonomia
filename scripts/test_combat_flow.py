@@ -56,6 +56,66 @@ def submit_attack(client, combat_id):
     )
 
 
+def test_trauma_ending_thresholds():
+    from models.protagonist import (
+        TRAUMA_BAD_ENDING_LIMIT,
+        check_ending_condition,
+        get_team_ending_state,
+        has_trauma_bad_ending,
+        update_protagonist_state,
+    )
+
+    from models.protagonist import initialize_protagonist_for_team
+
+    ok("trauma limit is 3", TRAUMA_BAD_ENDING_LIMIT == 3)
+    team = "TEAM-TRAUMA-TEST"
+    initialize_protagonist_for_team(team, "iggy")
+    update_protagonist_state(team, "iggy", trauma_count=3, is_active=1)
+    ok("3 trauma not bad ending", not has_trauma_bad_ending(team))
+    ok("3 trauma normal ending", check_ending_condition(team) == "normal_ending")
+    state3 = get_team_ending_state(team)
+    ok("3 trauma until bad is 1", state3.get("trauma_until_bad") == 1)
+    update_protagonist_state(team, "iggy", trauma_count=4)
+    ok("4 trauma is bad ending", has_trauma_bad_ending(team))
+    ok("4 trauma check_ending", check_ending_condition(team) == "bad_ending")
+
+
+def test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id):
+    """Win combat with trauma > 3 → bad ending, no normal rewards narrative."""
+    from models.protagonist import get_team_ending_type, update_protagonist_state
+
+    update_protagonist_state(team_id, "iggy", trauma_count=4, is_active=0)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    if not combat_id:
+        from models.combat import get_active_combat_for_team
+
+        active = get_active_combat_for_team(team_id)
+        combat_id = active.get("id") if active else None
+    ok("trauma ending: have combat", combat_id, str(start))
+
+    final, err = fight_until_victory(client, client2, combat_id)
+    ok("trauma ending: fight completes", err is None, err or str(final)[:200])
+    ok("trauma ending: still victory outcome", final.get("outcome") == "victory", str(final)[:200])
+    ok("trauma ending: trauma_bad_ending flag", final.get("trauma_bad_ending") is True, str(final)[:200])
+    ok("trauma ending: no reflection", not final.get("reflection_prompt"), str(final)[:200])
+    ok("trauma ending: custom narrative", "心理創傷" in (final.get("narrative") or ""), str(final)[:200])
+
+    st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    ok("trauma ending: status has flag", st.get("trauma_bad_ending") is True, str(st)[:200])
+
+    status = client.get("/status").get_json() or {}
+    ending = status.get("ending") or {}
+    ok("trauma ending: player status", ending.get("trauma_bad_ending") is True, str(ending))
+    ok("trauma ending: team locked", get_team_ending_type(team_id) == "bad_ending")
+
+
 def test_protagonist_combat_participant(combat_id, route="iggy"):
     combat = get_combat(combat_id)
     participants = get_combat_participants(combat) if combat else []
@@ -212,6 +272,7 @@ def main():
     ok("玩家2 加入隊伍", join_data.get("success"), str(join_data))
 
     test_defend_team_buff_helpers()
+    test_trauma_ending_thresholds()
 
     # --- 開始 encounter（max_hp 測試會改 TestLeader stats，先跑主線）---
     r = client.post(
@@ -250,6 +311,7 @@ def main():
     test_defend_team_buff_integration(client, client2, leader_id, member_id)
 
     test_player_max_hp(leader_id)
+    test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id)
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
@@ -272,6 +334,7 @@ def main():
     ok("combat_round_continue marker", ver.get("markers", {}).get("combat_round_continue") is True)
     ok("player_max_hp marker", ver.get("markers", {}).get("player_max_hp") is True)
     ok("protagonist_combat marker", ver.get("markers", {}).get("protagonist_combat") is True)
+    ok("trauma_ending marker", ver.get("markers", {}).get("trauma_ending") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

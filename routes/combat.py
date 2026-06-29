@@ -156,15 +156,20 @@ def combat_status_api():
     if combat.get("status") == "ended":
         encounter = load_encounter(combat["encounter_id"])
         winner = combat.get("winner")
-        payload = {"success": True, "active": False, "winner": winner}
+        squad = get_squad(session["squad_id"])
+        team_id = squad.get("team_id") if squad else None
         if winner == "squad":
-            payload["outcome"] = "victory"
-            payload["narrative"] = (encounter or {}).get("success", {}).get("narrative")
-            payload["reflection_prompt"] = (encounter or {}).get("reflection_prompt")
-        elif winner == "enemy":
-            payload["outcome"] = "defeat"
-            payload["narrative"] = (encounter or {}).get("failure", {}).get("narrative")
-        return jsonify(payload)
+            outcome = _combat_outcome_json(winner, encounter, team_id=team_id)
+            return jsonify({**outcome, "active": False})
+        if winner == "enemy":
+            return jsonify({
+                "success": True,
+                "active": False,
+                "winner": winner,
+                "outcome": "defeat",
+                "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+            })
+        return jsonify({"success": True, "active": False, "winner": winner})
 
     encounter = load_encounter(combat["encounter_id"])
     settings = (encounter or {}).get("combat_settings", {})

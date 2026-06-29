@@ -12,6 +12,7 @@ from models.encounter_outcomes import (
     apply_encounter_failure_solo,
     apply_encounter_success,
     apply_encounter_success_solo,
+    apply_trauma_bad_ending_victory,
 )
 from models.item import get_item_by_id
 from models.squad import (
@@ -23,8 +24,10 @@ from models.squad import (
 )
 from models.protagonist import (
     apply_damage_to_protagonist,
+    check_ending_condition,
     get_controllable_protagonist_squad_id,
     get_player_control_protagonist_ids,
+    get_team_ending_state,
     get_team_protagonist_trauma_total,
     get_team_story_stage,
     has_trauma_bad_ending,
@@ -777,15 +780,16 @@ def _end_combat(combat_id, winner, encounter):
         update_squad(starter_id, current_combat_id=None)
     trauma_total = get_team_protagonist_trauma_total(team_id) if team_id else 0
     if winner == "squad" and encounter:
-        if team_id and not has_trauma_bad_ending(team_id):
-            apply_encounter_success(team_id, encounter, starter_id)
-        elif team_id and has_trauma_bad_ending(team_id):
+        if team_id and has_trauma_bad_ending(team_id):
+            apply_trauma_bad_ending_victory(team_id, encounter)
             combat = append_combat_log(
                 get_combat(combat_id),
                 f"主角心理創傷過深（累計 {trauma_total}）——勝利無法帶來真正救贖",
                 log_type="trauma_ending",
             )
             save_combat(combat_id, logs=combat.get("logs"))
+        elif team_id:
+            apply_encounter_success(team_id, encounter, starter_id)
         elif starter_id:
             apply_encounter_success_solo(starter_id, encounter)
     elif winner == "enemy" and encounter:
@@ -952,6 +956,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "protagonist_trauma_total": (
             get_team_protagonist_trauma_total(team_id) if team_id else 0
         ),
+        "ending": get_team_ending_state(team_id) if team_id else None,
     }
 
 def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):
@@ -1220,6 +1225,8 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
 
 def _combat_outcome_json(winner, encounter, team_id=None):
     if winner == "squad":
+        ending = get_team_ending_state(team_id) if team_id else {}
+        trauma_bad = bool(ending.get("trauma_bad_ending"))
         payload = {
             "success": True,
             "status": "ended",
@@ -1227,11 +1234,15 @@ def _combat_outcome_json(winner, encounter, team_id=None):
             "winner": "squad",
             "narrative": (encounter or {}).get("success", {}).get("narrative"),
             "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+            "ending_condition": ending.get("ending_condition") or check_ending_condition(team_id),
+            "protagonist_trauma_total": ending.get("protagonist_trauma_total", 0),
         }
-        if team_id and has_trauma_bad_ending(team_id):
+        if team_id:
+            payload["ending"] = ending
+        if trauma_bad:
             payload["trauma_bad_ending"] = True
-            payload["protagonist_trauma_total"] = get_team_protagonist_trauma_total(team_id)
             payload["narrative"] = trauma_bad_ending_narrative(encounter)
+            payload["reflection_prompt"] = None
         return payload
     if winner == "enemy":
         return {

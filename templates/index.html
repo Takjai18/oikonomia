@@ -1017,6 +1017,7 @@
                 <!-- 戰鬥結果 + 神學反思 -->
                 <div id="combat-result-panel" class="hidden cartoon-box p-6 max-w-4xl mx-auto">
                     <h3 id="combat-result-title" class="text-xl font-bold mb-3"></h3>
+                    <div id="combat-result-trauma-badge" class="hidden mb-3 px-4 py-2 rounded-xl border border-violet-700/50 bg-violet-950/30 text-sm text-violet-200"></div>
                     <p id="combat-result-narrative" class="text-zinc-300 mb-4 leading-relaxed"></p>
                     <div id="combat-reflection" class="hidden border-t border-zinc-700 pt-4 mt-4">
                         <h4 class="font-bold text-amber-400 mb-1" id="combat-reflection-title">界線反思</h4>
@@ -1076,6 +1077,7 @@
                             <div id="my-team-route-badge"></div>
                         </div>
                     </div>
+                    <div id="team-ending-banner" class="hidden mb-6 px-4 py-3 rounded-xl border text-sm"></div>
 
                     <div class="mb-4 flex items-center justify-between">
                         <div class="text-sm text-zinc-400">隊友列表</div>
@@ -2524,10 +2526,26 @@
             setVisible(document.getElementById('combat-precheck-modal'), false);
             setVisible(document.getElementById('combat-lobby'), false);
             setVisible(document.getElementById('combat-result-panel'), true);
+            const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
             const victory = data.outcome === 'victory';
-            document.getElementById('combat-result-title').textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
+            const titleEl = document.getElementById('combat-result-title');
+            if (badEnding) {
+                titleEl.textContent = '🌑 陰影結局';
+                titleEl.className = 'text-xl font-bold mb-3 text-violet-300';
+            } else {
+                titleEl.textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
+                titleEl.className = 'text-xl font-bold mb-3';
+            }
+            const traumaBadge = document.getElementById('combat-result-trauma-badge');
+            if (badEnding) {
+                const total = data.protagonist_trauma_total ?? data.ending?.protagonist_trauma_total ?? '?';
+                traumaBadge.textContent = `主角心理創傷過深（累計 ${total} 次）——即使贏了這一仗，也無法迎來真正的救贖。`;
+                setVisible(traumaBadge, true);
+            } else {
+                setVisible(traumaBadge, false);
+            }
             document.getElementById('combat-result-narrative').textContent = data.narrative || '';
-            const reflection = data.reflection_prompt;
+            const reflection = badEnding ? null : data.reflection_prompt;
             const reflectionBox = document.getElementById('combat-reflection');
             if (reflection) {
                 setVisible(reflectionBox, true);
@@ -3768,12 +3786,32 @@
                     <div class="h-2 stat-track rounded-full"><div class="h-2 rounded-full status-bar ${barColors[s]}" style="width:${stats?.[s] ?? 100}%"></div></div>
                 </div>
             `).join('');
+            const trauma = Number(stats?.trauma_count || 0);
+            const traumaRow = trauma > 0 ? `
+                <div class="mt-3 pt-3 border-t border-zinc-700/60 text-xs ${trauma > 3 ? 'text-violet-300' : 'text-amber-400/90'}">
+                    💔 心理創傷：${trauma} 次${trauma > 3 ? '（已鎖定陰影結局）' : ''}
+                </div>
+            ` : '';
             return `
                 <div class="cartoon-box p-5 ${ring}">
                     <h3 class="font-bold mb-4 theme-card-title">${title}${isActive ? ' <span class="text-xs theme-accent-text">(使用中)</span>' : ''}</h3>
                     <div class="space-y-2">${rows}</div>
+                    ${traumaRow}
                 </div>
             `;
+        }
+
+        function renderTeamEndingBanner(ending) {
+            const banner = document.getElementById('team-ending-banner');
+            if (!banner) return;
+            if (!ending?.trauma_bad_ending) {
+                banner.classList.add('hidden');
+                banner.innerHTML = '';
+                return;
+            }
+            banner.classList.remove('hidden');
+            banner.className = 'mb-6 px-4 py-3 rounded-xl border text-sm border-violet-700/50 bg-violet-950/30 text-violet-200';
+            banner.innerHTML = `🌑 <strong>陰影結局已鎖定</strong> — 主角心理創傷累計 ${ending.protagonist_trauma_total} 次，即使完成最終戰役也無法迎來真正救贖。`;
         }
 
         function renderTeamProtagonists(protagonists) {
@@ -4137,6 +4175,7 @@
                 }
 
                 renderTeamProtagonists(data.protagonists);
+                renderTeamEndingBanner(data.ending);
 
                 const list = document.getElementById('team-members-list');
                 list.innerHTML = '';
