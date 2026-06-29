@@ -3157,6 +3157,8 @@ def api_version():
             "combat_preview": callable(globals().get("build_combat_round_preview")),
             "combat_modal": "combat-action-modal" in HTML_TEMPLATE,
             "session_restore_v2": "tryLoginWithStoredSquad" in HTML_TEMPLATE,
+            "settings_modal": "openSettingsModal" in HTML_TEMPLATE,
+            "settings_js_safe": "resetAllSettings" in HTML_TEMPLATE and ".join('\\n')" in HTML_TEMPLATE,
             "combat_stats_v2": "combatStatValue" in HTML_TEMPLATE,
             "combat_ui_safe": "safeSetText" in HTML_TEMPLATE,
         },
@@ -6591,7 +6593,7 @@ HTML_TEMPLATE = """
         }
 
         function resetAllSettings() {
-            if (!confirm('確定要重置所有設定嗎？\n此操作無法還原。')) return;
+            if (!confirm(['確定要重置所有設定嗎？', '此操作無法還原。'].join('\n'))) return;
 
             localStorage.removeItem(GAME_SETTINGS_KEY);
             document.documentElement.style.fontSize = '16px';
