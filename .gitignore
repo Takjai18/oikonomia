@@ -16,6 +16,7 @@ uploads/
 local_data/
 instance/
 data/.secret_key
+data/.gm_pin
 
 # IDE / OS
 .DS_Store
