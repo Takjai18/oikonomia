@@ -6,6 +6,9 @@ from models.squad import apply_hp_change, get_squad, is_near_death_active
 from utils.db_tx import immediate_transaction
 from utils.helpers import clamped_stat_delta_expr, normalize_team_id
 
+NEAR_DEATH_RESCUE_EFFECT_TYPES = frozenset({"hp_up", "near_death_rescue"})
+RESCUE_REVIVE_HP = 25
+
 
 def get_item_by_id(item_id):
     conn = sqlite3.connect(settings.db_path)
@@ -248,3 +251,82 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
 
     applied_effect = apply_item_effect_to_squad(squad_id, item)
     return True, f"成功獲得物品：{item['name']}", applied_effect
+
+
+def is_near_death_rescue_item(item):
+    """Items that may revive a near-death teammate when consumed."""
+    if not item or not item.get("has_ability"):
+        return False
+    effect_type = item.get("effect_type")
+    if effect_type not in NEAR_DEATH_RESCUE_EFFECT_TYPES:
+        return False
+    if effect_type == "hp_up":
+        try:
+            return int(item.get("effect_value") or 0) > 0
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def apply_near_death_item_rescue(rescuer_squad_id, target_squad_id, item_id):
+    """
+    Consume rescuer's item and revive target (clear near_death, HP=25).
+    Returns (success, message, rescued_bool).
+    """
+    rescuer = get_squad(rescuer_squad_id)
+    target = get_squad(target_squad_id)
+    if not rescuer or not target:
+        return False, "找不到玩家", False
+    if not rescuer.get("team_id") or rescuer.get("team_id") != target.get("team_id"):
+        return False, "只能救援同隊隊友", False
+    if rescuer_squad_id == target_squad_id:
+        return False, "無法救援自己", False
+    if not is_near_death_active(target):
+        return False, "沒有需要救援的隊友", False
+
+    try:
+        item_id = int(item_id)
+    except (TypeError, ValueError):
+        return False, "無效的物品", False
+
+    item = get_item_by_id(item_id)
+    if not item:
+        return False, "物品不存在或已停用", False
+    if not is_near_death_rescue_item(item):
+        return False, "此物品不能用作瀕死救援", False
+
+    try:
+        with immediate_transaction() as conn:
+            c = conn.cursor()
+            owned = c.execute(
+                "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
+                (rescuer_squad_id, item_id),
+            ).fetchone()
+            if not owned:
+                return False, "你沒有這件物品", False
+
+            target_row = c.execute(
+                "SELECT near_death_until FROM squads WHERE squad_id = ?",
+                (target_squad_id,),
+            ).fetchone()
+            if not target_row or not is_near_death_active({"near_death_until": target_row[0]}):
+                return False, "沒有需要救援的隊友", False
+
+            deleted = c.execute(
+                "DELETE FROM player_items WHERE squad_id = ? AND item_id = ?",
+                (rescuer_squad_id, item_id),
+            )
+            if deleted.rowcount != 1:
+                return False, "物品消耗失敗", False
+
+            c.execute(
+                "UPDATE squads SET near_death_until = NULL, hp = ? WHERE squad_id = ?",
+                (RESCUE_REVIVE_HP, target_squad_id),
+            )
+    except sqlite3.Error:
+        return False, "救援失敗，請稍後再試", False
+
+    rescuer_name = rescuer.get("display_name") or rescuer_squad_id
+    target_name = target.get("display_name") or target_squad_id
+    message = f"{rescuer_name} 使用 {item['name']} 救援 {target_name}，恢復至 {RESCUE_REVIVE_HP} 生命值。"
+    return True, message, True

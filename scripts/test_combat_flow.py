@@ -363,6 +363,91 @@ PRODUCTION_ENCOUNTERS = (
 )
 
 
+def test_near_death_rescue_security(client, leader_id, member_id):
+    import sqlite3
+    from datetime import datetime, timedelta
+
+    from models.item import (
+        get_item_by_qr_code_value,
+        grant_item_to_squad,
+        is_near_death_rescue_item,
+    )
+
+    until = (datetime.now() + timedelta(minutes=15)).isoformat()
+    update_squad(member_id, near_death_until=until, hp=0)
+
+    login(client, leader_id)
+    r = client.post(
+        "/combat/rescue_near_death",
+        json={"rescue_type": "item", "item_id": 99999},
+    )
+    data = r.get_json() or {}
+    ok("item rescue rejected without ownership", r.status_code == 400 and not data.get("success"))
+
+    r = client.post("/combat/rescue_near_death", json={"rescue_type": "exploit"})
+    ok("invalid rescue_type rejected", r.status_code == 400)
+
+    qr_value = f"test-rescue-item-{os.getpid()}"
+    db = os.path.join(TEST_DIR, "oikonomia.db")
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM player_items WHERE squad_id = ?", (leader_id,))
+    conn.execute(
+        """INSERT INTO items
+           (name, description, icon, qr_code_value, has_ability, effect_type, effect_value, is_active)
+           VALUES ('測試藥水', 'test', '💊', ?, 1, 'hp_up', 10, 1)""",
+        (qr_value,),
+    )
+    conn.commit()
+    conn.close()
+
+    item = get_item_by_qr_code_value(qr_value)
+    ok("rescue test item visible", item is not None, qr_value)
+    ok("rescue test item eligible", is_near_death_rescue_item(item), str(item))
+    item_id = item["id"]
+
+    granted, grant_msg, _effect = grant_item_to_squad(leader_id, item_id, source="test")
+    ok("grant rescue item", granted, grant_msg)
+    r = client.post(
+        "/combat/rescue_near_death",
+        json={"rescue_type": "item", "item_id": item_id},
+    )
+    data = r.get_json() or {}
+    ok("item rescue with hp_up consumes item", data.get("success") and data.get("rescued"), str(data))
+
+    member = get_squad(member_id)
+    ok("target revived hp=25", int(member.get("hp") or 0) == 25, str(member))
+    ok("target near_death cleared", not member.get("near_death_until"))
+    update_squad(member_id, near_death_until=None, hp=100)
+
+
+def test_create_combat_record_active_guard(leader_id, team_id):
+    from models.combat import (
+        ActiveCombatExistsError,
+        clear_team_combat_id,
+        create_combat_record,
+        get_active_combat_for_team,
+        save_combat,
+    )
+    from models.encounter import load_encounter
+
+    enc = load_encounter(TEST_ENCOUNTER_ID)
+    active_before = get_active_combat_for_team(team_id)
+    if active_before:
+        save_combat(active_before["id"], status="ended", winner="squad")
+        clear_team_combat_id(team_id)
+
+    combat = create_combat_record(leader_id, TEST_ENCOUNTER_ID, enc, initial_status="player_phase")
+    ok("create_combat_record opens combat", combat and combat.get("id"))
+    duplicate = False
+    try:
+        create_combat_record(leader_id, TEST_ENCOUNTER_ID, enc, initial_status="player_phase")
+    except ActiveCombatExistsError:
+        duplicate = True
+    ok("create_combat_record blocks duplicate team combat", duplicate)
+    save_combat(combat["id"], status="ended", winner="squad")
+    clear_team_combat_id(team_id)
+
+
 def test_encounter_catalog():
     """Production encounter JSON must load with required fields."""
     from models.encounter import load_encounter
@@ -454,6 +539,8 @@ def main():
     test_defend_team_buff_integration(client, client2, leader_id, member_id)
 
     test_player_max_hp(leader_id)
+    test_near_death_rescue_security(client, leader_id, member_id)
+    test_create_combat_record_active_guard(leader_id, team_id)
     test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id)
     test_protagonist_player_control(client, client2, team_id, route="iggy")
 

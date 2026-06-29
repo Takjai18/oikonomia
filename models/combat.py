@@ -41,6 +41,15 @@ from models.protagonist import (
 )
 from models.team import get_team_by_id, get_team_protagonists, official_squad_route
 from utils.db_tx import immediate_transaction, with_db_retry
+from utils.helpers import normalize_team_id
+
+
+class ActiveCombatExistsError(Exception):
+    """Raised when a team already has a non-ended combat."""
+
+    def __init__(self, combat_id):
+        self.combat_id = combat_id
+        super().__init__(f"Team already has active combat {combat_id}")
 
 
 def _db():
@@ -1405,6 +1414,10 @@ def _build_round_resolved_response(combat, encounter, squad_id):
 
 
 def create_combat_record(squad_id, encounter_id, encounter, initial_status="precheck"):
+    squad = get_squad(squad_id)
+    team_id = (squad or {}).get("team_id")
+    clean_team_id = normalize_team_id(team_id) if team_id else None
+
     enemy = encounter.get("enemy", {})
     enemy_stats = build_enemy_combat_stats(
         {
@@ -1427,38 +1440,55 @@ def create_combat_record(squad_id, encounter_id, encounter, initial_status="prec
         combat_phase_deadline(now, combat_settings.get("phase_time_limit_seconds", 180))
         if initial_status == "player_phase" else None
     )
-    conn = sqlite3.connect(_db())
-    c = conn.cursor()
-    c.execute(
-        """INSERT INTO combats
-           (squad_id, encounter_id, status, current_phase, enemy_name, enemy_hp, enemy_max_hp,
-            enemy_resilience, enemy_sanity, enemy_base_damage, enemy_power, enemy_intellect,
-            phase_actions, logs, phase_started_at, phase_deadline, started_at)
-           VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)""",
-        (
-            squad_id,
-            encounter_id,
-            initial_status,
-            enemy_stats["name"],
-            enemy_stats["hp"],
-            enemy_stats["max_hp"],
-            enemy_stats["resilience"],
-            enemy_stats["sanity"],
-            enemy_stats["base_damage"],
-            enemy_stats["power"],
-            enemy_stats["intellect"],
-            json.dumps(logs, ensure_ascii=False),
-            phase_started,
-            phase_deadline,
-            now,
-        ),
-    )
-    combat_id = c.lastrowid
-    conn.commit()
-    conn.close()
-    squad = get_squad(squad_id)
-    if squad and squad.get("team_id"):
-        set_team_combat_id(squad["team_id"], combat_id)
+
+    with immediate_transaction() as conn:
+        c = conn.cursor()
+        if clean_team_id:
+            row = c.execute(
+                """
+                SELECT c.id FROM combats c
+                INNER JOIN squads s ON c.squad_id = s.squad_id
+                WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?))
+                  AND c.status NOT IN ('ended')
+                ORDER BY c.started_at DESC
+                LIMIT 1
+                """,
+                (clean_team_id,),
+            ).fetchone()
+            if row:
+                raise ActiveCombatExistsError(row[0])
+
+        c.execute(
+            """INSERT INTO combats
+               (squad_id, encounter_id, status, current_phase, enemy_name, enemy_hp, enemy_max_hp,
+                enemy_resilience, enemy_sanity, enemy_base_damage, enemy_power, enemy_intellect,
+                phase_actions, logs, phase_started_at, phase_deadline, started_at)
+               VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)""",
+            (
+                squad_id,
+                encounter_id,
+                initial_status,
+                enemy_stats["name"],
+                enemy_stats["hp"],
+                enemy_stats["max_hp"],
+                enemy_stats["resilience"],
+                enemy_stats["sanity"],
+                enemy_stats["base_damage"],
+                enemy_stats["power"],
+                enemy_stats["intellect"],
+                json.dumps(logs, ensure_ascii=False),
+                phase_started,
+                phase_deadline,
+                now,
+            ),
+        )
+        combat_id = c.lastrowid
+        if clean_team_id:
+            c.execute(
+                "UPDATE squads SET current_combat_id = ? WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+                (combat_id, clean_team_id),
+            )
+
     return get_combat(combat_id)
 
 

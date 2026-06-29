@@ -390,6 +390,20 @@ Bug 描述：<用戶描述>
 
 ---
 
+## 14. Gemini 第四輪 Review 對照表（routes/combat.py）
+
+> 修復 commit：見 `git log --oneline -1`（Grok Build 落地）。
+
+| Gemini 項目 | 嚴重度 | 現況 | 備註 |
+|-------------|--------|------|------|
+| 瀕死救援 `rescue_type=item` 無限復活 | 🔴 High | ✅ **已修** | `apply_near_death_item_rescue()`：驗證 `player_items`、白名單 `hp_up`/`near_death_rescue`、`immediate_transaction` 消耗道具 |
+| 開戰 TOCTOU 雙重 combat | 🔴 High | ✅ **已修** | `create_combat_record()` 內 `BEGIN IMMEDIATE` 再查 active combat；`ActiveCombatExistsError` → HTTP 409 |
+| 盲目接受未知 `rescue_type` | 🟡 Medium | ✅ **已修** | 白名單 `prayer` / `item`；其餘 400 |
+| 多 client 同時 `resolve_player_phase` | 🟡 Medium | ✅ **已確認** | `_claim_player_phase_resolution` 原子 `UPDATE … WHERE status='player_phase'`；路由層並發可接受 |
+| Preview 固定 dice=1 | 🟢 Low | ✅ **安全** | 結算用 `roll_combat_dice()` |
+
+---
+
 ## 13. Combat Review 檔案包（Full Stack）
 
 > **基準 commit**：`d649903`（或 `git rev-parse --short HEAD`）  

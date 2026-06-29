@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, session
 
 from models.combat import (
     COMBAT_ACTION_TYPES,
+    ActiveCombatExistsError,
     all_phase_actions_submitted,
     append_combat_log,
     build_combat_round_preview,
@@ -41,6 +42,7 @@ from models.encounter_outcomes import (
     encounter_already_completed,
 )
 from models.protagonist import get_controllable_protagonist_squad_id, get_team_story_stage
+from models.item import apply_near_death_item_rescue
 from models.squad import get_squad, get_team_members, update_squad
 
 combat_bp = Blueprint("combat", __name__)
@@ -91,7 +93,14 @@ def combat_start_api(encounter_id=None):
         combat = existing
     else:
         status = "precheck" if precheck_passed else "player_phase"
-        combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
+        try:
+            combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
+        except ActiveCombatExistsError as exc:
+            return jsonify({
+                "success": False,
+                "error": "已有進行中的戰鬥",
+                "combat_id": exc.combat_id,
+            }), 409
 
     if confirm == "skip" and precheck_passed:
         apply_precheck_skip(team_id, encounter)
@@ -483,10 +492,19 @@ def combat_rescue_near_death_api():
                 rescued = False
         except ValueError:
             return jsonify({"success": False, "error": "瀕死時間資料錯誤"}), 400
+    elif rescue_type == "item":
+        item_id = body.get("item_id")
+        if not item_id:
+            return jsonify({"success": False, "error": "請指定救援道具"}), 400
+        success, message, rescued = apply_near_death_item_rescue(
+            session["squad_id"],
+            target["squad_id"],
+            item_id,
+        )
+        if not success:
+            return jsonify({"success": False, "error": message}), 400
     else:
-        update_squad(target["squad_id"], near_death_until=None, hp=25)
-        message = f"{rescuer_name} 使用道具救援 {target_name}，恢復至 25 生命值。"
-        rescued = True
+        return jsonify({"success": False, "error": "無效的救援方式"}), 400
 
     if combat_id:
         combat = get_combat(int(combat_id))
