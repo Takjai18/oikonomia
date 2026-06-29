@@ -1897,7 +1897,10 @@
                 let note = preview.counter_target_name
                     ? `反擊目標：${preview.counter_target_name}`
                     : '預計對我方造成傷害';
-                if (preview.counter_defending) note += '（防禦減半）';
+                if (preview.counter_defending) {
+                    const dc = preview.team_defend_count || 1;
+                    note += dc > 1 ? `（${dc} 人為全隊堅守界線，減半）` : '（全隊防禦，減半）';
+                }
                 if (preview.counter_pending) note += ' · 待全隊提交';
                 else if (preview.phase_resolves_now) note += ' · 本回合將結算';
                 counterNote.textContent = note;

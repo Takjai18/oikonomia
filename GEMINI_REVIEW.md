@@ -126,7 +126,7 @@ deploy/pa-update.sh
 | **N+1 查詢** | `get_team_members`、GM overview 大量 squad 時 |
 | **原生 alert** | 玩家端 `showToast` / `showInputModal`（`templates/index.html`）；GM 用 `showGmToast` / `showGmInputModal`（`gm_templates.py`，0 個 `alert()`） |
 | **Render 持久化** | `render.yaml` | 已設 `disk` mount `/data`；Free tier 無 persistent disk，營會正式環境用 PA |
-| **Defend 機制** | 目前只對被反擊目標減傷 50%，唔係全隊 buff（已知設計差距） |
+| **Defend 機制** | 已實作全隊 buff：任一同隊 Defend → 反擊減半（`defend_team_buff` marker） |
 
 ### 🟢 Low — 可記錄、唔阻營會
 
@@ -185,7 +185,7 @@ curl -s http://localhost:5001/api/version | python3 -m json.tool
 
 見 `AGENT_HANDOFF.md`「尚未完成」一節，例如：
 - GM UI 強制結算戰鬥按鈕
-- Defend 全隊 buff
+- ~~Defend 全隊 buff~~（已完成）
 - 更多 encounter / Marah 線
 - 瀕死 background timer（目前靠 polling）
 

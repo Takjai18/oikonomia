@@ -12,11 +12,18 @@ os.environ["DATA_DIR"] = TEST_DIR
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import app as oikonomia  # noqa: E402
+from models.combat import (
+    calculate_incoming_damage,
+    count_team_defenders,
+    team_defend_damage_multiplier,
+)
+from models.squad import get_squad, update_squad
 
 oikonomia.init_db()
 oikonomia.migrate_db()
 
 ENCOUNTER_ID = "enc_iggy_01_leech"
+TEST_ENCOUNTER_ID = "test_combat_01"
 PASS = 0
 FAIL = 0
 MAX_FIGHT_ROUNDS = 8
@@ -43,6 +50,65 @@ def submit_attack(client, combat_id):
         "/combat/submit_action",
         json={"combat_id": combat_id, "action_type": "attack"},
         content_type="application/json",
+    )
+
+
+def test_defend_team_buff_helpers():
+    """Unit checks for Defend team-wide damage reduction."""
+    actions = {
+        "a": {"action_type": "attack"},
+        "b": {"action_type": "defend"},
+    }
+    ok("count_team_defenders", count_team_defenders(actions) == 1)
+    ok("team_defend_multiplier", team_defend_damage_multiplier(1) == 0.5)
+    ok("no defend multiplier", team_defend_damage_multiplier(0) == 1.0)
+    base = calculate_incoming_damage(12, 10)
+    reduced = calculate_incoming_damage(12, 10, team_defend_multiplier=0.5)
+    ok("team defend halves counter", reduced == max(0, base // 2), f"{base} -> {reduced}")
+
+
+def test_defend_team_buff_integration(client, client2, leader_id, member_id):
+    """
+    Low-resilience leader is counter target; high-resilience teammate Defends.
+    Counter damage should be halved even though the target attacked.
+    """
+    update_squad(leader_id, resilience=10)
+    update_squad(member_id, resilience=80)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("defend test: start combat", start.get("success") and combat_id, str(start))
+
+    leader_before = int((get_squad(leader_id) or {}).get("hp") or 0)
+
+    r1 = client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack"},
+        content_type="application/json",
+    )
+    ok("defend test: leader attacks", (r1.get_json() or {}).get("status") == "waiting_for_teammates")
+
+    r2 = client2.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "defend"},
+        content_type="application/json",
+    )
+    phase = r2.get_json() or {}
+    ok("defend test: member defends", phase.get("success") or phase.get("status"), str(phase)[:200])
+
+    leader_after = int((get_squad(leader_id) or {}).get("hp") or 0)
+    raw_counter = calculate_incoming_damage(12, 10)
+    buffed_counter = calculate_incoming_damage(12, 10, team_defend_multiplier=0.5)
+    damage_taken = leader_before - leader_after
+    ok(
+        "defend test: team buff reduces counter",
+        damage_taken == buffed_counter and damage_taken < raw_counter,
+        f"hp -{damage_taken}, expected {buffed_counter} (raw {raw_counter})",
     )
 
 
@@ -82,6 +148,7 @@ def main():
     # --- 玩家 1：建隊 + Iggy 路線 ---
     p1 = login(client, "TestLeader")
     ok("玩家1 登入", p1 and p1.get("squad_id"))
+    leader_id = p1.get("squad_id")
 
     r = client.post("/team/create", data={"team_name": "CombatTest隊"})
     team_data = r.get_json()
@@ -96,10 +163,13 @@ def main():
     client2 = oikonomia.app.test_client()
     p2 = login(client2, "TestMember")
     ok("玩家2 登入", p2 and p2.get("squad_id"))
+    member_id = p2.get("squad_id")
 
     r2 = client2.post("/team/join", data={"team_id": team_id})
     join_data = r2.get_json()
     ok("玩家2 加入隊伍", join_data.get("success"), str(join_data))
+
+    test_defend_team_buff_helpers()
 
     # --- 開始 encounter ---
     r = client.post(
@@ -133,6 +203,9 @@ def main():
     ok("submit_action 觸發勝利", final.get("outcome") == "victory", str(final)[:200])
     ok("勝利有反思題目", bool((final.get("reflection_prompt") or {}).get("questions")))
 
+    # --- Defend 全隊 buff（主線戰鬥結束後另開 test encounter）---
+    test_defend_team_buff_integration(client, client2, leader_id, member_id)
+
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
     status = r.get_json()
@@ -150,6 +223,7 @@ def main():
     ver = r.get_json()
     ok("combat_system marker", ver.get("markers", {}).get("combat_system") is True)
     ok("server_combat_dice marker", ver.get("markers", {}).get("server_combat_dice") is True)
+    ok("defend_team_buff marker", ver.get("markers", {}).get("defend_team_buff") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

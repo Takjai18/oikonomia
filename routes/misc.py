@@ -6,7 +6,12 @@ from flask import Blueprint, abort, jsonify, render_template, send_from_director
 from werkzeug.utils import secure_filename
 
 from data.locations import LOCATIONS
-from models.combat import resolve_player_phase, build_combat_round_preview, roll_combat_dice
+from models.combat import (
+    count_team_defenders,
+    resolve_player_phase,
+    build_combat_round_preview,
+    roll_combat_dice,
+)
 from models.settings import settings
 from services.announcements import list_announcements
 from utils.app_state import DB_INIT_ERROR
@@ -57,6 +62,7 @@ def api_version():
             "input_modal": "input-modal-overlay" in template_text,
             "routes_refactored": True,
             "upload_path_hardened": True,
+            "defend_team_buff": callable(count_team_defenders),
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

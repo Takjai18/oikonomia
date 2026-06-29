@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`050c842`（功能 commit `fc53d73`）
+> 最後更新：2026-06-29 · local/GitHub：待 push（功能：Defend 全隊 buff）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -12,9 +12,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `050c842` | ✅ 最新 |
-| **GitHub `main`** | `050c842` | ✅ 已 push |
-| **PythonAnywhere** | 未知（500） | 🔴 **網站掛咗** — `/api/version` 回 HTML error page，唔係 JSON |
+| **Local** | 見 `git rev-parse --short HEAD` | ✅ |
+| **GitHub `main`** | 同上 | push 後核對 |
+| **PythonAnywhere** | 應與 local 相同 | `curl /api/version` → `success: true` |
 
 ```bash
 # 本地
@@ -26,16 +26,11 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 
 兩邊 `version` 必須相同才算部署完成。
 
-### PA 500 根因（已修但未部署）
-
-`fc53d73` 修咗 **`models/combat.py` 重複定義** `apply_encounter_success` 等函數，shadow 咗 `models/encounter_outcomes.py` 嘅 import，導致戰鬥勝利時 `NameError: add_insight_fragments` → 全站 500。  
-**P0：請用戶部署 `fc53d73`（或更新後 `050c842`）到 PA 並 Web Reload。**
-
-### 本地測試（`fc53d73`）
+### 本地測試
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py
-# 預期：17 通過 / 0 失敗
+# 預期：26 通過 / 0 失敗（含 Defend 全隊 buff 測試）
 ```
 
 ---
@@ -100,7 +95,21 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ---
 
-## 本輪已完成（至 `fc53d73`）
+## 本輪已完成
+
+### Defend 全隊 buff（最新）
+
+| 變更 | 說明 |
+|------|------|
+| **`count_team_defenders()`** | 統計本回合防禦人數 |
+| **反擊減傷** | 任一同隊 Defend → 反擊目標傷害 ×0.5（唔限於目標自己防禦） |
+| **預覽 API** | 回傳 `team_defend_count`；`counter_defending` = 全隊有防禦 |
+| **marker** | `/api/version` → `defend_team_buff` |
+| **測試** | `test_combat_flow.py` 26 項（含整合測試） |
+
+---
+
+## 早前已完成（至 `fc53d73`）
 
 ### 架構重構
 
@@ -170,7 +179,7 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 骰子倍率：0→0, 1→1.0, 2→1.5, 3→2.0（伺服器 roll_combat_dice）
 Zoo：神智 ≥70/80/90/100 → ×1.3/1.4/1.5/1.8
 暴走：神智 <10→90%, <20→50%, <40→20%
-敵人反擊：攻擊全隊韌性最低者；defend 減傷 50%（只對被反擊目標）
+敵人反擊：攻擊全隊韌性最低者；**任一同隊 Defend → 反擊傷害減半**（全隊 buff，唔使反擊目標自己防禦）
 瀕死：HP≤0 → near_death_until +15 分鐘
 ```
 
@@ -187,9 +196,7 @@ Zoo：神智 ≥70/80/90/100 → ×1.3/1.4/1.5/1.8
 
 | 優先 | 項目 | 說明 |
 |------|------|------|
-| **P0** | **部署 PA 至 `050c842`** | PA 目前 500；見 Deploy 一節 |
-| P1 | 部署後實機驗證 | 戰鬥勝利流程、`/api/version` markers |
-| P3 | Defend 全隊 buff | 目前只對「被反擊目標」減傷 50% |
+| P1 | 部署後實機驗證 | 戰鬥勝利流程、`/api/version` markers（含 `defend_team_buff`） |
 | P4 | 更多 encounter JSON | Marah 線、stage 2+ |
 | P5 | 瀕死 background timer | 目前靠 polling + `near_death_until` |
 | 中 | `grant_item_to_squad` | item INSERT 有事務，但 `apply_item_effect_to_squad()` 喺 commit 後跑 |

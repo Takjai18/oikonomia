@@ -181,11 +181,38 @@ def calculate_damage(attacker_stat, multiplier, enemy_armor, item_bonus=0):
     damage = math.floor(base * multiplier) - enemy_armor
     return max(0, damage)
 
-def calculate_incoming_damage(enemy_base_damage, player_resilience, defending=False):
+DEFEND_TEAM_DAMAGE_FACTOR = 0.5
+
+
+def count_team_defenders(actions):
+    """Count players who chose Defend this phase (team-wide shield)."""
+    if not actions:
+        return 0
+    return sum(
+        1 for action_data in actions.values()
+        if (action_data.get("action_type") or action_data.get("action")) == "defend"
+    )
+
+
+def team_defend_damage_multiplier(defender_count):
+    if defender_count > 0:
+        return DEFEND_TEAM_DAMAGE_FACTOR
+    return 1.0
+
+
+def calculate_incoming_damage(
+    enemy_base_damage,
+    player_resilience,
+    defending=False,
+    team_defend_multiplier=None,
+):
     reduction = math.floor(player_resilience * 0.6)
     damage = max(0, enemy_base_damage - reduction)
-    if defending:
-        damage = max(0, math.floor(damage * 0.5))
+    multiplier = team_defend_multiplier
+    if multiplier is None:
+        multiplier = DEFEND_TEAM_DAMAGE_FACTOR if defending else 1.0
+    if multiplier < 1.0:
+        damage = max(0, math.floor(damage * multiplier))
     return damage
 
 def dice_multiplier(dice_result):
@@ -406,7 +433,7 @@ def resolve_player_phase(combat_id):
     - 攻擊傷害（max(力量, 智力)）+ dice multiplier
     - Zoo 加成（70/80/90/100 → 1.3x–1.8x）
     - 暴走（指定機率 + 30% 自傷）
-    - 敵人反擊（韌性最低者，Defend 減傷 50%）
+    - 敵人反擊（韌性最低者；任一同隊 Defend → 全隊減傷 50%）
     - 瀕死檢查、日誌、Phase 狀態更新
     回傳 (combat, winner)；winner 為 'squad' | 'enemy' | None
     """
@@ -490,7 +517,7 @@ def resolve_player_phase(combat_id):
         elif action_type == "defend":
             combat = append_combat_log(
                 combat,
-                f"{display} 進入防禦姿態",
+                f"{display} 為全隊堅守界線",
                 log_type="defend",
             )
         elif action_type == "pass":
@@ -531,19 +558,27 @@ def resolve_player_phase(combat_id):
     target = get_lowest_resilience_player(fresh_participants)
     if target:
         target_id = target["squad_id"]
-        defending = (actions.get(target_id) or {}).get("action_type") == "defend"
+        defender_count = count_team_defenders(actions)
+        team_defend_mult = team_defend_damage_multiplier(defender_count)
         incoming = calculate_incoming_damage(
             enemy_base_damage,
             get_effective_stat(target, "resilience"),
-            defending=defending,
+            team_defend_multiplier=team_defend_mult,
         )
         if incoming > 0:
             apply_damage_to_player(target_id, incoming, squad=target)
             refreshed = fetch_squads_by_ids([target_id]).get(target_id)
+            defend_note = ""
+            if defender_count > 0:
+                defend_note = (
+                    f"（{defender_count} 人為全隊堅守界線，減半）"
+                    if defender_count > 1
+                    else "（全隊防禦，減半）"
+                )
             combat = append_combat_log(
                 combat,
                 f"{enemy_name} 反擊 {target.get('display_name', target_id)}，造成 {incoming} 點傷害"
-                + ("（防禦減半）" if defending else ""),
+                + defend_note,
                 log_type="enemy_attack",
             )
             if refreshed and refreshed.get("near_death_until"):
@@ -852,14 +887,15 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
     target = get_lowest_resilience_player(active_participants) or (participants[0] if participants else None)
     counter_damage = 0
     counter_target_name = None
-    counter_defending = False
+    team_defend_count = count_team_defenders(hypo_actions)
+    team_defend_mult = team_defend_damage_multiplier(team_defend_count)
+    counter_defending = team_defend_count > 0
     if target:
         target_id = target["squad_id"]
-        counter_defending = (hypo_actions.get(target_id) or {}).get("action_type") == "defend"
         counter_damage = calculate_incoming_damage(
             enemy_base,
             get_effective_stat(target, "resilience"),
-            defending=counter_defending,
+            team_defend_multiplier=team_defend_mult,
         )
         counter_target_name = target.get("display_name") or target_id
 
@@ -923,6 +959,7 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
         "enemy_counter_damage": counter_damage,
         "counter_target_name": counter_target_name,
         "counter_defending": counter_defending,
+        "team_defend_count": team_defend_count,
         "counter_pending": not all_submitted and len(active_participants) > 1,
         "pending_teammates": max(0, pending_count - 0) if not all_submitted else 0,
         "phase_resolves_now": all_submitted or len(active_participants) <= 1,
@@ -978,7 +1015,7 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
     if damage_dealt > 0:
         summary_parts.append(f"你對敵人造成 {damage_dealt} 點傷害")
     elif base.get("action_label") == "堅守界線":
-        summary_parts.append("你進入防禦姿態")
+        summary_parts.append("你為全隊堅守界線")
     elif base.get("action_label") == "觀望":
         summary_parts.append("你選擇觀望")
     else:
