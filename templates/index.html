@@ -314,13 +314,13 @@
             box-shadow: 0 0 28px rgba(234, 179, 8, 0.55);
         }
         .damage-number {
-            position: absolute;
+            position: fixed;
             font-weight: 700;
             font-size: 2rem;
             color: #f87171;
             text-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
             pointer-events: none;
-            z-index: 50;
+            z-index: 80;
             animation: damagePop 1.1s ease-out forwards;
             transform: translateX(-50%);
         }
@@ -1653,9 +1653,19 @@
         function showRoundSettlementModal(data) {
             const modal = document.getElementById('combat-round-settlement-modal');
             const logsEl = document.getElementById('round-settlement-logs');
+            const dmgEl = document.getElementById('round-settlement-damage');
             const preview = data.full_preview || {};
             const entries = preview.log_entries || data.log_entries || [];
             const recent = entries.slice(-8);
+            const roundDmg = parseInt(data.round_enemy_damage, 10);
+            if (dmgEl) {
+                if (roundDmg > 0) {
+                    dmgEl.textContent = `本回合對敵人造成 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`;
+                    dmgEl.classList.remove('hidden');
+                } else {
+                    dmgEl.classList.add('hidden');
+                }
+            }
             if (logsEl) {
                 logsEl.innerHTML = recent.length
                     ? recent.map(e => `<div class="py-0.5">• ${e.message || e}</div>`).join('')
@@ -1692,9 +1702,15 @@
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
-            showRoundSettlementModal(data);
-            processCombatDamageAnimations(data, 200);
-            updateCombatUI(data, { damageDelay: 350 });
+            processCombatDamageAnimations(data, 120);
+            updateCombatUI(data, { damageDelay: 200 });
+            const roundDmg = parseInt(data.round_enemy_damage, 10);
+            const hasDamageLogs = (data.log_entries || []).some(e => e.type === 'damage');
+            const modalDelay = (roundDmg > 0 || hasDamageLogs) ? 950 : 150;
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = setTimeout(() => {
+                showRoundSettlementModal(data);
+            }, modalDelay);
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
@@ -1766,15 +1782,18 @@
             const target = document.getElementById(targetId);
             if (!target || !amount) return;
 
+            const rect = target.getBoundingClientRect();
+            if (!rect.width && !rect.height) return;
+
             const damageEl = document.createElement('div');
             damageEl.className = `damage-number${isCrit ? ' crit' : ''}`;
-            damageEl.textContent = `-${amount}`;
+            damageEl.textContent = `-${Number(amount).toLocaleString('zh-Hant')}`;
 
             const offsetX = Math.random() * 40 - 20;
-            damageEl.style.left = `calc(50% + ${offsetX}px)`;
-            damageEl.style.top = '30%';
+            damageEl.style.left = `${rect.left + rect.width / 2 + offsetX}px`;
+            damageEl.style.top = `${rect.top + rect.height * 0.28}px`;
 
-            target.appendChild(damageEl);
+            document.body.appendChild(damageEl);
             setTimeout(() => damageEl.remove(), isCrit ? 1300 : 1100);
         }
 
@@ -6245,6 +6264,7 @@
             <div class="px-5 py-4 border-b border-zinc-700">
                 <div class="text-xs text-emerald-400">全隊傷害結算</div>
                 <div class="font-semibold text-lg">本回合戰果</div>
+                <div id="round-settlement-damage" class="hidden mt-2 text-sm font-mono text-amber-400"></div>
             </div>
             <div id="round-settlement-logs" class="px-5 py-4 max-h-64 overflow-y-auto text-sm text-zinc-300 space-y-1"></div>
             <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">

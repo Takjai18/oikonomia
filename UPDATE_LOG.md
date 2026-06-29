@@ -62,6 +62,15 @@
 
 ## 更新紀錄（按時間倒序）
 
+### 2026-06-29 — 傷害浮字被回合結算 Modal 遮住
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 玩家攻擊永恆崩壞影多次，仍睇唔到傷害貼圖／浮字 |
+| **根因** | ① 回合結算 modal `z-[73]` 即刻蓋住 `.damage-number`（原 z-50）② 浮字掛喺 `enemy-panel`（`overflow-hidden`）被裁切 ③ `/combat/status` 輪詢 `round_just_resolved` 時漏傳 `round_enemy_damage` |
+| **修復** | 浮字改 `position:fixed` + `document.body` + z-80；延遲 ~950ms 先開結算 modal；modal 內顯示本回合傷害；status API 補 `round_enemy_damage` |
+| **勿重複建議** | 唔好只改 regex（`3df7bdb` 已修）；要檢查 modal 疊層同輪詢 payload |
+
 ### 2026-06-29 — 敵人 HP 動畫與千分位數字
 
 | 項目 | 內容 |

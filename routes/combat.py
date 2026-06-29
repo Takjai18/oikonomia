@@ -32,6 +32,7 @@ from models.combat import (
     _build_full_preview_from_status,
     _build_round_resolved_response,
     _combat_outcome_json,
+    _round_enemy_damage_from_logs,
 )
 from models.encounter import (
     encounter_route_matches,
@@ -228,6 +229,7 @@ def combat_status_api():
         payload["status"] = "round_resolved"
         payload["round_resolved"] = True
         payload["full_preview"] = _build_full_preview_from_status(payload)
+        payload["round_enemy_damage"] = _round_enemy_damage_from_logs(payload.get("log_entries"))
     elif combat.get("status") == "player_phase":
         if participants is None:
             participants = get_combat_participants(combat) or []
