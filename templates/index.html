@@ -873,6 +873,7 @@
                                             <span id="enemy-hp-current">0</span>/<span id="enemy-hp-max">0</span>
                                         </div>
                                     </div>
+                                    <div id="enemy-round-damage" class="hidden text-[10px] lg:text-xs text-amber-400 font-mono mt-0.5"></div>
                                 </div>
                             </div>
                             <div class="grid grid-cols-5 gap-1 text-center">
@@ -1473,6 +1474,7 @@
         let lastShownSettlementPhase = 0;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
+        let lastAnimatedEnemyHp = null;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let enemyHpAnimFrame = null;
@@ -1556,7 +1558,13 @@
             }
         }
 
-        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420, formatFn = null) {
+        function parseLocaleInt(text) {
+            if (text == null || text === '') return NaN;
+            const n = parseInt(String(text).replace(/[,，\s]/g, ''), 10);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420, formatFn = null, onComplete = null) {
             const el = document.getElementById(elementId);
             if (!el) return;
             const render = (v) => (formatFn ? formatFn(v) : String(v));
@@ -1564,10 +1572,12 @@
             const to = Number(toVal);
             if (!Number.isFinite(from) || !Number.isFinite(to)) {
                 safeSetText(elementId, render(toVal));
+                if (onComplete) onComplete(toVal);
                 return;
             }
             if (from === to) {
                 el.textContent = render(to);
+                if (onComplete) onComplete(to);
                 return;
             }
             if (enemyHpAnimFrame) cancelAnimationFrame(enemyHpAnimFrame);
@@ -1580,6 +1590,7 @@
                     enemyHpAnimFrame = requestAnimationFrame(step);
                 } else {
                     enemyHpAnimFrame = null;
+                    if (onComplete) onComplete(to);
                 }
             };
             requestAnimationFrame(step);
@@ -1697,6 +1708,13 @@
             if (roundDmg > 0) {
                 showDamageNumber('enemy-panel', roundDmg, false);
                 showToast(`本回合對敵人造成 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`, 'info');
+                const roundDmgEl = document.getElementById('enemy-round-damage');
+                if (roundDmgEl) {
+                    roundDmgEl.textContent = `本回合受到 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`;
+                    roundDmgEl.classList.remove('hidden');
+                    clearTimeout(roundDmgEl._hideTimer);
+                    roundDmgEl._hideTimer = setTimeout(() => roundDmgEl.classList.add('hidden'), 6000);
+                }
             }
             const phase = data.current_phase || 0;
             if (phase > lastShownSettlementPhase) {
@@ -3999,6 +4017,7 @@
 
         function resetCombatEnemyHpTracking(enemyHp = null) {
             combatEnemyHpSeen = enemyHp;
+            if (enemyHp != null) lastAnimatedEnemyHp = enemyHp;
         }
 
         function updateEnemyCombatStats(enemy, description) {
@@ -4024,10 +4043,14 @@
                     ? hp
                     : Math.min(combatEnemyHpSeen, hp);
             }
-            const prevDisplayed = parseInt(document.getElementById('enemy-hp-current')?.textContent, 10);
-            const fromHp = Number.isFinite(prevDisplayed) ? prevDisplayed : (combatEnemyHpSeen ?? hp);
+            const prevDisplayed = parseLocaleInt(document.getElementById('enemy-hp-current')?.textContent);
+            const fromHp = lastAnimatedEnemyHp ?? (
+                Number.isFinite(prevDisplayed) ? prevDisplayed : (combatEnemyHpSeen ?? hp)
+            );
             const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
-            animateCombatNumber('enemy-hp-current', fromHp, hp, 420, fmtHp);
+            animateCombatNumber('enemy-hp-current', fromHp, hp, 420, fmtHp, (v) => {
+                lastAnimatedEnemyHp = v;
+            });
             safeSetText('enemy-hp-max', fmtHp(maxHp));
             safeSetText('enemy-stat-hp', fmtHp(hp));
             safeSetText('enemy-stat-sanity', enemy.sanity);
