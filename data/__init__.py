@@ -1,0 +1,1 @@
+"""Static game data (locations, story content, thresholds)."""

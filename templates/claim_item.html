@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>獲得物品 • Oikonomia</title>
+    <script>
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) return;
+          originalWarn.apply(console, args);
+        };
+      })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      setTimeout(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+      body::before { display: none !important; }
+    `;
+        document.head.appendChild(style);
+
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          const message = args.join(' ');
+          if (message.includes('tailwindcss.com should not be used in production')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }, 100);
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-6">
+    <div id="claim-card" class="max-w-md w-full bg-zinc-900 border border-zinc-700 rounded-3xl overflow-hidden">
+        <div class="relative">
+            <img id="claim-image" src="{{ item.image_path or '/static/images/default-item.svg' }}"
+                 class="w-full h-56 object-cover" alt="">
+            {% if item.has_ability %}
+            <div class="absolute top-4 right-4 bg-amber-400 text-zinc-900 px-3 py-1 rounded-full text-sm font-bold">
+                <i class="fa-solid fa-bolt"></i> 能力物品
+            </div>
+            {% endif %}
+        </div>
+        <div class="p-6 text-center">
+            <h1 class="text-2xl font-bold mb-2">{{ item.name }}</h1>
+            <p class="text-zinc-400 text-sm mb-4">{{ item.description or '' }}</p>
+            {% if item.has_ability and item.effect_type %}
+            <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 mb-4 text-left">
+                <div class="text-xs text-zinc-400 mb-1">獲得效果</div>
+                <div id="claim-effect" class="text-xl font-bold text-amber-400"></div>
+            </div>
+            {% endif %}
+            <div id="claim-status" class="text-sm text-zinc-400 mb-4">正在領取物品...</div>
+            <button id="claim-btn" onclick="claimNow()"
+                    class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl mb-3">
+                確認獲得
+            </button>
+            <a href="/" class="text-sm text-amber-400 hover:underline">返回 Dashboard</a>
+        </div>
+    </div>
+    <script>
+        const qrPayload = {{ qr_payload|tojson }};
+        const itemMeta = {{ item|tojson }};
+        const effectLabels = {
+            power_up: '力量', sanity_up: '神智', resilience_up: '韌性',
+            hp_up: '生命值', intellect_up: '智力'
+        };
+
+        (function initClaimPage() {
+            const effectEl = document.getElementById('claim-effect');
+            if (effectEl && itemMeta.has_ability && itemMeta.effect_type) {
+                const label = effectLabels[itemMeta.effect_type] || '';
+                const value = Number(itemMeta.effect_value) || 0;
+                const sign = value >= 0 ? '+' : '';
+                effectEl.textContent = label ? `${sign}${value} ${label}` : '';
+            }
+            const img = document.getElementById('claim-image');
+            if (img) img.onerror = () => { img.src = '/static/images/default-item.svg'; };
+        })();
+
+        async function claimNow() {
+            const status = document.getElementById('claim-status');
+            const btn = document.getElementById('claim-btn');
+            btn.disabled = true;
+            status.textContent = '領取中...';
+
+            const res = await fetch('/add_item', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ qr_payload: qrPayload, source: 'qr' })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                status.textContent = data.message || '成功獲得物品！';
+                status.className = 'text-sm text-emerald-400 mb-4';
+                btn.classList.add('hidden');
+                if (data.applied_effect && data.applied_effect.effect_text) {
+                    const effectEl = document.getElementById('claim-effect');
+                    if (effectEl) effectEl.textContent = data.applied_effect.effect_text;
+                }
+            } else {
+                status.textContent = data.error || '領取失敗';
+                status.className = 'text-sm text-red-400 mb-4';
+                btn.disabled = false;
+            }
+        }
+
+        claimNow();
+    </script>
+</body>
+</html>

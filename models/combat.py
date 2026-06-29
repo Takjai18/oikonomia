@@ -415,7 +415,7 @@ def resolve_player_phase(combat_id):
         return combat, None
 
     encounter = load_encounter(combat["encounter_id"])
-    settings = (encounter or {}).get("combat_settings", {})
+    combat_settings = (encounter or {}).get("combat_settings", {})
     participants = get_combat_participants(combat)
     participant_by_id = {p["squad_id"]: p for p in participants}
     actions = combat.get("phase_actions") or {}
@@ -474,7 +474,7 @@ def resolve_player_phase(combat_id):
                     log_type="zoo",
                 )
 
-        if action_type in settings.attack_action_types:
+        if action_type in ATTACK_ACTION_TYPES:
             stat_info = describe_attack_stat(player)
             dmg = calculate_attack_damage(
                 player, enemy_resilience, multiplier=multiplier, item_bonus=item_bonus,
@@ -558,7 +558,7 @@ def resolve_player_phase(combat_id):
         return _end_combat(combat_id, "enemy", encounter), "enemy"
 
     now = datetime.now().isoformat()
-    limit = settings.get("phase_time_limit_seconds", 180)
+    limit = combat_settings.get("phase_time_limit_seconds", 180)
     save_combat(
         combat_id,
         status="player_phase",
@@ -744,7 +744,7 @@ def build_enemy_combat_stats(combat, encounter=None):
 
 
 def build_combat_status_response(combat, encounter, squad_id, participants=None):
-    settings = (encounter or {}).get("combat_settings", {})
+    combat_settings = (encounter or {}).get("combat_settings", {})
     if participants is None and combat:
         participants = get_combat_participants(combat)
     participants = participants or []
@@ -811,7 +811,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "current_phase": combat.get("current_phase", 0),
         "phase_started_at": combat.get("phase_started_at"),
         "phase_deadline": combat.get("phase_deadline"),
-        "phase_expired": combat_phase_expired(combat, settings),
+        "phase_expired": combat_phase_expired(combat, combat_settings),
         "remaining_seconds": max(
             0,
             int((datetime.fromisoformat(combat["phase_deadline"]) - datetime.now()).total_seconds())
@@ -835,12 +835,12 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "log": log_messages,
         "log_entries": log_entries,
         "reflection_prompt": (encounter or {}).get("reflection_prompt"),
-        "combat_settings": settings,
+        "combat_settings": combat_settings,
         "available_actions": list(settings.combat_action_types),
         "winner": combat.get("winner"),
         "enemy_description": (encounter or {}).get("enemy", {}).get("description"),
         "route": team_route or (encounter or {}).get("route"),
-        "max_phases": settings.get("max_phases", 5),
+        "max_phases": combat_settings.get("max_phases", 5),
         "my_squad_id": squad_id,
     }
 
@@ -864,7 +864,7 @@ def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enem
         if item and item.get("effect_type") == "power_up":
             item_bonus = abs(int(item.get("effect_value") or 0))
 
-    if action_type in settings.attack_action_types:
+    if action_type in ATTACK_ACTION_TYPES:
         if action_type == "use_zoo":
             multiplier *= zoo_bonus_multiplier(sanity)
         stat_info = describe_attack_stat(player)
@@ -1144,6 +1144,64 @@ def _build_round_resolved_response(combat, encounter, squad_id):
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     payload["full_preview"] = _build_full_preview_from_status(payload)
     return payload
+
+
+def create_combat_record(squad_id, encounter_id, encounter, initial_status="precheck"):
+    enemy = encounter.get("enemy", {})
+    enemy_stats = build_enemy_combat_stats(
+        {
+            "enemy_name": enemy.get("name", "敵人"),
+            "enemy_hp": enemy.get("hp", 100),
+            "enemy_max_hp": enemy.get("hp", 100),
+            "enemy_resilience": enemy.get("resilience", 0),
+            "enemy_sanity": enemy.get("sanity", 0),
+            "enemy_base_damage": enemy.get("base_damage", 10),
+            "enemy_power": enemy.get("power"),
+            "enemy_intellect": enemy.get("intellect"),
+        },
+        encounter,
+    )
+    combat_settings = encounter.get("combat_settings", {})
+    now = datetime.now().isoformat()
+    logs = [{"at": now, "message": f"遭遇戰開始：{encounter.get('title', encounter_id)}"}]
+    phase_started = now if initial_status == "player_phase" else None
+    phase_deadline = (
+        combat_phase_deadline(now, combat_settings.get("phase_time_limit_seconds", 180))
+        if initial_status == "player_phase" else None
+    )
+    conn = sqlite3.connect(_db())
+    c = conn.cursor()
+    c.execute(
+        """INSERT INTO combats
+           (squad_id, encounter_id, status, current_phase, enemy_name, enemy_hp, enemy_max_hp,
+            enemy_resilience, enemy_sanity, enemy_base_damage, enemy_power, enemy_intellect,
+            phase_actions, logs, phase_started_at, phase_deadline, started_at)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)""",
+        (
+            squad_id,
+            encounter_id,
+            initial_status,
+            enemy_stats["name"],
+            enemy_stats["hp"],
+            enemy_stats["max_hp"],
+            enemy_stats["resilience"],
+            enemy_stats["sanity"],
+            enemy_stats["base_damage"],
+            enemy_stats["power"],
+            enemy_stats["intellect"],
+            json.dumps(logs, ensure_ascii=False),
+            phase_started,
+            phase_deadline,
+            now,
+        ),
+    )
+    combat_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    squad = get_squad(squad_id)
+    if squad and squad.get("team_id"):
+        set_team_combat_id(squad["team_id"], combat_id)
+    return get_combat(combat_id)
 
 
 # Public aliases for routes / templates

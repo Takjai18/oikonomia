@@ -1,0 +1,174 @@
+"""Authentication and onboarding routes."""
+import os
+import re
+import sqlite3
+import time
+
+from flask import Blueprint, jsonify, request, session
+
+from models.settings import settings
+from models.squad import get_squad, update_squad
+from services.player_status import build_player_status
+from services.session_auth import attach_restore_token, establish_player_session, verify_restore_token
+
+auth_bp = Blueprint("auth", __name__)
+
+
+@auth_bp.route("/login", methods=["POST"])
+def login():
+    name = request.form.get("squad_id", "").strip()
+    input_pin = re.sub(r"\D", "", request.form.get("pin", "").strip())[:4]
+
+    if not name:
+        return jsonify({"error": "請輸入名稱"}), 400
+
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+
+    row = conn.execute(
+        "SELECT * FROM squads WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?))",
+        (name,),
+    ).fetchone()
+    if not row:
+        row = conn.execute(
+            "SELECT * FROM squads WHERE squad_id = ?",
+            (name,),
+        ).fetchone()
+
+    if row:
+        stored_pin = str(row["pin"] or "").strip()
+        has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
+
+        if has_pin:
+            if not input_pin:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "require_pin": True,
+                    "message": "請輸入 PIN",
+                })
+            if len(input_pin) != 4:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "error": "PIN 必須為 4 位數字",
+                })
+            if input_pin != stored_pin:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "error": "PIN 錯誤",
+                })
+
+        squad_id = row["squad_id"]
+    else:
+        squad_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
+        while get_squad(squad_id):
+            squad_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
+
+        c = conn.cursor()
+        c.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, power, intellect, resilience, stats_allocated)
+               VALUES (?, ?, 10, 10, 10, 0)""",
+            (squad_id, name),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
+
+    establish_player_session(squad_id)
+    conn.close()
+
+    squad = get_squad(squad_id)
+    status = build_player_status(squad)
+    stored_pin = str(row["pin"] or "").strip()
+    has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
+    status["require_set_pin"] = not has_pin
+    status["has_pin"] = has_pin
+    attach_restore_token(status, squad_id)
+    return jsonify(status)
+
+
+@auth_bp.route("/session/restore", methods=["POST"])
+def session_restore():
+    body = request.json if request.is_json else {}
+    token = (body.get("restore_token") or request.form.get("restore_token") or "").strip()
+    squad_id = verify_restore_token(token)
+    if not squad_id:
+        return jsonify({"success": False, "error": "無效或已過期的裝置憑證"}), 401
+
+    squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({"success": False, "error": "帳號不存在"}), 401
+
+    establish_player_session(squad_id)
+    status = build_player_status(squad)
+    attach_restore_token(status, squad_id)
+    return jsonify(status)
+
+
+@auth_bp.route("/set_pin", methods=["POST"])
+def set_pin():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    new_pin = request.form.get("pin", "").strip()
+
+    if not new_pin or len(new_pin) != 4 or not new_pin.isdigit():
+        return jsonify({"success": False, "error": "請輸入 4 位數字 PIN"}), 400
+
+    update_squad(session["squad_id"], pin=new_pin)
+
+    payload = {"success": True, "message": "PIN 設定成功", "has_pin": True}
+    attach_restore_token(payload, session["squad_id"])
+    return jsonify(payload)
+
+
+@auth_bp.route("/allocate_stats", methods=["POST"])
+def allocate_stats():
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"success": False, "error": "玩家不存在"}), 404
+
+    if squad.get("stats_allocated"):
+        return jsonify({"success": False, "error": "你已經分配過能力值"}), 400
+
+    data = request.json or {}
+    try:
+        power = int(data.get("power", 10))
+        intellect = int(data.get("intellect", 10))
+        resilience = int(data.get("resilience", 10))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "數值格式錯誤"}), 400
+
+    if power < 10 or intellect < 10 or resilience < 10:
+        return jsonify({"success": False, "error": "每項屬性最少要有 10 點"}), 400
+
+    total_free = (power - 10) + (intellect - 10) + (resilience - 10)
+    if total_free != 30:
+        return jsonify({"success": False, "error": "必須剛好使用 30 點自由點數"}), 400
+
+    avatar_dir = settings.avatar_dir
+    avatar_filename = os.path.basename((data.get("avatar") or "").strip())
+    if not avatar_filename:
+        return jsonify({"success": False, "error": "請選擇頭像"}), 400
+    avatar_path = os.path.join(avatar_dir, avatar_filename)
+    if not os.path.isfile(avatar_path) or avatar_filename == "default.png":
+        return jsonify({"success": False, "error": "頭像不存在"}), 400
+
+    update_squad(
+        session["squad_id"],
+        power=power,
+        intellect=intellect,
+        resilience=resilience,
+        stats_allocated=1,
+        avatar=avatar_filename,
+    )
+
+    squad = get_squad(session["squad_id"])
+    status = build_player_status(squad)
+    attach_restore_token(status, session["squad_id"])
+    return jsonify({"success": True, "message": "能力值分配成功", **status})

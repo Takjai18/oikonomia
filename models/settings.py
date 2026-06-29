@@ -17,6 +17,12 @@ class ModelSettings:
     attack_action_types = None
     dice_multipliers = None
     combat_attack_base_damage = 10
+    locations = None
+    story_stage_thresholds = None
+    story_stage_required_tasks = None
+    narrative_stories = None
+    avatar_dir = None
+    portrait_dir = None
 
 
 settings = ModelSettings()

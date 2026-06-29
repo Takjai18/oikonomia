@@ -1,0 +1,90 @@
+"""Encounter listing and detail routes."""
+from flask import Blueprint, jsonify, session
+
+from models.combat import get_active_combat_for_team, get_combat_by_squad
+from models.encounter import encounter_route_matches, load_all_encounters, load_encounter
+from models.encounter_outcomes import encounter_already_completed
+from models.squad import get_squad
+from services.story import count_team_distinct_tasks, resolve_story_stage
+
+encounters_bp = Blueprint("encounters", __name__)
+
+
+@encounters_bp.route("/encounters")
+def list_encounters_api():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+
+    team_id = squad.get("team_id")
+    route = squad.get("route")
+    completed_count, completed_task_ids = count_team_distinct_tasks(
+        session["squad_id"], team_id
+    )
+    stage = resolve_story_stage(completed_count, completed_task_ids)
+    if team_id:
+        active_session = get_active_combat_for_team(team_id)
+    else:
+        active_session = get_combat_by_squad(session["squad_id"])
+
+    encounters = []
+    for enc in load_all_encounters():
+        if not encounter_route_matches(enc.get("route"), route):
+            continue
+        if enc.get("story_stage", 0) > stage:
+            continue
+        completed = encounter_already_completed(team_id, enc["encounter_id"]) if team_id else False
+        encounters.append({
+            "encounter_id": enc["encounter_id"],
+            "title": enc.get("title"),
+            "description": enc.get("description"),
+            "location_hint": enc.get("location_hint"),
+            "story_stage": enc.get("story_stage"),
+            "trigger_type": enc.get("trigger_type"),
+            "completed": completed,
+            "enemy_name": (enc.get("enemy") or {}).get("name"),
+        })
+
+    return jsonify({
+        "success": True,
+        "encounters": encounters,
+        "active_combat": bool(active_session),
+        "active_combat_id": active_session["id"] if active_session else None,
+        "active_encounter_id": active_session["encounter_id"] if active_session else None,
+    })
+
+
+@encounters_bp.route("/encounters/<encounter_id>")
+def get_encounter_api(encounter_id):
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    encounter = load_encounter(encounter_id)
+    if not encounter:
+        return jsonify({"error": "Encounter 不存在"}), 404
+
+    squad = get_squad(session["squad_id"])
+    team_id = squad.get("team_id") if squad else None
+    return jsonify({
+        "success": True,
+        "encounter": {
+            "encounter_id": encounter["encounter_id"],
+            "title": encounter.get("title"),
+            "description": encounter.get("description"),
+            "location_hint": encounter.get("location_hint"),
+            "enemy": encounter.get("enemy"),
+            "combat_settings": encounter.get("combat_settings"),
+            "reflection_prompt": encounter.get("reflection_prompt"),
+            "completed": encounter_already_completed(team_id, encounter_id) if team_id else False,
+        },
+    })
+
+
+@encounters_bp.route("/encounters/<encounter_id>/start", methods=["POST"])
+def start_encounter_api(encounter_id):
+    """Legacy alias → POST /combat/start"""
+    from routes.combat import combat_start_api
+    return combat_start_api(encounter_id=encounter_id)

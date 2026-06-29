@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import datetime
 
 from models.settings import settings
 from utils.helpers import normalize_team_id
@@ -77,6 +78,9 @@ def sync_team_route(team_id, route):
             (route, clean_id),
         )
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -193,3 +197,82 @@ def get_team_protagonists(team_id):
         marah = protagonist
 
     return {"iggy": iggy, "marah": marah, "active_route": route}
+
+
+def join_squad_to_team(squad_id, team_id, route):
+    """Atomically join a squad to a team (fails if squad already has a team)."""
+    clean_id = normalize_team_id(team_id)
+    if not clean_id or not squad_id or route not in ("iggy", "marah"):
+        raise ValueError("invalid join parameters")
+
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(settings.db_path)
+    try:
+        c = conn.cursor()
+        c.execute(
+            """UPDATE squads
+               SET team_id = ?, is_team_leader = 0, route = ?, last_update = ?
+               WHERE squad_id = ?
+                 AND (team_id IS NULL OR TRIM(team_id) = '')""",
+            (clean_id, route, now, squad_id),
+        )
+        if c.rowcount == 0:
+            conn.rollback()
+            raise ValueError("squad already in a team")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def transfer_team_leadership(team_id, target_squad_id):
+    """Atomically transfer team leadership (squads + teams.leader_squad_id)."""
+    clean_id = normalize_team_id(team_id)
+    if not clean_id or not target_squad_id:
+        raise ValueError("missing team_id or target_squad_id")
+
+    conn = sqlite3.connect(settings.db_path)
+    try:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE squads SET is_team_leader = 0 WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+            (clean_id,),
+        )
+        c.execute(
+            "UPDATE squads SET is_team_leader = 1 WHERE squad_id = ?",
+            (target_squad_id,),
+        )
+        c.execute(
+            "UPDATE teams SET leader_squad_id = ? WHERE team_id = ?",
+            (target_squad_id, clean_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def create_team_with_leader(team_id, team_name, leader_squad_id, route=None):
+    """Atomically create a team row and assign the leader squad."""
+    created_at = datetime.now().isoformat()
+    conn = sqlite3.connect(settings.db_path)
+    try:
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
+            (team_id, team_name, route, created_at, leader_squad_id),
+        )
+        c.execute(
+            "UPDATE squads SET team_id = ?, is_team_leader = 1, last_update = ? WHERE squad_id = ?",
+            (team_id, created_at, leader_squad_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

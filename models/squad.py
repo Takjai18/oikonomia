@@ -117,8 +117,12 @@ def update_squad(squad_id, **kwargs):
         updates.append("last_update = ?")
         params.append(datetime.now().isoformat())
         params.append(squad_id)
-        c.execute(f"UPDATE squads SET {', '.join(updates)} WHERE squad_id = ?", params)
-        conn.commit()
+        try:
+            c.execute(f"UPDATE squads SET {', '.join(updates)} WHERE squad_id = ?", params)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
     conn.close()
 
 

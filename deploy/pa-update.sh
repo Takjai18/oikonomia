@@ -101,13 +101,17 @@ if ! grep -q "combat-action-modal" app.py 2>/dev/null; then
 fi
 
 echo ""
-echo "--- Python dependencies ---"
-if command -v pip3 >/dev/null 2>&1; then
-    pip3 install -q -r requirements.txt --user
-    echo "pip install -r requirements.txt (ok)"
-else
-    echo "WARNING: pip3 not found; install requirements manually if deploy fails"
+echo "--- Python virtualenv ---"
+VENV_DIR="$REPO/venv"
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+    echo "Created venv at $VENV_DIR"
 fi
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+pip install -q -r requirements.txt
+echo "venv pip install -r requirements.txt (ok)"
+echo "NOTE: PythonAnywhere Web tab -> Virtualenv path should be: $VENV_DIR"
 
 echo ""
 echo "--- Upload folders ---"

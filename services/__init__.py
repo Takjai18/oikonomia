@@ -1,0 +1,1 @@
+"""Application service layer (business logic extracted from app.py)."""
