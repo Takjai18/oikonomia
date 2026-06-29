@@ -524,12 +524,14 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-## 18. Settlement modal 殘留 + v8 patch（2026-06-30）
+## 18. Settlement modal 殘留 + v8/v9 patch（2026-06-30）
 
 | 症狀 | Encounter | 修復 |
 |------|-----------|------|
-| 攻擊後完全無 modal | `practice_iggy_01_quick` | `handleCombatRoundResolved`：`mustShow` 時強制 `showFullRoundSettlement` |
-| 勝利後重複傷害結算 | killing blow 路徑 | `settlementDisplayKey` + `victorySettlementModalCombatId` 防重複；`combat_flow_v8` |
+| 攻擊後完全無 modal | `practice_iggy_01_quick` | v8 `mustShow` 強制；v9 `round_settlement` poll + `handleCombatRoundResolved` |
+| 勝利後重複傷害結算 | killing blow 路徑 | v8 `settlementDisplayKey`；v9 `settlementModalShown` + `currentSettlementRound`；`clearSettlementModalGuard` on confirm |
+
+**v9 markers**：`combat_flow_v9` + `settlementModalShown` + `currentSettlementRound`
 
 **502 備註**：PA `curl /api/version` 200 + `98441cd`；若 502 多為 Web tab 未 Reload。
 

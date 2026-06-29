@@ -204,7 +204,7 @@
 - `practice_iggy_01_quick`（速戰情緒殘影）：有時攻擊後**完全無**傷害結算 modal
 - 勝利確認後**偶發**再彈一次傷害結算
 
-**修復**：`combat_flow_v8` — `settlementDisplayKey` 防重複；`handleCombatRoundResolved` `mustShow` 強制出 modal；`combat_instant_settlement` marker 字串
+**修復**：`combat_flow_v8`–`v9` — Architect settlement guard spec：`settlementModalShown`/`currentSettlementRound`；poll `round_settlement`；統一 `finishCombatVictoryFromPayload` 勝利入口；confirm 後 `clearSettlementModalGuard`
 
 **詳細**：`bug_log/.../REPORT.md` §17–§18
 
