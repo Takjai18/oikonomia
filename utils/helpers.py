@@ -77,3 +77,21 @@ def resolve_upload_disk_path(filename):
         if os.path.isfile(real_file):
             return real_file
     return None
+
+
+def clamped_stat_delta_expr(stat, operator="+"):
+    """SQL expression for bounded stat changes.
+
+    Normal stats (<=100) stay capped at 100; GM-boosted stats (>100) are not
+    clamped so global events and items do not wipe manual adjustments.
+    """
+    if operator == "+":
+        delta = f"{stat} + ?"
+    elif operator == "-":
+        delta = f"{stat} - ?"
+    else:
+        raise ValueError(f"unsupported operator: {operator}")
+    return (
+        f"MAX(0, CASE WHEN {stat} > 100 THEN {delta} "
+        f"ELSE MIN(100, {delta}) END)"
+    )

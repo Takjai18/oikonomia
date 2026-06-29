@@ -2,7 +2,7 @@
 import sqlite3
 
 from models.settings import settings
-from utils.helpers import hkt_timestamp
+from utils.helpers import clamped_stat_delta_expr, hkt_timestamp
 
 
 def apply_global_effect(effect_type, effect_value=0):
@@ -13,33 +13,38 @@ def apply_global_effect(effect_type, effect_value=0):
         c = conn.cursor()
         if effect_type in ("adjust_sanity", "sanity_adjust"):
             c.execute(
-                "UPDATE squads SET sanity = MAX(0, MIN(100, sanity + ?))",
-                (effect_value,),
+                f"UPDATE squads SET sanity = {clamped_stat_delta_expr('sanity', '+')}",
+                (effect_value, effect_value),
             )
         elif effect_type == "sanity_down":
+            delta = abs(effect_value)
             c.execute(
-                "UPDATE squads SET sanity = MAX(0, MIN(100, sanity - ?))",
-                (abs(effect_value),),
+                f"UPDATE squads SET sanity = {clamped_stat_delta_expr('sanity', '-')}",
+                (delta, delta),
             )
         elif effect_type == "sanity_up":
+            delta = abs(effect_value)
             c.execute(
-                "UPDATE squads SET sanity = MAX(0, MIN(100, sanity + ?))",
-                (abs(effect_value),),
+                f"UPDATE squads SET sanity = {clamped_stat_delta_expr('sanity', '+')}",
+                (delta, delta),
             )
         elif effect_type == "power_up":
+            delta = abs(effect_value)
             c.execute(
-                "UPDATE squads SET power = MAX(0, MIN(100, power + ?))",
-                (abs(effect_value),),
+                f"UPDATE squads SET power = {clamped_stat_delta_expr('power', '+')}",
+                (delta, delta),
             )
         elif effect_type == "intellect_up":
+            delta = abs(effect_value)
             c.execute(
-                "UPDATE squads SET intellect = MAX(0, MIN(100, intellect + ?))",
-                (abs(effect_value),),
+                f"UPDATE squads SET intellect = {clamped_stat_delta_expr('intellect', '+')}",
+                (delta, delta),
             )
         elif effect_type == "resilience_up":
+            delta = abs(effect_value)
             c.execute(
-                "UPDATE squads SET resilience = MAX(0, MIN(100, resilience + ?))",
-                (abs(effect_value),),
+                f"UPDATE squads SET resilience = {clamped_stat_delta_expr('resilience', '+')}",
+                (delta, delta),
             )
         elif effect_type == "judas_strengthen":
             c.execute("UPDATE squads SET sanity = MAX(0, sanity - 8)")

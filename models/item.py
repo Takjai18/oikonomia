@@ -4,7 +4,7 @@ from datetime import datetime
 from models.settings import settings
 from models.squad import apply_hp_change, get_squad
 from utils.db_tx import immediate_transaction
-from utils.helpers import normalize_team_id
+from utils.helpers import clamped_stat_delta_expr, normalize_team_id
 
 
 def get_item_by_id(item_id):
@@ -84,14 +84,18 @@ def _apply_stat_delta(c, squad_id, stat, delta):
             (new_hp, new_max_hp, squad_id),
         )
     elif stat == "sanity":
+        operator = "+" if delta >= 0 else "-"
+        magnitude = abs(delta)
         c.execute(
-            "UPDATE squads SET sanity = MAX(0, MIN(100, sanity + ?)) WHERE squad_id = ?",
-            (delta, squad_id),
+            f"UPDATE squads SET sanity = {clamped_stat_delta_expr('sanity', operator)} WHERE squad_id = ?",
+            (magnitude, magnitude, squad_id),
         )
     else:
+        operator = "+" if delta >= 0 else "-"
+        magnitude = abs(delta)
         c.execute(
-            f"UPDATE squads SET {stat} = MAX(0, MIN(100, {stat} + ?)) WHERE squad_id = ?",
-            (delta, squad_id),
+            f"UPDATE squads SET {stat} = {clamped_stat_delta_expr(stat, operator)} WHERE squad_id = ?",
+            (magnitude, magnitude, squad_id),
         )
 
     updated = c.execute(
