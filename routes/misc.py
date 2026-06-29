@@ -12,6 +12,7 @@ from models.combat import (
     build_combat_round_preview,
     roll_combat_dice,
 )
+from models.protagonist import build_protagonist_participant
 from models.settings import settings
 from services.announcements import list_announcements
 from utils.app_state import DB_INIT_ERROR
@@ -65,6 +66,7 @@ def api_version():
             "defend_team_buff": callable(count_team_defenders),
             "combat_round_continue": "continueCombatAfterRound" in template_text,
             "player_max_hp": "max_hp" in template_text and "DEFAULT_PLAYER_MAX_HP" in template_text,
+            "protagonist_combat": callable(build_protagonist_participant),
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

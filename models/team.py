@@ -190,7 +190,10 @@ def get_team_protagonists(team_id):
     elif route == "marah":
         marah = protagonist
 
-    return {"iggy": iggy, "marah": marah, "active_route": route}
+    result = {"iggy": iggy, "marah": marah, "active_route": route}
+    from models.protagonist import enrich_protagonists_dict
+
+    return enrich_protagonists_dict(clean_team_id, result)
 
 
 def join_squad_to_team(squad_id, team_id, route):

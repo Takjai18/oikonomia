@@ -15,6 +15,8 @@ import app as oikonomia  # noqa: E402
 from models.combat import (
     calculate_incoming_damage,
     count_team_defenders,
+    get_combat,
+    get_combat_participants,
     team_defend_damage_multiplier,
 )
 from models.squad import apply_hp_change, get_squad, squad_max_hp, update_squad
@@ -52,6 +54,20 @@ def submit_attack(client, combat_id):
         json={"combat_id": combat_id, "action_type": "attack"},
         content_type="application/json",
     )
+
+
+def test_protagonist_combat_participant(combat_id, route="iggy"):
+    combat = get_combat(combat_id)
+    participants = get_combat_participants(combat) if combat else []
+    pros = [p for p in participants if p.get("is_protagonist")]
+    ok("protagonist joins combat", len(pros) >= 1, f"found {len(pros)}")
+    if pros:
+        ok(
+            f"route protagonist is {route}",
+            any(p.get("protagonist_key") == route for p in pros),
+            str([p.get("protagonist_key") for p in pros]),
+        )
+        ok("protagonist has hp", int(pros[0].get("hp") or 0) > 0)
 
 
 def test_player_max_hp(leader_id):
@@ -216,6 +232,7 @@ def main():
 
     in_player_phase = start.get("status") == "player_phase" or fight.get("status") == "player_phase"
     ok("進入 player_phase", in_player_phase)
+    test_protagonist_combat_participant(combat_id, route="iggy")
 
     # --- 兩玩家提交行動（server-side 骰子，loop 至勝利）---
     final, err = fight_until_victory(client, client2, combat_id)
@@ -248,6 +265,7 @@ def main():
     ok("defend_team_buff marker", ver.get("markers", {}).get("defend_team_buff") is True)
     ok("combat_round_continue marker", ver.get("markers", {}).get("combat_round_continue") is True)
     ok("player_max_hp marker", ver.get("markers", {}).get("player_max_hp") is True)
+    ok("protagonist_combat marker", ver.get("markers", {}).get("protagonist_combat") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

@@ -921,6 +921,15 @@
                                 </div>
                             </div>
 
+                            <div id="protagonist-control-bar" class="hidden mb-3 p-3 rounded-xl border border-amber-700/40 bg-amber-950/20">
+                                <button type="button" id="protagonist-control-toggle" onclick="toggleProtagonistControl()"
+                                        class="w-full py-2 text-xs font-medium text-amber-200 bg-amber-900/40 hover:bg-amber-900/60 rounded-lg border border-amber-700/50">
+                                    切換：控制主角行動
+                                </button>
+                                <p id="protagonist-control-hint" class="text-[10px] text-zinc-500 mt-2 text-center">
+                                    普通戰鬥：主角自動行動；最終階段可代替主角出招
+                                </p>
+                            </div>
                             <div class="text-xs text-zinc-400 mb-2 px-0.5 lg:hidden">選擇行動</div>
                             <div class="grid grid-cols-2 lg:grid-cols-1 gap-2 lg:gap-3" id="combat-action-buttons">
                                 <button type="button" data-action="attack" id="attack-action-btn"
@@ -1331,6 +1340,7 @@
         let currentCombatId = null;
         let pendingEncounterId = null;
         let selectedAction = 'attack';
+        let controllingProtagonist = false;
         let selectedItemId = null;
         let selectedDice = null;
         let actionModalRolling = false;
@@ -2602,6 +2612,7 @@
                 member_states: uiData.member_states || {},
             };
             renderCombatTeamRow(teamData);
+            updateProtagonistControlUi();
 
             const sanity = me.sanity ?? 100;
             const berserkBar = document.getElementById('combat-berserk-bar');
@@ -2755,6 +2766,9 @@
                 combat_id: currentCombatId,
                 action_type: selectedAction,
             };
+            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
+                payload.as_protagonist = true;
+            }
             if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
 
             let data;
@@ -3574,6 +3588,42 @@
             }
         }
 
+        function updateProtagonistControlUi() {
+            const bar = document.getElementById('protagonist-control-bar');
+            const btn = document.getElementById('protagonist-control-toggle');
+            const hint = document.getElementById('protagonist-control-hint');
+            const enabled = lastCombatStatus?.protagonist_player_control;
+            if (!bar) return;
+            if (!enabled) {
+                controllingProtagonist = false;
+                setVisible(bar, false);
+                return;
+            }
+            setVisible(bar, true);
+            const route = lastCombatStatus?.route;
+            const proName = route === 'marah' ? 'Marah' : 'Iggy';
+            if (btn) {
+                btn.textContent = controllingProtagonist
+                    ? '目前：控制主角 — 點此改回控制自己'
+                    : `切換：代替 ${proName} 行動`;
+            }
+            if (hint) {
+                hint.textContent = controllingProtagonist
+                    ? `你正在代替 ${proName} 提交本回合行動（最終階段）`
+                    : '普通戰鬥時主角會自動行動；需要時可切換控制主角';
+            }
+        }
+
+        function toggleProtagonistControl() {
+            if (!lastCombatStatus?.protagonist_player_control) return;
+            controllingProtagonist = !controllingProtagonist;
+            updateProtagonistControlUi();
+            const hintEl = document.getElementById('combat-submit-hint');
+            if (hintEl && controllingProtagonist) {
+                hintEl.textContent = '主角模式：選擇行動後將代替主角提交';
+            }
+        }
+
         function renderCombatTeamRow(data) {
             const container = document.getElementById('team-status-row');
             const teamStrip = document.getElementById('combat-team-strip');
@@ -3592,34 +3642,23 @@
                 if (sid === myId) return;
 
                 const m = members[sid];
+                const isPro = m.is_protagonist;
+                const proKey = m.protagonist_key;
+                const avatarSrc = isPro
+                    ? `/static/portraits/${m.avatar || 'default.png'}`
+                    : `/static/avatars/${m.avatar || 'default.png'}`;
+                const accent = proKey === 'iggy' ? 'text-red-400' : proKey === 'marah' ? 'text-blue-400' : 'text-zinc-300';
+                const trauma = m.trauma_count > 0 ? ` 💔${m.trauma_count}` : '';
                 const div = document.createElement('div');
-                div.className = 'combat-team-chip flex-shrink-0 text-center min-w-[56px]';
+                div.className = `combat-team-chip flex-shrink-0 text-center min-w-[56px]${isPro ? ' border-l border-amber-700/40 pl-2' : ''}`;
                 div.innerHTML = `
-                    <img src="/static/avatars/${m.avatar || 'default.png'}"
-                         class="w-8 h-8 rounded-full border border-zinc-600 mx-auto mb-0.5 object-cover" alt="">
-                    <div class="text-[10px] text-zinc-300 truncate max-w-[64px]">${m.display_name || sid}</div>
-                    <div class="text-[10px] font-mono text-zinc-400">❤️${m.hp ?? '-'} 🧠${m.sanity ?? '-'}</div>
+                    <img src="${avatarSrc}"
+                         class="w-8 h-8 rounded-full border ${isPro ? 'border-amber-600/60' : 'border-zinc-600'} mx-auto mb-0.5 object-cover" alt="">
+                    <div class="text-[10px] ${accent} truncate max-w-[72px]">${m.display_name || sid}${isPro ? '（主角）' : ''}</div>
+                    <div class="text-[10px] font-mono text-zinc-400">❤️${m.hp ?? '-'} 🧠${m.sanity ?? '-'}${trauma}</div>
                 `;
                 container.appendChild(div);
             });
-
-            let activeKey = null;
-            if (route === 'iggy' && protagonists.iggy) activeKey = 'iggy';
-            if (route === 'marah' && protagonists.marah) activeKey = 'marah';
-
-            if (activeKey) {
-                const pro = protagonists[activeKey];
-                const label = activeKey === 'iggy' ? '🔥 Iggy' : '🌊 Marah';
-                const accent = activeKey === 'iggy' ? 'text-red-400' : 'text-blue-400';
-                const proDiv = document.createElement('div');
-                proDiv.className = 'combat-team-chip flex-shrink-0 text-center min-w-[56px] border-l border-zinc-700 pl-3';
-                proDiv.innerHTML = `
-                    <div class="w-8 h-8 rounded-full border border-amber-600/50 mx-auto mb-0.5 flex items-center justify-center text-xs">${activeKey === 'iggy' ? '🔥' : '🌊'}</div>
-                    <div class="text-[10px] ${accent}">${label}（主角）</div>
-                    <div class="text-[10px] font-mono text-zinc-400">❤️${pro.hp ?? '-'} 🧠${pro.sanity ?? '-'}</div>
-                `;
-                container.appendChild(proDiv);
-            }
 
             if (!container.children.length) {
                 container.innerHTML = '<div class="text-[10px] text-zinc-500 py-1">暫無隊友資料</div>';

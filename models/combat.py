@@ -21,6 +21,20 @@ from models.squad import (
     row_to_squad,
     update_squad,
 )
+from models.protagonist import (
+    apply_damage_to_protagonist,
+    get_controllable_protagonist_squad_id,
+    get_player_control_protagonist_ids,
+    get_team_protagonist_trauma_total,
+    get_team_story_stage,
+    has_trauma_bad_ending,
+    is_protagonist_participant,
+    parse_protagonist_squad_id,
+    protagonist_player_control_enabled,
+    refresh_combat_participants,
+    resolve_combat_protagonist_keys,
+    trauma_bad_ending_narrative,
+)
 from models.team import get_team_by_id, get_team_protagonists
 
 
@@ -328,8 +342,21 @@ def combat_phase_expired(combat, settings):
         return False
     return datetime.now() >= datetime.fromisoformat(deadline)
 
+def _combat_team_id(combat, participants=None):
+    if participants:
+        for p in participants:
+            if p.get("team_id"):
+                return p["team_id"]
+    starter_id = (combat or {}).get("squad_id")
+    if starter_id:
+        starter = get_squad(starter_id)
+        if starter and starter.get("team_id"):
+            return starter["team_id"]
+    return None
+
+
 def get_combat_participants(combat):
-    """Single-query participant lookup (starter + full team in one round trip)."""
+    """Players + route/final-stage protagonists as combat participants."""
     if not combat:
         return []
     starter_id = combat.get("squad_id")
@@ -353,9 +380,61 @@ def get_combat_participants(combat):
                )
             ORDER BY s.is_team_leader DESC, COALESCE(s.display_name, s.squad_id)
         """, (starter_id,)).fetchall()
-        return [row_to_squad(r) for r in rows]
+        participants = [row_to_squad(r) for r in rows]
     finally:
         conn.close()
+
+    team_id = _combat_team_id(combat, participants)
+    if not team_id:
+        return participants
+
+    from models.protagonist import build_protagonist_participant
+
+    encounter = load_encounter(combat.get("encounter_id"))
+    story_stage = get_team_story_stage(team_id)
+    for key in resolve_combat_protagonist_keys(team_id, encounter, story_stage):
+        pro = build_protagonist_participant(team_id, key)
+        if pro:
+            participants.append(pro)
+    return participants
+
+
+def choose_protagonist_auto_action(participant, combat_settings=None):
+    combat_settings = combat_settings or {}
+    sanity = int(participant.get("sanity") or 50)
+    dice = roll_combat_dice()
+    if sanity < 30:
+        return {"action_type": "defend", "dice_result": dice}
+    if sanity >= 70 and combat_settings.get("allow_zoo", True):
+        return {"action_type": "use_zoo", "dice_result": dice}
+    if sanity < 40 and dice == 0:
+        return {"action_type": "pass", "dice_result": dice}
+    return {"action_type": "attack", "dice_result": dice}
+
+
+def inject_protagonist_auto_actions(actions, participants, encounter, player_control_ids):
+    merged = dict(actions or {})
+    combat_settings = (encounter or {}).get("combat_settings") or {}
+    player_control_ids = set(player_control_ids or [])
+    active_ids = set(get_active_combat_member_ids(participants))
+    for p in participants:
+        if not p.get("is_protagonist"):
+            continue
+        sid = p["squad_id"]
+        if sid not in active_ids or sid in player_control_ids or sid in merged:
+            continue
+        merged[sid] = choose_protagonist_auto_action(p, combat_settings)
+    return merged
+
+
+def apply_damage_to_combat_participant(squad_id, damage, participant=None):
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if key and team_id:
+            return apply_damage_to_protagonist(team_id, key, damage, participant=participant)
+        return None
+    apply_damage_to_player(squad_id, damage, squad=participant)
+    return None
 
 def get_active_combat_member_ids(participants):
     """存活且可行動的隊員 squad_id（非瀕死）。"""
@@ -379,12 +458,45 @@ def get_active_combat_members(participants):
     return [p for p in participants if p["squad_id"] in ids]
 
 
+def get_phase_submit_required_ids(combat, participants):
+    active = get_active_combat_member_ids(participants)
+    team_id = _combat_team_id(combat, participants)
+    encounter = load_encounter(combat.get("encounter_id")) if combat else None
+    story_stage = get_team_story_stage(team_id) if team_id else 0
+    player_control_ids = set(
+        get_player_control_protagonist_ids(team_id, encounter, story_stage, participants)
+        if team_id else []
+    )
+    required = []
+    for sid in active:
+        p = next((x for x in participants if x["squad_id"] == sid), None)
+        if p and p.get("is_protagonist") and sid not in player_control_ids:
+            continue
+        required.append(sid)
+    return required
+
+
 def all_phase_actions_submitted(combat, participants):
     actions = combat.get("phase_actions") or {}
     active = get_active_combat_member_ids(participants)
     if not active:
         return True
-    return all(sid in actions for sid in active)
+    team_id = _combat_team_id(combat, participants)
+    encounter = load_encounter(combat.get("encounter_id")) if combat else None
+    story_stage = get_team_story_stage(team_id) if team_id else 0
+    player_control_ids = set(
+        get_player_control_protagonist_ids(team_id, encounter, story_stage, participants)
+        if team_id else []
+    )
+    required = []
+    for sid in active:
+        p = next((x for x in participants if x["squad_id"] == sid), None)
+        if p and p.get("is_protagonist") and sid not in player_control_ids:
+            continue
+        required.append(sid)
+    if not required:
+        return True
+    return all(sid in actions for sid in required)
 
 def append_combat_log(combat, message, log_type="event"):
     logs = list(combat.get("logs") or [])
@@ -445,7 +557,18 @@ def resolve_player_phase(combat_id):
     combat_settings = (encounter or {}).get("combat_settings", {})
     participants = get_combat_participants(combat)
     participant_by_id = {p["squad_id"]: p for p in participants}
-    actions = combat.get("phase_actions") or {}
+    team_id = _combat_team_id(combat, participants)
+    story_stage = get_team_story_stage(team_id) if team_id else 0
+    player_control_ids = (
+        get_player_control_protagonist_ids(team_id, encounter, story_stage, participants)
+        if team_id else []
+    )
+    actions = inject_protagonist_auto_actions(
+        combat.get("phase_actions") or {},
+        participants,
+        encounter,
+        player_control_ids,
+    )
 
     enemy_hp = int(combat.get("enemy_hp") or 0)
     enemy_resilience = int(combat.get("enemy_resilience") or 0)
@@ -467,7 +590,7 @@ def resolve_player_phase(combat_id):
             berserk_players.append(player_squad_id)
             if random.random() < 0.30:
                 self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
-                apply_damage_to_player(player_squad_id, self_dmg, squad=player)
+                apply_damage_to_combat_participant(player_squad_id, self_dmg, participant=player)
                 combat = append_combat_log(
                     combat,
                     f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
@@ -508,22 +631,34 @@ def resolve_player_phase(combat_id):
             )
             total_damage_to_enemy += dmg
             action_label = "Zoo 能力" if action_type == "use_zoo" else "攻擊"
+            pro_tag = "（主角·自動）" if (
+                player.get("is_protagonist")
+                and player_squad_id not in (combat.get("phase_actions") or {})
+            ) else ""
             combat = append_combat_log(
                 combat,
                 f"{display} {action_label}對{enemy_name}造成 {dmg} 點傷害"
-                f"（{stat_info['label']} {stat_info['value']} · 骰 {dice}）",
+                f"（{stat_info['label']} {stat_info['value']} · 骰 {dice}）{pro_tag}",
                 log_type="damage",
             )
         elif action_type == "defend":
+            pro_tag = "（主角·自動）" if (
+                player.get("is_protagonist")
+                and player_squad_id not in (combat.get("phase_actions") or {})
+            ) else ""
             combat = append_combat_log(
                 combat,
-                f"{display} 為全隊堅守界線",
+                f"{display} 為全隊堅守界線{pro_tag}",
                 log_type="defend",
             )
         elif action_type == "pass":
+            pro_tag = "（主角·自動）" if (
+                player.get("is_protagonist")
+                and player_squad_id not in (combat.get("phase_actions") or {})
+            ) else ""
             combat = append_combat_log(
                 combat,
-                f"{display} 選擇觀望",
+                f"{display} 選擇觀望{pro_tag}",
                 log_type="pass",
             )
 
@@ -551,10 +686,7 @@ def resolve_player_phase(combat_id):
     )
     combat["status"] = "enemy_phase"
 
-    fresh_by_id = fetch_squads_by_ids([p["squad_id"] for p in participants])
-    fresh_participants = [
-        fresh_by_id.get(p["squad_id"], p) for p in participants
-    ]
+    fresh_participants = refresh_combat_participants(participants)
     target = get_lowest_resilience_player(fresh_participants)
     if target:
         target_id = target["squad_id"]
@@ -566,8 +698,9 @@ def resolve_player_phase(combat_id):
             team_defend_multiplier=team_defend_mult,
         )
         if incoming > 0:
-            apply_damage_to_player(target_id, incoming, squad=target)
-            refreshed = fetch_squads_by_ids([target_id]).get(target_id)
+            apply_damage_to_combat_participant(target_id, incoming, participant=target)
+            refreshed_list = refresh_combat_participants([target])
+            refreshed = refreshed_list[0] if refreshed_list else target
             defend_note = ""
             if defender_count > 0:
                 defend_note = (
@@ -575,16 +708,22 @@ def resolve_player_phase(combat_id):
                     if defender_count > 1
                     else "（全隊防禦，減半）"
                 )
+            pro_note = "（主角）" if target.get("is_protagonist") else ""
             combat = append_combat_log(
                 combat,
                 f"{enemy_name} 反擊 {target.get('display_name', target_id)}，造成 {incoming} 點傷害"
-                + defend_note,
+                + defend_note
+                + pro_note,
                 log_type="enemy_attack",
             )
             if refreshed and refreshed.get("near_death_until"):
+                trauma_note = ""
+                if target.get("is_protagonist") and int(refreshed.get("trauma_count") or 0) > 0:
+                    trauma_note = f"（心理創傷 +1，累計 {refreshed.get('trauma_count')}）"
                 combat = append_combat_log(
                     combat,
-                    f"{target.get('display_name', target_id)} 陷入瀕死！{settings.near_death_minutes} 分鐘內需救援",
+                    f"{target.get('display_name', target_id)} 陷入瀕死！"
+                    f"{settings.near_death_minutes} 分鐘內需救援{trauma_note}",
                     log_type="near_death",
                 )
 
@@ -636,9 +775,17 @@ def _end_combat(combat_id, winner, encounter):
         clear_team_combat_id(team_id)
     elif starter_id:
         update_squad(starter_id, current_combat_id=None)
+    trauma_total = get_team_protagonist_trauma_total(team_id) if team_id else 0
     if winner == "squad" and encounter:
-        if team_id:
+        if team_id and not has_trauma_bad_ending(team_id):
             apply_encounter_success(team_id, encounter, starter_id)
+        elif team_id and has_trauma_bad_ending(team_id):
+            combat = append_combat_log(
+                get_combat(combat_id),
+                f"主角心理創傷過深（累計 {trauma_total}）——勝利無法帶來真正救贖",
+                log_type="trauma_ending",
+            )
+            save_combat(combat_id, logs=combat.get("logs"))
         elif starter_id:
             apply_encounter_success_solo(starter_id, encounter)
     elif winner == "enemy" and encounter:
@@ -725,6 +872,9 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
             "intellect": p.get("intellect"),
             "resilience": get_effective_stat(p, "resilience"),
             "near_death_until": p.get("near_death_until"),
+            "is_protagonist": bool(p.get("is_protagonist")),
+            "protagonist_key": p.get("protagonist_key"),
+            "trauma_count": p.get("trauma_count"),
             "submitted": bool(submitted),
             "action_type": (submitted or {}).get("action_type"),
             "dice_result": (submitted or {}).get("dice_result"),
@@ -786,6 +936,22 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "route": team_route or (encounter or {}).get("route"),
         "max_phases": combat_settings.get("max_phases", 5),
         "my_squad_id": squad_id,
+        "story_stage": get_team_story_stage(team_id) if team_id else 0,
+        "protagonist_player_control": protagonist_player_control_enabled(
+            encounter, get_team_story_stage(team_id) if team_id else 0
+        ),
+        "controllable_protagonist_id": (
+            get_controllable_protagonist_squad_id(
+                team_id,
+                team_route,
+                encounter,
+                get_team_story_stage(team_id) if team_id else 0,
+            )
+            if team_id else None
+        ),
+        "protagonist_trauma_total": (
+            get_team_protagonist_trauma_total(team_id) if team_id else 0
+        ),
     }
 
 def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):
@@ -1052,9 +1218,9 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
     }
 
 
-def _combat_outcome_json(winner, encounter):
+def _combat_outcome_json(winner, encounter, team_id=None):
     if winner == "squad":
-        return {
+        payload = {
             "success": True,
             "status": "ended",
             "outcome": "victory",
@@ -1062,6 +1228,11 @@ def _combat_outcome_json(winner, encounter):
             "narrative": (encounter or {}).get("success", {}).get("narrative"),
             "reflection_prompt": (encounter or {}).get("reflection_prompt"),
         }
+        if team_id and has_trauma_bad_ending(team_id):
+            payload["trauma_bad_ending"] = True
+            payload["protagonist_trauma_total"] = get_team_protagonist_trauma_total(team_id)
+            payload["narrative"] = trauma_bad_ending_narrative(encounter)
+        return payload
     if winner == "enemy":
         return {
             "success": True,

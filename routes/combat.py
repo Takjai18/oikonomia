@@ -22,6 +22,7 @@ from models.combat import (
     get_combat_by_squad,
     get_combat_participants,
     get_combat_phase_actions,
+    get_phase_submit_required_ids,
     resolve_player_phase,
     roll_combat_dice,
     save_combat,
@@ -39,6 +40,7 @@ from models.encounter_outcomes import (
     apply_precheck_skip,
     encounter_already_completed,
 )
+from models.protagonist import get_controllable_protagonist_squad_id, get_team_story_stage
 from models.squad import get_squad, get_team_members, update_squad
 
 combat_bp = Blueprint("combat", __name__)
@@ -179,7 +181,10 @@ def combat_status_api():
             prev_phase = int(combat.get("current_phase") or 0)
             prev_log_len = len(combat.get("logs") or [])
             combat, winner = resolve_player_phase(combat["id"])
-            outcome = _combat_outcome_json(winner, encounter)
+            actor = get_squad(session["squad_id"])
+            outcome = _combat_outcome_json(
+                winner, encounter, team_id=actor.get("team_id") if actor else None,
+            )
             if outcome:
                 return jsonify({**outcome, "active": False})
             combat = get_combat(combat["id"]) or combat
@@ -291,25 +296,47 @@ def combat_submit_action_api():
     if not combat or combat.get("status") != "player_phase":
         return jsonify({"success": False, "error": "沒有進行中的 Player Phase"}), 400
 
-    if squad.get("near_death_until"):
+    encounter = load_encounter(combat["encounter_id"])
+    settings = (encounter or {}).get("combat_settings", {})
+    story_stage = get_team_story_stage(squad["team_id"]) if squad.get("team_id") else 0
+    as_protagonist = bool(body.get("as_protagonist"))
+    if as_protagonist:
+        acting_id = get_controllable_protagonist_squad_id(
+            squad["team_id"], squad.get("route"), encounter, story_stage,
+        )
+        if not acting_id:
+            return jsonify({"success": False, "error": "此階段不可代替主角行動"}), 400
+    else:
+        acting_id = session["squad_id"]
+
+    participants = get_combat_participants(combat)
+    actor_state = next(
+        (p for p in participants if p["squad_id"] == acting_id),
+        squad if acting_id == session["squad_id"] else None,
+    )
+    if not actor_state:
+        return jsonify({"success": False, "error": "找不到行動者"}), 400
+
+    if actor_state.get("near_death_until"):
         try:
-            if datetime.now() < datetime.fromisoformat(squad["near_death_until"]):
-                return jsonify({"success": False, "error": "你已陷入瀕死，等待隊友救援"}), 400
+            if datetime.now() < datetime.fromisoformat(actor_state["near_death_until"]):
+                label = "主角" if as_protagonist else "你"
+                return jsonify({"success": False, "error": f"{label}已陷入瀕死，等待救援"}), 400
         except ValueError:
             pass
 
-    encounter = load_encounter(combat["encounter_id"])
-    settings = (encounter or {}).get("combat_settings", {})
     if action_type == "use_zoo" and not settings.get("allow_zoo", True):
         return jsonify({"success": False, "error": "此戰鬥不允許 Zoo 能力"}), 400
+    if as_protagonist and action_type == "use_item":
+        return jsonify({"success": False, "error": "主角不可使用玩家物品"}), 400
 
     current_phase = int(combat.get("current_phase") or 0)
-    if combat_action_already_submitted(combat_id, session["squad_id"], current_phase):
-        return jsonify({"success": False, "error": "你已提交本回合行動"}), 400
+    if combat_action_already_submitted(combat_id, acting_id, current_phase):
+        return jsonify({"success": False, "error": "本回合行動已提交"}), 400
 
     upsert_combat_action(
         combat_id,
-        session["squad_id"],
+        acting_id,
         current_phase,
         action_type,
         dice_result,
@@ -320,17 +347,17 @@ def combat_submit_action_api():
     save_combat(combat_id, phase_actions=phase_actions)
 
     participants = get_combat_participants(combat)
-    active_ids = get_active_combat_member_ids(participants)
+    required_ids = get_phase_submit_required_ids(combat, participants)
     winner = None
     if all_phase_actions_submitted(combat, participants) or combat_phase_expired(combat, settings):
         combat, winner = resolve_player_phase(combat_id)
 
-    outcome = _combat_outcome_json(winner, encounter)
+    outcome = _combat_outcome_json(winner, encounter, team_id=squad.get("team_id"))
     if outcome:
         return jsonify(outcome)
 
     combat = get_combat(combat_id)
-    if len(active_ids) > 1 and len(phase_actions) < len(active_ids):
+    if len(required_ids) > 1 and len(phase_actions) < len(required_ids):
         me = next(
             (p for p in participants if p["squad_id"] == session["squad_id"]),
             None,
@@ -347,7 +374,7 @@ def combat_submit_action_api():
             "dice_result": dice_result,
             "single_preview": single_preview,
             "submitted_count": len(phase_actions),
-            "total_active": len(active_ids),
+            "total_active": len(required_ids),
             "combat_id": combat_id,
             "current_phase": combat.get("current_phase", 0),
             "message": "行動已提交，等待其他隊友行動中...",

@@ -591,6 +591,19 @@ def migrate_db():
             )
         except sqlite3.OperationalError:
             pass
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='protagonist_states'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE protagonist_states (
+            team_id TEXT NOT NULL,
+            protagonist TEXT NOT NULL,
+            hp INTEGER DEFAULT 100,
+            max_hp INTEGER DEFAULT 100,
+            sanity INTEGER DEFAULT 100,
+            trauma_count INTEGER DEFAULT 0,
+            near_death_until TEXT,
+            last_updated TEXT,
+            PRIMARY KEY (team_id, protagonist)
+        )''')
     if "stats_allocated" not in cols:
         try:
             c.execute("ALTER TABLE squads ADD COLUMN stats_allocated INTEGER DEFAULT 0")
