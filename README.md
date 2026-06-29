@@ -69,19 +69,23 @@ Production 必須設定環境變數：`SECRET_KEY`、`GM_PIN`。
 | 玩家端 | https://takjai.pythonanywhere.com |
 | GM 後台 | https://takjai.pythonanywhere.com/gm |
 
-部署（GitHub 有更新後，在 PA Bash）：
+部署（GitHub 有更新後，在 PA Bash console）：
 
 ```bash
 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh
 ```
 
-然後到 **Web** tab 按 **Reload**。
+請**一律**用 `FORCE=1`：PA 上常有本地改動（例如 `.deploy-version`），一般 `git pull` 可能失敗或 code 與磁碟不一致。
+
+然後到 **Web** tab → **Reload** `takjai.pythonanywhere.com`（只跑腳本不會重啟 worker；`version` 可能已更新但 `markers` 仍舊，直到 Reload）。
 
 驗證：
 
 ```bash
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ```
+
+確認 `success: true`，`version` 與 GitHub 最新 commit 一致，且 `markers` 含 `protagonist_combat`、`trauma_ending` 等（代表 running code 已重載）。
 
 ## 測試
 
