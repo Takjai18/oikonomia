@@ -404,7 +404,8 @@ def apply_encounter_failure_solo(squad_id, encounter):
 
 def apply_trauma_bad_ending_victory(team_id, encounter):
     """Victory in combat but protagonist trauma locks team into bad ending."""
-    from models.protagonist import record_team_ending, trauma_bad_ending_narrative
+    from models.protagonist import trauma_bad_ending_narrative
+    from services.ending import apply_ending
 
     narrative = trauma_bad_ending_narrative(encounter)
     record_encounter_completion(
@@ -415,7 +416,7 @@ def apply_trauma_bad_ending_victory(team_id, encounter):
         narrative=narrative,
         rewards={"failure_effects": [], "note": "trauma_bad_ending"},
     )
-    record_team_ending(team_id, "bad_ending", source=encounter.get("encounter_id"))
+    apply_ending(team_id, "bad_ending", source=encounter.get("encounter_id"))
 
 
 def apply_precheck_skip(team_id, encounter):

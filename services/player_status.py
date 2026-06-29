@@ -1,7 +1,7 @@
 """Player status payload builders."""
 from models.protagonist import ProtagonistLifeState, get_protagonist_life_state
 from models.team import get_team_by_id, get_team_protagonists, official_team_route
-from services.ending import judge_ending
+from services.ending import build_protagonist_control_status, judge_ending
 
 
 def build_player_status(squad):
@@ -37,8 +37,10 @@ def build_player_status(squad):
         "team": team,
         "protagonists": protagonists,
         "protagonist_life_states": protagonist_states,
+        "protagonist_control_status": build_protagonist_control_status(team_id, route),
         "ending": ending,
         "trauma_level": ending.get("trauma_level", "safe"),
+        "trauma_summary": ending.get("trauma_summary"),
         "ending_preview": ending.get("ending_preview"),
         "is_team_leader": squad.get("is_team_leader", 0),
     }

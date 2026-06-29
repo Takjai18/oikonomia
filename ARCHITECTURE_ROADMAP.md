@@ -137,6 +137,8 @@ flowchart LR
 | 2026-06-29 | Phase 2 Orchestrator 延後至營會後；營會前不拆 `index.html` | Grok Build 建議 |
 | 2026-06-29 | **Phase 1 完成**：`services/ending.py`、`apply_trauma(reason)`、`/status` trauma_level + ending_preview、`_end_combat` 經 `judge_ending` | Grok Build |
 | 2026-06-29 | **Phase 2 完成**：`services/combat_outcomes.py`、`ProtagonistLifeState`、`CONDITIONAL_NARRATIVE_FRAGMENTS`、`database.py` 拆出 migrations | Grok Build |
+| 2026-06-29 | Grok Phase 1 spec 確認：營會前只做低風險 ending 收斂；Drive SSOT | Tak + Grok |
+| 2026-06-29 | **Phase 1 spec 補齊**：`apply_ending`、`trauma_summary`、`protagonist_control_status`、`OIKONOMIA_ENDING_ENABLED`、`test_ending_flow.py`、`decisions_log.md` | Grok Build |
 
 ---
 
