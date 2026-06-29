@@ -770,7 +770,7 @@ def combat_phase_expired(combat, settings):
     return datetime.now() >= datetime.fromisoformat(deadline)
 
 def get_combat_participants(combat):
-    """Single-connection participant lookup (avoids duplicate get_squad + get_team_members)."""
+    """Single-query participant lookup (starter + full team in one round trip)."""
     if not combat:
         return []
     starter_id = combat.get("squad_id")
@@ -780,22 +780,21 @@ def get_combat_participants(combat):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
-        starter_row = conn.execute(
-            "SELECT * FROM squads WHERE squad_id = ?",
-            (starter_id,),
-        ).fetchone()
-        if not starter_row:
-            return []
-
-        team_id = starter_row["team_id"]
-        if team_id and str(team_id).strip():
-            rows = conn.execute(
-                "SELECT * FROM squads WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
-                (normalize_team_id(team_id),),
-            ).fetchall()
-            return [row_to_squad(r) for r in rows]
-
-        return [row_to_squad(starter_row)]
+        rows = conn.execute("""
+            WITH starter AS (
+                SELECT squad_id, team_id FROM squads WHERE squad_id = ?
+            )
+            SELECT s.*
+            FROM squads s
+            CROSS JOIN starter st
+            WHERE s.squad_id = st.squad_id
+               OR (
+                   st.team_id IS NOT NULL AND TRIM(st.team_id) != ''
+                   AND UPPER(TRIM(s.team_id)) = UPPER(TRIM(st.team_id))
+               )
+            ORDER BY s.is_team_leader DESC, COALESCE(s.display_name, s.squad_id)
+        """, (starter_id,)).fetchall()
+        return [row_to_squad(r) for r in rows]
     finally:
         conn.close()
 
@@ -840,8 +839,9 @@ def append_combat_log(combat, message, log_type="event"):
     combat["logs"] = logs[-50:]
     return combat
 
-def apply_damage_to_player(squad_id, damage):
-    squad = get_squad(squad_id)
+def apply_damage_to_player(squad_id, damage, squad=None):
+    if squad is None:
+        squad = get_squad(squad_id)
     if not squad:
         return
     new_hp = max(0, int(squad.get("hp") or 0) - damage)
@@ -908,7 +908,7 @@ def resolve_player_phase(combat_id):
             berserk_players.append(player_squad_id)
             if random.random() < 0.30:
                 self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
-                apply_damage_to_player(player_squad_id, self_dmg)
+                apply_damage_to_player(player_squad_id, self_dmg, squad=player)
                 combat = append_combat_log(
                     combat,
                     f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
@@ -1006,8 +1006,8 @@ def resolve_player_phase(combat_id):
             defending=defending,
         )
         if incoming > 0:
-            apply_damage_to_player(target_id, incoming)
-            refreshed = get_squad(target_id)
+            apply_damage_to_player(target_id, incoming, squad=target)
+            refreshed = fetch_squads_by_ids([target_id]).get(target_id)
             combat = append_combat_log(
                 combat,
                 f"{enemy_name} 反擊 {target.get('display_name', target_id)}，造成 {incoming} 點傷害"
@@ -1211,19 +1211,29 @@ def build_enemy_combat_stats(combat, encounter=None):
     }
 
 
-def build_combat_status_response(combat, encounter, squad_id):
+def build_combat_status_response(combat, encounter, squad_id, participants=None):
     settings = (encounter or {}).get("combat_settings", {})
-    me = get_squad(squad_id) or {}
+    if participants is None and combat:
+        participants = get_combat_participants(combat)
+    participants = participants or []
+    participant_by_id = {p["squad_id"]: p for p in participants}
+
+    me = participant_by_id.get(squad_id)
+    if not me:
+        me = fetch_squads_by_ids([squad_id]).get(squad_id) or {}
+
     team_id = me.get("team_id")
     if not team_id and combat:
-        starter = get_squad(combat.get("squad_id"))
+        starter = participant_by_id.get(combat.get("squad_id"))
+        if not starter and combat.get("squad_id"):
+            starter = fetch_squads_by_ids([combat["squad_id"]]).get(combat["squad_id"])
         team_id = starter.get("team_id") if starter else None
+
     protagonists = get_team_protagonists(team_id) if team_id else {}
     team_route = protagonists.get("active_route") or me.get("route")
     if not team_route and team_id:
         team_row = get_team_by_id(team_id)
         team_route = (team_row or {}).get("route")
-    participants = get_combat_participants(combat) if combat else []
     phase_actions = (combat or {}).get("phase_actions") or {}
     berserk_hint = berserk_probability(me.get("sanity", 50)) > 0
 
@@ -1345,15 +1355,16 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
     if not combat or combat.get("status") != "player_phase":
         return None
 
-    squad = get_squad(squad_id)
-    if not squad:
-        return None
-
     encounter = load_encounter(combat["encounter_id"])
     enemy_res = int(combat.get("enemy_resilience") or 0)
     enemy_san = int(combat.get("enemy_sanity") or 0)
     enemy_base = int(combat.get("enemy_base_damage") or 0)
     participants = get_combat_participants(combat)
+    participant_by_id = {p["squad_id"]: p for p in participants}
+    squad = participant_by_id.get(squad_id) or fetch_squads_by_ids([squad_id]).get(squad_id)
+    if not squad:
+        return None
+
     phase_actions = dict(combat.get("phase_actions") or {})
 
     my_dmg, my_meta = _preview_action_enemy_damage(
@@ -1364,7 +1375,7 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
     for pid, ad in phase_actions.items():
         if pid == squad_id:
             continue
-        player = get_squad(pid)
+        player = participant_by_id.get(pid)
         if not player:
             continue
         d, _ = _preview_action_enemy_damage(
@@ -1484,10 +1495,11 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
     }
 
 
-def build_single_player_preview(combat_id, squad_id):
+def build_single_player_preview(combat_id, squad_id, squad=None):
     """多人模式：只顯示該玩家自己相關的行動預覽。"""
     combat = get_combat(combat_id)
-    squad = get_squad(squad_id)
+    if not squad:
+        squad = fetch_squads_by_ids([squad_id]).get(squad_id)
     if not combat or not squad:
         return None
 
@@ -2490,41 +2502,41 @@ def get_available_narrative_stories(squad):
         results.append(payload)
     return results
 
+def _parse_distinct_task_row(row):
+    distinct_count = row["distinct_count"] or 0
+    raw_list = row["task_list"]
+    task_ids = set(raw_list.split(",")) if raw_list else set()
+    task_ids.discard("")
+    return distinct_count, task_ids
+
+
 def count_team_distinct_tasks(squad_id, team_id):
     conn = sqlite3.connect(DB_PATH)
-    count = 0
-    task_ids = set()
+    conn.row_factory = sqlite3.Row
     try:
         if team_id:
             clean_team_id = normalize_team_id(team_id)
-            count = conn.execute("""
-                SELECT COUNT(DISTINCT task_id) FROM submissions
+            row = conn.execute("""
+                SELECT
+                    COUNT(DISTINCT task_id) AS distinct_count,
+                    GROUP_CONCAT(DISTINCT task_id) AS task_list
+                FROM submissions
                 WHERE squad_id IN (
                     SELECT squad_id FROM squads
                     WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
                 )
-            """, (clean_team_id,)).fetchone()[0]
-            rows = conn.execute("""
-                SELECT DISTINCT task_id FROM submissions
-                WHERE squad_id IN (
-                    SELECT squad_id FROM squads
-                    WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
-                )
-            """, (clean_team_id,)).fetchall()
-            task_ids = {row[0] for row in rows}
+            """, (clean_team_id,)).fetchone()
         else:
-            count = conn.execute(
-                "SELECT COUNT(DISTINCT task_id) FROM submissions WHERE squad_id = ?",
-                (squad_id,),
-            ).fetchone()[0]
-            rows = conn.execute(
-                "SELECT DISTINCT task_id FROM submissions WHERE squad_id = ?",
-                (squad_id,),
-            ).fetchall()
-            task_ids = {row[0] for row in rows}
+            row = conn.execute("""
+                SELECT
+                    COUNT(DISTINCT task_id) AS distinct_count,
+                    GROUP_CONCAT(DISTINCT task_id) AS task_list
+                FROM submissions
+                WHERE squad_id = ?
+            """, (squad_id,)).fetchone()
+        return _parse_distinct_task_row(row)
     finally:
         conn.close()
-    return count, task_ids
 
 def resolve_story_stage(completed_count, completed_task_ids):
     stage = 0
@@ -3219,16 +3231,15 @@ def _bulk_submission_stats_by_team(conn):
 
 def _bulk_distinct_tasks_by_team(conn):
     rows = conn.execute("""
-        SELECT UPPER(TRIM(s.team_id)) AS team_key, sub.task_id
+        SELECT UPPER(TRIM(s.team_id)) AS team_key,
+               COUNT(DISTINCT sub.task_id) AS distinct_count,
+               GROUP_CONCAT(DISTINCT sub.task_id) AS task_list
         FROM submissions sub
         INNER JOIN squads s ON s.squad_id = sub.squad_id
         WHERE s.team_id IS NOT NULL AND TRIM(s.team_id) != ''
-        GROUP BY team_key, sub.task_id
+        GROUP BY team_key
     """).fetchall()
-    task_ids_by_team = {}
-    for row in rows:
-        task_ids_by_team.setdefault(row["team_key"], set()).add(row["task_id"])
-    return {key: (len(ids), ids) for key, ids in task_ids_by_team.items()}
+    return {row["team_key"]: _parse_distinct_task_row(row) for row in rows}
 
 
 def _bulk_submission_stats_by_squad(conn):
@@ -3247,25 +3258,41 @@ def _bulk_submission_stats_by_squad(conn):
 
 def _bulk_distinct_tasks_by_squad(conn):
     rows = conn.execute("""
-        SELECT sub.squad_id, sub.task_id
+        SELECT sub.squad_id,
+               COUNT(DISTINCT sub.task_id) AS distinct_count,
+               GROUP_CONCAT(DISTINCT sub.task_id) AS task_list
         FROM submissions sub
         INNER JOIN squads s ON s.squad_id = sub.squad_id
         WHERE s.team_id IS NULL OR TRIM(s.team_id) = ''
-        GROUP BY sub.squad_id, sub.task_id
+        GROUP BY sub.squad_id
     """).fetchall()
-    task_ids_by_squad = {}
-    for row in rows:
-        task_ids_by_squad.setdefault(row["squad_id"], set()).add(row["task_id"])
-    return {sid: (len(ids), ids) for sid, ids in task_ids_by_squad.items()}
+    return {row["squad_id"]: _parse_distinct_task_row(row) for row in rows}
 
 
 def build_teams_overview():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
-        team_rows = conn.execute(
-            "SELECT * FROM teams ORDER BY created_at DESC"
-        ).fetchall()
+        team_rows = conn.execute("""
+            SELECT
+                t.team_id,
+                t.team_name,
+                t.route,
+                t.leader_squad_id,
+                t.created_at,
+                COUNT(s.squad_id) AS member_count,
+                COALESCE(ROUND(AVG(s.hp)), 0) AS avg_hp,
+                COALESCE(ROUND(AVG(s.sanity)), 0) AS avg_sanity,
+                COALESCE(ROUND(AVG(s.power)), 0) AS avg_power,
+                COALESCE(ROUND(AVG(s.intellect)), 0) AS avg_intellect,
+                COALESCE(ROUND(AVG(s.resilience)), 0) AS avg_resilience,
+                COALESCE(ROUND(AVG(s.resources)), 0) AS avg_resources
+            FROM teams t
+            LEFT JOIN squads s
+                ON UPPER(TRIM(s.team_id)) = UPPER(TRIM(t.team_id))
+            GROUP BY t.team_id
+            ORDER BY t.created_at DESC
+        """).fetchall()
         member_rows = conn.execute("""
             SELECT * FROM squads
             WHERE team_id IS NOT NULL AND TRIM(team_id) != ''
@@ -3293,12 +3320,6 @@ def build_teams_overview():
             team_id = team_row["team_id"]
             clean_id = normalize_team_id(team_id)
             members = members_by_team.get(clean_id, [])
-            member_count = len(members)
-
-            def team_avg(field):
-                if not members:
-                    return 0
-                return round(sum((m[field] or 0) for m in members) / member_count)
 
             leader_id = team_row["leader_squad_id"]
             leader_name = None
@@ -3319,13 +3340,13 @@ def build_teams_overview():
                 "route_label": route_labels.get(route, "未選路線"),
                 "leader_squad_id": leader_id,
                 "leader_name": leader_name or "未設定",
-                "member_count": member_count,
-                "avg_hp": team_avg("hp"),
-                "avg_sanity": team_avg("sanity"),
-                "avg_power": team_avg("power"),
-                "avg_intellect": team_avg("intellect"),
-                "avg_resilience": team_avg("resilience"),
-                "avg_resources": team_avg("resources"),
+                "member_count": team_row["member_count"] or 0,
+                "avg_hp": int(team_row["avg_hp"] or 0),
+                "avg_sanity": int(team_row["avg_sanity"] or 0),
+                "avg_power": int(team_row["avg_power"] or 0),
+                "avg_intellect": int(team_row["avg_intellect"] or 0),
+                "avg_resilience": int(team_row["avg_resilience"] or 0),
+                "avg_resources": int(team_row["avg_resources"] or 0),
                 "distinct_tasks": distinct_tasks,
                 "story_stage": story_stage,
                 "submission_count": sub_stats.get("total", 0),
@@ -4108,6 +4129,7 @@ def combat_status_api():
     settings = (encounter or {}).get("combat_settings", {})
 
     round_just_resolved = False
+    participants = None
     if combat.get("status") == "player_phase":
         participants = get_combat_participants(combat)
         should_resolve = (
@@ -4122,12 +4144,15 @@ def combat_status_api():
             if outcome:
                 return jsonify({**outcome, "active": False})
             combat = get_combat(combat["id"]) or combat
+            participants = None
             round_just_resolved = (
                 int(combat.get("current_phase") or 0) > prev_phase
                 or len(combat.get("logs") or []) > prev_log_len
             )
 
-    payload = build_combat_status_response(combat, encounter, session["squad_id"])
+    payload = build_combat_status_response(
+        combat, encounter, session["squad_id"], participants=participants,
+    )
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     payload["in_precheck"] = combat.get("status") == "precheck"
 
@@ -4136,7 +4161,8 @@ def combat_status_api():
         payload["round_resolved"] = True
         payload["full_preview"] = _build_full_preview_from_status(payload)
     elif combat.get("status") == "player_phase":
-        participants = get_combat_participants(combat)
+        if participants is None:
+            participants = get_combat_participants(combat)
         active_ids = get_active_combat_member_ids(participants)
         phase_actions = combat.get("phase_actions") or {}
         if session["squad_id"] in phase_actions and len(phase_actions) < len(active_ids):
@@ -4266,8 +4292,16 @@ def combat_submit_action_api():
 
     combat = get_combat(combat_id)
     if len(active_ids) > 1 and len(phase_actions) < len(active_ids):
-        single_preview = build_single_player_preview(combat_id, session["squad_id"])
-        status = build_combat_status_response(combat, encounter, session["squad_id"])
+        me = next(
+            (p for p in participants if p["squad_id"] == session["squad_id"]),
+            None,
+        )
+        single_preview = build_single_player_preview(
+            combat_id, session["squad_id"], squad=me,
+        )
+        status = build_combat_status_response(
+            combat, encounter, session["squad_id"], participants=participants,
+        )
         return jsonify({
             "success": True,
             "status": "waiting_for_teammates",
