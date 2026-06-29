@@ -1283,8 +1283,18 @@
         }
 
         function syncHpOnlyFromPoll(data) {
-            if (!data?.enemy) return;
+            if (!data?.enemy || pendingSettlementHpPayload) return;
             syncEnemyHpDisplay(applySettlementEnemyHp(data), { animate: false });
+        }
+
+        /** BUG-2026-001 Phase 2b: HP drop on settlement confirm — 零延遲觸發，短 tween 即時開始 */
+        function applyDeferredSettlementHpAnimation() {
+            const data = pendingSettlementHpPayload;
+            pendingSettlementHpPayload = null;
+            if (!data?.enemy) return;
+            const enriched = applySettlementEnemyHp(data);
+            const animMs = isPracticeCombat(enriched) ? 220 : 280;
+            syncEnemyHpDisplay(enriched, { animate: true, animMs });
         }
 
         function getDiceRollConfig() {
@@ -1614,6 +1624,7 @@
         let settlementCombatId = null;
         let combatAwaitingSettlementAck = false;
         let settlementTimerPending = false;
+        let pendingSettlementHpPayload = null;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
@@ -2037,6 +2048,7 @@
         function resetCombatSettlementState() {
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
+            pendingSettlementHpPayload = null;
             lastShownSettlementPhase = 0;
             lastCombatStatusJson = '';
             settlementCombatId = null;
@@ -2137,6 +2149,7 @@
         }
 
         function continueCombatAfterRound() {
+            applyDeferredSettlementHpAnimation();
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             clearTimeout(showFullRoundSettlement._modalTimer);
@@ -2159,9 +2172,7 @@
 
         function showFullRoundSettlement(data) {
             data = applySettlementEnemyHp(data);
-            if (data.enemy?.hp != null) {
-                resetCombatEnemyHpTracking(data.enemy.hp);
-            }
+            pendingSettlementHpPayload = data;
             const phase = Number(data?.current_phase) || 0;
             settlementTimerPending = true;
             combatAwaitingSettlementAck = false;
@@ -2173,14 +2184,13 @@
             hideSinglePlayerResultModal();
             hideCombatModal();
             const practiceUx = isPracticeCombat(data);
-            const dmgAnimDelay = practiceUx ? 40 : 120;
+            const dmgAnimDelay = practiceUx ? 0 : 80;
             processCombatDamageAnimations(data, dmgAnimDelay);
             updateCombatUI(data, {
-                damageDelay: practiceUx ? 0 : 200,
+                damageDelay: practiceUx ? 0 : 120,
                 skipActionEnable: true,
+                deferEnemyHp: true,
             });
-            const hpAnimMs = getEffectiveHpAnimMs(data);
-            syncEnemyHpDisplay(data, { animMs: hpAnimMs, animate: hpAnimMs > 0 });
             lockCombatActionsForSettlement();
             const settlement = getRoundSettlement(data);
             const teamDealt = Number(settlement.team_damage_dealt) || 0;
@@ -2202,15 +2212,10 @@
                     setVisible(roundDmgEl, false);
                 }
             }
-            const baseSettlementDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
-                ? getEffectiveSettlementDelayMs(data)
-                : Math.min(500, Math.round(getEffectiveSettlementDelayMs(data) * 0.3));
-            const modalDelay = Math.max(practiceUx ? 120 : 200, baseSettlementDelay - hpAnimMs);
+            const modalDelay = 0;
             if (window.COMBAT_PERF_DEBUG) {
                 performance.mark('combat_settlement_modal_scheduled');
-                console.debug('[combat] settlement modalDelay(ms)', modalDelay, {
-                    practiceUx, hpAnimMs, baseSettlementDelay,
-                });
+                console.debug('[combat] settlement modal immediate; HP deferred until confirm');
             }
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
@@ -2240,7 +2245,6 @@
                     round_resolved: true,
                     active: true,
                 });
-                syncEnemyHpDisplay(enriched, { animate: false });
                 showFullRoundSettlement(enriched);
                 return;
             }
@@ -2302,9 +2306,6 @@
             }
             setCombatPhaseLock(false);
             hideCombatModal();
-            if (data.enemy?.hp != null) {
-                resetCombatEnemyHpTracking(data.enemy.hp);
-            }
             const phase = Number(data.current_phase) || 0;
             const settled = applySettlementEnemyHp(data);
             const settlement = getRoundSettlement(settled);
@@ -3526,7 +3527,9 @@
             const me = buildCombatMyState(uiData);
             const enemy = uiData.enemy || {};
 
-            updateEnemyCombatStats(enemy, uiData.enemy_description || '');
+            updateEnemyCombatStats(enemy, uiData.enemy_description || '', {
+                deferHp: !!options.deferEnemyHp,
+            });
             updateCombatPlayerAvatar(me);
             safeSetText('combat-player-name', me.display_name || '你');
             safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
@@ -4718,11 +4721,13 @@
             lastAnimatedEnemyHp = enemyHp != null ? enemyHp : null;
         }
 
-        function updateEnemyCombatStats(enemy, description) {
+        function updateEnemyCombatStats(enemy, description, hpOpts = {}) {
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy, animate: false });
+            if (!hpOpts.deferHp) {
+                syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy, animate: false });
+            }
             const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
             const hpHintEl = document.getElementById('enemy-hp-hint');
             if (hpHintEl) {

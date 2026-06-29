@@ -437,6 +437,15 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 **待 Henry 驗證**：`practice_iggy_03_boundary` 多回合 — HP 數字應即時同血條同步，modal ~800ms 內出現。
 
+### 14.1 Phase 2b — HP 動畫改為結算確認後觸發（2026-06-30）
+
+**需求**：玩家按「繼續下一回合」確認傷害結算後，敵 HP 扣減動畫**即刻**開始，唔再有前置 delay。
+
+**實作**：
+- 結算 modal 顯示期間主畫面**保持舊 HP**（`deferEnemyHp` + `pendingSettlementHpPayload`）
+- `modalDelay = 0` — 戰果 modal 即時彈出
+- `continueCombatAfterRound` 第一行 `applyDeferredSettlementHpAnimation()` — 按確認後零延遲觸發 220–280ms tween
+
 ---
 
-*最後更新：2026-06-30 · v7 delay patch · PA 待 deploy*
+*最後更新：2026-06-30 · v7 + Phase 2b · PA 待 deploy*
