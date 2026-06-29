@@ -138,6 +138,7 @@
 | 2026-06-29 | — | Grok Phase 1 spec 補齊：apply_ending、trauma_summary、test_ending_flow、decisions_log |
 | 2026-06-30 | `66f70c6` | Combat UX Delay Phase 2（fixes 1+2+3）；`enemy_hp_sync_v7` |
 | 2026-06-30 | — | **取消**戰鬥動畫 delay 設計 → `combat_instant_settlement`（即時 HP、即時戰果 modal、零擲骰 pause、移除設定頁結算延遲） |
+| 2026-06-30 | `cc5671d` | Combat flow v2–v5 + settlement_breakdown_v1；Henry sub-problem patch；fix_in_progress |
 
 ## 2026-06-30 — 取消戰鬥動畫 Delay 設計
 
@@ -149,3 +150,36 @@
 - 敵血條移除 CSS `transition` 延遲
 
 **保留**：v6 race fix（`combatAwaitingSettlementAck`、`queueVictoryDuringSettlement`、`syncHpOnlyFromPoll`）。
+
+---
+
+## 2026-06-30 — Combat Flow v2–v5 + Settlement Breakdown v1（`cc5671d`）
+
+**決策（Tak 確認）**：code 已推進至 `cc5671d`（GitHub `main`；PA 以 `curl /api/version` 為準）。Drive docs 同步記錄，**狀態 fix_in_progress**，等 Henry 實機 checklist 後先決定是否 resolved。
+
+| Commit / Marker | 實際內容（以 code 為準） |
+|-----------------|--------------------------|
+| `387c89b` `combat_flow_v2` | 精簡「傷害結算」modal；按「確定」先喺主畫面扣血 |
+| `03cf917` `combat_flow_v3` | **取消**「本回合預計傷害」— 唔再 call `preview_action`；擲骰後直接確認提交 |
+| `46cc3a5` `combat_flow_v4` | 已確認 `round_resolved` poll 解鎖下一回合；`resetCombatSessionState` 防第二場卡住 |
+| `c621354` `settlement_breakdown_v1` | 結算畫面：Player／主角／隊友 輸出＋承受＋敵人總計（`models/combat.py` `breakdown`） |
+| `cc5671d` `combat_flow_v5` | 勝利確認後 `victorySettlementAcknowledgedCombatId` + `victoryFinalizeInProgress` 防重複結算 modal |
+
+**Henry 新 sub-problem（2026-06-30 回報）**：
+- 勝利後仍見 1～2 次傷害結算 → `combat_flow_v5` patch
+- 界線共生影第二場／第二回合無反應 → `combat_flow_v4` patch
+
+**原則（Architect 同 Tak 一致）**：
+- P0 = BUG-2026-001 穩定性；營會前唔開新功能
+- **暫停**重複建議 poll／monotonic guard patch；等 `cc5671d` 實機數據
+- 保留 `combat_instant_settlement`（無人工 delay）
+- 大檔 review 用 `bug_log/.../GEMINI_PACKET.md`，唔好成份讀 `index.html`
+
+**影響範圍**：`templates/index.html`（主）、`models/combat.py`（`breakdown`）、`routes/misc.py`（markers）
+
+**Henry checklist**（單人 Iggy，`PLAYER-75406`）：
+- `practice_iggy_04_marathon`：贏咗 → 結算只 1 次 →「確定，查看勝利」→ 直接勝利畫面
+- `practice_iggy_03_boundary`：R1 確定 → R2 攻擊有反應；打完再開同一場正常
+- 結算 modal 有 Player／主角／隊友分類 + 敵人總計
+
+**記錄者**：Grok Architect（Tak 確認內容）· Grok Build 實作 v2–v5

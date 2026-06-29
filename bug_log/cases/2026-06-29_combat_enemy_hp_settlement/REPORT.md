@@ -448,4 +448,33 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-*最後更新：2026-06-30 · v7 + Phase 2b · PA 待 deploy*
+---
+
+## 15. cc5671d 更新（2026-06-30 · Tak + Architect 確認）
+
+**Code 版本**：`cc5671d`（GitHub `main`；PA 以 `curl /api/version` 核對）
+
+**Markers（deploy 後應為 true）**：`combat_instant_settlement`、`combat_flow_v2`–`v5`、`settlement_breakdown_v1`、`enemy_hp_sync_v7`
+
+| 流水 | 內容 |
+|------|------|
+| v2 | 精簡傷害結算 modal；按「確定」先扣主畫面 HP |
+| v3 | 取消「本回合預計傷害」預覽（唔再 `preview_action`） |
+| v4 | 第二場／下一回合卡住；部分重複結算 |
+| breakdown | Player／主角／隊友／敵人 分類傷害 |
+| v5 | 按「確定，查看勝利」後唔再彈 1～2 次結算（victory flow lock） |
+
+**狀態**：**fix_in_progress**（嚴禁標 resolved，直至 Henry checklist pass）
+
+**暫停**：任何 poll／monotonic guard 重複 patch 建議；等實機數據。
+
+### Henry checklist（`cc5671d` 環境 · Safari 硬刷新）
+
+- [ ] `practice_iggy_04_marathon` 贏：結算 modal 只 1 次 → 勝利畫面
+- [ ] `practice_iggy_03_boundary`：R2 攻擊有反應；再開同一 encounter 正常
+- [ ] 結算有 Player／主角／隊友 輸出＋承受明細
+- [ ] 無 zombie combat（返回列表後新戰正常）
+
+---
+
+*最後更新：2026-06-30 · §15 cc5671d · PA 待 Henry 驗證*

@@ -46,6 +46,20 @@
 
 ---
 
+## 2026-06-30 — BUG-2026-001 更新至 `cc5671d`（fix_in_progress）
+
+| 項目 | 內容 |
+|------|------|
+| **新版本** | `cc5671d`（`combat_flow_v2`–`v5` + `settlement_breakdown_v1`） |
+| **已 patch** | 勝利後重複結算 modal（v5）；第二場／下一回合無反應（v4）；取消預計傷害預覽（v3） |
+| **狀態** | fix_in_progress — Henry 待 `cc5671d` 實機 checklist |
+| **指示** | 暫停 poll／monotonic guard 重複建議；code 真相以 GitHub + `curl /api/version` 為準 |
+| **詳細** | `bug_log/.../REPORT.md` §15 · `decisions_log.md` § Combat Flow v2–v5 |
+
+**勿重複建議**：再改 killing blow payload 或 poll 勝利捷徑而唔睇 v4/v5 鎖；舊「本回合戰果」字眼已改「傷害結算」。
+
+---
+
 ## 設定與環境變數速查（易出問題）
 
 | 設定 | 位置 | 常見問題 | 正確做法 |
