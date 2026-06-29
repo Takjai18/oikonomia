@@ -104,6 +104,9 @@ def api_version():
             "combat_flow_v9": "combat_flow_v9" in template_text
                 and "settlementModalShown" in template_text
                 and "currentSettlementRound" in template_text,
+            "combat_flow_v10": "combat_flow_v10" in template_text
+                and "isFinalHitOrVictory" in template_text
+                and "resolveEnemyHpAfter" in template_text,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },

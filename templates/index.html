@@ -2204,6 +2204,18 @@
                 void finalizeCombatVictoryFromPayload(victoryPayload);
                 return;
             }
+            const resumeData = pendingSettlementHpPayload || lastCombatStatus;
+            if (isFinalHitOrVictory(resumeData)) {
+                const victoryPayload = buildVictoryTransitionPayload(resumeData);
+                const combatId = victoryPayload.combat_id || currentCombatId;
+                combatAwaitingSettlementAck = false;
+                clearSettlementModalGuard();
+                pendingVictoryAfterSettlement = null;
+                stopCombatPolling();
+                victorySettlementAcknowledgedCombatId = combatId;
+                void finalizeCombatVictoryFromPayload(victoryPayload);
+                return;
+            }
             clearSettlementModalGuard();
             combatAwaitingSettlementAck = false;
             lastCombatStatusJson = '';
@@ -2217,13 +2229,11 @@
         // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
         // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
         // combat_flow_v9: settlementModalShown + currentSettlementRound idempotent guard
+        // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
             const roundKey = settlementRoundKey(data);
-            const isVictorySettlement = !!pendingVictoryAfterSettlement
-                || !!data?.outcome
-                || shouldFinishCombatVictory(data);
             const displayKey = settlementDisplayKey(data);
             if (settlementModalShown && currentSettlementRound === roundKey) {
                 return;
@@ -2231,7 +2241,8 @@
             if (combatFinalizingVictory || victoryFinalizeInProgress) return;
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) return;
-            if (isVictorySettlement && victorySettlementModalCombatId === combatId) return;
+            if ((pendingVictoryAfterSettlement || data?.outcome || isFinalHitOrVictory(data))
+                && victorySettlementModalCombatId === combatId) return;
             if (lastSettlementDisplayKey === displayKey) return;
             if (combatAwaitingSettlementAck) {
                 return;
@@ -2241,6 +2252,12 @@
                 return;
             }
             data = applySettlementEnemyHp(data);
+            if (isFinalHitOrVictory(data) && !pendingVictoryAfterSettlement) {
+                pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
+            }
+            const isVictorySettlement = !!pendingVictoryAfterSettlement
+                || !!data?.outcome
+                || isFinalHitOrVictory(data);
             pendingSettlementHpPayload = data;
             settlementTimerPending = false;
             combatAwaitingSettlementAck = true;
@@ -2321,9 +2338,11 @@
             data = ensureVictorySettlementPayload(data);
             const combatId = data?.combat_id || currentCombatId;
 
-            if (settlementModalShown
-                && (data?.outcome || shouldFinishCombatVictory(data))
-                && victorySettlementModalCombatId === combatId) {
+            if (combatAwaitingSettlementAck && victorySettlementModalCombatId === combatId
+                && isFinalHitOrVictory(data)) {
+                if (!pendingVictoryAfterSettlement) {
+                    pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
+                }
                 return;
             }
 
@@ -2422,12 +2441,38 @@
             }
         }
 
-        function shouldFinishCombatVictory(data) {
+        // combat_flow_v10: final hit uses round_settlement.enemy_hp_after (not only enemy.hp)
+        function resolveEnemyHpAfter(data) {
+            if (!data) return null;
+            const settlement = getRoundSettlement(data);
+            const fromSettlement = Number(settlement.enemy_hp_after);
+            if (Number.isFinite(fromSettlement)) return fromSettlement;
+            const hp = Number(data.enemy?.hp);
+            if (Number.isFinite(hp)) return hp;
+            return null;
+        }
+
+        function isFinalHitOrVictory(data) {
             if (!data) return false;
             if (data.outcome) return true;
             if (data.status === 'ended' || data.winner) return true;
-            const hp = Number(data.enemy?.hp);
-            return Number.isFinite(hp) && hp <= 0;
+            const hpAfter = resolveEnemyHpAfter(data);
+            return hpAfter !== null && hpAfter <= 0;
+        }
+
+        function shouldFinishCombatVictory(data) {
+            return isFinalHitOrVictory(data);
+        }
+
+        function buildVictoryTransitionPayload(data) {
+            const hpAfter = resolveEnemyHpAfter(data);
+            const enemyHp = Number.isFinite(hpAfter) ? Math.max(0, hpAfter) : 0;
+            return {
+                ...data,
+                outcome: data.outcome || (data.winner === 'enemy' ? 'defeat' : 'victory'),
+                enemy: { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: enemyHp },
+                round_resolved: true,
+            };
         }
 
         function handleCombatRoundResolved(data) {
@@ -2443,6 +2488,10 @@
             setCombatPhaseLock(false);
             hideCombatModal();
             const settled = applySettlementEnemyHp(data);
+            if (isFinalHitOrVictory(settled)) {
+                finishCombatVictoryFromPayload(buildVictoryTransitionPayload(settled));
+                return;
+            }
             const settlement = getRoundSettlement(settled);
             const hasDamage = Number(settlement.team_damage_dealt) > 0
                 || (settled.log_entries || []).some(e => e?.type === 'damage');
@@ -3610,7 +3659,8 @@
                     return;
                 }
 
-                if (isCombatVictoryPayload(data)) {
+                if (isCombatVictoryPayload(data)
+                    || (isFinalHitOrVictory(data) && Number(resolveEnemyHpAfter(data)) <= 0)) {
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
@@ -3624,8 +3674,10 @@
                         return;
                     }
 
-                    if (victoryPayloadHasSettlement(data) || shouldFinishCombatVictory(data)) {
-                        await finishCombatVictoryFromPayload(data);
+                    if (victoryPayloadHasSettlement(data) || isFinalHitOrVictory(data)) {
+                        await finishCombatVictoryFromPayload(
+                            buildVictoryTransitionPayload(data),
+                        );
                     } else {
                         resetCombatSettlementState();
                         hideRoundSettlementModal();

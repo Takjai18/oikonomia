@@ -533,6 +533,12 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 **v9 markers**：`combat_flow_v9` + `settlementModalShown` + `currentSettlementRound`
 
+## 19. Final hit stuck（練習・情緒寄生影 · Henry 2026-06-30）
+
+| 症狀 | 單人 `practice_iggy_02_leech`：R1 settlement OK → confirm → 攻擊/防禦按鈕全失效，無勝利畫面 |
+| 根因 | `enemy_hp_after=0` 未觸發勝利；當普通回合處理；confirm 後 `submitted` 仍 true |
+| 修復 | `combat_flow_v10`：`resolveEnemyHpAfter` / `isFinalHitOrVictory` / `buildVictoryTransitionPayload` |
+
 **502 備註**：PA `curl /api/version` 200 + `98441cd`；若 502 多為 Web tab 未 Reload。
 
 ---

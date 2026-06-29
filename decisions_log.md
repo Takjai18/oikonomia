@@ -204,7 +204,36 @@
 - `practice_iggy_01_quick`（速戰情緒殘影）：有時攻擊後**完全無**傷害結算 modal
 - 勝利確認後**偶發**再彈一次傷害結算
 
-**修復**：`combat_flow_v8`–`v9` — Architect settlement guard spec：`settlementModalShown`/`currentSettlementRound`；poll `round_settlement`；統一 `finishCombatVictoryFromPayload` 勝利入口；confirm 後 `clearSettlementModalGuard`
+**修復**：`combat_flow_v8`–`v10` — settlement guard + **final hit 過渡**（`resolveEnemyHpAfter` / `isFinalHitOrVictory`）；confirm 後唔再 stuck
+
+---
+
+## 2026-06-30 — Combat Settlement Modal Bug（instant settlement 後遺症）
+
+**問題**（Tak + Henry 實測）：
+- 單人隊「速戰情緒殘影」攻擊後完全無傷害結算 modal
+- 勝利後重複彈 settlement modal
+- **練習・情緒寄生影**：第一次攻擊 settlement 後無法再行動（敵已死、無勝利畫面）
+- 已 deploy `combat_engine.py`（`98441cd`）+ instant settlement；console 無 error；後端測試全綠
+
+**診斷**：
+- 前端多入口（poll、`handleCombatRoundResolved`、`finishCombatVictoryFromPayload`）instant 模式下 timing 改變
+- **Final hit stuck**：`round_settlement.enemy_hp_after=0` 但 `enemy.hp` 未 sync → 當普通回合 settlement，confirm 後 `my_state.submitted` 鎖住按鈕
+- 與 killing blow + poll 路徑問題同源
+
+**決策（Tak 確認）**：
+- 502 已解決（Web Reload）
+- Frontend patch 只改 `templates/index.html`（v8–v10）
+- 驗證：`practice_iggy_02_leech`（情緒寄生影）+ `practice_iggy_01_quick` killing blow
+
+**執行次序**：
+1. ~~502~~ ✅
+2. v8–v10 frontend patch ✅
+3. Henry 實機驗證 ⏳
+4. Phase 1.5 Step 2 `trauma_service.py`（營會後）
+
+**記錄者**：Grok Architect（Tak 2026-06-30）· Grok Build 實作 v10  
+**狀態**：patch pushed，待 Henry 驗證
 
 **詳細**：`bug_log/.../REPORT.md` §17–§18
 
