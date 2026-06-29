@@ -5,10 +5,17 @@ Built by Grok Build
 Priority: Beautiful Dashboard + GPS + Photo Upload
 """
 
+import os
+
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+from utils.production_secrets import load_production_secrets
+
+load_production_secrets(PROJECT_DIR)
+
 from flask import Flask, jsonify, session
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import json
-import os
 import shutil
 import zipfile
 import io
@@ -46,8 +53,6 @@ def upload_too_large(_exc):
     return jsonify({"success": False, "error": "相片檔案太大（上限 8MB）"}), 413
 RESTORE_TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
 _restore_serializer = None
-
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def get_data_dir():
     """每個部署環境用獨立 SQLite；PA 由 wsgi.py 設 DATA_DIR=data/。"""

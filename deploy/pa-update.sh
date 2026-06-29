@@ -167,7 +167,12 @@ AVATAR_COUNT=$(find static/avatars -maxdepth 1 -type f \( -iname '*.png' -o -ina
 echo "Selectable avatars: $AVATAR_COUNT"
 
 echo ""
-echo "Done. Now: Web tab -> Reload takjai.pythonanywhere.com"
+echo ""
+echo "=========================================="
+echo " REQUIRED: Web tab -> Reload takjai.pythonanywhere.com"
+echo " (Workers keep old code until you click Reload)"
+echo "=========================================="
+echo "Done."
 echo ""
 echo "Verify:"
 echo "  curl -s https://takjai.pythonanywhere.com/api/version"
