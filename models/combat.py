@@ -25,6 +25,8 @@ from models.protagonist import (
     apply_damage_to_protagonist,
     get_controllable_protagonist_squad_id,
     get_player_control_protagonist_ids,
+    get_team_ending_state,
+    get_team_protagonist_trauma_total,
     get_team_story_stage,
     is_protagonist_participant,
     parse_protagonist_squad_id,

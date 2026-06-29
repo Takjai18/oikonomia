@@ -32,6 +32,58 @@ FAIL = 0
 MAX_FIGHT_ROUNDS = 8
 
 
+def _test_db_path():
+    return os.path.join(TEST_DIR, "oikonomia.db")
+
+
+def clear_encounter_completion(team_id, encounter_id):
+    """Remove completion row so test encounter can be replayed."""
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute(
+        "DELETE FROM encounter_completions "
+        "WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?",
+        (team_id, encounter_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def teardown_test_combat(team_id, encounter_id):
+    """End in-progress test combat without recording encounter completion."""
+    from datetime import datetime
+
+    from models.combat import clear_team_combat_id, get_active_combat_for_team, save_combat
+
+    active = get_active_combat_for_team(team_id)
+    if not active or active.get("encounter_id") != encounter_id:
+        return
+    if active.get("status") == "ended":
+        clear_team_combat_id(team_id)
+        return
+    save_combat(
+        active["id"],
+        status="ended",
+        winner="enemy",
+        ended_at=datetime.now().isoformat(),
+    )
+    clear_team_combat_id(team_id)
+
+
+def prepare_test_encounter(team_id, encounter_id):
+    """Reset encounter for isolated integration tests sharing TEST_ENCOUNTER_ID."""
+    teardown_test_combat(team_id, encounter_id)
+    clear_encounter_completion(team_id, encounter_id)
+
+
+def combat_enemy_hp(combat, default=0):
+    """Read enemy_hp; 0 is valid (do not use `or default` which treats 0 as missing)."""
+    if not combat or combat.get("enemy_hp") is None:
+        return default
+    return int(combat.get("enemy_hp"))
+
+
 def ok(label, cond, detail=""):
     global PASS, FAIL
     if cond:
@@ -84,6 +136,7 @@ def test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_i
     """Win combat with trauma > 3 → bad ending, no normal rewards narrative."""
     from models.protagonist import get_team_ending_type, update_protagonist_state
 
+    prepare_test_encounter(team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", trauma_count=4, is_active=0)
 
     r = client.post(
@@ -222,6 +275,10 @@ def test_defend_team_buff_integration(client, client2, leader_id, member_id):
     """
     from models.protagonist import update_protagonist_state
 
+    leader_team = (get_squad(leader_id) or {}).get("team_id")
+    if leader_team:
+        prepare_test_encounter(leader_team, TEST_ENCOUNTER_ID)
+
     update_squad(leader_id, resilience=10)
     update_squad(member_id, resilience=80)
     leader_team = (get_squad(leader_id) or {}).get("team_id")
@@ -270,6 +327,7 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
     """Round resolve must persist enemy HP; round_resolved payload must reflect damage."""
     from models.protagonist import update_protagonist_state
 
+    prepare_test_encounter(team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", is_active=0)
 
     r = client.post(
@@ -296,7 +354,8 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
         str(r1.get_json())[:200],
     )
 
-    with patch("routes.combat.roll_combat_dice", return_value=3):
+    # dice=1 keeps one round sub-lethal (dice=3 can one-shot the 55 HP test enemy).
+    with patch("routes.combat.roll_combat_dice", return_value=1):
         r2 = client2.post(
             "/combat/submit_action",
             json={"combat_id": combat_id, "action_type": "attack"},
@@ -310,11 +369,16 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
     )
     ok("enemy hp test: round resolves", resolved, str(phase)[:200])
 
-    db_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or start_hp)
+    db_hp = combat_enemy_hp(get_combat(combat_id), default=start_hp)
     if phase.get("outcome") == "victory":
         ok("enemy hp test: victory zeroes enemy hp", db_hp == 0, f"db={db_hp}")
     else:
-        payload_hp = int((phase.get("enemy") or {}).get("hp") or start_hp)
+        enemy_payload = phase.get("enemy") or {}
+        payload_hp = (
+            int(enemy_payload["hp"])
+            if enemy_payload.get("hp") is not None
+            else start_hp
+        )
         ok(
             "enemy hp test: payload hp dropped",
             payload_hp < start_hp,
@@ -325,6 +389,10 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
             db_hp == payload_hp,
             f"db={db_hp}, payload={payload_hp}",
         )
+
+    teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
+    clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
+    update_protagonist_state(team_id, "iggy", is_active=1)
 
 
 def fight_until_victory(client, client2, combat_id):
