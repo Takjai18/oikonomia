@@ -1534,6 +1534,9 @@
         let combatWaitingForRound = false;
         let combatSubmittedPhase = 0;
         let lastShownSettlementPhase = 0;
+        let settlementCombatId = null;
+        let combatAwaitingSettlementAck = false;
+        let settlementTimerPending = false;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
@@ -1770,13 +1773,33 @@
         }
 
         function shouldShowRoundSettlement(data) {
+            if (combatAwaitingSettlementAck || settlementTimerPending) return false;
             const phase = Number(data?.current_phase) || 0;
             if (phase < 1) return false;
-            const modal = document.getElementById('combat-round-settlement-modal');
-            const modalHidden = !modal || modal.classList.contains('hidden');
-            if (phase > lastShownSettlementPhase) return true;
-            if (modalHidden && (data?.round_resolved || data?.round_settlement)) return true;
-            return false;
+            const resolved = !!(data?.round_resolved || data?.status === 'round_resolved');
+            const advancedWhileWaiting = combatWaitingForRound
+                && phase > (Number(combatSubmittedPhase) || 0);
+            if (!resolved && !advancedWhileWaiting) return false;
+            return phase > lastShownSettlementPhase;
+        }
+
+        function resetCombatSettlementState() {
+            combatAwaitingSettlementAck = false;
+            settlementTimerPending = false;
+            lastShownSettlementPhase = 0;
+            settlementCombatId = null;
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = null;
+        }
+
+        function lockCombatActionsForSettlement() {
+            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
+                el.disabled = true;
+            });
+            const panel = document.getElementById('player-panel');
+            if (panel) panel.style.opacity = '0.45';
+            const hintEl = document.getElementById('combat-submit-hint');
+            if (hintEl) hintEl.textContent = '本回合傷害結算中，請稍候…';
         }
 
         function showRoundSettlementModal(data) {
@@ -1839,6 +1862,10 @@
         }
 
         function continueCombatAfterRound() {
+            combatAwaitingSettlementAck = false;
+            settlementTimerPending = false;
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = null;
             hideRoundSettlementModal();
             hideSinglePlayerResultModal();
             combatWaitingForRound = false;
@@ -1854,12 +1881,19 @@
         }
 
         function showFullRoundSettlement(data) {
+            const phase = Number(data?.current_phase) || 0;
+            combatAwaitingSettlementAck = true;
+            settlementTimerPending = true;
+            if (phase > lastShownSettlementPhase) {
+                lastShownSettlementPhase = phase;
+            }
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
             hideCombatModal();
             processCombatDamageAnimations(data, 120);
-            updateCombatUI(data, { damageDelay: 200 });
+            updateCombatUI(data, { damageDelay: 200, skipActionEnable: true });
+            lockCombatActionsForSettlement();
             const settlement = getRoundSettlement(data);
             const teamDealt = Number(settlement.team_damage_dealt) || 0;
             const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
@@ -1875,6 +1909,7 @@
                 : Math.min(500, Math.round(getSettlementModalDelayMs() * 0.3));
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
+                settlementTimerPending = false;
                 showRoundSettlementModal(data);
             }, modalDelay);
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
@@ -1894,9 +1929,6 @@
                 updateCombatUI(normalizeCombatStatusData(data), { damageDelay: 0 });
                 startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 return;
-            }
-            if (phase > lastShownSettlementPhase) {
-                lastShownSettlementPhase = phase;
             }
             showFullRoundSettlement(data);
         }
@@ -2412,6 +2444,10 @@
 
         function performAction(action, opts = {}) {
             if (actionModalRolling || isCombatModalOpen()) return;
+            if (combatAwaitingSettlementAck || settlementTimerPending) {
+                showToast('請先等待本回合傷害結算', 'error');
+                return;
+            }
             if (controllingProtagonist && action === 'use_item') {
                 showToast('主角模式不可使用玩家物品', 'error');
                 return;
@@ -2572,7 +2608,7 @@
         async function loadCombatPage(combatId) {
             if (combatId) currentCombatId = combatId;
             stopCombatPolling();
-            lastShownSettlementPhase = 0;
+            resetCombatSettlementState();
             combatWaitingForRound = false;
             resetCombatEnemyHpTracking(null);
             setVisible(document.getElementById('combat-lobby'), true);
@@ -2934,7 +2970,7 @@
 
         function showCombatResult(data) {
             stopCombatPolling();
-            lastShownSettlementPhase = 0;
+            resetCombatSettlementState();
             combatWaitingForRound = false;
             resetCombatEnemyHpTracking(null);
             controllingProtagonist = false;
@@ -3020,6 +3056,14 @@
             }
 
             currentCombatId = uiData.combat_id || currentCombatId;
+            if (uiData.combat_id && uiData.combat_id !== settlementCombatId) {
+                settlementCombatId = uiData.combat_id;
+                lastShownSettlementPhase = 0;
+                combatAwaitingSettlementAck = false;
+                settlementTimerPending = false;
+                clearTimeout(showFullRoundSettlement._modalTimer);
+                showFullRoundSettlement._modalTimer = null;
+            }
             showCombatScreen();
             applyCombatAccent(uiData.route);
 
@@ -3120,7 +3164,10 @@
                 && !combatPhaseLocked
                 && !isResolving
                 && !inNearDeath
-                && !me.submitted;
+                && !me.submitted
+                && !combatAwaitingSettlementAck
+                && !settlementTimerPending
+                && !options.skipActionEnable;
             if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.45';
             document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
                 el.disabled = !canAct || actionModalRolling || combatPhaseLocked || isResolving;
@@ -3132,7 +3179,9 @@
                 hideCombatModal();
             }
             if (hintEl) {
-                if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
+                if (combatAwaitingSettlementAck || settlementTimerPending) {
+                    hintEl.textContent = '本回合傷害結算中，請稍候…';
+                } else if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
                 else if (isResolving || combatPhaseLocked) hintEl.textContent = '回合結算中，請稍候…';
                 else if (uiData.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
@@ -3156,6 +3205,7 @@
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
+                    resetCombatSettlementState();
                     hideRoundSettlementModal();
                     showCombatResult(data);
                     const statusRes = await fetch('/status', { credentials: 'same-origin' });
@@ -3207,6 +3257,10 @@
         }
 
         async function submitAction() {
+            if (combatAwaitingSettlementAck || settlementTimerPending) {
+                showToast('請先等待本回合傷害結算', 'error');
+                return;
+            }
             if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
                 showToast('回合結算中，請稍候', 'error');
                 return;
@@ -6418,7 +6472,7 @@
 
     <!-- 全隊回合結算 Modal -->
     <div id="combat-round-settlement-modal"
-         onclick="if (event.target.id === 'combat-round-settlement-modal') hideRoundSettlementModal()"
+         onclick="if (event.target.id === 'combat-round-settlement-modal') continueCombatAfterRound()"
          class="hidden fixed inset-0 bg-black/85 z-[73] flex items-center justify-center p-4">
         <div onclick="event.stopPropagation()"
              class="bg-zinc-900 w-full max-w-lg rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl">
