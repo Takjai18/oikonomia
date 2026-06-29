@@ -2,12 +2,12 @@
 
 | 欄位 | 值 |
 |------|-----|
-| **狀態** | **fix_in_progress** — 統一勝利入口（poll `outcome` 捷徑） |
+| **狀態** | **reopened** — PA 已 `641da28` 仍實機失敗；待 Gemini 第二意見 |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
-| **影響** | 單人 + 主角、低 HP 練習戰、一輪擊殺；可能亦影響多回合 + polling |
-| **修復 commit** | `0247f9c`（第二輪 UI）；`3c89f62` 方案1 **實機未通過** |
-| **PA 實測 version** | **`3c89f62` 仍上線**（2026-06-29 晚 curl）；`0247f9c` **未 deploy／未 Web Reload** |
-| **決策記錄** | `decisions_log.md` § 2026-06-29 Combat Killing Blow |
+| **影響** | 單人 Iggy 線、練習/主線遭遇戰、多回合 polling；雙人未充分驗證 |
+| **修復 commit** | 見 §12.2（`3c89f62`→`641da28` 共 8+ 輪）；**全部實機未通過** |
+| **PA 實測 version** | **`641da28`**（2026-06-29 23:35 curl）；`enemy_hp_sync_v3: true` |
+| **決策記錄** | `decisions_log.md` § 方案1 + § Bug Reopened（統一勝利入口） |
 
 ---
 
@@ -24,6 +24,7 @@
 | Saliba | `enc_iggy_01_leech`（情緒寄生影） | 有時有結算、有時冇；傷害數字有但 HP 唔跌 |
 | Henry | `practice_iggy_01_quick`（速戰殘影，48 HP） | 更新至 `e2e6dc7` 後仍類似；常第一擊就贏 |
 | Henry | `practice_iggy_03_boundary`（140 HP） | 每回合 -4 左右，血條幾乎唔郁（UX 似 bug） |
+| Henry | `practice_iggy_03_boundary`（2026-06-29 深夜） | **Iggy 線、單人、PA `641da28`**：開局 HP 或許正常，**戰鬥中血量顯示仍唔更新** |
 
 **共同點**：F5 未必救到；polling 期間 UI 可能被舊 snapshot 覆寫。
 
@@ -224,13 +225,87 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 |------|------|
 | 症狀 | 每個練習敵 **一開始就顯示 0 HP** |
 | 根因 | `resetCombatEnemyHpTracking(null)` 冇清 `lastAnimatedEnemyHp`；上一場 0 血被 monotonic guard 鎖到新戰鬥 |
-| 修復 | `lastAnimatedEnemyHp = null` on reset；monotonic guard 限同一 `combat_id`；新 combat 時 reset HP tracking |
+| 修復 | `641da28`：`lastAnimatedEnemyHp = null` on reset；monotonic guard 限同一 `combat_id` |
+
+---
+
+## 12. Gemini 諮詢摘要（2026-06-29 深夜 — Henry 仍失敗）
+
+### 12.1 最新實機重現（Tak 確認）
+
+| 欄位 | 值 |
+|------|-----|
+| 玩家 | Henry |
+| 路線 | **Iggy** |
+| 隊伍 | **單人**（無其他隊友） |
+| Encounter | **`practice_iggy_03_boundary`**（練習・界線共生影，140 HP） |
+| PA 版本 | **`641da28`**（`curl /api/version`）；`enemy_hp_sync_v3: true` |
+| 症狀 | **戰鬥進行中敵人 HP 顯示唔更新**（數字/血條動畫）；問題**仍然存在** |
+| 未確認 | 有冇見「本回合戰果」modal；每回合實際傷害數字；Safari 快取版本 |
+
+### 12.2 已嘗試修復時間線（CI 全綠，實機仍 fail）
+
+| Commit | 摘要 | 實機 |
+|--------|------|------|
+| `3c89f62` | 方案1：killing blow enriched victory payload | ❌ |
+| `0247f9c` | Math.min HP；poll applySettlement；round settlement 強制 | ❌ |
+| `a1f26a2` | monotonic HP guard；`enemy_hp_sync_v3` marker | ❌ |
+| `a52d3b1` | 統一勝利入口 `finishCombatVictoryFromPayload` | ❌ |
+| `30562fa` | status poll zombie guard（hp=0 結束戰鬥）；修 `hp or 1` falsy | ❌ |
+| `641da28` | 新 combat 清 `lastAnimatedEnemyHp` | ❌（本次回報） |
+
+### 12.3 自動化測試 vs 實機落差
+
+| 測試 | 結果 | 意義 |
+|------|------|------|
+| `test_solo_multi_round_poll_hp_monotonic` | ✅ | 單人 `practice_iggy_03_boundary`：submit + poll `enemy.hp` 每回合遞減 |
+| `test_practice_combat_start_enemy_hp_full` | ✅ | 開局 48/140 HP 正確 |
+| `test_zombie_hp_zero_status_poll_returns_victory` | ✅ | HP=0 時 status 自動 victory |
+| `test_solo_killing_blow_practice_quick` | ✅ | 一輪擊殺有 settlement |
+| **Henry 實機** | ❌ | **後端 API 合約可能正確，前端顯示層或 Safari 快取仍有漏網 path** |
+
+### 12.4 待驗證假設（請 Gemini 評估）
+
+1. **Safari 快取 `index.html`**：PA `/api/version` 反映 server template，但手機仍跑舊 inline JS（無 cache-bust query string）
+2. **`updateEnemyCombatStats` → `syncEnemyHpDisplay(lastCombatStatus, enemy)`**：`enemyOverride` 與 `lastCombatStatus.round_settlement` 交叉，Math.min 仍可能鎖住舊 HP（需逐 path trace）
+3. **`loadCombatStatus` + `initLogsOnly: true`**：開局 poll 同 post-submit poll 時序；`setTimeout(applyCombatUi, 50)` 會否被後續 poll 覆寫
+4. **140 HP UX**：每回合 ~4 傷害 ≈ 血條 2.9% 寬度變化；玩家只睇條唔睇數字會誤判（需 Henry 確認 **數字** 有冇變）
+5. **主角自動 Zoo/Defend**：單人時 `choose_protagonist_auto_action` 會自動行動；會否影響 `round_resolved` 觸發或 modal 顯示
+6. **`combatAwaitingSettlementAck` 卡住**：settlement modal 未顯示但 flag 為 true → 後續 poll 提早 return、HP 唔 refresh
+7. **缺少前端 integration test**：CI 只驗 API JSON，無 headless browser 驗 DOM `#enemy-hp-current`
+
+### 12.5 請 Gemini 回答
+
+1. 在 **API 正確、DOM 唔更新** 前提下，最可能嘅 **單一根因** 係邊條 code path？
+2. 建議 **方案 A（前端）** vs **方案 B（後端每次多帶 `display_enemy_hp`）** vs **方案 C（cache-bust + 簡化為只用 `enemy.hp`）** 邊個風險最低？
+3. Henry 實機採證最少需要邊幾項（Network `submit_action` / `combat/status` response、DOM 截圖、Safari 清快取）？
+4. 有冇 **架構級** 建議（例如戰鬥 UI 拆獨立 JS module、Service Worker 快取問題）？
+
+### 12.6 關鍵 code 位置（2026-06-29 `641da28`）
+
+| 函數 | 檔案 | 行為 |
+|------|------|------|
+| `syncEnemyHpDisplay` | `templates/index.html` ~L1800 | Math.min HP + monotonic guard |
+| `updateEnemyCombatStats` | ~L4570 | 唯一常規 DOM HP 更新入口 |
+| `loadCombatStatus` | ~L3500 | poll 主迴圈 |
+| `handleCombatRoundResolved` | ~L2168 | submit 後 round_resolved |
+| `finishCombatVictoryFromPayload` | ~L2104 | 勝利/settlement 分叉 |
+| `reconcile_enemy_hp` | `models/combat.py` ~L943 | 後端 log→DB HP |
+| combat status zombie guard | `routes/combat.py` ~L263 | hp≤0 自動結束 |
+
+### 12.7 建議 Henry 實機採證 checklist
+
+- [ ] Safari：設定 → 進階 → 網站資料 → 清除 `takjai.pythonanywhere.com`
+- [ ] 開戰前確認敵 HP 數字（應 **140**）
+- [ ] 每回合攻擊後：記 **#enemy-hp-current 數字**（唔只血條）
+- [ ] 有冇彈「本回合戰果」modal
+- [ ] 如有 Mac：Safari 開發者 → 網路 → 保存一輪 `submit_action` + `combat/status` JSON
 
 ---
 
 ## 8. attachments 清單
 
-本 case `attachments/` 快照（調查時版本；以 GitHub `3c89f62` 為準）：
+本 case `attachments/` 快照（**過時**：`3c89f62`；最新 main 請用 GitHub `641da28`）：
 
 | 檔案 | 重點 |
 |------|------|
@@ -253,4 +328,4 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-*最後更新：2026-06-29 晚 · Grok Build · 統一勝利入口 patch 已實作*
+*最後更新：2026-06-29 深夜 · Grok Build · PA `641da28` 實機仍 fail · 待 Gemini 諮詢*

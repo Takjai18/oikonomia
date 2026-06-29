@@ -2,7 +2,7 @@
 
 | ID | 日期 | 標題 | 狀態 | 修復 commit | Case 路徑 |
 |----|------|------|------|-------------|-----------|
-| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP 唔跌／結算 modal 缺失 | **fix_in_progress** — 統一勝利入口（poll outcome） | `a1f26a2`+ | [cases/2026-06-29_combat_enemy_hp_settlement](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) |
+| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP 唔跌／結算 modal 缺失 | **reopened** — PA `641da28` 實機仍 fail；待 Gemini | `641da28` deployed | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) · [Gemini](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md) |
 
 ## 狀態說明
 
