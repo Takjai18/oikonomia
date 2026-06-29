@@ -13,13 +13,14 @@ Oikonomia 青年營會 ARG（另類實境遊戲）Web App。雙主角路線（Ig
 ## 專案結構（重構後）
 
 ```
-app.py              # Flask 入口；玩家主 UI（inline HTML/JS）+ 尚未搬走的 routes
+app.py              # Flask 入口 + DB migrate（~940 行）
 wsgi.py             # PythonAnywhere 入口
+templates/          # index.html（玩家 UI）、claim_item.html
 
 models/             # 資料層：squad, team, item, encounter, combat
-routes/             # Blueprint：player, combat, gm (+ gm_templates.py)
+routes/             # Blueprint：auth, player, team, combat, encounters, items, story, misc, gm
 services/           # 業務邏輯：story, teams_overview, global_events, gm_admin…
-utils/              # helpers, uploads（PIL）, validators, env, tasks
+utils/              # helpers, uploads（PIL）, qr, validators, env, deploy
 data/               # 靜態遊戲資料：locations, story_config, narrative_stories
 
 encounters/         # Encounter JSON 定義
@@ -28,7 +29,8 @@ uploads/            # 玩家上傳相片（不 commit）
 deploy/             # PythonAnywhere 部署腳本
 ```
 
-詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。
+詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。  
+外部 code review（Gemini 等）請讀 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)**。
 
 ## 本地運行
 
@@ -90,4 +92,7 @@ python3 test_combat.py          # 需本地 DB / 環境
 
 ## AI Agent 交接
 
-新 tab 繼續開發請先讀 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**（專案狀態、Combat 系統、待辦、Deploy 流程）。
+| 對象 | 文檔 |
+|------|------|
+| Cursor / Grok 繼續開發 | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** |
+| Gemini / 外部 Engineer review | **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** |
