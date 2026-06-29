@@ -93,6 +93,8 @@ def api_version():
                 and "showCombatConfirmStep" in template_text,
             "combat_flow_v4": "combat_flow_v4" in template_text
                 and "combatFinalizingVictory" in template_text,
+            "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
+                and "breakdown" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

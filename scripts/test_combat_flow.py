@@ -954,6 +954,22 @@ def test_practice_boundary_settlement_enemy_hp(client, team_id):
     after = settlement.get("enemy_hp_after")
     db_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or -1)
     ok("boundary hp test: team dealt damage", int(settlement.get("team_damage_dealt") or 0) > 0, str(settlement))
+    breakdown = settlement.get("breakdown") or {}
+    dealt = breakdown.get("dealt") or {}
+    taken = breakdown.get("taken") or {}
+    enemy_bd = breakdown.get("enemy") or {}
+    ok("boundary hp test: breakdown dealt total", int(dealt.get("total") or 0) > 0, str(dealt))
+    ok(
+        "boundary hp test: breakdown enemy damage_taken",
+        int(enemy_bd.get("damage_taken") or 0) == int(settlement.get("team_damage_dealt") or 0),
+        str(enemy_bd),
+    )
+    ok(
+        "boundary hp test: breakdown taken total",
+        int(taken.get("total") or 0) == int(settlement.get("enemy_damage_dealt") or 0),
+        str(taken),
+    )
+    ok("boundary hp test: player_hits have role", all(h.get("role") for h in settlement.get("player_hits") or []), str(settlement.get("player_hits")))
     ok("boundary hp test: enemy_hp_after present", after is not None, str(settlement))
     ok("boundary hp test: hp dropped", payload_hp < start_hp, f"{start_hp}->{payload_hp}")
     ok("boundary hp test: after matches payload", int(after) == payload_hp, f"{after} vs {payload_hp}")

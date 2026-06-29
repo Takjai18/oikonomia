@@ -1900,7 +1900,10 @@
                     if (e?.type !== 'damage') break;
                     const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
                     const pm = (e.message || '').match(/^(.+?)\s+(?:攻擊|Zoo 能力)/);
-                    if (dm) playerHits.unshift({ player: pm ? pm[1].trim() : '隊友', damage: parseInt(dm[1], 10) });
+                    if (dm) {
+                        const playerName = pm ? pm[1].trim() : '隊友';
+                        playerHits.unshift({ player: playerName, damage: parseInt(dm[1], 10) });
+                    }
                 }
                 for (let i = summaryIdx + 1; i < entries.length; i++) {
                     const e = entries[i];
@@ -1914,18 +1917,133 @@
                     }
                 }
             }
+            const lookup = buildCombatParticipantLookup(lastCombatStatus);
+            playerHits.forEach((hit) => {
+                hit.role = resolveHitRole(hit.player, lookup);
+            });
+            counterHits.forEach((hit) => {
+                hit.role = resolveHitRole(hit.target, lookup);
+            });
             let enemyHpAfter = null;
             if (summaryIdx >= 0) {
                 const hm = (entries[summaryIdx].message || '').match(/剩餘\s*HP\s*(\d+)/);
                 if (hm) enemyHpAfter = parseInt(hm[1], 10);
             }
-            return {
+            const settlement = {
                 team_damage_dealt: teamDealt,
                 enemy_damage_dealt: enemyDealt,
                 player_hits: playerHits,
                 counter_hits: counterHits,
                 enemy_hp_after: enemyHpAfter,
             };
+            settlement.breakdown = buildSettlementBreakdown(lastCombatStatus, settlement);
+            return settlement;
+        }
+
+        function buildCombatParticipantLookup(data) {
+            const members = data?.member_states || lastCombatStatus?.member_states || {};
+            const myId = data?.my_squad_id || lastCombatStatus?.my_squad_id || currentSquad?.squad_id;
+            const byName = {};
+            Object.entries(members).forEach(([sid, m]) => {
+                const name = (m.display_name || sid).trim();
+                let role = 'teammate';
+                if (m.is_protagonist) role = 'protagonist';
+                else if (sid === myId) role = 'player';
+                byName[name] = { sid, role, display_name: name };
+            });
+            const me = data?.my_state || lastCombatStatus?.my_state;
+            if (me && myId) {
+                const name = (me.display_name || myId).trim();
+                byName[name] = {
+                    sid: myId,
+                    role: me.is_protagonist ? 'protagonist' : 'player',
+                    display_name: name,
+                };
+            }
+            return { byName, myId };
+        }
+
+        function resolveHitRole(name, lookup) {
+            const key = (name || '').trim();
+            if (lookup.byName[key]) return lookup.byName[key].role;
+            return 'teammate';
+        }
+
+        function buildSettlementBreakdown(data, settlement) {
+            if (settlement?.breakdown) return settlement.breakdown;
+            const lookup = buildCombatParticipantLookup(data);
+            const dealt = { player: 0, protagonist: 0, teammate: 0 };
+            const taken = { player: 0, protagonist: 0, teammate: 0 };
+            const dealtNames = { player: [], protagonist: [], teammate: [] };
+            const takenNames = { player: [], protagonist: [], teammate: [] };
+            (settlement?.player_hits || []).forEach((hit) => {
+                const role = hit.role || resolveHitRole(hit.player, lookup);
+                const dmg = Number(hit.damage) || 0;
+                if (!dealt[role]) dealt[role] = 0;
+                dealt[role] += dmg;
+                if (dmg > 0 && hit.player) dealtNames[role].push(`${hit.player} -${dmg}`);
+            });
+            (settlement?.counter_hits || []).forEach((hit) => {
+                const role = hit.role || resolveHitRole(hit.target, lookup);
+                const dmg = Number(hit.damage) || 0;
+                if (!taken[role]) taken[role] = 0;
+                taken[role] += dmg;
+                if (dmg > 0 && hit.target) takenNames[role].push(`${hit.target} -${dmg}`);
+            });
+            const teamDealt = Number(settlement?.team_damage_dealt) || 0;
+            const enemyDealt = Number(settlement?.enemy_damage_dealt) || 0;
+            return {
+                dealt: {
+                    ...dealt,
+                    total: teamDealt || dealt.player + dealt.protagonist + dealt.teammate,
+                    details: dealtNames,
+                },
+                taken: {
+                    ...taken,
+                    total: enemyDealt || taken.player + taken.protagonist + taken.teammate,
+                    details: takenNames,
+                },
+                enemy: {
+                    damage_taken: teamDealt || dealt.player + dealt.protagonist + dealt.teammate,
+                    damage_dealt: enemyDealt || taken.player + taken.protagonist + taken.teammate,
+                },
+            };
+        }
+
+        function fmtSettlementDamage(value) {
+            const n = Number(value) || 0;
+            return n > 0 ? `-${n.toLocaleString('zh-Hant')}` : '0';
+        }
+
+        function renderSettlementBreakdown(data, settlement) {
+            const breakdown = buildSettlementBreakdown(data, settlement);
+            const roles = [
+                ['player', 'Player'],
+                ['protagonist', '主角'],
+                ['teammate', '隊友'],
+            ];
+            const dealtEl = document.getElementById('round-settlement-dealt-rows');
+            const takenEl = document.getElementById('round-settlement-taken-rows');
+            if (dealtEl) {
+                dealtEl.innerHTML = roles.map(([key, label]) => {
+                    const amount = breakdown.dealt[key] || 0;
+                    const details = (breakdown.dealt.details?.[key] || []).join(' · ');
+                    const note = details ? `<div class="text-[10px] text-zinc-500 pl-2">${escapeHtml(details)}</div>` : '';
+                    return `<div class="flex justify-between gap-3"><span class="text-zinc-400">${label}</span><span class="text-emerald-400 font-mono font-semibold">${fmtSettlementDamage(amount)}</span></div>${note}`;
+                }).join('');
+            }
+            if (takenEl) {
+                takenEl.innerHTML = roles.map(([key, label]) => {
+                    const amount = breakdown.taken[key] || 0;
+                    const details = (breakdown.taken.details?.[key] || []).join(' · ');
+                    const note = details ? `<div class="text-[10px] text-zinc-500 pl-2">${escapeHtml(details)}</div>` : '';
+                    return `<div class="flex justify-between gap-3"><span class="text-zinc-400">${label}</span><span class="text-red-400 font-mono font-semibold">${fmtSettlementDamage(amount)}</span></div>${note}`;
+                }).join('');
+            }
+            safeSetText('round-settlement-dealt-total', fmtSettlementDamage(breakdown.dealt.total));
+            safeSetText('round-settlement-taken-total', fmtSettlementDamage(breakdown.taken.total));
+            safeSetText('round-settlement-enemy-taken', fmtSettlementDamage(breakdown.enemy.damage_taken));
+            safeSetText('round-settlement-enemy-dealt', fmtSettlementDamage(breakdown.enemy.damage_dealt));
         }
 
         function getRoundSettlement(data) {
@@ -1995,13 +2113,10 @@
             const modal = document.getElementById('combat-round-settlement-modal');
             const preview = data.full_preview || {};
             const settlement = getRoundSettlement(data);
-            const teamDealt = Number(settlement.team_damage_dealt) || 0;
-            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
             const phase = Number(data.current_phase) || 0;
 
             safeSetText('round-settlement-phase', phase > 1 ? `第 ${phase - 1} 回合` : '第 1 回合');
-            safeSetText('round-settlement-team-dealt', teamDealt.toLocaleString('zh-Hant'));
-            safeSetText('round-settlement-enemy-dealt', enemyDealt.toLocaleString('zh-Hant'));
+            renderSettlementBreakdown(data, settlement);
 
             const enemy = data.enemy || preview.enemy || lastCombatStatus?.enemy || {};
             const enemyHp = Number(enemy.hp);
@@ -2009,21 +2124,6 @@
             const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
             safeSetText('round-settlement-enemy-hp', fmtHp(enemyHp));
             safeSetText('round-settlement-enemy-hp-max', Number.isFinite(enemyMax) ? ` / ${fmtHp(enemyMax)}` : '');
-
-            const summaryEl = document.getElementById('round-settlement-summary');
-            if (summaryEl) {
-                const hits = (settlement.player_hits || [])
-                    .map(h => `${h.player} -${h.damage}`)
-                    .join(' · ');
-                const counters = (settlement.counter_hits || [])
-                    .map(h => `${h.target} 受擊 -${h.damage}`)
-                    .join(' · ');
-                const parts = [];
-                if (hits) parts.push(hits);
-                if (counters) parts.push(counters);
-                if (teamDealt <= 0) parts.push('本回合對敵 0 傷害');
-                summaryEl.textContent = parts.join(' ｜ ') || '本回合已結算';
-            }
 
             hideCombatModal();
             setVisible(modal, true);
@@ -6629,32 +6729,48 @@
         </div>
     </div>
 
-    <!-- 全隊回合結算 Modal（精簡：確認後主畫面才扣血） -->
+    <!-- 全隊回合結算 Modal（確認後主畫面才扣血） -->
     <div id="combat-round-settlement-modal"
          onclick="if (event.target.id === 'combat-round-settlement-modal') continueCombatAfterRound()"
          class="hidden fixed inset-0 bg-black/85 z-[73] flex items-center justify-center p-4">
         <div onclick="event.stopPropagation()"
-             class="bg-zinc-900 w-full max-w-md rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl">
+             class="bg-zinc-900 w-full max-w-md rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="px-5 py-4 border-b border-zinc-700">
                 <div class="text-xs text-emerald-400">傷害結算</div>
                 <div class="font-semibold text-lg"><span id="round-settlement-phase">第 1 回合</span></div>
             </div>
-            <div class="px-5 py-4 grid grid-cols-2 gap-3">
-                <div class="bg-zinc-800 rounded-2xl p-3 text-center border border-emerald-700/30">
-                    <div class="text-emerald-400 text-xs mb-1">對敵傷害</div>
-                    <div class="text-2xl font-bold text-emerald-400">-<span id="round-settlement-team-dealt">0</span></div>
-                </div>
-                <div class="bg-zinc-800 rounded-2xl p-3 text-center border border-red-700/30">
-                    <div class="text-red-400 text-xs mb-1">我方受擊</div>
-                    <div class="text-2xl font-bold text-red-400">-<span id="round-settlement-enemy-dealt">0</span></div>
+            <div class="px-5 py-3 border-b border-zinc-800">
+                <div class="text-emerald-400 text-xs font-medium mb-2">我方造成傷害</div>
+                <div id="round-settlement-dealt-rows" class="space-y-1 text-xs"></div>
+                <div class="flex justify-between gap-3 border-t border-zinc-700 pt-2 mt-2 text-xs font-semibold">
+                    <span class="text-emerald-300">輸出合計</span>
+                    <span id="round-settlement-dealt-total" class="text-emerald-400 font-mono">0</span>
                 </div>
             </div>
-            <div class="px-5 pb-3 text-sm text-zinc-300">
-                敵人 HP：
-                <span id="round-settlement-enemy-hp" class="text-red-400 font-mono font-semibold">—</span><span id="round-settlement-enemy-hp-max" class="text-zinc-500 font-mono text-xs"></span>
+            <div class="px-5 py-3 border-b border-zinc-800">
+                <div class="text-red-400 text-xs font-medium mb-2">我方承受傷害</div>
+                <div id="round-settlement-taken-rows" class="space-y-1 text-xs"></div>
+                <div class="flex justify-between gap-3 border-t border-zinc-700 pt-2 mt-2 text-xs font-semibold">
+                    <span class="text-red-300">承受合計</span>
+                    <span id="round-settlement-taken-total" class="text-red-400 font-mono">0</span>
+                </div>
             </div>
-            <p id="round-settlement-summary" class="px-5 pb-4 text-xs text-zinc-400 leading-relaxed"></p>
-            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
+            <div class="px-5 py-3 text-xs space-y-1.5">
+                <div class="text-amber-400 font-medium mb-1">敵人</div>
+                <div class="flex justify-between gap-3">
+                    <span class="text-zinc-400">受到傷害</span>
+                    <span id="round-settlement-enemy-taken" class="text-emerald-400 font-mono font-semibold">0</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <span class="text-zinc-400">造成傷害</span>
+                    <span id="round-settlement-enemy-dealt" class="text-red-400 font-mono font-semibold">0</span>
+                </div>
+                <div class="pt-1 text-sm text-zinc-300">
+                    剩餘 HP：
+                    <span id="round-settlement-enemy-hp" class="text-red-400 font-mono font-semibold">—</span><span id="round-settlement-enemy-hp-max" class="text-zinc-500 font-mono text-xs"></span>
+                </div>
+            </div>
+            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700 sticky bottom-0">
                 <button type="button" id="round-settlement-confirm-btn" onclick="continueCombatAfterRound()"
                         class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">確定</button>
             </div>

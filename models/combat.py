@@ -1498,12 +1498,65 @@ def _latest_team_summary_index(logs):
     return None
 
 
-def _round_settlement_from_logs(logs):
+def _find_participant_by_display(participants, display_name):
+    name = (display_name or "").strip()
+    if not name:
+        return None
+    for participant in participants or []:
+        if (participant.get("display_name") or "").strip() == name:
+            return participant
+        if (participant.get("squad_id") or "").strip() == name:
+            return participant
+    return None
+
+
+def _participant_combat_role(participant, viewer_squad_id):
+    if not participant:
+        return "teammate"
+    if participant.get("is_protagonist"):
+        return "protagonist"
+    sid = participant.get("squad_id")
+    if viewer_squad_id and sid == viewer_squad_id:
+        return "player"
+    return "teammate"
+
+
+def _build_settlement_role_breakdown(player_hits, counter_hits, team_dealt, enemy_dealt):
+    dealt = {"player": 0, "protagonist": 0, "teammate": 0}
+    taken = {"player": 0, "protagonist": 0, "teammate": 0}
+    for hit in player_hits or []:
+        role = hit.get("role") or "teammate"
+        if role not in dealt:
+            role = "teammate"
+        dealt[role] += int(hit.get("damage") or 0)
+    for hit in counter_hits or []:
+        role = hit.get("role") or "teammate"
+        if role not in taken:
+            role = "teammate"
+        taken[role] += int(hit.get("damage") or 0)
+    return {
+        "dealt": {
+            **dealt,
+            "total": int(team_dealt or 0) or sum(dealt.values()),
+        },
+        "taken": {
+            **taken,
+            "total": int(enemy_dealt or 0) or sum(taken.values()),
+        },
+        "enemy": {
+            "damage_taken": int(team_dealt or 0) or sum(dealt.values()),
+            "damage_dealt": int(enemy_dealt or 0) or sum(taken.values()),
+        },
+    }
+
+
+def _round_settlement_from_logs(logs, participants=None, viewer_squad_id=None):
     """
     Parse the most recent completed round from combat logs.
     Returns team damage to enemy and enemy counter damage to squad.
     """
     entries = logs or []
+    participants = participants or []
     summary_idx = _latest_team_summary_index(entries)
     team_dealt = _round_enemy_damage_from_logs(entries)
     enemy_dealt = 0
@@ -1511,11 +1564,13 @@ def _round_settlement_from_logs(logs):
     player_hits = []
 
     if summary_idx is None:
+        breakdown = _build_settlement_role_breakdown(player_hits, counter_hits, team_dealt, enemy_dealt)
         return {
             "team_damage_dealt": team_dealt,
             "enemy_damage_dealt": enemy_dealt,
             "counter_hits": counter_hits,
             "player_hits": player_hits,
+            "breakdown": breakdown,
         }
 
     prev_summary_idx = _latest_team_summary_index(entries[:summary_idx])
@@ -1527,9 +1582,13 @@ def _round_settlement_from_logs(logs):
         msg = entry.get("message") or ""
         match = re.search(r"^(.+?)\s+(?:攻擊|Zoo 能力)對.+造成\s*(\d+)\s*點傷害", msg)
         if match:
+            display = match.group(1).strip()
+            participant = _find_participant_by_display(participants, display)
             player_hits.append({
-                "player": match.group(1).strip(),
+                "player": display,
                 "damage": int(match.group(2)),
+                "squad_id": participant.get("squad_id") if participant else None,
+                "role": _participant_combat_role(participant, viewer_squad_id),
             })
 
     for entry in entries[summary_idx + 1:]:
@@ -1547,9 +1606,13 @@ def _round_settlement_from_logs(logs):
         dmg = int(match.group(1))
         enemy_dealt += dmg
         target_match = re.search(r"反擊\s*([^，]+)", msg)
+        target_name = target_match.group(1).strip() if target_match else "?"
+        participant = _find_participant_by_display(participants, target_name)
         counter_hits.append({
-            "target": (target_match.group(1).strip() if target_match else "?"),
+            "target": target_name,
             "damage": dmg,
+            "squad_id": participant.get("squad_id") if participant else None,
+            "role": _participant_combat_role(participant, viewer_squad_id),
         })
 
     summary_hp = None
@@ -1559,18 +1622,26 @@ def _round_settlement_from_logs(logs):
         if hp_match:
             summary_hp = int(hp_match.group(1))
 
+    breakdown = _build_settlement_role_breakdown(player_hits, counter_hits, team_dealt, enemy_dealt)
     return {
         "team_damage_dealt": team_dealt,
         "enemy_damage_dealt": enemy_dealt,
         "counter_hits": counter_hits,
         "player_hits": player_hits,
         "enemy_hp_after": summary_hp,
+        "breakdown": breakdown,
     }
 
 
 def _attach_round_settlement(payload, combat=None):
     logs = (combat or {}).get("logs") or payload.get("log_entries")
-    settlement = _round_settlement_from_logs(logs)
+    participants = get_combat_participants(combat) if combat else []
+    viewer_squad_id = payload.get("my_squad_id")
+    settlement = _round_settlement_from_logs(
+        logs,
+        participants=participants,
+        viewer_squad_id=viewer_squad_id,
+    )
     enemy_hp = (payload.get("enemy") or {}).get("hp")
     if enemy_hp is None and combat is not None and combat.get("enemy_hp") is not None:
         enemy_hp = int(combat.get("enemy_hp"))
