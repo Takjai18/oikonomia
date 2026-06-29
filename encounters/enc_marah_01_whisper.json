@@ -1,0 +1,73 @@
+{
+  "encounter_id": "enc_marah_01_whisper",
+  "title": "深淵低語：解析的代價",
+  "route": "marah",
+  "story_stage": 1,
+  "trigger_type": "story",
+  "location_hint": "營地靜默角落（低語最清晰的區域）",
+  "description": "你進入 Marah 的第一段記憶。深淵的低語不斷誘惑你「理解一切」——每一句解析都讓你更接近真相，但也更接近被吞噬。Marah 的聲音在遠處提醒：聽，但不服從。",
+
+  "precheck": {
+    "condition": "average_intellect >= 50 OR has_item '記憶之瓶'",
+    "success_text": "你們以清晰的思緒拆解低語的結構，看穿它如何用「理解」來綁架自由，成功避開正面衝突。",
+    "skip_reward": {
+      "insight_fragment": 1,
+      "narrative": "雖然避開戰鬥，但你們已記下低語的模式——理解太多，有時也是一種負擔。"
+    }
+  },
+
+  "enemy": {
+    "name": "低語糾纏影",
+    "hp": 105,
+    "sanity": 45,
+    "power": 30,
+    "intellect": 42,
+    "resilience": 20,
+    "base_damage": 16,
+    "description": "一個由無數低語編織而成的影子，不斷用「我懂你」的語句誘使人放棄界線。它代表 Marah 過去最深的掙扎——在理解與被吞噬之間找不到平衡。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 1,
+    "rewards": [
+      {
+        "type": "item",
+        "item_id": "item-004",
+        "chance": 0.5
+      }
+    ],
+    "narrative": "低語糾纏影在你們清醒的界線前消散。Marah 的第一段記憶浮現——她開始明白，智慧不是服從低語，而是知道何時該開口、何時該沉默。",
+    "next_story_unlock": "marah_memory_02"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "sanity",
+      "amount": 8
+    },
+    "narrative": "低語成功滲入你們的思緒，過度的理解變成了一種負擔。Marah 的舊傷再次隱隱作痛……",
+    "debuff": "sanity_-8_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "聆聽與界線",
+    "questions": [
+      "在這場對峙中，你傾向用什麼方式面對「我懂你」式的低語？是完全接受、反駁，還是劃清界線？",
+      "現實生活中，當別人用理解或關心來要求你服從時，你通常會點做？",
+      "Marah 學會「聽，但不服從」。這對你處理情緒勒索或過度關心有什麼啟發？"
+    ],
+    "theological_tie": "智慧不是答案本身，而是知道何時該開口、何時該沉默。真正的連結尊重彼此的界線，而非用理解來綁架。"
+  },
+
+  "notes_for_gm": {
+    "theological_focus": "情緒勒索的「理解」變體 — 用共情來要求服從",
+    "debrief_tips": "引導討論：『我有冇曾經因為怕被說「你唔明我」而勉強自己接受不合理的要求？』",
+    "physical_integration": "可要求玩家寫低一句「我會聽，但不會服從」作為界線宣言"
+  }
+}

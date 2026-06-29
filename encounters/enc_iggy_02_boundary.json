@@ -1,0 +1,73 @@
+{
+  "encounter_id": "enc_iggy_02_boundary",
+  "title": "界線崩壞之影：共生寄生",
+  "route": "iggy",
+  "story_stage": 2,
+  "trigger_type": "story",
+  "location_hint": "裂痕擴散區（界線正在崩塌的記憶走廊）",
+  "description": "Iggy 的第二段記憶。界線不再只是被侵犯——它正在與寄生者「融合」。每一次你為他人承擔後果，裂痕就會加深一分；影子用熟悉的語氣說：『這樣才是愛。』",
+
+  "precheck": {
+    "condition": "average_resilience >= 45 OR has_item '裂縫碎片'",
+    "success_text": "你們以堅定的韌性守住界線，看穿共生寄生的陷阱，暫時穩住裂痕擴散。",
+    "skip_reward": {
+      "insight_fragment": 1,
+      "narrative": "雖然避開正面衝突，但你們已看清：真正的愛不會用融合來綁架責任。"
+    }
+  },
+
+  "enemy": {
+    "name": "界線共生影",
+    "hp": 145,
+    "sanity": 42,
+    "power": 42,
+    "intellect": 35,
+    "resilience": 28,
+    "base_damage": 20,
+    "description": "一個與裂痕融為一體的人形影子，表面溫柔卻不斷吸收他人的界線。它代表 Iggy 最深的恐懼——若不再為他人承擔一切，就會被視為自私。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 200,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70
+  },
+
+  "success": {
+    "insight_fragment": 1,
+    "rewards": [
+      {
+        "type": "item",
+        "item_id": "item-002",
+        "chance": 0.5
+      }
+    ],
+    "narrative": "界線共生影在你們堅持的界線前崩解。Iggy 的第二段記憶浮現——他開始明白，真正的守護不是融合，而是讓每個人承擔自己該承擔的後果。",
+    "next_story_unlock": "iggy_memory_03"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 10
+    },
+    "narrative": "你們的界線被共生影一點點吞噬，舊日的罪疚感再次淹沒全隊。裂痕……又擴大了一寸。",
+    "debuff": "resilience_-10_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "界線與共生",
+    "questions": [
+      "在這場對峙中，你有冇因為怕傷害對方而選擇「融合」——即代替對方承擔後果？",
+      "當別人用『如果你愛我，就應該幫我承擔』時，你通常會點回應？",
+      "Iggy 發現界線崩壞往往始於「過度的付出」。這給你現實生活什麼提醒？"
+    ],
+    "theological_tie": "《界線》核心：健康的愛尊重對方承擔責任的權利。共生寄生用『愛』的名義，剝奪他人成長的機會（Law of Responsibility）。"
+  },
+
+  "notes_for_gm": {
+    "theological_focus": "界線崩壞與共生寄生（People-pleasing 的進階形態）",
+    "debrief_tips": "引導討論：『我有冇曾經因為怕失去關係，而選擇「融合」——即代替對方承擔後果？』",
+    "prerequisite_hint": "建議先完成 enc_iggy_01_leech；隊伍韌性 ≥45 或持有裂縫碎片可 precheck 跳過"
+  }
+}

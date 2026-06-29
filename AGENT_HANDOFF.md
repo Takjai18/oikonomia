@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub/PA：`3cdb207`（Gemini 安全修復、GM stat cap、encounter logs）
+> 最後更新：2026-06-29 · local/GitHub：`pending` · PA：`3cdb207`（待 deploy 新 encounter JSON）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -12,9 +12,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `3cdb207` | ✅ |
-| **GitHub `main`** | `3cdb207` | ✅ |
-| **PythonAnywhere** | `3cdb207` | ✅（2026-06-29 已 deploy） |
+| **Local** | `pending` | ✅ 新 encounter JSON |
+| **GitHub `main`** | `pending` | 待 push |
+| **PythonAnywhere** | `3cdb207` | ⏳ 待 deploy |
 
 ```bash
 # 本地
@@ -29,7 +29,7 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ### 本地測試
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py           # 預期：66 通過 / 0 失敗
+./venv/bin/python3 scripts/test_combat_flow.py           # 預期：93 通過 / 0 失敗
 ./venv/bin/python3 scripts/test_encounter_cache.py       # 預期：3 通過 / 0 失敗
 ./venv/bin/python3 scripts/test_combat_concurrency.py    # 併發結算 smoke test（需 venv）
 ```
@@ -81,7 +81,7 @@ utils/
   qr.py, uploads.py, helpers.py, deploy.py, app_state.py
 data/                     # 靜態配置
   locations.py, story_config.py, narrative_stories.py
-encounters/*.json         # encounter 定義
+encounters/*.json         # encounter 定義（生產：enc_iggy_01/02、enc_marah_01 + test_*）
 deploy/pa-update.sh       # PA 標準部署
 scripts/test_combat_flow.py           # 戰鬥 smoke test（66 項）
 scripts/test_encounter_cache.py
@@ -104,6 +104,15 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 ---
 
 ## 本輪已完成（2026-06-29 最新）
+
+### P4 生產 Encounter JSON（本輪）
+
+| 檔案 | 路線 | Stage | 說明 |
+|------|------|-------|------|
+| `enc_iggy_02_boundary.json` | Iggy | 2 | 界線崩壞／共生寄生；precheck 韌性≥45 或裂縫碎片 |
+| `enc_marah_01_whisper.json` | Marah | 1 | 深淵低語；precheck 智力≥50 或記憶之瓶 |
+
+- `scripts/test_combat_flow.py` → `test_encounter_catalog()` 驗證生產 encounter 載入
 
 ### Gemini Review 安全修復（`3cdb207`）
 

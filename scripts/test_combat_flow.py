@@ -295,6 +295,34 @@ def fight_until_victory(client, client2, combat_id):
     return last, f"no victory after {MAX_FIGHT_ROUNDS} rounds"
 
 
+PRODUCTION_ENCOUNTERS = (
+    "enc_iggy_01_leech",
+    "enc_iggy_02_boundary",
+    "enc_marah_01_whisper",
+)
+
+
+def test_encounter_catalog():
+    """Production encounter JSON must load with required fields."""
+    from models.encounter import load_encounter
+
+    required_enemy = ("name", "hp")
+    for eid in PRODUCTION_ENCOUNTERS:
+        enc = load_encounter(eid)
+        ok(f"encounter loads: {eid}", enc is not None)
+        if not enc:
+            continue
+        ok(f"{eid} encounter_id matches", enc.get("encounter_id") == eid)
+        ok(f"{eid} has title", bool(enc.get("title")))
+        ok(f"{eid} has route", bool(enc.get("route")))
+        ok(f"{eid} has enemy", isinstance(enc.get("enemy"), dict))
+        enemy = enc.get("enemy") or {}
+        for key in required_enemy:
+            ok(f"{eid} enemy.{key}", key in enemy and enemy[key] not in (None, ""))
+        ok(f"{eid} success narrative", bool((enc.get("success") or {}).get("narrative")))
+        ok(f"{eid} failure narrative", bool((enc.get("failure") or {}).get("narrative")))
+
+
 def main():
     client = oikonomia.app.test_client()
     print(f"\n=== Combat 全流程測試 (DATA_DIR={TEST_DIR}) ===\n")
@@ -325,6 +353,7 @@ def main():
 
     test_defend_team_buff_helpers()
     test_trauma_ending_thresholds()
+    test_encounter_catalog()
 
     # --- 開始 encounter（max_hp 測試會改 TestLeader stats，先跑主線）---
     r = client.post(
