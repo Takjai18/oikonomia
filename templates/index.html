@@ -1578,12 +1578,12 @@
             showToast('已重置所有設定', 'success');
         }
 
-        function showSection(id) {
+        function showSection(id, options = {}) {
             document.querySelectorAll('.section').forEach(s => setVisible(s, false));
             setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
             if (id === 'dashboard') loadMyItems();
-            if (id === 'combat') loadCombatPage();
+            if (id === 'combat' && !options.skipCombatLobbyLoad) loadCombatPage();
             if (id === 'team') {
                 loadMyTeam();
             }
@@ -2933,7 +2933,7 @@
                     btn.onclick = () => performAction(btn.dataset.action);
                 }
             });
-            if (!combatItemsLoaded) await loadCombatItems();
+            if (!combatItemsLoaded) void loadCombatItems();
             resetCombatDiceUi();
             const me = lastCombatStatus?.my_state;
             const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
@@ -3351,8 +3351,10 @@
             currentCombatId = data.combat_id;
             resetCombatSettlementState();
             resetCombatEnemyHpTracking(null);
-            showSection('combat');
+            stopCombatPolling();
+            showSection('combat', { skipCombatLobbyLoad: true });
             if (data.can_skip && data.status === 'precheck') {
+                setVisible(document.getElementById('combat-lobby'), false);
                 document.getElementById('precheck-modal-title').textContent = data.encounter?.title || '前置判定';
                 document.getElementById('combat-precheck-text').textContent =
                     data.precheck_text || '你們有足夠洞察力看穿這是情緒勒索的扭曲模式。';
@@ -3360,7 +3362,7 @@
                 return;
             }
             showCombatScreen();
-            await loadCombatStatus(true);
+            await loadCombatStatus(true, { skipSquadRefresh: true });
         }
 
         async function confirmPrecheck(choice) {
@@ -3389,7 +3391,7 @@
             resetCombatSettlementState();
             resetCombatEnemyHpTracking(null);
             showCombatScreen();
-            await loadCombatStatus(true);
+            await loadCombatStatus(true, { skipSquadRefresh: true });
         }
 
         function showCombatResult(data) {
@@ -3637,9 +3639,11 @@
             }
         }
 
-        async function loadCombatStatus(showLoading) {
+        async function loadCombatStatus(showLoading, options = {}) {
             try {
-                await refreshSquadFromServer();
+                if (!options.skipSquadRefresh) {
+                    await refreshSquadFromServer();
+                }
                 const url = currentCombatId
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
@@ -3721,12 +3725,7 @@
                     setVisible(document.getElementById('combat-lobby'), false);
                 }
                 const uiOptions = showLoading ? { initLogsOnly: true } : {};
-                const applyCombatUi = () => updateCombatUI(data, uiOptions);
-                if (data.active || data.in_precheck) {
-                    setTimeout(applyCombatUi, 50);
-                } else {
-                    applyCombatUi();
-                }
+                updateCombatUI(data, uiOptions);
                 if (data.active || data.in_precheck) {
                     startCombatPolling(getCombatPollInterval(data));
                 } else {
