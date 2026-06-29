@@ -1367,6 +1367,9 @@ def _build_full_preview_from_status(status_payload):
         "current_phase": status_payload.get("current_phase"),
         "enemy": status_payload.get("enemy"),
         "member_states": status_payload.get("member_states"),
+        "round_settlement": status_payload.get("round_settlement"),
+        "round_enemy_damage": status_payload.get("round_enemy_damage"),
+        "round_player_damage": status_payload.get("round_player_damage"),
     }
 
 
@@ -1382,13 +1385,94 @@ def _round_enemy_damage_from_logs(logs):
     return 0
 
 
+def _latest_team_summary_index(logs):
+    for i in range(len(logs or []) - 1, -1, -1):
+        entry = logs[i]
+        if not isinstance(entry, dict) or entry.get("type") != "summary":
+            continue
+        msg = entry.get("message") or ""
+        if re.search(r"受到共\s*(\d+)\s*點傷害", msg):
+            return i
+    return None
+
+
+def _round_settlement_from_logs(logs):
+    """
+    Parse the most recent completed round from combat logs.
+    Returns team damage to enemy and enemy counter damage to squad.
+    """
+    entries = logs or []
+    summary_idx = _latest_team_summary_index(entries)
+    team_dealt = _round_enemy_damage_from_logs(entries)
+    enemy_dealt = 0
+    counter_hits = []
+    player_hits = []
+
+    if summary_idx is None:
+        return {
+            "team_damage_dealt": team_dealt,
+            "enemy_damage_dealt": enemy_dealt,
+            "counter_hits": counter_hits,
+            "player_hits": player_hits,
+        }
+
+    prev_summary_idx = _latest_team_summary_index(entries[:summary_idx])
+    round_start = (prev_summary_idx + 1) if prev_summary_idx is not None else 0
+
+    for entry in entries[round_start:summary_idx]:
+        if not isinstance(entry, dict) or entry.get("type") != "damage":
+            continue
+        msg = entry.get("message") or ""
+        match = re.search(r"^(.+?)\s+(?:攻擊|Zoo 能力)對.+造成\s*(\d+)\s*點傷害", msg)
+        if match:
+            player_hits.append({
+                "player": match.group(1).strip(),
+                "damage": int(match.group(2)),
+            })
+
+    for entry in entries[summary_idx + 1:]:
+        if not isinstance(entry, dict):
+            continue
+        etype = entry.get("type")
+        if etype in ("near_death", "event", "incapacitated"):
+            continue
+        if etype != "enemy_attack":
+            break
+        msg = entry.get("message") or ""
+        match = re.search(r"造成\s*(\d+)\s*點傷害", msg)
+        if not match:
+            continue
+        dmg = int(match.group(1))
+        enemy_dealt += dmg
+        target_match = re.search(r"反擊\s*([^，]+)", msg)
+        counter_hits.append({
+            "target": (target_match.group(1).strip() if target_match else "?"),
+            "damage": dmg,
+        })
+
+    return {
+        "team_damage_dealt": team_dealt,
+        "enemy_damage_dealt": enemy_dealt,
+        "counter_hits": counter_hits,
+        "player_hits": player_hits,
+    }
+
+
+def _attach_round_settlement(payload):
+    settlement = _round_settlement_from_logs(payload.get("log_entries"))
+    payload["round_settlement"] = settlement
+    payload["round_enemy_damage"] = settlement.get("team_damage_dealt") or 0
+    payload["round_player_damage"] = settlement.get("enemy_damage_dealt") or 0
+    return payload
+
+
 def _build_round_resolved_response(combat, encounter, squad_id):
     payload = build_combat_status_response(combat, encounter, squad_id)
     payload["status"] = "round_resolved"
     payload["round_resolved"] = True
     payload["active"] = combat.get("status") not in ("ended", "precheck")
+    _attach_round_settlement(payload)
     payload["full_preview"] = _build_full_preview_from_status(payload)
-    payload["round_enemy_damage"] = _round_enemy_damage_from_logs(payload.get("log_entries"))
     return payload
 
 

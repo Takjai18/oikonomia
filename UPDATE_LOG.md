@@ -62,6 +62,15 @@
 
 ## 更新紀錄（按時間倒序）
 
+### 2026-06-29 — 全隊傷害結算畫面唔顯示／只得 log
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 攻擊後睇唔到「全隊對敵／敵對我方」傷害結算畫面 |
+| **根因** | ① 結算 modal 只得文字 log，冇雙向傷害數字 ② `full_preview` 無 `round_settlement` ③ 輪詢 `phaseAdvanced` 缺 payload ④ 重複 `handleCombatRoundResolved` 會跳過 modal |
+| **修復** | 後端 `_round_settlement_from_logs`；modal 雙欄傷害；`shouldShowRoundSettlement`；status 一律附 `round_settlement` |
+| **勿重複建議** | 唔好只加 toast；結算要用 `round_settlement.team_damage_dealt` / `enemy_damage_dealt` |
+
 ### 2026-06-29 — 傷害浮字被回合結算 Modal 遮住
 
 | 項目 | 內容 |

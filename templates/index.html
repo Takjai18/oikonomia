@@ -1650,28 +1650,120 @@
             setVisible(modal, false);
         }
 
+        function buildClientRoundSettlement(logEntries) {
+            const entries = logEntries || [];
+            let summaryIdx = -1;
+            for (let i = entries.length - 1; i >= 0; i--) {
+                const e = entries[i];
+                if (e?.type === 'summary' && (e.message || '').includes('受到共')) {
+                    summaryIdx = i;
+                    break;
+                }
+            }
+            let teamDealt = 0;
+            let enemyDealt = 0;
+            const playerHits = [];
+            const counterHits = [];
+            if (summaryIdx >= 0) {
+                const m = (entries[summaryIdx].message || '').match(/受到共\s*(\d+)\s*點傷害/);
+                if (m) teamDealt = parseInt(m[1], 10);
+                for (let i = summaryIdx - 1; i >= 0; i--) {
+                    const e = entries[i];
+                    if (e?.type !== 'damage') break;
+                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
+                    const pm = (e.message || '').match(/^(.+?)\s+(?:攻擊|Zoo 能力)/);
+                    if (dm) playerHits.unshift({ player: pm ? pm[1].trim() : '隊友', damage: parseInt(dm[1], 10) });
+                }
+                for (let i = summaryIdx + 1; i < entries.length; i++) {
+                    const e = entries[i];
+                    if (e?.type !== 'enemy_attack') break;
+                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
+                    const tm = (e.message || '').match(/反擊\s*([^，]+)/);
+                    if (dm) {
+                        const dmg = parseInt(dm[1], 10);
+                        enemyDealt += dmg;
+                        counterHits.push({ target: tm ? tm[1].trim() : '?', damage: dmg });
+                    }
+                }
+            }
+            return {
+                team_damage_dealt: teamDealt,
+                enemy_damage_dealt: enemyDealt,
+                player_hits: playerHits,
+                counter_hits: counterHits,
+            };
+        }
+
+        function getRoundSettlement(data) {
+            const preview = data?.full_preview || {};
+            return data?.round_settlement
+                || preview.round_settlement
+                || {
+                    team_damage_dealt: parseInt(data?.round_enemy_damage, 10) || 0,
+                    enemy_damage_dealt: parseInt(data?.round_player_damage, 10) || 0,
+                    counter_hits: [],
+                    player_hits: [],
+                };
+        }
+
+        function shouldShowRoundSettlement(data) {
+            const phase = Number(data?.current_phase) || 0;
+            if (phase < 1) return false;
+            const modal = document.getElementById('combat-round-settlement-modal');
+            const modalHidden = !modal || modal.classList.contains('hidden');
+            if (phase > lastShownSettlementPhase) return true;
+            if (modalHidden && (data?.round_resolved || data?.round_settlement)) return true;
+            return false;
+        }
+
         function showRoundSettlementModal(data) {
             const modal = document.getElementById('combat-round-settlement-modal');
             const logsEl = document.getElementById('round-settlement-logs');
-            const dmgEl = document.getElementById('round-settlement-damage');
             const preview = data.full_preview || {};
-            const entries = preview.log_entries || data.log_entries || [];
-            const recent = entries.slice(-8);
-            const roundDmg = parseInt(data.round_enemy_damage, 10);
-            if (dmgEl) {
-                if (roundDmg > 0) {
-                    dmgEl.textContent = `本回合對敵人造成 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`;
-                    dmgEl.classList.remove('hidden');
+            const settlement = getRoundSettlement(data);
+            const teamDealt = Number(settlement.team_damage_dealt) || 0;
+            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
+            const phase = Number(data.current_phase) || 0;
+
+            safeSetText('round-settlement-phase', phase > 1 ? `第 ${phase - 1} 回合` : '第 1 回合');
+            safeSetText('round-settlement-team-dealt', teamDealt.toLocaleString('zh-Hant'));
+            safeSetText('round-settlement-enemy-dealt', enemyDealt.toLocaleString('zh-Hant'));
+
+            const counterNote = document.getElementById('round-settlement-counter-note');
+            if (counterNote) {
+                const hits = settlement.counter_hits || [];
+                if (hits.length === 1) {
+                    counterNote.textContent = `${hits[0].target} 受到反擊`;
+                } else if (hits.length > 1) {
+                    counterNote.textContent = hits.map(h => h.target).join('、');
+                } else if (enemyDealt > 0) {
+                    counterNote.textContent = '全隊受到反擊';
                 } else {
-                    dmgEl.classList.add('hidden');
+                    counterNote.textContent = '本回合無反擊';
                 }
             }
+
+            const breakdownEl = document.getElementById('round-settlement-breakdown');
+            if (breakdownEl) {
+                const lines = [];
+                (settlement.player_hits || []).forEach(h => {
+                    lines.push(`<div class="py-0.5 text-emerald-300">• ${h.player} 造成 ${h.damage} 點</div>`);
+                });
+                (settlement.counter_hits || []).forEach(h => {
+                    lines.push(`<div class="py-0.5 text-red-300">• ${h.target} 受到反擊 ${h.damage} 點</div>`);
+                });
+                breakdownEl.innerHTML = lines.join('') || '<div class="text-zinc-500">本回合已結算</div>';
+            }
+
+            const entries = preview.log_entries || data.log_entries || [];
+            const recent = entries.slice(-8);
             if (logsEl) {
                 logsEl.innerHTML = recent.length
                     ? recent.map(e => `<div class="py-0.5">• ${e.message || e}</div>`).join('')
                     : (preview.log || data.log || []).slice(-8).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
-                      || '<div class="text-zinc-500">本回合已結算</div>';
+                      || '<div class="text-zinc-500">尚無詳細紀錄</div>';
             }
+            hideCombatModal();
             setVisible(modal, true);
             modal.classList.add('flex');
         }
@@ -1702,11 +1794,20 @@
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
+            hideCombatModal();
             processCombatDamageAnimations(data, 120);
             updateCombatUI(data, { damageDelay: 200 });
-            const roundDmg = parseInt(data.round_enemy_damage, 10);
+            const settlement = getRoundSettlement(data);
+            const teamDealt = Number(settlement.team_damage_dealt) || 0;
+            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
             const hasDamageLogs = (data.log_entries || []).some(e => e.type === 'damage');
-            const modalDelay = (roundDmg > 0 || hasDamageLogs) ? 950 : 150;
+            if (teamDealt > 0) {
+                showDamageNumber('enemy-panel', teamDealt, false);
+            }
+            if (enemyDealt > 0) {
+                showDamageNumber('player-panel', enemyDealt, false);
+            }
+            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs) ? 700 : 100;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
                 showRoundSettlementModal(data);
@@ -1717,31 +1818,22 @@
         function handleCombatRoundResolved(data) {
             if (!data) return;
             setCombatPhaseLock(false);
+            hideCombatModal();
             if (data.enemy?.hp != null) {
                 resetCombatEnemyHpTracking(data.enemy.hp);
             }
-            const roundDmg = parseInt(data.round_enemy_damage, 10);
-            if (roundDmg > 0) {
-                showDamageNumber('enemy-panel', roundDmg, false);
-                showToast(`本回合對敵人造成 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`, 'info');
-                const roundDmgEl = document.getElementById('enemy-round-damage');
-                if (roundDmgEl) {
-                    roundDmgEl.textContent = `本回合受到 ${roundDmg.toLocaleString('zh-Hant')} 點傷害`;
-                    roundDmgEl.classList.remove('hidden');
-                    clearTimeout(roundDmgEl._hideTimer);
-                    roundDmgEl._hideTimer = setTimeout(() => roundDmgEl.classList.add('hidden'), 6000);
-                }
-            }
-            const phase = data.current_phase || 0;
-            if (phase > lastShownSettlementPhase) {
-                lastShownSettlementPhase = phase;
-                showFullRoundSettlement(data);
-            } else {
+            const phase = Number(data.current_phase) || 0;
+            if (!shouldShowRoundSettlement(data)) {
                 combatWaitingForRound = false;
                 hideCombatWaitingPanel();
                 updateCombatUI(normalizeCombatStatusData(data), { damageDelay: 0 });
                 startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+                return;
             }
+            if (phase > lastShownSettlementPhase) {
+                lastShownSettlementPhase = phase;
+            }
+            showFullRoundSettlement(data);
         }
 
         function formatTimerDisplay(totalSeconds) {
@@ -3011,6 +3103,9 @@
                     && !data.my_state?.submitted;
 
                 if (roundResolved || phaseAdvanced) {
+                    if (phaseAdvanced && !data.round_settlement && data.log_entries?.length) {
+                        data.round_settlement = buildClientRoundSettlement(data.log_entries);
+                    }
                     handleCombatRoundResolved(data);
                     return;
                 }
@@ -6263,10 +6358,22 @@
              class="bg-zinc-900 w-full max-w-lg rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl">
             <div class="px-5 py-4 border-b border-zinc-700">
                 <div class="text-xs text-emerald-400">全隊傷害結算</div>
-                <div class="font-semibold text-lg">本回合戰果</div>
-                <div id="round-settlement-damage" class="hidden mt-2 text-sm font-mono text-amber-400"></div>
+                <div class="font-semibold text-lg">本回合戰果 · <span id="round-settlement-phase">第 1 回合</span></div>
             </div>
-            <div id="round-settlement-logs" class="px-5 py-4 max-h-64 overflow-y-auto text-sm text-zinc-300 space-y-1"></div>
+            <div class="px-5 py-4 grid grid-cols-2 gap-3">
+                <div class="bg-zinc-800 rounded-2xl p-4 text-center border border-emerald-700/30">
+                    <div class="text-emerald-400 text-xs mb-1">全隊對敵傷害</div>
+                    <div class="text-3xl font-bold text-emerald-400">-<span id="round-settlement-team-dealt">0</span></div>
+                </div>
+                <div class="bg-zinc-800 rounded-2xl p-4 text-center border border-red-700/30">
+                    <div class="text-red-400 text-xs mb-1">敵方對我方傷害</div>
+                    <div class="text-3xl font-bold text-red-400">-<span id="round-settlement-enemy-dealt">0</span></div>
+                    <div id="round-settlement-counter-note" class="text-[10px] text-zinc-500 mt-1">本回合無反擊</div>
+                </div>
+            </div>
+            <div id="round-settlement-breakdown" class="px-5 pb-2 text-xs space-y-0.5"></div>
+            <div class="px-5 pt-1 pb-1 text-[10px] text-zinc-500 uppercase tracking-wide">戰鬥紀錄</div>
+            <div id="round-settlement-logs" class="px-5 pb-4 max-h-40 overflow-y-auto text-sm text-zinc-300 space-y-1"></div>
             <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
                 <button type="button" onclick="continueCombatAfterRound()"
                         class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">繼續下一回合</button>

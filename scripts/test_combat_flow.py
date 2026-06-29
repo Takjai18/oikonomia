@@ -369,6 +369,15 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
     )
     ok("enemy hp test: round resolves", resolved, str(phase)[:200])
 
+    settlement = phase.get("round_settlement") or {}
+    team_dealt = int(settlement.get("team_damage_dealt") or phase.get("round_enemy_damage") or 0)
+    ok("enemy hp test: round_settlement team dealt", team_dealt > 0, str(settlement)[:200])
+    ok(
+        "enemy hp test: round_settlement enemy dealt present",
+        "enemy_damage_dealt" in settlement,
+        str(settlement)[:200],
+    )
+
     db_hp = combat_enemy_hp(get_combat(combat_id), default=start_hp)
     if phase.get("outcome") == "victory":
         ok("enemy hp test: victory zeroes enemy hp", db_hp == 0, f"db={db_hp}")
