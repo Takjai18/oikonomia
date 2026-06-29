@@ -37,6 +37,7 @@ from models.combat import (
 )
 from models.encounter import (
     encounter_route_matches,
+    encounter_visible_to_player,
     evaluate_precheck_condition,
     load_encounter,
 )
@@ -76,7 +77,7 @@ def combat_start_api(encounter_id=None):
         session.get("is_gm")
         or os.environ.get("OIKONOMIA_SHOW_TEST_ENCOUNTERS", "").lower() in ("1", "true", "yes")
     )
-    if encounter.get("route") == "test" and not show_test:
+    if not encounter_visible_to_player(encounter, show_test=show_test):
         return jsonify({"success": False, "error": "此 Encounter 僅供開發測試"}), 403
 
     team_id = squad["team_id"]

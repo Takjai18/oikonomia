@@ -2,7 +2,7 @@
   "encounter_id": "enc_iggy_01_leech",
   "title": "巨嬰之影：情緒勒索",
   "route": "iggy",
-  "story_stage": 1,
+  "story_stage": 0,
   "trigger_type": "story",
   "location_hint": "營地邊緣安靜位置（痛楚回音區域）",
   "description": "你進入 Iggy 的第一段記憶。一個曾經被他不斷「醫治」嘅 Oikos 成員，此刻正用強烈嘅罪疚感同情緒勒索，將自己嘅痛苦強行推畀你。舊日嘅模式再次出現：你越係想幫手，佢就越係覺得「你應該為佢做更多」。",

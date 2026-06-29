@@ -76,6 +76,24 @@ def load_all_encounters():
     return [load_encounter(eid) for eid in list_encounter_ids() if load_encounter(eid)]
 
 
+def encounter_is_test(encounter):
+    """Dev/QA encounters — hidden from normal players unless GM or env override."""
+    if not encounter:
+        return False
+    return (
+        encounter.get("trigger_type") == "test"
+        or encounter.get("route") == "test"
+    )
+
+
+def encounter_visible_to_player(encounter, show_test=False):
+    if not encounter:
+        return False
+    if encounter_is_test(encounter) and not show_test:
+        return False
+    return True
+
+
 def encounter_route_matches(encounter_route, squad_route):
     if not encounter_route or encounter_route == "test":
         return True

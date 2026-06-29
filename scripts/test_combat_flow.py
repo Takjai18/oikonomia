@@ -71,8 +71,14 @@ def teardown_test_combat(team_id, encounter_id):
     clear_team_combat_id(team_id)
 
 
-def prepare_test_encounter(team_id, encounter_id):
+def enable_gm_session(client):
+    with client.session_transaction() as sess:
+        sess["is_gm"] = True
+
+
+def prepare_test_encounter(client, team_id, encounter_id):
     """Reset encounter for isolated integration tests sharing TEST_ENCOUNTER_ID."""
+    enable_gm_session(client)
     teardown_test_combat(team_id, encounter_id)
     clear_encounter_completion(team_id, encounter_id)
 
@@ -136,7 +142,7 @@ def test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_i
     """Win combat with trauma > 3 → bad ending, no normal rewards narrative."""
     from models.protagonist import get_team_ending_type, update_protagonist_state
 
-    prepare_test_encounter(team_id, TEST_ENCOUNTER_ID)
+    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", trauma_count=4, is_active=0)
 
     r = client.post(
@@ -277,7 +283,7 @@ def test_defend_team_buff_integration(client, client2, leader_id, member_id):
 
     leader_team = (get_squad(leader_id) or {}).get("team_id")
     if leader_team:
-        prepare_test_encounter(leader_team, TEST_ENCOUNTER_ID)
+        prepare_test_encounter(client, leader_team, TEST_ENCOUNTER_ID)
 
     update_squad(leader_id, resilience=10)
     update_squad(member_id, resilience=80)
@@ -327,7 +333,7 @@ def test_enemy_hp_updates_after_round(client, client2, team_id):
     """Round resolve must persist enemy HP; round_resolved payload must reflect damage."""
     from models.protagonist import update_protagonist_state
 
-    prepare_test_encounter(team_id, TEST_ENCOUNTER_ID)
+    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", is_active=0)
 
     r = client.post(
@@ -413,7 +419,7 @@ def test_solo_killing_blow_returns_victory(client, client2, team_id):
     active = get_active_combat_for_team(team_id)
     if active:
         teardown_test_combat(team_id, active.get("encounter_id"))
-    prepare_test_encounter(team_id, TEST_ENCOUNTER_ID)
+    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", is_active=0)
 
     r = client.post(
@@ -580,6 +586,28 @@ def test_create_combat_record_active_guard(leader_id, team_id):
     clear_team_combat_id(team_id)
 
 
+def test_encounter_list_hides_test_for_players(client, team_id):
+    """Non-GM players must not see trigger_type=test encounters in /encounters."""
+    r = client.get("/encounters")
+    data = r.get_json() or {}
+    ok("encounter list API", data.get("success"), str(data)[:200])
+    ids = [e.get("encounter_id") for e in (data.get("encounters") or [])]
+    for hidden_id in (
+        "test_combat_01",
+        "test_undefeatable",
+        "test_protagonist_control",
+        "test_hard_win_item",
+        "test_lose_trauma",
+    ):
+        ok(f"encounter list hides {hidden_id}", hidden_id not in ids, str(ids))
+    ok(
+        "encounter list shows first story encounter",
+        "enc_iggy_01_leech" in ids,
+        str(ids),
+    )
+    ok("encounter list has progress hint", bool(data.get("progress_hint")), data.get("progress_hint"))
+
+
 def test_encounter_catalog():
     """Production encounter JSON must load with required fields."""
     from models.encounter import load_encounter
@@ -618,6 +646,8 @@ def main():
     r = client.post("/set_team_route_by_leader", data={"route": "iggy"})
     route_data = r.get_json()
     ok("設定 Iggy 路線", route_data.get("route") == "iggy" or route_data.get("team", {}).get("route") == "iggy", str(route_data))
+
+    test_encounter_list_hides_test_for_players(client, team_id)
 
     # --- 玩家 2：加入隊伍 ---
     client2 = oikonomia.app.test_client()

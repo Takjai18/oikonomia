@@ -2962,12 +2962,22 @@
                     return;
                 }
 
+                container.innerHTML = '';
+                if (data.progress_hint) {
+                    const hint = document.createElement('div');
+                    hint.className = 'text-xs text-zinc-400 cartoon-box p-3 mb-3 leading-relaxed';
+                    hint.textContent = data.progress_hint;
+                    container.appendChild(hint);
+                }
+
                 if (!data.encounters || data.encounters.length === 0) {
-                    container.innerHTML = '<div class="text-zinc-400 cartoon-box p-6 text-center">暫無可用 Encounter（需達故事階段並選擇路線）</div>';
+                    const empty = document.createElement('div');
+                    empty.className = 'text-zinc-400 cartoon-box p-6 text-center';
+                    empty.textContent = '暫無可用遭遇戰';
+                    container.appendChild(empty);
                     return;
                 }
 
-                container.innerHTML = '';
                 data.encounters.forEach(enc => {
                     const card = document.createElement('div');
                     card.className = 'cartoon-box p-5';

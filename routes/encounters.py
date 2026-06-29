@@ -4,7 +4,13 @@ import os
 from flask import Blueprint, jsonify, session
 
 from models.combat import get_active_combat_for_team, get_combat_by_squad
-from models.encounter import encounter_route_matches, load_all_encounters, load_encounter
+from models.settings import settings
+from models.encounter import (
+    encounter_route_matches,
+    encounter_visible_to_player,
+    load_all_encounters,
+    load_encounter,
+)
 from models.encounter_outcomes import encounter_already_completed, get_team_encounter_logs
 from models.squad import get_squad
 from services.story import count_team_distinct_tasks, resolve_story_stage
@@ -38,7 +44,7 @@ def list_encounters_api():
     )
     encounters = []
     for enc in load_all_encounters():
-        if enc.get("route") == "test" and not show_test:
+        if not encounter_visible_to_player(enc, show_test=show_test):
             continue
         if not encounter_route_matches(enc.get("route"), route):
             continue
@@ -56,9 +62,40 @@ def list_encounters_api():
             "enemy_name": (enc.get("enemy") or {}).get("name"),
         })
 
+    thresholds = settings.story_stage_thresholds or {}
+    next_stage = None
+    tasks_needed = None
+    for target_stage in sorted(thresholds.keys()):
+        if target_stage > stage:
+            next_stage = target_stage
+            tasks_needed = max(0, int(thresholds[target_stage]) - completed_count)
+            break
+
+    if not route:
+        progress_hint = "請先由隊長在儀表板選擇 Iggy 或 Marah 路線，先會見到對應遭遇戰。"
+    elif not encounters:
+        if tasks_needed:
+            progress_hint = (
+                f"故事階段 {stage}：完成多 {tasks_needed} 個探索任務，"
+                f"升至階段 {next_stage} 後會解鎖更多遭遇戰。"
+            )
+        else:
+            progress_hint = "暫無符合你路線同故事階段嘅遭遇戰。"
+    elif len(encounters) == 1:
+        progress_hint = (
+            f"故事階段 {stage}：目前解鎖 1 場遭遇戰（按劇情順序逐步開放，"
+            "完成探索任務可提升階段）。"
+        )
+    else:
+        progress_hint = f"故事階段 {stage}：已解鎖 {len(encounters)} 場遭遇戰。"
+
     return jsonify({
         "success": True,
         "encounters": encounters,
+        "player_story_stage": stage,
+        "route": route,
+        "completed_task_count": completed_count,
+        "progress_hint": progress_hint,
         "active_combat": bool(active_session),
         "active_combat_id": active_session["id"] if active_session else None,
         "active_encounter_id": active_session["encounter_id"] if active_session else None,

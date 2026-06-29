@@ -2,7 +2,7 @@
   "encounter_id": "enc_marah_01_whisper",
   "title": "深淵低語：解析的代價",
   "route": "marah",
-  "story_stage": 1,
+  "story_stage": 0,
   "trigger_type": "story",
   "location_hint": "營地靜默角落（低語最清晰的區域）",
   "description": "你進入 Marah 的第一段記憶。深淵的低語不斷誘惑你「理解一切」——每一句解析都讓你更接近真相，但也更接近被吞噬。Marah 的聲音在遠處提醒：聽，但不服從。",
