@@ -808,6 +808,12 @@ def _resolve_player_phase_body(combat_id):
     combat["phase_actions"] = {}
 
     if new_enemy_hp <= 0:
+        save_combat(
+            combat_id,
+            enemy_hp=new_enemy_hp,
+            logs=combat.get("logs"),
+            phase_actions={},
+        )
         return _end_combat(combat_id, "squad", encounter), "squad"
 
     save_combat(

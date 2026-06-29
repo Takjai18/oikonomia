@@ -124,6 +124,18 @@ echo "NOTE: PythonAnywhere Web tab -> Virtualenv path MUST be: $VENV_DIR"
 echo "NOTE: WSGI file must use: from wsgi import application (NOT from app import app)"
 
 echo ""
+echo "--- Pre-deploy regression tests (isolated temp DB; production data untouched) ---"
+export FLASK_ENV=development
+export SECRET_KEY=test-secret-pa-deploy
+if ! bash "$REPO/scripts/pre_deploy_checks.sh"; then
+    echo ""
+    echo "ERROR: pre-deploy tests failed. Fix locally, push to GitHub, then re-run this script."
+    echo "Do NOT click Web Reload until tests pass."
+    exit 1
+fi
+unset SECRET_KEY
+
+echo ""
 echo "--- Secrets (data/.secret_key + data/.gm_pin for Web workers) ---"
 bash "$REPO/deploy/pa-ensure-secret.sh"
 
@@ -180,5 +192,6 @@ echo "Expected:"
 echo "  version: $NEW_COMMIT"
 echo "  markers.combat_preview: true"
 echo "  markers.combat_modal: true"
+echo "  markers.enemy_hp_sync_v2: true"
 echo ""
 echo "NOTE: Do NOT map /uploads/ in Static files (Flask serves uploads)."

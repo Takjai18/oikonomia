@@ -62,17 +62,19 @@ def main():
     errors = []
     resolve_results = []
 
-    def worker(squad_id):
+    for i in range(1, 5):
+        combat_model.upsert_combat_action(
+            combat_id, f"p{i}", 0, "attack", 6, None,
+        )
+
+    def resolve_worker(squad_id):
         try:
-            combat_model.upsert_combat_action(
-                combat_id, squad_id, 0, "attack", 6, None,
-            )
             combat, winner = combat_model.resolve_player_phase(combat_id)
             resolve_results.append((squad_id, combat.get("status") if combat else None, winner))
         except Exception as exc:
             errors.append(f"{squad_id}: {exc}")
 
-    threads = [threading.Thread(target=worker, args=(f"p{i}",)) for i in range(1, 5)]
+    threads = [threading.Thread(target=resolve_worker, args=(f"p{i}",)) for i in range(1, 5)]
     for thread in threads:
         thread.start()
     for thread in threads:
