@@ -668,6 +668,61 @@ def test_solo_multi_round_poll_hp_monotonic():
     teardown_test_combat(team_id, enc_id)
 
 
+def test_zombie_hp_zero_status_poll_returns_victory():
+    """Status poll must end combat when enemy HP is 0 but status still player_phase."""
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_03_boundary"
+    client = oikonomia.app.test_client()
+    login(client, "ZombieHpZero")
+    client.post("/team/create", data={"team_name": "ZombieHp"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    conn.close()
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    combat_id = (r.get_json() or {}).get("combat_id")
+    ok("zombie hp0: start", bool(combat_id), str(r.get_json())[:120])
+
+    from models.combat import append_combat_log, save_combat
+
+    combat = get_combat(combat_id)
+    combat = append_combat_log(
+        combat,
+        "練習・界線共生影 受到共 140 點傷害，剩餘 HP 0",
+        log_type="summary",
+    )
+    save_combat(
+        combat_id,
+        status="player_phase",
+        enemy_hp=4,
+        logs=combat.get("logs"),
+        winner=None,
+    )
+
+    st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    ok("zombie hp0: poll returns victory", st.get("outcome") == "victory", str(st)[:200])
+    ok("zombie hp0: poll inactive", st.get("active") is False, str(st.get("active")))
+    ok(
+        "zombie hp0: db ended",
+        (get_combat(combat_id) or {}).get("status") == "ended",
+        str((get_combat(combat_id) or {}).get("status")),
+    )
+
+    teardown_test_combat(team_id, enc_id)
+
+
 def fight_until_victory(client, client2, combat_id):
     """
     Both players attack each player_phase until victory or max rounds.
@@ -990,6 +1045,7 @@ def main():
     test_solo_killing_blow_returns_victory(client, client2, team_id)
     test_solo_killing_blow_practice_quick()
     test_solo_multi_round_poll_hp_monotonic()
+    test_zombie_hp_zero_status_poll_returns_victory()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")

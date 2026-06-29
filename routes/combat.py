@@ -260,6 +260,21 @@ def combat_status_api():
             payload["submitted_count"] = len(phase_actions)
             payload["total_active"] = len(active_ids)
 
+    raw_enemy_hp = (payload.get("enemy") or {}).get("hp")
+    enemy_hp = int(raw_enemy_hp) if raw_enemy_hp is not None else 1
+    if payload.get("active") and enemy_hp <= 0:
+        combat = get_combat(combat["id"]) or combat
+        squad = get_squad(session["squad_id"])
+        actor_team_id = squad.get("team_id") if squad else None
+        finished = combat_outcome_if_finished(
+            combat,
+            encounter,
+            team_id=actor_team_id,
+            squad_id=session["squad_id"],
+        )
+        if finished:
+            return jsonify({**finished, "active": False})
+
     return jsonify(payload)
 
 @combat_bp.route("/combat/preview_action", methods=["POST"])

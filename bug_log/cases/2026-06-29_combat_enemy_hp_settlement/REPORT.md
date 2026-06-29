@@ -209,6 +209,15 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 **下一步**：執行統一勝利入口改動（見 Grok Build patch）。
 
+### 11.1 Henry 實機 — HP 0 但戰鬥未結束（界線共生影）
+
+| 項目 | 內容 |
+|------|------|
+| Encounter | `practice_iggy_03_boundary`（練習・界線共生影） |
+| 症狀 | 敵 HP 顯示 **0**，但戰鬥仍 **`player_phase` active** |
+| 根因 | ① `reconcile_enemy_hp` 從 log 將 `enemy.hp` 顯示為 0，但 `/combat/status` poll **唔 call** `combat_outcome_if_finished`；② 前端 poll 見 `hp<=0` 唔觸發 `finishCombatVictoryFromPayload`；③ `victoryPayloadHasSettlement` 誤將每次 poll 嘅 `round_settlement` 當要出 modal |
+| 修復 | 後端 status zombie guard + 前端 poll `shouldFinishCombatVictory` + 收窄 settlement 判斷 |
+
 ---
 
 ## 8. attachments 清單

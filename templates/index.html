@@ -2093,15 +2093,17 @@
         }
 
         function victoryPayloadHasSettlement(data) {
-            if (data?.round_settlement) return true;
+            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
+            if (data?.outcome && data?.round_settlement) return true;
+            if (!roundResolved) return false;
             const settlement = getRoundSettlement(data);
-            if (!settlement) return false;
             if (Number(settlement.team_damage_dealt) > 0) return true;
             return (data.log_entries || []).some(e => e?.type === 'damage');
         }
 
         async function finishCombatVictoryFromPayload(data) {
-            if (victoryPayloadHasSettlement(data)) {
+            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
+            if (victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome)) {
                 pendingVictoryAfterSettlement = data;
                 const enriched = applySettlementEnemyHp({
                     ...data,
@@ -3344,7 +3346,7 @@
                 || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status);
             if (!combatLive) {
                 if (uiData.outcome) {
-                    if (shouldFinishCombatVictory(uiData) || uiData.round_settlement) {
+                    if (shouldFinishCombatVictory(uiData)) {
                         void finishCombatVictoryFromPayload(uiData);
                     } else {
                         showCombatResult(uiData);
@@ -3508,7 +3510,7 @@
                     resetCombatSettlementState();
                     hideRoundSettlementModal();
 
-                    if (shouldFinishCombatVictory(data) || data.round_settlement) {
+                    if (shouldFinishCombatVictory(data)) {
                         await finishCombatVictoryFromPayload(data);
                     } else {
                         showCombatResult(data);
@@ -3540,6 +3542,11 @@
                     if (shouldFinishCombatVictory(data)) {
                         await finishCombatVictoryFromPayload(data);
                     }
+                    return;
+                }
+
+                if (shouldFinishCombatVictory(data)) {
+                    await finishCombatVictoryFromPayload(data);
                     return;
                 }
 
