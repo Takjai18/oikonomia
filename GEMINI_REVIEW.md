@@ -1,8 +1,39 @@
-# Instructions for Gemini — Oikonomia Code Review
+# Instructions for Gemini — Oikonomia Review & Debug
 
-> **用途**：畀 Gemini（或其他外部 Engineer）做 code review 時，請**先讀本文**，再按指引睇檔案。  
+> **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-06-29 · 現行 code commit `3cdb207`（PA 已 deploy）；docs `9483cc5`
+> **最後更新**：2026-06-29 · 現行 docs commit `41b7630`（以 `git rev-parse --short HEAD` 為準）
+
+---
+
+## 0. 你在專案裡的角色
+
+本專案由三個 AI 分工；**Gemini 唔負責寫入 code**，負責獨立把關。
+
+| 角色 | 職責 |
+|------|------|
+| **Grok** | 方向：需求、優先級、架構取捨、根因假設 |
+| **Grok Build** | 實作：改 code、測試、commit/push、備份、部署 |
+| **Gemini（你）** | **Review & Debug**：安全、邏輯、併發、邊界情況；輸出可執行修復建議 |
+
+### 建議介入時機
+
+| 時機 | Gemini 做咩 |
+|------|----------------|
+| Grok Build push 新 commit 後 | Security / full-stack review（跟本文 §4–§5） |
+| 用戶報現場 bug | Debug：重現路徑、根因、最小修復建議（交 Grok Build 落地） |
+| 營會前 | 最後一輪 High 項清零確認 |
+
+### 交接規則
+
+1. Review 基準 = **`main` 上已 push 的 commit**（用戶提供 hash 或 `git rev-parse --short HEAD`）。
+2. 修復由 **Grok Build** 執行；Gemini 只出報告，唔直接改 repo。
+3. 方向性改動（例如重構範圍）先經 **Grok** 同用戶確認，再交 Grok Build。
+4. 已修復項對照本文 §9、§10，**唔好重複報**。
+
+```
+Grok（方向） → Grok Build（實作） → Gemini（review / debug） → Grok Build（修復）
+```
 
 ---
 
@@ -10,9 +41,10 @@
 
 | 檔案 | 用途 |
 |------|------|
-| `README.md` | 專案概覽、本地／PA 網址、測試指令 |
-| `AGENT_HANDOFF.md` | 戰鬥公式、API 速查、部署流程、已知待辦 |
-| **本文** `GEMINI_REVIEW.md` | Review 範圍、優先級、輸出格式、已修復對照 |
+| `README.md` | 專案概覽、**三角色分工**、本地／PA 網址 |
+| `AGENT_HANDOFF.md` | Grok Build 實作交接；戰鬥公式、API、部署、待辦 |
+| `CURRENT_STRUCTURE.md` | 目錄樹、模組職責快照 |
+| **本文** `GEMINI_REVIEW.md` | Review / Debug 範圍、優先級、輸出格式、已修復對照 |
 
 **威脅模型（重要）**：玩家係中學生，會開 DevTools、改 API payload、試 bypass 機制。Security review 要假設 **client 不可信**，唔好只係檢查「happy path」。
 
@@ -154,6 +186,8 @@ scripts/test_combat_concurrency.py
 
 ## 5. 輸出格式（請 Gemini 跟此結構）
 
+### Code Review 模式
+
 用**繁體中文**（可夾英文術語），分三級：
 
 ```markdown
@@ -179,6 +213,30 @@ scripts/test_combat_concurrency.py
 - 忽略營會規模（20 人）而過度設計 infra
 - 重報本文 §9、§10 已標 ✅ 的項目
 
+### Debug 模式（用戶報 bug 時）
+
+```markdown
+## Bug 摘要
+（一句話描述現象）
+
+## 重現步驟
+1. …
+
+## 根因分析
+- **位置**：`path/to/file.py` — `function` / route
+- **機制**：（為何第一次攻擊後 UI 仍滿血等）
+- **信心**：High / Medium / Low
+
+## 建議修復（交 Grok Build）
+- （具體改法；可附 pseudo-code）
+- **建議驗證**：測試指令或手動步驟
+
+## 非根因（已排除）
+- …
+```
+
+Debug 報告同樣**唔直接改 repo**；修復交 Grok Build，並建議補 regression test（如 `scripts/test_combat_flow.py`）。
+
 ---
 
 ## 6. 驗證指令（Reviewer 可建議跑）
@@ -195,7 +253,7 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 `/api/version` 的 `markers` 可確認部署功能開關，例如：
 `server_combat_dice`, `task_photo_validation`, `qr_signed_v2`, `upload_path_hardened`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `encounter_logs`, `defend_team_buff`
 
-正式環境預期 `version` = `3cdb207`（或更新）。
+正式環境預期 `version` 與 GitHub `main` 一致（`curl /api/version` 核對）。
 
 ---
 
@@ -220,16 +278,31 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 
 ## 8. 給用戶的開場白模板（Copy-paste 畀 Gemini）
 
+### Code Review
+
 ```
-請讀 @GEMINI_REVIEW.md，然後對 Oikonomia 做 code review。
+你是 Oikonomia 的第三方 Engineer（Gemini）。Grok 負責方向，Grok Build 負責實作；你負責 review，唔改 repo。
 
-範圍：[Security only / Full stack / 指定 PR 或 commit]
-基準 commit：3cdb207（或 git rev-parse --short HEAD）
-我已附上檔案：[列出 zip 或 repo path]
+請讀 GEMINI_REVIEW.md，然後做 code review。
+範圍：[Security only / Full stack / 指定模組]
+基準 commit：<git rev-parse --short HEAD>
+Repo：GitHub Takjai18/oikonomia 或我附上的檔案
 
-請跟 GEMINI_REVIEW.md 第 5 節輸出格式；
-High 項要寫清 exploit 場景同具體修復建議。
-已修復項目請對照本文 §9、§10，標為 ✅ 或跳過，唔好重複報。
+跟 GEMINI_REVIEW.md §5 Code Review 格式輸出。
+High 項要寫清 exploit 場景同具體修復建議（交 Grok Build 落地）。
+已修復項對照 §9、§10，唔好重複報。
+```
+
+### Debug
+
+```
+你是 Oikonomia 的第三方 Engineer（Gemini）。請讀 GEMINI_REVIEW.md §0、§5 Debug 模式。
+
+Bug 描述：<用戶描述>
+基準 commit：<hash>
+相關檔案：<如 templates/index.html, models/combat.py>
+
+請分析根因並給可執行修復建議（交 Grok Build）；建議 regression test。
 ```
 
 ---
@@ -287,5 +360,7 @@ High 項要寫清 exploit 場景同具體修復建議。
 | GitHub | https://github.com/Takjai18/oikonomia |
 | Production | https://takjai.pythonanywhere.com |
 | 本地 | http://localhost:5001 |
-| 現行 PA version | `3cdb207`（`curl /api/version`） |
-| 開發交接 | `AGENT_HANDOFF.md`（給 Cursor / Grok Agent） |
+| 版本核對 | `curl /api/version` 應與 GitHub `main` 一致 |
+| Grok（方向） | `README.md` § AI 開發分工 |
+| Grok Build（實作） | `AGENT_HANDOFF.md` |
+| Gemini（你） | 本文 `GEMINI_REVIEW.md` |

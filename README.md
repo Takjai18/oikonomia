@@ -30,7 +30,30 @@ deploy/             # PythonAnywhere 部署腳本
 ```
 
 詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。  
-外部 code review（Gemini 等）請讀 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)**。
+目錄快照見 **[CURRENT_STRUCTURE.md](./CURRENT_STRUCTURE.md)**。
+
+## AI 開發分工
+
+本專案由三個 AI 角色協作；用戶（Tak）做最終決策同營會現場把關。
+
+| 角色 | 工具 | 職責 |
+|------|------|------|
+| **Grok** | Grok（對話） | 提供方向：需求釐清、優先級、架構取捨、bug 根因假設、下一步計劃 |
+| **Grok Build** | Grok Build（Agent） | 實際寫入：改 code、跑測試、commit/push、備份、部署指引 |
+| **Gemini** | Gemini | 第三方 Engineer：**Code Review** 同 **Debug**（獨立視角，假設 client 不可信） |
+
+### 建議工作流
+
+```
+Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review / debug） → Grok Build（修復） → …
+```
+
+1. **Grok** 定義「做咩、點解、邊度改」；唔直接改 repo。
+2. **Grok Build** 讀 `AGENT_HANDOFF.md`，執行改動並更新版本狀態。
+3. **Gemini** 按 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** 做 review 或追查 bug；輸出 High/Medium/Low 清單。
+4. 修復項交回 **Grok Build**；重大方向改動再諮詢 **Grok**。
+
+**避免**：三個角色同時改同一功能；Gemini review 應對準已 push 嘅 commit，唔好對未落地嘅計劃 review。
 
 ## 本地運行
 
@@ -94,9 +117,10 @@ python3 -m py_compile app.py models/*.py routes/*.py services/*.py utils/*.py
 python3 test_combat.py          # 需本地 DB / 環境
 ```
 
-## AI Agent 交接
+## 文檔索引（各角色入口）
 
-| 對象 | 文檔 |
+| 角色 | 先讀 |
 |------|------|
-| Cursor / Grok 繼續開發 | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** |
-| Gemini / 外部 Engineer review | **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** |
+| **Grok**（方向） | `README.md` → `AGENT_HANDOFF.md`「尚未完成」 |
+| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → `CURRENT_STRUCTURE.md` |
+| **Gemini**（review / debug） | **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** → `AGENT_HANDOFF.md` |
