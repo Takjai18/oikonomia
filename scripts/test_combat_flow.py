@@ -569,6 +569,105 @@ def test_solo_killing_blow_practice_quick():
     teardown_test_combat(team_id, enc_id)
 
 
+def test_solo_multi_round_poll_hp_monotonic():
+    """Solo multi-round: submit + poll must return decreasing enemy.hp (Henry scenario)."""
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_03_boundary"
+    client = oikonomia.app.test_client()
+    login(client, "SoloPollHp")
+    client.post("/team/create", data={"team_name": "SoloPoll"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    conn.close()
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    combat_id = (r.get_json() or {}).get("combat_id")
+    start_hp = combat_enemy_hp(get_combat(combat_id), default=-1)
+    ok("solo poll hp: start", start_hp > 0, str(start_hp))
+
+    prev_payload_hp = start_hp
+    prev_poll_hp = start_hp
+    import models.combat as combat_model
+
+    orig_auto = combat_model.choose_protagonist_auto_action
+    combat_model.choose_protagonist_auto_action = lambda p, settings=None: {
+        "action_type": "defend",
+        "dice_result": 1,
+    }
+    try:
+        for round_no in range(1, 4):
+            with patch("routes.combat.roll_combat_dice", return_value=1):
+                d = client.post(
+                    "/combat/submit_action",
+                    json={"combat_id": combat_id, "action_type": "attack"},
+                    content_type="application/json",
+                ).get_json() or {}
+            if d.get("outcome"):
+                ok("solo poll hp: skip victory", False, f"victory round {round_no}")
+                break
+            ok(
+                f"solo poll hp: R{round_no} round_resolved",
+                d.get("round_resolved") or d.get("status") == "round_resolved",
+                str(d)[:160],
+            )
+            payload_hp_raw = (d.get("enemy") or {}).get("hp")
+            payload_hp = int(payload_hp_raw) if payload_hp_raw is not None else None
+            ok(
+                f"solo poll hp: R{round_no} payload dropped",
+                payload_hp is not None and payload_hp < prev_payload_hp,
+                f"{prev_payload_hp}->{payload_hp}",
+            )
+            settlement = d.get("round_settlement") or {}
+            ok(
+                f"solo poll hp: R{round_no} settlement present",
+                int(settlement.get("team_damage_dealt") or 0) > 0,
+                str(settlement)[:120],
+            )
+            after = settlement.get("enemy_hp_after")
+            ok(
+                f"solo poll hp: R{round_no} after matches payload",
+                after is not None and int(after) == payload_hp,
+                f"after={after}, payload={payload_hp}",
+            )
+
+            st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+            poll_hp_raw = (st.get("enemy") or {}).get("hp")
+            poll_hp = int(poll_hp_raw) if poll_hp_raw is not None else None
+            ok(
+                f"solo poll hp: R{round_no} poll matches payload",
+                poll_hp == payload_hp,
+                f"poll={poll_hp}, payload={payload_hp}",
+            )
+            ok(
+                f"solo poll hp: R{round_no} poll monotonic",
+                poll_hp is not None and poll_hp <= prev_poll_hp,
+                f"{prev_poll_hp}->{poll_hp}",
+            )
+            ok(
+                f"solo poll hp: R{round_no} db matches",
+                combat_enemy_hp(get_combat(combat_id), default=-1) == payload_hp,
+                "db mismatch",
+            )
+            prev_payload_hp = payload_hp
+            prev_poll_hp = poll_hp
+    finally:
+        combat_model.choose_protagonist_auto_action = orig_auto
+
+    teardown_test_combat(team_id, enc_id)
+
+
 def fight_until_victory(client, client2, combat_id):
     """
     Both players attack each player_phase until victory or max rounds.
@@ -890,6 +989,7 @@ def main():
     test_protagonist_player_control(client, client2, team_id, route="iggy")
     test_solo_killing_blow_returns_victory(client, client2, team_id)
     test_solo_killing_blow_practice_quick()
+    test_solo_multi_round_poll_hp_monotonic()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")

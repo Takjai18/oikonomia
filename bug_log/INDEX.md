@@ -2,7 +2,7 @@
 
 | ID | 日期 | 標題 | 狀態 | 修復 commit | Case 路徑 |
 |----|------|------|------|-------------|-----------|
-| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP 唔跌／結算 modal 缺失（killing blow） | **reopened** — 方案1 已 deploy 仍失敗 | `3c89f62`（不足） | [cases/2026-06-29_combat_enemy_hp_settlement](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) |
+| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP 唔跌／結算 modal 缺失 | **fix_in_progress** — 第二輪 UI（min HP + poll） | `3c89f62`+ | [cases/2026-06-29_combat_enemy_hp_settlement](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) |
 
 ## 狀態說明
 

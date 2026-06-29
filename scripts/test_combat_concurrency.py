@@ -46,7 +46,7 @@ def _seed_combat():
             squad_id, encounter_id, status, current_phase, enemy_hp,
             enemy_resilience, enemy_sanity, enemy_base_damage, enemy_name,
             phase_actions, logs, phase_started_at, started_at
-        ) VALUES ('p1', 'test_combat_01', 'player_phase', 0, 500, 10, 50, 5, 'Boss', '{}', '[]', ?, ?)
+        ) VALUES ('p1', 'test_combat_01', 'player_phase', 0, 60, 10, 50, 5, 'Boss', '{}', '[]', ?, ?)
         """,
         (now, now),
     )

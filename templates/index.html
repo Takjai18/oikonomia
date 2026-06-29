@@ -1786,12 +1786,15 @@
             if (!data) return null;
             const settlement = getRoundSettlement(data);
             const fromSettlement = Number(settlement.enemy_hp_after);
-            if (Number.isFinite(fromSettlement)) return fromSettlement;
             const fromEnemy = Number(data.enemy?.hp);
-            if (Number.isFinite(fromEnemy)) return fromEnemy;
             const fromLog = parseEnemyRemainingHpFromStatus(data);
-            if (fromLog != null) return fromLog;
-            return null;
+            const candidates = [];
+            if (Number.isFinite(fromEnemy)) candidates.push(fromEnemy);
+            if (Number.isFinite(fromSettlement)) candidates.push(fromSettlement);
+            if (fromLog != null) candidates.push(fromLog);
+            if (!candidates.length) return null;
+            // Never show inflated HP when settlement snapshot lags behind enemy.hp
+            return Math.min(...candidates);
         }
 
         function syncEnemyHpDisplay(data, enemyOverride = null) {
@@ -1828,13 +1831,16 @@
         function applySettlementEnemyHp(data) {
             if (!data?.enemy) return data;
             const settlement = getRoundSettlement(data);
-            const remaining = Number.isFinite(Number(settlement.enemy_hp_after))
+            let remaining = Number.isFinite(Number(settlement.enemy_hp_after))
                 ? Number(settlement.enemy_hp_after)
                 : parseEnemyRemainingHpFromStatus(data);
-            if (remaining == null) return data;
             const current = Number(data.enemy.hp);
-            if (Number.isFinite(current) && current <= remaining) return data;
-            return { ...data, enemy: { ...data.enemy, hp: remaining } };
+            if (remaining == null && !Number.isFinite(current)) return data;
+            const candidates = [];
+            if (Number.isFinite(current)) candidates.push(current);
+            if (remaining != null) candidates.push(remaining);
+            if (!candidates.length) return data;
+            return { ...data, enemy: { ...data.enemy, hp: Math.min(...candidates) } };
         }
 
         function buildClientRoundSettlement(logEntries) {
@@ -1902,11 +1908,11 @@
         function shouldShowRoundSettlement(data) {
             if (combatAwaitingSettlementAck || settlementTimerPending) return false;
             const phase = Number(data?.current_phase) || 0;
-            if (phase < 1) return false;
             const resolved = !!(data?.round_resolved || data?.status === 'round_resolved');
             const advancedWhileWaiting = combatWaitingForRound
                 && phase > (Number(combatSubmittedPhase) || 0);
             if (!resolved && !advancedWhileWaiting) return false;
+            if (resolved) return phase > lastShownSettlementPhase;
             return phase > lastShownSettlementPhase;
         }
 
@@ -2164,20 +2170,23 @@
                 resetCombatEnemyHpTracking(data.enemy.hp);
             }
             const phase = Number(data.current_phase) || 0;
-            if (!shouldShowRoundSettlement(data)) {
+            const settled = applySettlementEnemyHp(data);
+            const settlement = getRoundSettlement(settled);
+            const hasDamage = Number(settlement.team_damage_dealt) > 0
+                || (settled.log_entries || []).some(e => e?.type === 'damage');
+            const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
+            if (!shouldShowRoundSettlement(settled) && !mustShow) {
                 if (combatAwaitingSettlementAck || settlementTimerPending) {
                     return;
                 }
                 combatWaitingForRound = false;
                 hideCombatWaitingPanel();
-                updateCombatUI(
-                    normalizeCombatStatusData(applySettlementEnemyHp(data)),
-                    { damageDelay: 0 },
-                );
+                updateCombatUI(settled, { damageDelay: 0 });
+                syncEnemyHpDisplay(settled);
                 startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 return;
             }
-            showFullRoundSettlement(applySettlementEnemyHp(data));
+            showFullRoundSettlement(settled);
         }
 
         function formatTimerDisplay(totalSeconds) {
@@ -3304,7 +3313,7 @@
 
         function updateCombatUI(data, options = {}) {
             if (!data) return;
-            const uiData = normalizeCombatStatusData(data);
+            const uiData = normalizeCombatStatusData(applySettlementEnemyHp(data));
             if (!uiData.my_state && (uiData.active || uiData.status === 'player_phase' || uiData.status === 'enemy_phase')) {
                 console.warn('Combat data missing my_state');
             }
@@ -3482,14 +3491,7 @@
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
                 if (data.outcome) {
-                    combatWaitingForRound = false;
-                    hideCombatWaitingPanel();
-                    hideSinglePlayerResultModal();
-                    resetCombatSettlementState();
-                    hideRoundSettlementModal();
-                    showCombatResult(data);
-                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
-                    updateDashboard(await statusRes.json());
+                    await finishCombatVictoryFromPayload(data);
                     return;
                 }
 

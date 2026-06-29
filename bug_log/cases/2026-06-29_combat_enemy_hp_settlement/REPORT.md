@@ -2,7 +2,7 @@
 
 | 欄位 | 值 |
 |------|-----|
-| **狀態** | **reopened** — 方案1（`3c89f62`）已上 PA，Henry 仍回報問題 |
+| **狀態** | **fix_in_progress** — 方案1 不足；Henry 實機重現已記錄 |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
 | **影響** | 單人 + 主角、低 HP 練習戰、一輪擊殺；可能亦影響多回合 + polling |
 | **修復 commit** | `3c89f62`（方案1，**實機未通過**）；前期 `4bbb885`、`e2e6dc7` |
@@ -157,14 +157,33 @@ flowchart TD
 3. **實機採證**：請 Henry 提供 encounter 名、單人/雙人、有冇見 settlement modal、Safari 開發者遠端 console（如有）。
 4. **新增測試**：模擬「poll 先返 outcome」順序嘅前端 integration 或 API contract test。
 
-### 10.3 時間線
+### 10.3 Henry 實機重現（2026-06-29 晚 — 用戶確認）
+
+| 項目 | 內容 |
+|------|------|
+| 隊伍 | **單人** |
+| 部署 | 用戶已跑 `FORCE=1 bash ~/oikonomia/deploy/pa-update.sh` |
+| 結算 modal | **從未見過**「本回合戰果」 |
+| 體感 | **打咗幾回合**，敵人 HP **完全唔似有扣** |
+| 後端模擬 | 單人多回合 `practice_iggy_03_boundary`：API `enemy.hp` 每回合 -4，DB 正確；**問題在 frontend 顯示** |
+
+### 10.4 第二輪修復方向（`fix(combat-ui)` 進行中）
+
+1. **`resolveAuthoritativeEnemyHp`**：多來源取 `Math.min`，避免 stale `round_settlement.enemy_hp_after` 蓋過正確 `enemy.hp`
+2. **`updateCombatUI`**：一律先 `applySettlementEnemyHp`
+3. **`loadCombatStatus`**：`outcome` 改走 `finishCombatVictoryFromPayload`（唔再直接 `showCombatResult`）
+4. **`handleCombatRoundResolved`**：`round_resolved` 有傷害時強制出 settlement modal
+5. **測試**：`test_solo_multi_round_poll_hp_monotonic`
+
+### 10.5 時間線
 
 | 時間 | 事件 |
 |------|------|
 | 2026-06-29 AM | Saliba / Henry 初次回報；多輪 frontend + backend 修復 |
 | 2026-06-29 PM | Architect 確認方案1；Grok Build 實作 `3c89f62` |
 | 2026-06-29 PM | PA `3c89f62` deploy；curl 確認 |
-| 2026-06-29 PM | **用戶：問題仍然存在** → case **reopened** |
+| 2026-06-29 PM | 用戶：問題仍然存在 → case **reopened** |
+| 2026-06-29 晚 | Henry：**單人、多回合、無 modal、HP 唔跌** → 第二輪 UI 修復 |
 
 ---
 
