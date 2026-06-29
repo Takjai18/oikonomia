@@ -9,9 +9,11 @@ from models.squad import get_team_average_stat
 
 def load_encounter(encounter_id):
     # Read-only cache of static JSON files (encounters/*.json).
-    # Safe across uWSGI/Gunicorn workers — never stores mutable game state.
+    # Safe across workers when JSON does not change during the camp.
+    # Set SKIP_ENCOUNTER_CACHE=1 to always read from disk (e.g. live GM edits).
+    import os
     cache = settings.encounter_cache
-    if encounter_id in cache:
+    if not os.environ.get("SKIP_ENCOUNTER_CACHE") and encounter_id in cache:
         return cache[encounter_id]
     path = os.path.join(settings.encounters_dir, f"{encounter_id}.json")
     if not os.path.isfile(path):

@@ -3,6 +3,7 @@ import os
 import sqlite3
 
 from flask import Blueprint, abort, jsonify, render_template, send_from_directory
+from werkzeug.utils import secure_filename
 
 from data.locations import LOCATIONS
 from models.combat import resolve_player_phase, build_combat_round_preview, roll_combat_dice
@@ -97,8 +98,11 @@ def get_announcements():
 
 @misc_bp.route("/uploads/<path:filename>")
 def serve_upload(filename):
-    disk_path = resolve_upload_disk_path(filename)
-    if not disk_path:
+    safe_name = secure_filename(os.path.basename(str(filename or "").replace("\\", "/")))
+    if not safe_name:
+        abort(404)
+    disk_path = resolve_upload_disk_path(safe_name)
+    if not disk_path or not os.path.isfile(disk_path):
         abort(404)
     return send_from_directory(os.path.dirname(disk_path), os.path.basename(disk_path))
 

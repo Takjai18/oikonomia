@@ -113,7 +113,7 @@ deploy/pa-update.sh
 | **QR 偽造** | `utils/qr.py` | v2 含 HMAC `token`；`ALLOW_LEGACY_QR=1` 時舊 QR 仍可用 |
 | **上傳濫用** | `utils/uploads.py`, `app.py` MAX_CONTENT_LENGTH | PIL verify + 8MB + resize；413 handler |
 | **Path traversal** | `utils/helpers.py` `resolve_upload_disk_path` | `secure_filename` + URL decode + realpath + 拒絕 `..`（marker: `upload_path_hardened`） |
-| **多語句 SQL 一致性** | `models/team.py`, `models/item.py` `grant_item_to_squad`, `services/global_events.py` | transaction + `rollback()`；join 用 `join_squad_to_team()`；轉讓用 `transfer_team_leadership()` |
+| **多語句 SQL 一致性** | `utils/db_tx.py` `immediate_transaction()`, `models/team.py`, `models/item.py` | `BEGIN IMMEDIATE` + `rollback()`；涵蓋 join、轉讓、建隊、設路線、`grant_item_to_squad` |
 | **Session / PIN** | `routes/auth.py`, `services/session_auth.py` | 登入、restore token、PIN 驗證 |
 
 ### 🟡 Medium — 技術債／架構

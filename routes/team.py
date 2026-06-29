@@ -247,6 +247,9 @@ def transfer_leadership():
 
     try:
         transfer_team_leadership(team_id, target_squad_id)
+    except sqlite3.Error as e:
+        print(f"[DB ERROR] transfer_leadership failed: {e}", flush=True)
+        return jsonify({"success": False, "error": "系統繁忙，轉讓失敗，請重試"}), 500
     except Exception:
         return jsonify({"success": False, "error": "轉讓失敗，請稍後再試"}), 500
 

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from models.settings import settings
 from models.squad import get_squad
+from utils.db_tx import immediate_transaction
 from utils.helpers import normalize_team_id
 
 
@@ -158,7 +159,6 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
 
     conn = sqlite3.connect(settings.db_path)
     c = conn.cursor()
-
     try:
         if enforce_qr_once:
             used = c.execute(
@@ -193,33 +193,33 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
         max_slots = settings.max_inventory_slots
         if owned_count >= max_slots:
             return False, f"你已經持有 {max_slots} 樣物品，請先丟棄", None
-
-        now = datetime.now().isoformat()
-        c.execute(
-            "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
-            (squad_id, item_id, source, now),
-        )
-        if enforce_qr_once:
-            c.execute(
-                """INSERT INTO qr_code_uses (item_id, squad_id, team_id, source, used_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    item_id,
-                    squad_id,
-                    normalize_team_id(team_id) if team_id else None,
-                    source,
-                    now,
-                ),
-            )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return False, "此 QR Code 已經被使用", None
-    except sqlite3.Error:
-        conn.rollback()
-        return False, "物品發放失敗，請稍後再試", None
     finally:
         conn.close()
+
+    now = datetime.now().isoformat()
+    try:
+        with immediate_transaction() as tx:
+            tc = tx.cursor()
+            tc.execute(
+                "INSERT INTO player_items (squad_id, item_id, source, obtained_at) VALUES (?, ?, ?, ?)",
+                (squad_id, item_id, source, now),
+            )
+            if enforce_qr_once:
+                tc.execute(
+                    """INSERT INTO qr_code_uses (item_id, squad_id, team_id, source, used_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        item_id,
+                        squad_id,
+                        normalize_team_id(team_id) if team_id else None,
+                        source,
+                        now,
+                    ),
+                )
+    except sqlite3.IntegrityError:
+        return False, "此 QR Code 已經被使用", None
+    except sqlite3.Error:
+        return False, "物品發放失敗，請稍後再試", None
 
     applied_effect = apply_item_effect_to_squad(squad_id, item)
     return True, f"成功獲得物品：{item['name']}", applied_effect
