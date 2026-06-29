@@ -23,8 +23,8 @@ echo "--- Python import test ---"
 cd "$REPO" || exit 1
 export DATA_DIR="$REPO/data"
 export FLASK_ENV=production
-python3.10 -c "from app import app, _DB_INIT_ERROR; print('import ok'); print('db_init_error:', _DB_INIT_ERROR)" 2>&1 \
-    || python3 -c "from app import app, _DB_INIT_ERROR; print('import ok'); print('db_init_error:', _DB_INIT_ERROR)" 2>&1
+python3.10 -c "from wsgi import application; from utils.app_state import DB_INIT_ERROR; print('wsgi import ok'); print('db_init_error:', DB_INIT_ERROR)" 2>&1 \
+    || python3 -c "from wsgi import application; from utils.app_state import DB_INIT_ERROR; print('wsgi import ok'); print('db_init_error:', DB_INIT_ERROR)" 2>&1
 
 echo ""
 echo "--- Git HEAD ---"

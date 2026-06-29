@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """P1: 本地 combat 全流程測試（Team + Iggy → enc_iggy_01_leech）"""
-import json
 import os
 import shutil
 import sys
 import tempfile
+from unittest.mock import patch
 
 # 使用獨立測試 DB，避免污染本機 oikonomia.db
 TEST_DIR = tempfile.mkdtemp(prefix="oikonomia_combat_test_")
@@ -19,6 +19,7 @@ oikonomia.migrate_db()
 ENCOUNTER_ID = "enc_iggy_01_leech"
 PASS = 0
 FAIL = 0
+MAX_FIGHT_ROUNDS = 8
 
 
 def ok(label, cond, detail=""):
@@ -34,6 +35,44 @@ def ok(label, cond, detail=""):
 def login(client, name):
     r = client.post("/login", data={"squad_id": name})
     return r.get_json()
+
+
+def submit_attack(client, combat_id):
+    """Submit attack; server rolls dice (client dice_result is ignored)."""
+    return client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack"},
+        content_type="application/json",
+    )
+
+
+def fight_until_victory(client, client2, combat_id):
+    """
+    Both players attack each player_phase until victory or max rounds.
+    Patches roll_combat_dice → 3 so damage is deterministic (server-side dice).
+    """
+    last = {}
+    clients = (client, client2)
+    with patch("routes.combat.roll_combat_dice", return_value=3):
+        for _round in range(MAX_FIGHT_ROUNDS):
+            for idx, c in enumerate(clients):
+                r = submit_attack(c, combat_id)
+                last = r.get_json() or {}
+                if r.status_code >= 400:
+                    return last, f"HTTP {r.status_code} player{idx + 1}"
+                if not last.get("success"):
+                    return last, f"player{idx + 1} submit failed"
+                if last.get("outcome") == "victory":
+                    return last, None
+                if last.get("status") == "waiting_for_teammates":
+                    continue
+
+            st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+            if st.get("outcome") == "victory" or st.get("status") == "ended":
+                return st, None
+            if st.get("status") not in ("player_phase", None):
+                continue
+    return last, f"no victory after {MAX_FIGHT_ROUNDS} rounds"
 
 
 def main():
@@ -88,24 +127,11 @@ def main():
     in_player_phase = start.get("status") == "player_phase" or fight.get("status") == "player_phase"
     ok("進入 player_phase", in_player_phase)
 
-    # --- 兩玩家提交行動 ---
-    r1 = client.post(
-        "/combat/submit_action",
-        json={"combat_id": combat_id, "action_type": "attack", "dice_result": 3},
-        content_type="application/json",
-    )
-    act1 = r1.get_json()
-    ok("玩家1 提交攻擊", act1.get("success"), str(act1))
-
-    r2 = client2.post(
-        "/combat/submit_action",
-        json={"combat_id": combat_id, "action_type": "attack", "dice_result": 3},
-        content_type="application/json",
-    )
-    act2 = r2.get_json()
-    ok("玩家2 提交精神攻擊", act2.get("success"), str(act2))
-    ok("submit_action 觸發勝利", act2.get("outcome") == "victory", str(act2)[:200])
-    ok("勝利有反思題目", bool((act2.get("reflection_prompt") or {}).get("questions")))
+    # --- 兩玩家提交行動（server-side 骰子，loop 至勝利）---
+    final, err = fight_until_victory(client, client2, combat_id)
+    ok("戰鬥流程完成（無錯誤）", err is None, err or str(final)[:200])
+    ok("submit_action 觸發勝利", final.get("outcome") == "victory", str(final)[:200])
+    ok("勝利有反思題目", bool((final.get("reflection_prompt") or {}).get("questions")))
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
@@ -123,6 +149,7 @@ def main():
     r = client.get("/api/version")
     ver = r.get_json()
     ok("combat_system marker", ver.get("markers", {}).get("combat_system") is True)
+    ok("server_combat_dice marker", ver.get("markers", {}).get("server_combat_dice") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

@@ -39,14 +39,19 @@ echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "Remote:"
 git remote -v 2>/dev/null || true
 
+has_combat_modal() {
+    grep -q "combat-action-modal" templates/index.html 2>/dev/null \
+        || grep -q "combat-action-modal" app.py 2>/dev/null
+}
+
 code_marker() {
-    if grep -q "combat-action-modal" app.py 2>/dev/null; then
+    if has_combat_modal; then
         echo "COMBAT_MODAL"
-    elif grep -q "build_combat_round_preview" app.py 2>/dev/null; then
+    elif grep -q "build_combat_round_preview" models/combat.py 2>/dev/null; then
         echo "COMBAT_PREVIEW"
-    elif grep -q "def resolve_player_phase" app.py 2>/dev/null; then
+    elif grep -q "def resolve_player_phase" models/combat.py 2>/dev/null; then
         echo "COMBAT"
-    elif grep -q "showOnlyProtagonistCard" app.py 2>/dev/null; then
+    elif grep -q "showOnlyProtagonistCard" templates/index.html 2>/dev/null; then
         echo "PARTIAL"
     else
         echo "OLD"
@@ -93,9 +98,9 @@ echo "Commit: $NEW_COMMIT"
 echo "origin/main: $(git rev-parse --short origin/main 2>/dev/null || echo unknown)"
 echo "Code marker: $(code_marker)"
 
-if ! grep -q "combat-action-modal" app.py 2>/dev/null; then
+if ! has_combat_modal; then
     echo ""
-    echo "WARNING: Latest combat modal code NOT found in app.py."
+    echo "WARNING: combat-action-modal NOT found in templates/index.html."
     echo "Check: git remote -v  (should point to github.com/Takjai18/oikonomia)"
     echo "       Web tab source code path should be: $REPO"
 fi
@@ -112,6 +117,22 @@ source "$VENV_DIR/bin/activate"
 pip install -q -r requirements.txt
 echo "venv pip install -r requirements.txt (ok)"
 echo "NOTE: PythonAnywhere Web tab -> Virtualenv path should be: $VENV_DIR"
+
+echo ""
+echo "--- Import smoke test ---"
+export DATA_DIR="$REPO/data"
+export FLASK_ENV=production
+if [ -z "${SECRET_KEY:-}" ]; then
+    echo "WARNING: SECRET_KEY not set in shell; using deploy-check placeholder."
+    export SECRET_KEY="deploy-check-placeholder"
+fi
+if ! python3 -c "from wsgi import application; print('wsgi import ok')" 2>&1; then
+    echo ""
+    echo "ERROR: wsgi import failed. Fix before Web Reload."
+    echo "Check Web tab -> Virtualenv: $VENV_DIR"
+    echo "Check Web tab -> Environment: SECRET_KEY, GM_PIN, DATA_DIR=data"
+    exit 1
+fi
 
 echo ""
 echo "--- Upload folders ---"
