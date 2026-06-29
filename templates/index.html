@@ -1242,8 +1242,27 @@
         };
 
         function syncHpOnlyFromPoll(data) {
-            if (!data?.enemy) return;
+            if (!data?.enemy || pendingSettlementHpPayload) return;
             syncEnemyHpDisplay(applySettlementEnemyHp(data));
+        }
+
+        /** 確認結算後即刻扣血（無 delay）；主畫面結算期間保持舊 HP */
+        function applyPendingSettlementHp() {
+            const data = pendingSettlementHpPayload;
+            pendingSettlementHpPayload = null;
+            if (!data?.enemy) return;
+            const enriched = applySettlementEnemyHp(data);
+            const settlement = getRoundSettlement(enriched);
+            const teamDealt = Number(settlement.team_damage_dealt) || 0;
+            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
+            if (teamDealt > 0) showDamageNumber('enemy-panel', teamDealt, false);
+            if (enemyDealt > 0) showDamageNumber('player-panel', enemyDealt, false);
+            syncEnemyHpDisplay(enriched);
+            const roundDmgEl = document.getElementById('enemy-round-damage');
+            if (roundDmgEl && teamDealt > 0) {
+                roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
+                setVisible(roundDmgEl, true);
+            }
         }
 
         function getDiceRollConfig() {
@@ -1558,6 +1577,7 @@
         let settlementCombatId = null;
         let combatAwaitingSettlementAck = false;
         let settlementTimerPending = false;
+        let pendingSettlementHpPayload = null;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
@@ -1933,6 +1953,7 @@
         function resetCombatSettlementState() {
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
+            pendingSettlementHpPayload = null;
             lastShownSettlementPhase = 0;
             lastCombatStatusJson = '';
             settlementCombatId = null;
@@ -1947,12 +1968,11 @@
             const panel = document.getElementById('player-panel');
             if (panel) panel.style.opacity = '0.45';
             const hintEl = document.getElementById('combat-submit-hint');
-            if (hintEl) hintEl.textContent = '本回合傷害結算中，請稍候…';
+            if (hintEl) hintEl.textContent = '請確認傷害結算';
         }
 
         function showRoundSettlementModal(data) {
             const modal = document.getElementById('combat-round-settlement-modal');
-            const logsEl = document.getElementById('round-settlement-logs');
             const preview = data.full_preview || {};
             const settlement = getRoundSettlement(data);
             const teamDealt = Number(settlement.team_damage_dealt) || 0;
@@ -1969,59 +1989,28 @@
             const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
             safeSetText('round-settlement-enemy-hp', fmtHp(enemyHp));
             safeSetText('round-settlement-enemy-hp-max', Number.isFinite(enemyMax) ? ` / ${fmtHp(enemyMax)}` : '');
-            const hpNote = document.getElementById('round-settlement-hp-note');
-            if (hpNote) {
-                if (teamDealt <= 0) {
-                    hpNote.textContent = '本回合對敵方造成 0 點傷害（失手或暴走）';
-                } else if (Number.isFinite(enemyMax) && enemyMax >= 500) {
-                    hpNote.textContent = '高 HP 敵人血條幾乎唔郁，請以數字同本回合傷害為準';
-                } else {
-                    hpNote.textContent = '';
-                }
+
+            const summaryEl = document.getElementById('round-settlement-summary');
+            if (summaryEl) {
+                const hits = (settlement.player_hits || [])
+                    .map(h => `${h.player} -${h.damage}`)
+                    .join(' · ');
+                const counters = (settlement.counter_hits || [])
+                    .map(h => `${h.target} 受擊 -${h.damage}`)
+                    .join(' · ');
+                const parts = [];
+                if (hits) parts.push(hits);
+                if (counters) parts.push(counters);
+                if (teamDealt <= 0) parts.push('本回合對敵 0 傷害');
+                summaryEl.textContent = parts.join(' ｜ ') || '本回合已結算';
             }
 
-            const counterNote = document.getElementById('round-settlement-counter-note');
-            if (counterNote) {
-                const hits = settlement.counter_hits || [];
-                if (hits.length === 1) {
-                    counterNote.textContent = `${hits[0].target} 受到反擊`;
-                } else if (hits.length > 1) {
-                    counterNote.textContent = hits.map(h => h.target).join('、');
-                } else if (enemyDealt > 0) {
-                    counterNote.textContent = '全隊受到反擊';
-                } else {
-                    counterNote.textContent = '本回合無反擊';
-                }
-            }
-
-            const breakdownEl = document.getElementById('round-settlement-breakdown');
-            if (breakdownEl) {
-                const lines = [];
-                (settlement.player_hits || []).forEach(h => {
-                    lines.push(`<div class="py-0.5 text-emerald-300">• ${h.player} 造成 ${h.damage} 點</div>`);
-                });
-                (settlement.counter_hits || []).forEach(h => {
-                    lines.push(`<div class="py-0.5 text-red-300">• ${h.target} 受到反擊 ${h.damage} 點</div>`);
-                });
-                breakdownEl.innerHTML = lines.join('') || '<div class="text-zinc-500">本回合已結算</div>';
-            }
-
-            const entries = preview.log_entries || data.log_entries || [];
-            const recent = entries.slice(-8);
-            if (logsEl) {
-                logsEl.innerHTML = recent.length
-                    ? recent.map(e => `<div class="py-0.5">• ${e.message || e}</div>`).join('')
-                    : (preview.log || data.log || []).slice(-8).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
-                      || '<div class="text-zinc-500">尚無詳細紀錄</div>';
-            }
             hideCombatModal();
             setVisible(modal, true);
             modal.classList.add('flex');
-            const continueBtn = modal?.querySelector('.px-5.py-4 button');
+            const continueBtn = document.getElementById('round-settlement-confirm-btn');
             if (continueBtn) {
-                continueBtn.textContent = pendingVictoryAfterSettlement
-                    ? '確認戰果，查看勝利'
-                    : '繼續下一回合';
+                continueBtn.textContent = pendingVictoryAfterSettlement ? '確定，查看勝利' : '確定';
             }
         }
 
@@ -2033,6 +2022,7 @@
         }
 
         function continueCombatAfterRound() {
+            applyPendingSettlementHp();
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             clearTimeout(showFullRoundSettlement._modalTimer);
@@ -2042,6 +2032,8 @@
             combatWaitingForRound = false;
             resetCombatDiceUi();
             selectedDice = null;
+            const panel = document.getElementById('player-panel');
+            if (panel) panel.style.opacity = '1';
             if (pendingVictoryAfterSettlement) {
                 const victoryPayload = pendingVictoryAfterSettlement;
                 pendingVictoryAfterSettlement = null;
@@ -2053,7 +2045,7 @@
             loadCombatStatus(false);
         }
 
-        // combat_instant_settlement: HP + 戰果 modal 即時，無 artificial delay
+        // combat_flow_v2: 行動→擲骰→(等隊友)→結算畫面→確定→即刻扣血→下一輪
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
@@ -2065,6 +2057,7 @@
                 return;
             }
             data = applySettlementEnemyHp(data);
+            pendingSettlementHpPayload = data;
             settlementTimerPending = false;
             combatAwaitingSettlementAck = true;
             if (phase > lastShownSettlementPhase) {
@@ -2077,29 +2070,12 @@
             hideCombatModal();
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
-            processCombatDamageAnimations(data, 0);
-            updateCombatUI(data, { damageDelay: 0, skipActionEnable: true });
-            syncEnemyHpDisplay(data);
+            updateCombatUI(data, {
+                damageDelay: 0,
+                skipActionEnable: true,
+                deferEnemyHp: true,
+            });
             lockCombatActionsForSettlement();
-            const settlement = getRoundSettlement(data);
-            const teamDealt = Number(settlement.team_damage_dealt) || 0;
-            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
-            if (teamDealt > 0) {
-                showDamageNumber('enemy-panel', teamDealt, false);
-            }
-            if (enemyDealt > 0) {
-                showDamageNumber('player-panel', enemyDealt, false);
-            }
-            const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl) {
-                if (teamDealt > 0) {
-                    roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
-                    setVisible(roundDmgEl, true);
-                } else {
-                    roundDmgEl.textContent = '';
-                    setVisible(roundDmgEl, false);
-                }
-            }
             showRoundSettlementModal(data);
             startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
@@ -3417,7 +3393,9 @@
             const me = buildCombatMyState(uiData);
             const enemy = uiData.enemy || {};
 
-            updateEnemyCombatStats(enemy, uiData.enemy_description || '');
+            updateEnemyCombatStats(enemy, uiData.enemy_description || '', {
+                deferHp: !!options.deferEnemyHp,
+            });
             updateCombatPlayerAvatar(me);
             safeSetText('combat-player-name', me.display_name || '你');
             safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
@@ -4611,11 +4589,13 @@
             lastAnimatedEnemyHp = enemyHp != null ? enemyHp : null;
         }
 
-        function updateEnemyCombatStats(enemy, description) {
+        function updateEnemyCombatStats(enemy, description, hpOpts = {}) {
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy });
+            if (!hpOpts.deferHp) {
+                syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy });
+            }
             const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
             const hpHintEl = document.getElementById('enemy-hp-hint');
             if (hpHintEl) {
@@ -6804,39 +6784,34 @@
         </div>
     </div>
 
-    <!-- 全隊回合結算 Modal -->
+    <!-- 全隊回合結算 Modal（精簡：確認後主畫面才扣血） -->
     <div id="combat-round-settlement-modal"
          onclick="if (event.target.id === 'combat-round-settlement-modal') continueCombatAfterRound()"
          class="hidden fixed inset-0 bg-black/85 z-[73] flex items-center justify-center p-4">
         <div onclick="event.stopPropagation()"
-             class="bg-zinc-900 w-full max-w-lg rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl">
+             class="bg-zinc-900 w-full max-w-md rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl">
             <div class="px-5 py-4 border-b border-zinc-700">
-                <div class="text-xs text-emerald-400">全隊傷害結算</div>
-                <div class="font-semibold text-lg">本回合戰果 · <span id="round-settlement-phase">第 1 回合</span></div>
+                <div class="text-xs text-emerald-400">傷害結算</div>
+                <div class="font-semibold text-lg"><span id="round-settlement-phase">第 1 回合</span></div>
             </div>
             <div class="px-5 py-4 grid grid-cols-2 gap-3">
-                <div class="bg-zinc-800 rounded-2xl p-4 text-center border border-emerald-700/30">
-                    <div class="text-emerald-400 text-xs mb-1">全隊對敵傷害</div>
-                    <div class="text-3xl font-bold text-emerald-400">-<span id="round-settlement-team-dealt">0</span></div>
+                <div class="bg-zinc-800 rounded-2xl p-3 text-center border border-emerald-700/30">
+                    <div class="text-emerald-400 text-xs mb-1">對敵傷害</div>
+                    <div class="text-2xl font-bold text-emerald-400">-<span id="round-settlement-team-dealt">0</span></div>
                 </div>
-                <div class="bg-zinc-800 rounded-2xl p-4 text-center border border-red-700/30">
-                    <div class="text-red-400 text-xs mb-1">敵方對我方傷害</div>
-                    <div class="text-3xl font-bold text-red-400">-<span id="round-settlement-enemy-dealt">0</span></div>
-                    <div id="round-settlement-counter-note" class="text-[10px] text-zinc-500 mt-1">本回合無反擊</div>
+                <div class="bg-zinc-800 rounded-2xl p-3 text-center border border-red-700/30">
+                    <div class="text-red-400 text-xs mb-1">我方受擊</div>
+                    <div class="text-2xl font-bold text-red-400">-<span id="round-settlement-enemy-dealt">0</span></div>
                 </div>
             </div>
-            <div class="px-5 pb-2 text-sm text-zinc-300">
-                敵人剩餘 HP：
-                <span id="round-settlement-enemy-hp" class="text-red-400 font-mono font-semibold">—</span>
-                <span id="round-settlement-enemy-hp-max" class="text-zinc-500 font-mono text-xs"></span>
-                <span id="round-settlement-hp-note" class="block text-[10px] text-amber-400/90 mt-1"></span>
+            <div class="px-5 pb-3 text-sm text-zinc-300">
+                敵人 HP：
+                <span id="round-settlement-enemy-hp" class="text-red-400 font-mono font-semibold">—</span><span id="round-settlement-enemy-hp-max" class="text-zinc-500 font-mono text-xs"></span>
             </div>
-            <div id="round-settlement-breakdown" class="px-5 pb-2 text-xs space-y-0.5"></div>
-            <div class="px-5 pt-1 pb-1 text-[10px] text-zinc-500 uppercase tracking-wide">戰鬥紀錄</div>
-            <div id="round-settlement-logs" class="px-5 pb-4 max-h-40 overflow-y-auto text-sm text-zinc-300 space-y-1"></div>
+            <p id="round-settlement-summary" class="px-5 pb-4 text-xs text-zinc-400 leading-relaxed"></p>
             <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
-                <button type="button" onclick="continueCombatAfterRound()"
-                        class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">繼續下一回合</button>
+                <button type="button" id="round-settlement-confirm-btn" onclick="continueCombatAfterRound()"
+                        class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">確定</button>
             </div>
         </div>
     </div>
