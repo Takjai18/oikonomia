@@ -88,7 +88,7 @@ def row_to_squad(row):
         except (json.JSONDecodeError, TypeError):
             pass
 
-    return {
+    squad = {
         "squad_id": d["squad_id"],
         "display_name": d.get("display_name") or d["squad_id"],
         "sanity": d.get("sanity", 50),
@@ -114,6 +114,8 @@ def row_to_squad(row):
         "stats_allocated": 1 if d.get("stats_allocated") else 0,
         "protagonist": protagonist,
     }
+    squad["max_hp"] = squad_max_hp(squad)
+    return squad
 
 
 def fetch_squads_by_ids(squad_ids):

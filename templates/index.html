@@ -3705,6 +3705,12 @@
         const CAPPED_SQUAD_STATS = new Set(['hp', 'sanity']);
         const SQUAD_CAP_MAX = { sanity: 100 };
         const DEFAULT_PLAYER_MAX_HP = 100;
+
+        function effectivePlayerMaxHp(stats) {
+            const hp = Number(stats?.hp ?? 0);
+            const maxHp = Number(stats?.max_hp ?? DEFAULT_PLAYER_MAX_HP);
+            return Math.max(DEFAULT_PLAYER_MAX_HP, maxHp, hp);
+        }
         const DASHBOARD_STAT_META = {
             hp: { text: 'text-red-400', bar: 'bg-red-500' },
             sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
@@ -3759,7 +3765,10 @@
         }
 
         function updateCombatPlayerStats(me, squad) {
-            const maxHp = combatStatValue(me.max_hp, squad.max_hp) ?? DEFAULT_PLAYER_MAX_HP;
+            const maxHp = effectivePlayerMaxHp({
+                hp: combatStatValue(me.hp, squad.hp),
+                max_hp: combatStatValue(me.max_hp, squad.max_hp),
+            });
             const stats = {
                 hp: combatStatValue(me.hp, squad.hp) ?? maxHp,
                 sanity: combatStatValue(me.sanity, squad.sanity) ?? 100,
@@ -3943,7 +3952,7 @@
 
         function renderProtagonistStats(prefix, stats) {
             setStatBar(prefix, 'hp', stats?.hp ?? DEFAULT_PLAYER_MAX_HP, {
-                maxHp: stats?.max_hp ?? stats?.hp ?? DEFAULT_PLAYER_MAX_HP,
+                maxHp: effectivePlayerMaxHp(stats),
             });
             ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
                 setStatBar(prefix, s, stats?.[s] ?? 100);
@@ -4154,7 +4163,7 @@
             applyRouteTheme(route);
 
             setStatBar('', 'hp', squad.hp ?? DEFAULT_PLAYER_MAX_HP, {
-                maxHp: squad.max_hp ?? DEFAULT_PLAYER_MAX_HP,
+                maxHp: effectivePlayerMaxHp(squad),
             });
             ['sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
