@@ -59,6 +59,26 @@
 
 ---
 
+## 2026-06-29 — Combat Killing Blow Bug Reopened（方案1 不足）
+
+**問題**：方案1（`3c89f62`）只 fix 咗 `submit_action` victory 路徑，但 **poll 主入口**（`loadCombatStatus` `if (data.outcome)`）仍然直接 call `showCombatResult(data)` 並 return，完全 bypass `finishCombatVictoryFromPayload` 同 settlement 處理。
+
+**根因定位**（已全面讀取 bug_log attachments `index.html`）：
+- `loadCombatStatus` L~3484：`if (data.outcome) { ... showCombatResult(data); return; }`
+- `updateCombatUI` L~3318：非 live 狀態時另一條 outcome 捷徑
+- `finishCombatVictoryFromPayload` 雖然存在，但主要 poll 路徑永遠唔會走到
+
+**新決策**：
+- 採用「統一勝利入口」策略：所有 `outcome` 情況必須經過 `finishCombatVictoryFromPayload`
+- 優先改動 `loadCombatStatus` 入面 `if (data.outcome)` 區塊
+- 同步更新 `bug_log/REPORT.md` 同 `INDEX.md` 狀態
+
+**影響範圍**：只改前端 `templates/index.html`（polling 勝利處理）
+**風險**：低（只係 redirect 現有函數呼叫）
+**驗證**：Henry 實機 `practice_iggy_01_quick` 一輪勝利 + settlement modal 正常顯示
+
+---
+
 ## 變更紀錄
 
 | 日期 | Commit | 摘要 |

@@ -2093,6 +2093,7 @@
         }
 
         function victoryPayloadHasSettlement(data) {
+            if (data?.round_settlement) return true;
             const settlement = getRoundSettlement(data);
             if (!settlement) return false;
             if (Number(settlement.team_damage_dealt) > 0) return true;
@@ -3342,7 +3343,13 @@
             const combatLive = uiData.active === true
                 || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status);
             if (!combatLive) {
-                if (uiData.outcome) showCombatResult(uiData);
+                if (uiData.outcome) {
+                    if (shouldFinishCombatVictory(uiData) || uiData.round_settlement) {
+                        void finishCombatVictoryFromPayload(uiData);
+                    } else {
+                        showCombatResult(uiData);
+                    }
+                }
                 return;
             }
 
@@ -3495,7 +3502,20 @@
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
                 if (data.outcome) {
-                    await finishCombatVictoryFromPayload(data);
+                    combatWaitingForRound = false;
+                    hideCombatWaitingPanel();
+                    hideSinglePlayerResultModal();
+                    resetCombatSettlementState();
+                    hideRoundSettlementModal();
+
+                    if (shouldFinishCombatVictory(data) || data.round_settlement) {
+                        await finishCombatVictoryFromPayload(data);
+                    } else {
+                        showCombatResult(data);
+                    }
+
+                    const statusRes = await fetch('/status', { credentials: 'same-origin' });
+                    updateDashboard(await statusRes.json());
                     return;
                 }
 

@@ -2,7 +2,7 @@
 
 | 欄位 | 值 |
 |------|-----|
-| **狀態** | **fix_in_progress** — 方案1 不足；Henry 實機重現已記錄 |
+| **狀態** | **fix_in_progress** — 統一勝利入口（poll `outcome` 捷徑） |
 | **嚴重度** | High（玩家以為打唔入／遊戲壞咗） |
 | **影響** | 單人 + 主角、低 HP 練習戰、一輪擊殺；可能亦影響多回合 + polling |
 | **修復 commit** | `0247f9c`（第二輪 UI）；`3c89f62` 方案1 **實機未通過** |
@@ -195,6 +195,22 @@ flowchart TD
 
 ---
 
+## 11. 全面閱讀後最終診斷（2026-06-29 晚）
+
+**已讀取範圍**：bug_log attachments 入面完整 `index.html`（349971 bytes）所有 combat victory / polling / settlement 相關片段（`loadCombatStatus`、`submitAction`、`updateCombatUI`、`showCombatResult`、`finishCombatVictoryFromPayload` 呼叫點等）。
+
+**最終根因**：
+Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundResolved` 分支會經過 `finishCombatVictoryFromPayload`。主要 poll 入口（`loadCombatStatus` `if (data.outcome)`）直接跳 `showCombatResult`，導致即使後端 payload 已經有 `round_settlement` + `enemy.hp=0`，玩家仍然見唔到 HP 條跌同 settlement modal。
+
+**精準修改位置**：
+- `loadCombatStatus` ≈L3484 `if (data.outcome)` 區塊
+- `updateCombatUI` ≈L3318 非 live 狀態 outcome 處理
+- 確保 `finishCombatVictoryFromPayload` 內部正確處理 `round_settlement`
+
+**下一步**：執行統一勝利入口改動（見 Grok Build patch）。
+
+---
+
 ## 8. attachments 清單
 
 本 case `attachments/` 快照（調查時版本；以 GitHub `3c89f62` 為準）：
@@ -220,4 +236,4 @@ flowchart TD
 
 ---
 
-*最後更新：2026-06-29（reopened）· Grok Build · 下一輪優先：poll `outcome` 捷徑*
+*最後更新：2026-06-29 晚 · Grok Build · 統一勝利入口 patch 已實作*
