@@ -256,8 +256,14 @@ def combat_preview_action_api():
     if not combat_id:
         return jsonify({"success": False, "error": "沒有進行中的戰鬥"}), 400
 
+    as_protagonist = bool(body.get("as_protagonist"))
     preview = build_combat_round_preview(
-        combat_id, session["squad_id"], action_type, dice_result, item_id,
+        combat_id,
+        session["squad_id"],
+        action_type,
+        dice_result,
+        item_id,
+        as_protagonist=as_protagonist,
     )
     if not preview:
         return jsonify({"success": False, "error": "無法預覽此回合"}), 400

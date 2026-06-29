@@ -1257,6 +1257,48 @@
         }
 
         
+        function showConfirmModal({
+            title = '確認',
+            message = '',
+            confirmLabel = '確定',
+            cancelLabel = '取消',
+            danger = false,
+        }) {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('confirm-modal-overlay');
+                const titleEl = document.getElementById('confirm-modal-title');
+                const messageEl = document.getElementById('confirm-modal-message');
+                const cancelBtn = document.getElementById('confirm-modal-cancel');
+                const confirmBtn = document.getElementById('confirm-modal-confirm');
+                if (!overlay || !confirmBtn) {
+                    resolve(false);
+                    return;
+                }
+                titleEl.textContent = title || '確認';
+                messageEl.textContent = message || '';
+                confirmBtn.textContent = confirmLabel || '確定';
+                cancelBtn.textContent = cancelLabel || '取消';
+                confirmBtn.className = danger
+                    ? 'px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold'
+                    : 'px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-zinc-900 font-semibold';
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+                const cleanup = (value) => {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                    document.removeEventListener('keydown', onKey);
+                    resolve(value);
+                };
+                const onKey = (e) => {
+                    if (e.key === 'Escape') cleanup(false);
+                    if (e.key === 'Enter') cleanup(true);
+                };
+                cancelBtn.onclick = () => cleanup(false);
+                confirmBtn.onclick = () => cleanup(true);
+                document.addEventListener('keydown', onKey);
+            });
+        }
+
         function showInputModal({ title, defaultValue = '', maxLength, placeholder = '' }) {
             return new Promise((resolve) => {
                 const overlay = document.getElementById('input-modal-overlay');
@@ -1311,8 +1353,14 @@
             }, 1800);
         }
 
-        function resetAllSettings() {
-            if (!confirm(['確定要重置所有設定嗎？', '此操作無法還原。'].join('\n'))) return;
+        async function resetAllSettings() {
+            const agreed = await showConfirmModal({
+                title: '重置設定',
+                message: '確定要重置所有設定嗎？此操作無法還原。',
+                confirmLabel: '重置',
+                danger: true,
+            });
+            if (!agreed) return;
 
             localStorage.removeItem(GAME_SETTINGS_KEY);
             document.documentElement.style.fontSize = '16px';
@@ -1981,6 +2029,9 @@
                 combat_id: combatId,
                 action_type: selectedAction,
             };
+            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
+                payload.as_protagonist = true;
+            }
             if (selectedAction === 'use_item' && selectedItemId) {
                 payload.item_id = selectedItemId;
             }
@@ -2028,7 +2079,11 @@
 
         function performAction(action, opts = {}) {
             if (actionModalRolling || isCombatModalOpen()) return;
-            const me = lastCombatStatus?.my_state || {};
+            if (controllingProtagonist && action === 'use_item') {
+                showToast('主角模式不可使用玩家物品', 'error');
+                return;
+            }
+            const me = buildCombatMyState(lastCombatStatus || {});
             const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
             if (effectiveCombatStatus(lastCombatStatus) !== 'player_phase' || me.submitted || inNearDeath) return;
 
@@ -2140,27 +2195,45 @@
             return null;
         }
 
+        function getProtagonistControlContext(data) {
+            const status = data || lastCombatStatus || {};
+            const proId = status.controllable_protagonist_id;
+            const active = !!(controllingProtagonist && status.protagonist_player_control && proId);
+            return {
+                active,
+                proId,
+                proState: active && proId ? status.member_states?.[proId] : null,
+            };
+        }
+
         function buildCombatMyState(data) {
             const squad = currentSquad || {};
             const ms = data?.my_state || {};
             const members = data?.member_states || {};
             const myId = data?.my_squad_id || squad.squad_id;
             const member = myId ? members[myId] : null;
-            return {
+            const ctx = getProtagonistControlContext(data);
+            const source = ctx.proState || member || ms;
+            const base = {
                 ...ms,
-                display_name: ms.display_name || member?.display_name || squad.display_name || squad.squad_id || '你',
-                avatar: ms.avatar ?? member?.avatar ?? squad.avatar,
-                hp: combatStatValue(ms.hp, member?.hp, squad.hp),
-                sanity: combatStatValue(ms.sanity, member?.sanity, squad.sanity),
-                power: combatStatValue(ms.power, member?.power, squad.power),
-                intellect: combatStatValue(ms.intellect, member?.intellect, squad.intellect),
-                resilience: combatStatValue(ms.resilience, member?.resilience, squad.resilience),
-                near_death_until: ms.near_death_until ?? member?.near_death_until ?? squad.near_death_until,
-                max_hp: combatStatValue(ms.max_hp, member?.max_hp, squad.max_hp) ?? DEFAULT_PLAYER_MAX_HP,
-                submitted: ms.submitted ?? member?.submitted,
-                action_type: ms.action_type ?? member?.action_type,
-                dice_result: ms.dice_result ?? member?.dice_result,
+                display_name: source?.display_name || ms.display_name || squad.display_name || squad.squad_id || '你',
+                avatar: source?.avatar ?? ms.avatar ?? member?.avatar ?? squad.avatar,
+                hp: combatStatValue(source?.hp, ms.hp, member?.hp, squad.hp),
+                sanity: combatStatValue(source?.sanity, ms.sanity, member?.sanity, squad.sanity),
+                power: combatStatValue(source?.power, ms.power, member?.power, squad.power),
+                intellect: combatStatValue(source?.intellect, ms.intellect, member?.intellect, squad.intellect),
+                resilience: combatStatValue(source?.resilience, ms.resilience, member?.resilience, squad.resilience),
+                near_death_until: source?.near_death_until ?? ms.near_death_until ?? member?.near_death_until ?? squad.near_death_until,
+                max_hp: combatStatValue(source?.max_hp, ms.max_hp, member?.max_hp, squad.max_hp) ?? DEFAULT_PLAYER_MAX_HP,
+                submitted: ctx.proState ? ctx.proState.submitted : (ms.submitted ?? member?.submitted),
+                action_type: ctx.proState ? ctx.proState.action_type : (ms.action_type ?? member?.action_type),
+                dice_result: ctx.proState ? ctx.proState.dice_result : (ms.dice_result ?? member?.dice_result),
+                is_protagonist_control: ctx.active,
             };
+            if (ctx.active && ctx.proState) {
+                base.display_name = `${ctx.proState.display_name || '主角'}（你操作中）`;
+            }
+            return base;
         }
 
         async function loadCombatPage(combatId) {
@@ -2400,10 +2473,13 @@
                     const teamRes = await fetch('/my_team', { credentials: 'same-origin' });
                     const teamData = await teamRes.json();
                     if (!teamData.has_team) {
-                        setTimeout(() => {
-                            if (confirm('你尚未加入任何 Team。\\n是否立即建立或加入一個 Team？')) {
-                                showSection('team');
-                            }
+                        setTimeout(async () => {
+                            const goTeam = await showConfirmModal({
+                                title: '加入隊伍',
+                                message: '你尚未加入任何 Team。是否立即建立或加入一個 Team？',
+                                confirmLabel: '前往隊伍頁',
+                            });
+                            if (goTeam) showSection('team');
                         }, 1200);
                     }
                 } catch (teamErr) {
@@ -2464,7 +2540,12 @@
         }
 
         async function startEncounter(encounterId) {
-            if (!confirm('確定開始此 Encounter？')) return;
+            const agreed = await showConfirmModal({
+                title: '開始遭遇戰',
+                message: '確定開始此 Encounter？',
+            });
+            if (!agreed) return;
+            controllingProtagonist = false;
             pendingEncounterId = encounterId;
             const res = await fetch('/combat/start', {
                 method: 'POST',
@@ -2521,6 +2602,7 @@
             stopCombatPolling();
             lastShownSettlementPhase = 0;
             combatWaitingForRound = false;
+            controllingProtagonist = false;
             setVisible(document.getElementById('combat-screen'), false);
             setVisible(document.getElementById('combat-near-death-overlay'), false);
             setVisible(document.getElementById('combat-precheck-modal'), false);
@@ -2844,7 +2926,12 @@
         }
 
         async function rescueNearDeath() {
-            if (!confirm('為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）')) return;
+            const agreed = await showConfirmModal({
+                title: '禱告救援',
+                message: '為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）',
+                confirmLabel: '發起禱告',
+            });
+            if (!agreed) return;
             const res = await fetch('/combat/rescue_near_death', {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -3630,6 +3717,10 @@
                     ? `你正在代替 ${proName} 提交本回合行動（最終階段）`
                     : '普通戰鬥時主角會自動行動；需要時可切換控制主角';
             }
+            document.querySelectorAll('.combat-action-btn[data-action="use_item"]').forEach((btn) => {
+                btn.classList.toggle('opacity-40', !!controllingProtagonist);
+                btn.classList.toggle('pointer-events-none', !!controllingProtagonist);
+            });
         }
 
         function toggleProtagonistControl() {
@@ -4006,7 +4097,12 @@
                 return;
             }
             const label = route === 'iggy' ? 'Iggy' : 'Marah';
-            if (!confirm(`確認為隊伍選擇 ${label} 路線？設定後全隊統一，不可更改。`)) return;
+            const agreed = await showConfirmModal({
+                title: '選擇路線',
+                message: `確認為隊伍選擇 ${label} 路線？設定後全隊統一，不可更改。`,
+                confirmLabel: `選擇 ${label}`,
+            });
+            if (!agreed) return;
 
             const res = await fetch('/team/set_route', {
                 method: 'POST',
@@ -4032,7 +4128,13 @@
         }
 
         async function selectRoute(route) {
-            if (!confirm(route === 'iggy' ? '確認選擇 Iggy 路線？' : '確認選擇 Marah 路線？')) return;
+            const label = route === 'iggy' ? 'Iggy' : 'Marah';
+            const agreed = await showConfirmModal({
+                title: '選擇路線',
+                message: `確認選擇 ${label} 路線？`,
+                confirmLabel: `選擇 ${label}`,
+            });
+            if (!agreed) return;
 
             const res = await fetch('/set_route', {
                 method: 'POST',
@@ -4300,7 +4402,11 @@
                 return;
             }
 
-            if (!confirm('確定要將隊長轉讓畀呢位隊員嗎？')) return;
+            const agreed = await showConfirmModal({
+                title: '轉讓隊長',
+                message: '確定要將隊長轉讓畀呢位隊員嗎？',
+            });
+            if (!agreed) return;
 
             try {
                 const res = await fetch('/team/transfer_leadership', {
@@ -5379,7 +5485,13 @@
         }
 
         async function discardItem(playerItemId) {
-            if (!confirm('確定要丟棄此物品嗎？')) return;
+            const agreed = await showConfirmModal({
+                title: '丟棄物品',
+                message: '確定要丟棄此物品嗎？',
+                confirmLabel: '丟棄',
+                danger: true,
+            });
+            if (!agreed) return;
 
             const res = await fetch('/discard_item', {
                 method: 'POST',
@@ -5988,6 +6100,18 @@
 
             <div class="mt-6 text-center text-xs text-zinc-400">
                 頭像只會喺呢個營會顯示
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom confirm modal (replaces confirm()) -->
+    <div id="confirm-modal-overlay" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 p-4">
+        <div class="cartoon-box p-5 w-full max-w-sm">
+            <div id="confirm-modal-title" class="text-lg font-semibold mb-2 text-zinc-100"></div>
+            <p id="confirm-modal-message" class="text-sm text-zinc-300 mb-5 whitespace-pre-line leading-relaxed"></p>
+            <div class="flex justify-end gap-2">
+                <button id="confirm-modal-cancel" type="button" class="px-4 py-2 rounded-xl text-zinc-400 hover:text-white">取消</button>
+                <button id="confirm-modal-confirm" type="button" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-zinc-900 font-semibold">確定</button>
             </div>
         </div>
     </div>

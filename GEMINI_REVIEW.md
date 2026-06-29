@@ -124,7 +124,7 @@ deploy/pa-update.sh
 | **Circular import** | `routes/*` 唔好 `from app import ...`；用 `models/` / `services/` |
 | **變數遮蔽** | `models/combat.py` 內 `combat_settings` vs `settings`（ModelSettings） |
 | **N+1 查詢** | `get_team_members`、GM overview 大量 squad 時 |
-| **原生 alert** | 玩家端已無 `alert()`/`prompt()`，用 `showToast` / `showInputModal`；仍有少量 `confirm()`（路線確認等）。GM 用 `showGmToast` / `showGmInputModal` |
+| **原生 alert** | 玩家端已無 `alert()`/`prompt()`/`confirm()`，用 `showToast` / `showInputModal` / `showConfirmModal`。GM 用 `showGmToast` / `showGmInputModal` |
 | **Render 持久化** | `render.yaml` | 已設 `disk` mount `/data`；Free tier 無 persistent disk，營會正式環境用 PA |
 | **Defend 機制** | 已實作全隊 buff：任一同隊 Defend → 反擊減半（`defend_team_buff` marker） |
 

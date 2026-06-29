@@ -69,6 +69,10 @@ def api_version():
             "protagonist_combat": callable(build_protagonist_participant),
             "trauma_ending": "combat-result-trauma-badge" in template_text
                 and "renderTeamEndingBanner" in template_text,
+            "confirm_modal": "confirm-modal-overlay" in template_text
+                and "showConfirmModal" in template_text,
+            "protagonist_player_control": "protagonist-control-bar" in template_text
+                and "controllingProtagonist" in template_text,
         },
         "db_path": settings.db_path,
         "upload_folder": upload_folder,

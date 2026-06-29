@@ -424,7 +424,7 @@ def inject_protagonist_auto_actions(actions, participants, encounter, player_con
         if not p.get("is_protagonist"):
             continue
         sid = p["squad_id"]
-        if sid not in active_ids or sid in player_control_ids or sid in merged:
+        if sid not in active_ids or sid in merged:
             continue
         merged[sid] = choose_protagonist_auto_action(p, combat_settings)
     return merged
@@ -461,7 +461,8 @@ def get_active_combat_members(participants):
     return [p for p in participants if p["squad_id"] in ids]
 
 
-def get_phase_submit_required_ids(combat, participants):
+def _phase_player_control_context(combat, participants):
+    """Split active combatants for player-controlled protagonist submit rules."""
     active = get_active_combat_member_ids(participants)
     team_id = _combat_team_id(combat, participants)
     encounter = load_encounter(combat.get("encounter_id")) if combat else None
@@ -470,36 +471,39 @@ def get_phase_submit_required_ids(combat, participants):
         get_player_control_protagonist_ids(team_id, encounter, story_stage, participants)
         if team_id else []
     )
-    required = []
+    non_protagonist, player_control_protagonists = [], []
     for sid in active:
         p = next((x for x in participants if x["squad_id"] == sid), None)
-        if p and p.get("is_protagonist") and sid not in player_control_ids:
+        if p and p.get("is_protagonist"):
+            if sid in player_control_ids:
+                player_control_protagonists.append(sid)
             continue
-        required.append(sid)
-    return required
+        non_protagonist.append(sid)
+    return {
+        "non_protagonist": non_protagonist,
+        "player_control_protagonists": player_control_protagonists,
+    }
+
+
+def get_phase_submit_required_ids(combat, participants):
+    """Human players who must submit; protagonist may be manual or auto fallback."""
+    ctx = _phase_player_control_context(combat, participants)
+    return list(ctx["non_protagonist"])
 
 
 def all_phase_actions_submitted(combat, participants):
     actions = combat.get("phase_actions") or {}
-    active = get_active_combat_member_ids(participants)
-    if not active:
+    ctx = _phase_player_control_context(combat, participants)
+    non_pro = ctx["non_protagonist"]
+    pro_control = ctx["player_control_protagonists"]
+    if not non_pro and not pro_control:
         return True
-    team_id = _combat_team_id(combat, participants)
-    encounter = load_encounter(combat.get("encounter_id")) if combat else None
-    story_stage = get_team_story_stage(team_id) if team_id else 0
-    player_control_ids = set(
-        get_player_control_protagonist_ids(team_id, encounter, story_stage, participants)
-        if team_id else []
-    )
-    required = []
-    for sid in active:
-        p = next((x for x in participants if x["squad_id"] == sid), None)
-        if p and p.get("is_protagonist") and sid not in player_control_ids:
-            continue
-        required.append(sid)
-    if not required:
-        return True
-    return all(sid in actions for sid in required)
+    pro_submitted = any(sid in actions for sid in pro_control)
+    non_pro_submitted = sum(1 for sid in non_pro if sid in actions)
+    if pro_control:
+        needed_players = max(0, len(non_pro) - (1 if pro_submitted else 0))
+        return non_pro_submitted >= needed_players
+    return non_pro_submitted >= len(non_pro)
 
 def append_combat_log(combat, message, log_type="event"):
     logs = list(combat.get("logs") or [])
@@ -997,7 +1001,9 @@ def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enem
         meta["damage_note"] = "暴走時可能無法對敵輸出"
     return dmg, meta
 
-def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, item_id=None):
+def build_combat_round_preview(
+    combat_id, squad_id, action_type, dice_result, item_id=None, as_protagonist=False,
+):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != "player_phase":
         return None
@@ -1008,6 +1014,16 @@ def build_combat_round_preview(combat_id, squad_id, action_type, dice_result, it
     enemy_base = int(combat.get("enemy_base_damage") or 0)
     participants = get_combat_participants(combat)
     participant_by_id = {p["squad_id"]: p for p in participants}
+    player = fetch_squads_by_ids([squad_id]).get(squad_id) or participant_by_id.get(squad_id)
+    team_id = (player or {}).get("team_id")
+    if as_protagonist and team_id:
+        team_row = get_team_by_id(team_id) or {}
+        story_stage = get_team_story_stage(team_id)
+        acting_id = get_controllable_protagonist_squad_id(
+            team_id, team_row.get("route"), encounter, story_stage,
+        )
+        if acting_id:
+            squad_id = acting_id
     squad = participant_by_id.get(squad_id) or fetch_squads_by_ids([squad_id]).get(squad_id)
     if not squad:
         return None

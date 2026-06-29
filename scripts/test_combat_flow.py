@@ -116,6 +116,58 @@ def test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_i
     ok("trauma ending: team locked", get_team_ending_type(team_id) == "bad_ending")
 
 
+def test_protagonist_player_control(client, client2, team_id, route="iggy"):
+    """Encounter with protagonist_player_control: leader can submit as_protagonist."""
+    from models.protagonist import protagonist_squad_id, update_protagonist_state
+
+    update_protagonist_state(team_id, route, is_active=1)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": "test_protagonist_control"},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    if not combat_id:
+        from models.combat import get_active_combat_for_team
+
+        active = get_active_combat_for_team(team_id)
+        combat_id = active.get("id") if active else None
+    ok("pro control: start combat", combat_id, str(start))
+
+    st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    ok("pro control: flag enabled", st.get("protagonist_player_control") is True, str(st)[:200])
+    pro_sid = protagonist_squad_id(team_id, route)
+    ok(
+        "pro control: controllable id",
+        st.get("controllable_protagonist_id") == pro_sid,
+        st.get("controllable_protagonist_id"),
+    )
+
+    r1 = client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack", "as_protagonist": True},
+        content_type="application/json",
+    )
+    d1 = r1.get_json() or {}
+    ok("pro control: protagonist submit", d1.get("success") or d1.get("status"), str(d1)[:200])
+
+    r2 = client2.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack"},
+        content_type="application/json",
+    )
+    d2 = r2.get_json() or {}
+    ok("pro control: teammate submit", d2.get("success") or d2.get("outcome"), str(d2)[:200])
+
+    ok(
+        "pro control: round resolved",
+        d2.get("round_resolved") or d2.get("status") == "round_resolved" or d2.get("outcome"),
+        str(d2)[:200],
+    )
+
+
 def test_protagonist_combat_participant(combat_id, route="iggy"):
     combat = get_combat(combat_id)
     participants = get_combat_participants(combat) if combat else []
@@ -312,6 +364,7 @@ def main():
 
     test_player_max_hp(leader_id)
     test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id)
+    test_protagonist_player_control(client, client2, team_id, route="iggy")
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
@@ -335,6 +388,8 @@ def main():
     ok("player_max_hp marker", ver.get("markers", {}).get("player_max_hp") is True)
     ok("protagonist_combat marker", ver.get("markers", {}).get("protagonist_combat") is True)
     ok("trauma_ending marker", ver.get("markers", {}).get("trauma_ending") is True)
+    ok("confirm_modal marker", ver.get("markers", {}).get("confirm_modal") is True)
+    ok("protagonist_player_control marker", ver.get("markers", {}).get("protagonist_player_control") is True)
     ok("version 正確", ver.get("version") == oikonomia.read_deploy_version())
 
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")

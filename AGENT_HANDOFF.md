@@ -2,7 +2,7 @@
 
 > **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`187afca`（戰鬥結算後免 reload）
+> 最後更新：2026-06-29 · local/GitHub：見 `git rev-parse --short HEAD`（主角參戰、trauma 結局、玩家控制主角）
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -29,8 +29,8 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ### 本地測試
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py
-# 預期：27 通過 / 0 失敗
+./venv/bin/python3 scripts/test_combat_flow.py      # 預期：61 通過 / 0 失敗
+./venv/bin/python3 scripts/test_encounter_cache.py  # 預期：3 通過 / 0 失敗
 ```
 
 ---
@@ -41,8 +41,9 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 |------|-----|
 | 專案路徑 | `/Users/mingtakyau/Documents/oikonomia` |
 | Google Drive 備份 | `~/Library/CloudStorage/GoogleDrive-ymtwill@gmail.com/My Drive/oikonomia` |
-| 主檔 | `app.py`（~940 行：Flask init、DB migrate、middleware） |
-| 玩家 UI | `templates/index.html`（~5800 行 JS/HTML） |
+| 主檔 | `app.py`（~980 行：Flask init、DB migrate、`register_blueprints`） |
+| 玩家 UI | `templates/index.html`（~6100 行 JS/HTML） |
+| 主角狀態 | `models/protagonist.py` + `protagonist_states` 表 |
 | 資料庫 | `oikonomia.db`（本地）；PA 上在 `data/oikonomia.db` |
 | GitHub | https://github.com/Takjai18/oikonomia |
 | 正式環境 | https://takjai.pythonanywhere.com |
@@ -66,7 +67,8 @@ routes/                   # HTTP blueprints
   auth.py, player.py, team.py, combat.py, encounters.py
   items.py, story.py, misc.py, gm.py, gm_templates.py
 models/                   # 業務邏輯
-  combat.py               # 戰鬥核心（~1100 行）
+  combat.py               # 戰鬥核心（~1350 行）
+  protagonist.py          # 主角 HP/trauma/參戰/結局
   encounter_outcomes.py   # 勝利/失敗獎勵（canonical）
   encounter.py, squad.py, team.py, item.py, settings.py
 services/                 # 跨 route 服務
@@ -77,7 +79,8 @@ data/                     # 靜態配置
   locations.py, story_config.py, narrative_stories.py
 encounters/*.json         # encounter 定義
 deploy/pa-update.sh       # PA 標準部署
-scripts/test_combat_flow.py # 戰鬥 smoke test（17 項）
+scripts/test_combat_flow.py   # 戰鬥 smoke test（61 項）
+scripts/test_encounter_cache.py
 GEMINI_REVIEW.md          # 外部 code review 指引
 ```
 
@@ -97,20 +100,36 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ## 本輪已完成
 
-### 戰鬥結算後免 reload（`187afca`）
+### 主角參戰 + Trauma 陰影結局（`c4713d6`–`f6c9701`）
 
-結算 API 回 `round_resolved` 時，後端已進入下一 `player_phase`，但前端只認 `player_phase` 先准操作。  
-修正：`normalizeCombatStatusData()`、`continueCombatAfterRound()`（繼續下一回合）、結算後 3s 輪詢。
-
-### Defend 全隊 buff（`dba1548`）
-
-| 變更 | 說明 |
+| 項目 | 說明 |
 |------|------|
-| **`count_team_defenders()`** | 統計本回合防禦人數 |
-| **反擊減傷** | 任一同隊 Defend → 反擊目標傷害 ×0.5（唔限於目標自己防禦） |
-| **預覽 API** | 回傳 `team_defend_count`；`counter_defending` = 全隊有防禦 |
-| **marker** | `/api/version` → `defend_team_buff` |
-| **測試** | `test_combat_flow.py` 26 項（含整合測試） |
+| **`protagonist_states` 表** | HP / sanity / trauma 跨戰鬥持久化 |
+| **普通戰鬥** | 主角自動 AI 參戰 |
+| **瀕死** | +1 trauma；累計 **>3** → `bad_ending` 鎖定 |
+| **戰鬥勝利** | trauma 過深時無獎勵、陰影 narrative、`teams.ending_type` |
+| **API** | `/status`、`/team` 回傳 `ending`；`/api/version` → `trauma_ending` |
+
+### Phase 5 玩家控制主角 + UI（最新）
+
+| 項目 | 說明 |
+|------|------|
+| **觸發** | `story_stage >= 3` 或 encounter `combat_settings.protagonist_player_control: true` |
+| **API** | `POST /combat/submit_action` 加 `as_protagonist: true`；`preview_action` 同步支援 |
+| **UI** | `#protagonist-control-bar` 切換；主角模式顯示主角數值、禁用物品 |
+| **提交規則** | `as_protagonist` 代替自己一個回合；否則主角結算時自動 AI fallback |
+| **測試** | `encounters/test_protagonist_control.json` + `test_protagonist_player_control()` |
+
+### 玩家 `confirm()` → 自訂 Modal
+
+- `showConfirmModal()` + `#confirm-modal-overlay`；`index.html` **0** 個 native `confirm()`
+- marker：`confirm_modal`
+
+### Encounter cache mtime（`4971fc9`）
+
+- `load_encounter()` 檔案改動自動失效；`SKIP_ENCOUNTER_CACHE=1` 強制讀碟
+
+### 早前：戰鬥結算免 reload（`187afca`）、Defend 全隊 buff（`dba1548`）、`player_max_hp`
 
 ---
 
@@ -137,7 +156,7 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 | **DB 事務** | `utils/db_tx.py` `immediate_transaction()`（BEGIN IMMEDIATE） |
 | **多 worker 公告** | `services/announcements.py` 讀 `global_events` table（唔再 in-memory） |
 | **GM UX** | `alert()`/`prompt()` → `showGmToast`/`showGmInputModal` in `gm_templates.py` |
-| **玩家 UX** | `showToast`/`showInputModal` in `index.html`（仍有 ~8 處 native `confirm()`） |
+| **玩家 UX** | `showToast`/`showInputModal`/`showConfirmModal` in `index.html`（無 `alert`/`prompt`/`confirm`） |
 
 ### 戰鬥系統（沿用 + 強化）
 
@@ -169,7 +188,7 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 | `POST /combat/start` | 開始戰鬥 + precheck |
 | `GET /combat/status` | 輪詢；`my_state` 含 hp/sanity/power/intellect/resilience/avatar |
 | `POST /combat/preview_action` | 本回合戰況預覽 |
-| `POST /combat/submit_action` | 提交行動（**骰子由伺服器擲**） |
+| `POST /combat/submit_action` | 提交行動（**骰子由伺服器擲**）；`as_protagonist: true` 代替主角 |
 | `POST /combat/resolve_phase` | 強制結算 player phase |
 | `POST /combat/rescue_near_death` | 禱告救援 |
 | `POST /gm/combat/resolve_phase` | GM 強制結算 |
@@ -197,17 +216,25 @@ Zoo：神智 ≥70/80/90/100 → ×1.3/1.4/1.5/1.8
 
 ---
 
-## 尚未完成（下一個 Agent 可優先做）
+## 尚未完成（用戶刻意延後 — 等劇情／任務設計好先做）
 
 | 優先 | 項目 | 說明 |
 |------|------|------|
-| P1 | 部署後實機驗證 | 戰鬥勝利流程、`/api/version` markers（含 `defend_team_buff`） |
-| P4 | 更多 encounter JSON | Marah 線、stage 2+ |
-| P5 | 瀕死 background timer | 目前靠 polling + `near_death_until` |
-| 中 | `grant_item_to_squad` | item INSERT 有事務，但 `apply_item_effect_to_squad()` 喺 commit 後跑 |
-| 中 | 部分 `routes/gm.py` DB ops | 未用 `immediate_transaction()` |
-| 中 | `ALLOW_LEGACY_QR=1` 預設 | 玩家 UI 仍有 `confirm()` |
-| 低 | Tailwind CDN、大 `index.html`、PA venv path |
+| **內容** | Salvio 最終 Boss encounter | 用戶未寫好劇情 |
+| **內容** | Marah 線 / 各 Stage 任務 + encounter | 同上 |
+| **內容** | Good Ending 完整演出 | 只得 `bad_ending` 鎖定；正面結局 narrative 待寫 |
+| **系統** | 主角瀕死禱告救援 | 用戶未設定好祈禱規則；現只支援玩家 squad |
+| **系統** | 祈禱系統整體 | 延後 |
+
+## 技術債（非阻營會，有空再做）
+
+| 項目 | 說明 |
+|------|------|
+| 瀕死 background timer | 靠 polling + `near_death_until` |
+| `grant_item_to_squad` | INSERT 有事務，`apply_item_effect_to_squad()` 喺 commit 後 |
+| 部分 `routes/gm.py` DB ops | 未統一 `immediate_transaction()` |
+| `ALLOW_LEGACY_QR=1` 預設 | 舊 QR 仍可用 |
+| Tailwind CDN、大 `index.html` | 可之後拆 JS/CSS |
 
 ---
 
@@ -218,7 +245,7 @@ Zoo：神智 ≥70/80/90/100 → ×1.3/1.4/1.5/1.8
 ```bash
 # 1. 本地：驗證 + commit + push
 cd /Users/mingtakyau/Documents/oikonomia
-./venv/bin/python3 scripts/test_combat_flow.py   # 預期 17/17
+./venv/bin/python3 scripts/test_combat_flow.py   # 預期 61/61
 git add -A && git commit -m "描述改動" && git push origin main
 
 # 2. PA Bash console（用戶帳號 takjai）— Agent 無 SSH 時請用戶代跑
@@ -230,27 +257,11 @@ FORCE=1 bash ~/oikonomia/deploy/pa-update.sh
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ```
 
-### `/api/version` 預期（`fc53d73`）
+### `/api/version` 重要 markers
 
-```json
-{
-  "success": true,
-  "version": "fc53d73",
-  "markers": {
-    "combat_system": true,
-    "combat_preview": true,
-    "combat_modal": true,
-    "server_combat_dice": true,
-    "combat_actions_table": true,
-    "qr_signed_v2": true,
-    "task_photo_validation": true,
-    "routes_refactored": true,
-    "upload_path_hardened": true,
-    "input_modal": true,
-    "model_combat_layer": true
-  }
-}
-```
+`combat_system`, `server_combat_dice`, `defend_team_buff`, `combat_round_continue`, `player_max_hp`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `upload_path_hardened`
+
+Reload Web worker 後 markers 先會更新（`version` 可能已新但 markers 仍舊）。
 
 `deploy/pa-update.sh` 會檢查 `templates/index.html` 含 `combat-action-modal`，並做 wsgi import smoke test。
 

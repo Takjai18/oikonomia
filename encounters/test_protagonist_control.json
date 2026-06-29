@@ -1,0 +1,34 @@
+{
+  "encounter_id": "test_protagonist_control",
+  "title": "測試用：主角玩家控制",
+  "route": "iggy",
+  "story_stage": 3,
+  "trigger_type": "test",
+  "description": "啟用 protagonist_player_control，驗證 Stage 3+ 代替主角行動。",
+
+  "enemy": {
+    "name": "測試用陰影",
+    "hp": 80,
+    "resilience": 15,
+    "sanity": 40,
+    "base_damage": 10
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "protagonist_player_control": true
+  },
+
+  "protagonist_participation": {
+    "enabled": true,
+    "iggy": true
+  },
+
+  "success": {
+    "narrative": "主角玩家控制測試勝利。"
+  },
+  "failure": {
+    "narrative": "測試落敗。"
+  }
+}
