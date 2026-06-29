@@ -38,6 +38,11 @@ def login(client, squad_id):
     return client.post("/login", data={"squad_id": squad_id})
 
 
+def enable_gm_session(client):
+    with client.session_transaction() as sess:
+        sess["is_gm"] = True
+
+
 def submit_attack(client, combat_id, **extra):
     body = {"combat_id": combat_id, "action_type": "attack", **extra}
     return client.post("/combat/submit_action", json=body, content_type="application/json")
@@ -77,6 +82,7 @@ def setup_team(client, leader_name, member_name=None, route="iggy", protagonist_
 
 
 def start_test_combat(client, team_id):
+    enable_gm_session(client)
     clear_team_combat(team_id, TEST_ENCOUNTER)
     r = client.post(
         "/combat/start",
@@ -172,6 +178,69 @@ def test_protagonist_joins_and_deals_damage(team_id, client, route="iggy"):
     clear_team_combat(team_id, TEST_ENCOUNTER)
 
 
+def test_solo_iggy_leech_enemy_hp(team_id, client):
+    """單人 + Iggy 主角打情緒寄生影：每回合敵 HP 必須下降且與 payload 一致。"""
+    print("\n--- 審計 3b：單人 enc_iggy_01_leech 敵 HP ---")
+    enc_id = "enc_iggy_01_leech"
+    update_protagonist_state(team_id, "iggy", is_active=1)
+    clear_team_combat(team_id, enc_id)
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("情緒寄生影開戰", start.get("success") and combat_id, str(start)[:120])
+
+    combat = get_combat(combat_id) if combat_id else None
+    prev_hp = int((combat or {}).get("enemy_hp") or 0)
+    ok("初始敵 HP 約 110", 100 <= prev_hp <= 120, str(prev_hp))
+
+    with patch("routes.combat.roll_combat_dice", return_value=1):
+        for round_no in range(1, 4):
+            d = submit_attack(client, combat_id).get_json() or {}
+            ok(
+                f"第 {round_no} 回合 round_resolved",
+                d.get("round_resolved") or d.get("status") == "round_resolved" or d.get("outcome"),
+                str(d)[:120],
+            )
+            if d.get("outcome"):
+                db_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or -1)
+                ok(
+                    f"第 {round_no} 回合擊敗敵人",
+                    d.get("outcome") == "victory" and db_hp == 0,
+                    f"outcome={d.get('outcome')}, db_hp={db_hp}",
+                )
+                break
+            settlement = d.get("round_settlement") or {}
+            team_dealt = int(settlement.get("team_damage_dealt") or 0)
+            enemy_hp_raw = (d.get("enemy") or {}).get("hp")
+            payload_hp = int(enemy_hp_raw if enemy_hp_raw is not None else prev_hp)
+            db_hp = int((get_combat(combat_id) or {}).get("enemy_hp") or 0)
+            ok(f"第 {round_no} 回合有傷害", team_dealt > 0, str(settlement)[:80])
+            ok(
+                f"第 {round_no} 回合敵 HP 下降",
+                payload_hp < prev_hp,
+                f"{prev_hp}->{payload_hp}",
+            )
+            ok(
+                f"第 {round_no} 回合 DB 與 payload 一致",
+                db_hp == payload_hp,
+                f"db={db_hp}, payload={payload_hp}",
+            )
+            st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+            poll_hp = int((st.get("enemy") or {}).get("hp") or -1)
+            ok(
+                f"第 {round_no} 回合輪詢 HP 一致",
+                poll_hp == payload_hp,
+                f"poll={poll_hp}, payload={payload_hp}",
+            )
+            prev_hp = payload_hp
+
+    clear_team_combat(team_id, enc_id)
+
+
 def test_solo_team_immediate_next_action(team_id, client):
     print("\n--- 審計 3：單人隊伍（僅 1 人）結算後可再行動 ---")
     update_protagonist_state(team_id, "iggy", is_active=0)
@@ -236,6 +305,10 @@ def main():
     solo_c = oikonomia.app.test_client()
     solo_team_id, _ = setup_team(solo_c, "SoloAuditLeader", route="iggy", protagonist_active=False)
     test_solo_team_immediate_next_action(solo_team_id, solo_c)
+
+    leech_c = oikonomia.app.test_client()
+    leech_team_id, _ = setup_team(leech_c, "SalibaSoloAudit", route="iggy", protagonist_active=True)
+    test_solo_iggy_leech_enemy_hp(leech_team_id, leech_c)
 
     test_no_team_cannot_start()
     test_marah_protagonist()
