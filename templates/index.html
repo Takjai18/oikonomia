@@ -1481,6 +1481,7 @@
         const COMBAT_POLL_INTERVAL_NORMAL = 3000;
         const COMBAT_POLL_INTERVAL_WAITING = 4000;
         const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
+        const ROUND_SETTLEMENT_MODAL_DELAY_MS = 1500;
 
         /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
         function effectiveCombatStatus(data) {
@@ -1807,7 +1808,9 @@
             if (enemyDealt > 0) {
                 showDamageNumber('player-panel', enemyDealt, false);
             }
-            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs) ? 700 : 100;
+            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
+                ? ROUND_SETTLEMENT_MODAL_DELAY_MS
+                : 400;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = setTimeout(() => {
                 showRoundSettlementModal(data);
