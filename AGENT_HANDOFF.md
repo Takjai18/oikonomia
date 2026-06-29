@@ -1,8 +1,14 @@
-# Oikonomia — Agent Handoff（新 Tab 必讀）
+# Oikonomia — Grok Build Handoff（新 Tab 必讀）
 
-> **給下一個 AI Agent**：用戶會開新 tab 繼續開發。請**直接執行**，唔好只係話用戶點做。  
+> **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`4c14e8d` · PA：`3cdb207`（待 deploy）
+> 最後更新：2026-06-29 · local/GitHub：`1bf2b9f` · PA：`0c43e04`（待 deploy）
+
+| 角色 | 文檔 | 職責 |
+|------|------|------|
+| **Grok** | `README.md` | 方向、優先級、架構取捨（唔改 repo） |
+| **Grok Build（你）** | **本文** | 實作、測試、push、備份、部署 |
+| **Gemini** | `GEMINI_REVIEW.md` | 第三方 review / debug（唔改 repo） |
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
 
@@ -12,9 +18,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `4c14e8d` | ✅ |
-| **GitHub `main`** | `4c14e8d` | ✅ |
-| **PythonAnywhere** | `3cdb207` | ⏳ 待 deploy |
+| **Local** | `1bf2b9f` | ✅ |
+| **GitHub `main`** | `1bf2b9f` | ✅ |
+| **PythonAnywhere** | `0c43e04` | ⏳ 待 deploy |
 
 ```bash
 # 本地
