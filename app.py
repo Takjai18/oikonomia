@@ -7924,8 +7924,60 @@ HTML_TEMPLATE = """
         let isStoryTyping = false;
         let isStoryAutoPlaying = false;
         const storyAutoShown = new Set();
-        const STORY_TYPEWRITER_MS = 55;
-        const STORY_AUTOPLAY_PAUSE_MS = 1200;
+        const STORY_READ_STORAGE_KEY = 'read_stories';
+        const STORY_TYPEWRITER_MS = 60;
+        const STORY_AUTOPLAY_PAUSE_MS = 1400;
+
+        function getReadStories() {
+            try {
+                return JSON.parse(localStorage.getItem(STORY_READ_STORAGE_KEY) || '[]');
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function checkIfStoryRead(storyId) {
+            if (!storyId) return false;
+            return getReadStories().includes(storyId);
+        }
+
+        function markStoryAsRead(storyId) {
+            if (!storyId) return;
+            const readStories = getReadStories();
+            if (!readStories.includes(storyId)) {
+                readStories.push(storyId);
+                localStorage.setItem(STORY_READ_STORAGE_KEY, JSON.stringify(readStories));
+            }
+        }
+
+        function isStoryRead(storyId, storyData) {
+            if (storyData?.viewed) return true;
+            return checkIfStoryRead(storyId);
+        }
+
+        function updateAutoplayStatus(storyId, storyData) {
+            const statusEl = document.getElementById('autoplay-status');
+            if (!statusEl) return;
+            statusEl.textContent = isStoryRead(storyId, storyData) ? '已讀' : '';
+        }
+
+        function resetAutoplayProgress() {
+            const progressBar = document.getElementById('autoplay-progress');
+            if (!progressBar) return;
+            progressBar.style.transition = 'none';
+            progressBar.style.width = '0%';
+            void progressBar.offsetWidth;
+        }
+
+        function animateAutoplayProgress(durationMs = STORY_AUTOPLAY_PAUSE_MS) {
+            const progressBar = document.getElementById('autoplay-progress');
+            if (!progressBar || !isStoryAutoPlaying) return;
+            resetAutoplayProgress();
+            progressBar.style.transition = `width ${durationMs}ms linear`;
+            requestAnimationFrame(() => {
+                progressBar.style.width = '100%';
+            });
+        }
 
         function clearStoryTypewriter() {
             if (storyTypewriterTimer) {
@@ -7941,6 +7993,7 @@ HTML_TEMPLATE = """
                 clearTimeout(storyAutoPlayTimer);
                 storyAutoPlayTimer = null;
             }
+            resetAutoplayProgress();
             if (resetToggle) {
                 const autoplayText = document.getElementById('autoplay-text');
                 if (autoplayText) autoplayText.textContent = '自動播放';
@@ -7952,6 +8005,7 @@ HTML_TEMPLATE = """
             const line = currentStory?.lines?.[currentLineIndex];
             if (line?.choices?.length) return;
             if (storyAutoPlayTimer) clearTimeout(storyAutoPlayTimer);
+            animateAutoplayProgress(STORY_AUTOPLAY_PAUSE_MS);
             storyAutoPlayTimer = setTimeout(() => {
                 storyAutoPlayTimer = null;
                 if (isStoryAutoPlaying && !isStoryTyping) nextStoryLine();
@@ -8018,6 +8072,7 @@ HTML_TEMPLATE = """
                 const parentId = currentStory?.story_id;
                 closeStoryModal(false);
                 if (parentId) {
+                    markStoryAsRead(parentId);
                     try {
                         await fetch(`/api/story/${encodeURIComponent(parentId)}/complete`, {
                             method: 'POST',
@@ -8039,6 +8094,8 @@ HTML_TEMPLATE = """
             currentStory = storyData;
             currentLineIndex = 0;
 
+            if (storyData.viewed) markStoryAsRead(storyData.story_id);
+
             document.getElementById('story-chapter').textContent = storyData.chapter || '';
             document.getElementById('story-stage').textContent =
                 `Stage ${storyData.current_stage ?? 1} / ${storyData.total_stages ?? 1}`;
@@ -8048,6 +8105,8 @@ HTML_TEMPLATE = """
             if (skipBtn) {
                 setVisible(skipBtn, storyData.skippable !== false);
             }
+
+            updateAutoplayStatus(storyData.story_id, storyData);
 
             const modal = document.getElementById('story-modal');
             setVisible(modal, true);
@@ -8063,6 +8122,8 @@ HTML_TEMPLATE = """
             const portraitEl = document.getElementById('story-portrait');
             const nameEl = document.getElementById('story-character-name');
             const progressEl = document.getElementById('story-line-progress');
+
+            resetAutoplayProgress();
 
             renderStoryChoices(line);
 
@@ -8105,10 +8166,15 @@ HTML_TEMPLATE = """
                 autoplayText.textContent = isStoryAutoPlaying ? '停止播放' : '自動播放';
             }
             if (isStoryAutoPlaying) {
-                if (!isStoryTyping) scheduleStoryAutoAdvance();
-            } else if (storyAutoPlayTimer) {
-                clearTimeout(storyAutoPlayTimer);
-                storyAutoPlayTimer = null;
+                if (!isStoryTyping) {
+                    scheduleStoryAutoAdvance();
+                }
+            } else {
+                if (storyAutoPlayTimer) {
+                    clearTimeout(storyAutoPlayTimer);
+                    storyAutoPlayTimer = null;
+                }
+                resetAutoplayProgress();
             }
         }
 
@@ -8117,6 +8183,7 @@ HTML_TEMPLATE = """
             const onComplete = currentStory?.onComplete;
             closeStoryModal(false);
             if (storyId) {
+                markStoryAsRead(storyId);
                 try {
                     await fetch(`/api/story/${encodeURIComponent(storyId)}/complete`, {
                         method: 'POST',
@@ -8128,6 +8195,7 @@ HTML_TEMPLATE = """
         }
 
         function closeStoryModal(markComplete = true) {
+            const storyId = currentStory?.story_id;
             clearStoryTypewriter();
             stopStoryAutoPlay();
             const modal = document.getElementById('story-modal');
@@ -8140,8 +8208,12 @@ HTML_TEMPLATE = """
                 choicesContainer.innerHTML = '';
                 setVisible(choicesContainer, false);
             }
-            if (markComplete && currentStory?.story_id) {
-                fetch(`/api/story/${encodeURIComponent(currentStory.story_id)}/complete`, {
+            const statusEl = document.getElementById('autoplay-status');
+            if (statusEl) statusEl.textContent = '';
+            resetAutoplayProgress();
+            if (markComplete && storyId) {
+                markStoryAsRead(storyId);
+                fetch(`/api/story/${encodeURIComponent(storyId)}/complete`, {
                     method: 'POST',
                     credentials: 'same-origin',
                 }).catch(() => {});
@@ -8166,10 +8238,18 @@ HTML_TEMPLATE = """
                     alert(data.error || '無法載入劇情');
                     return;
                 }
+                if (data.viewed) markStoryAsRead(storyId);
                 showStory(data);
             } catch (e) {
                 alert('載入劇情失敗');
             }
+        }
+
+        function shouldAutoShowStory(storyId, storyData) {
+            if (!storyId) return false;
+            if (storyAutoShown.has(storyId)) return false;
+            if (isStoryRead(storyId, storyData)) return false;
+            return true;
         }
 
         async function checkPendingStory() {
@@ -8178,10 +8258,11 @@ HTML_TEMPLATE = """
             try {
                 const res = await fetch('/api/story/pending', { credentials: 'same-origin' });
                 const data = await res.json();
-                if (!data.pending_story_id || storyAutoShown.has(data.pending_story_id)) return;
-                storyAutoShown.add(data.pending_story_id);
+                const pendingId = data.pending_story_id;
+                if (!pendingId || !shouldAutoShowStory(pendingId, data.story)) return;
+                storyAutoShown.add(pendingId);
                 if (data.story) showStory(data.story);
-                else fetchStoryAndShow(data.pending_story_id);
+                else fetchStoryAndShow(pendingId);
             } catch (_) {}
         }
 
@@ -9992,7 +10073,9 @@ HTML_TEMPLATE = """
             const data = await res.json();
             alert(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'));
             if (modal) modal.remove();
-            if (data.pending_story_id) fetchStoryAndShow(data.pending_story_id);
+            if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)) {
+                fetchStoryAndShow(data.pending_story_id);
+            }
         }
 
         async function submitPhotoTask(locId, btn) {
@@ -10006,7 +10089,9 @@ HTML_TEMPLATE = """
             const data = await res.json();
             alert(data.message);
             closeModal(btn);
-            if (data.pending_story_id) fetchStoryAndShow(data.pending_story_id);
+            if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)) {
+                fetchStoryAndShow(data.pending_story_id);
+            }
         }
 
         async function startPuzzle(locId, btn) {
@@ -10660,23 +10745,35 @@ HTML_TEMPLATE = """
 
             <div id="story-choices" class="mt-4 space-y-3 hidden"></div>
 
-            <div class="mt-2 text-center text-[10px] text-zinc-600">
-                <span id="story-line-progress"></span>
-            </div>
+            <div class="mt-5">
+                <div class="flex items-center justify-between text-xs text-zinc-400 mb-1.5 px-1">
+                    <div class="flex items-center gap-x-2">
+                        <span>自動播放</span>
+                        <span id="story-line-progress" class="text-zinc-500"></span>
+                    </div>
+                    <div class="flex items-center gap-x-2">
+                        <span id="autoplay-status" class="text-zinc-500"></span>
+                        <button type="button" id="story-skip-btn" onclick="closeStoryModal()"
+                                class="hidden text-amber-400/80 hover:text-amber-300">跳過</button>
+                    </div>
+                </div>
 
-            <div class="mt-6 flex justify-center gap-x-3 items-center flex-wrap">
-                <button type="button" id="story-skip-btn" onclick="closeStoryModal()"
-                        class="hidden px-5 py-2 text-sm text-zinc-400 hover:text-white transition-colors">
-                    跳過
-                </button>
-                <button type="button" onclick="toggleStoryAutoPlay()"
-                        class="px-5 py-2 text-sm border border-zinc-600 hover:bg-zinc-800 rounded-2xl text-zinc-300 transition-colors">
-                    <span id="autoplay-text">自動播放</span>
-                </button>
-                <button type="button" id="story-continue-btn" onclick="nextStoryLine()"
-                        class="px-8 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-sm tracking-wider transition-colors">
-                    繼續
-                </button>
+                <div class="w-full bg-zinc-800 rounded-full h-1.5 mb-3 overflow-hidden">
+                    <div id="autoplay-progress"
+                         class="h-1.5 bg-amber-500 rounded-full transition-all duration-300 ease-linear"
+                         style="width: 0%"></div>
+                </div>
+
+                <div class="flex justify-center gap-x-3">
+                    <button type="button" onclick="toggleStoryAutoPlay()"
+                            class="flex-1 py-2.5 text-sm border border-zinc-600 hover:bg-zinc-800 rounded-2xl text-zinc-300 transition-colors">
+                        <span id="autoplay-text">自動播放</span>
+                    </button>
+                    <button type="button" id="story-continue-btn" onclick="nextStoryLine()"
+                            class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-sm tracking-wider transition-colors">
+                        繼續
+                    </button>
+                </div>
             </div>
         </div>
     </div>
