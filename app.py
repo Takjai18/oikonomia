@@ -9612,7 +9612,7 @@ HTML_TEMPLATE = """
             const token = stored?.restore_token
                 || localStorage.getItem('oikonomia_restore_token');
             if (!token) return null;
-            const res = await fetch('/session/restore', {
+            const res = await fetchWithTimeout('/session/restore', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
@@ -9630,7 +9630,7 @@ HTML_TEMPLATE = """
         async function tryLoginWithStoredSquad(stored) {
             if (!stored?.squad_id) return null;
             try {
-                const res = await fetch('/login', {
+                const res = await fetchWithTimeout('/login', {
                     method: 'POST',
                     credentials: 'same-origin',
                     body: new URLSearchParams({ squad_id: stored.squad_id, pin: '' }),
@@ -9665,9 +9665,43 @@ HTML_TEMPLATE = """
             } catch (e) { /* ignore */ }
         }
 
+        const SESSION_FETCH_TIMEOUT_MS = 10000;
+
+        async function fetchWithTimeout(url, options = {}, timeoutMs = SESSION_FETCH_TIMEOUT_MS) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                return await fetch(url, { ...options, signal: controller.signal });
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        function hideSessionLoading() {
+            const loading = document.getElementById('session-loading');
+            if (loading) setVisible(loading, false);
+        }
+
+        function showLoginScreenAfterFailedRestore(stored) {
+            hideSessionLoading();
+            const loginScreen = document.getElementById('login-screen');
+            if (loginScreen) setVisible(loginScreen, true);
+            const nameEl = document.getElementById('squad_id');
+            if (nameEl && stored?.display_name && !nameEl.value) {
+                nameEl.value = stored.display_name;
+            }
+            if (stored?.has_pin) {
+                const hint = document.getElementById('login-restore-hint');
+                if (hint) {
+                    hint.textContent = '偵測到先前帳號，請輸入 PIN 登入（進度已保存）';
+                    setVisible(hint, true);
+                }
+            }
+        }
+
         async function refreshSquadFromServer() {
             try {
-                const res = await fetch('/status', { credentials: 'same-origin' });
+                const res = await fetchWithTimeout('/status', { credentials: 'same-origin' });
                 if (!res.ok) return null;
                 const data = await res.json();
                 if (data?.squad_id && data.success !== false && !data.error) {
@@ -9682,38 +9716,40 @@ HTML_TEMPLATE = """
         }
 
         async function finishSessionRestore(data) {
-            const loading = document.getElementById('session-loading');
+            hideSessionLoading();
             persistRestoreToken(data);
-            if (loading) setVisible(loading, false);
-            await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
-            if (data.current_combat_id) {
-                setTimeout(() => {
-                    if (typeof loadCombatPage === 'function') {
-                        loadCombatPage(data.current_combat_id);
-                    }
-                }, 400);
+            try {
+                await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
+                if (data?.current_combat_id) {
+                    setTimeout(() => {
+                        if (typeof loadCombatPage === 'function') {
+                            loadCombatPage(data.current_combat_id);
+                        }
+                    }, 400);
+                }
+                return true;
+            } catch (e) {
+                console.error('finishSessionRestore failed', e);
+                showLoginScreenAfterFailedRestore(loadLocalSession());
+                return false;
             }
-            return true;
         }
 
         async function fallbackToNormalSession() {
-            const loading = document.getElementById('session-loading');
-            const loginScreen = document.getElementById('login-screen');
             const stored = loadLocalSession();
 
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const res = await fetch('/status', { credentials: 'same-origin' });
+                    const res = await fetchWithTimeout('/status', { credentials: 'same-origin' });
                     if (res.ok) {
                         const data = await res.json();
                         if (data?.squad_id && data.success !== false && !data.error) {
-                            const fresh = await refreshSquadFromServer() || data;
-                            persistRestoreToken(fresh);
-                            return await finishSessionRestore(fresh);
+                            persistRestoreToken(data);
+                            return await finishSessionRestore(data);
                         }
                     }
                 } catch (e) {
-                    console.log('fallbackToNormalSession attempt failed', attempt + 1);
+                    console.log('fallbackToNormalSession attempt failed', attempt + 1, e);
                 }
                 if (attempt < 2) {
                     await new Promise(r => setTimeout(r, 800));
@@ -9724,28 +9760,15 @@ HTML_TEMPLATE = """
                 try {
                     const relogin = await tryLoginWithStoredSquad(stored);
                     if (relogin) {
-                        const fresh = await refreshSquadFromServer() || relogin;
-                        persistRestoreToken(fresh);
-                        return await finishSessionRestore(fresh);
+                        persistRestoreToken(relogin);
+                        return await finishSessionRestore(relogin);
                     }
                 } catch (e) {
                     console.warn('silent squad relogin failed', e);
                 }
             }
 
-            if (loading) setVisible(loading, false);
-            if (loginScreen) setVisible(loginScreen, true);
-            const nameEl = document.getElementById('squad_id');
-            if (nameEl && stored?.display_name && !nameEl.value) {
-                nameEl.value = stored.display_name;
-            }
-            if (stored?.has_pin) {
-                const hint = document.getElementById('login-restore-hint');
-                if (hint) {
-                    hint.textContent = '偵測到先前帳號，請輸入 PIN 登入（進度已保存）';
-                    setVisible(hint, true);
-                }
-            }
+            showLoginScreenAfterFailedRestore(stored);
             return false;
         }
 
@@ -9759,7 +9782,7 @@ HTML_TEMPLATE = """
             }
 
             try {
-                const res = await fetch('/session/restore', {
+                const res = await fetchWithTimeout('/session/restore', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
@@ -9768,8 +9791,7 @@ HTML_TEMPLATE = """
                 const data = await res.json();
 
                 if (data.success && data.squad_id) {
-                    const fresh = await refreshSquadFromServer() || data;
-                    await finishSessionRestore(fresh);
+                    await finishSessionRestore(data);
                     return;
                 }
             } catch (e) {
@@ -9779,12 +9801,31 @@ HTML_TEMPLATE = """
             await fallbackToNormalSession();
         }
 
+        let sessionBootDone = false;
+
+        async function bootApp() {
+            loadSettings();
+            const safetyTimer = setTimeout(() => {
+                if (sessionBootDone) return;
+                console.warn('session restore safety timeout');
+                showLoginScreenAfterFailedRestore(loadLocalSession());
+                sessionBootDone = true;
+            }, 12000);
+            try {
+                await restoreSession();
+            } catch (e) {
+                console.error('bootApp restoreSession failed', e);
+                if (!sessionBootDone) {
+                    showLoginScreenAfterFailedRestore(loadLocalSession());
+                }
+            } finally {
+                sessionBootDone = true;
+                clearTimeout(safetyTimer);
+            }
+        }
+
         async function completeLogin(data) {
             currentSquad = data.squad_id ? data : (data.squad || data);
-            const fresh = await refreshSquadFromServer();
-            if (fresh) {
-                currentSquad = { ...currentSquad, ...fresh };
-            }
             saveLocalSession({
                 ...currentSquad,
                 restore_token: data.restore_token || currentSquad.restore_token,
@@ -9792,8 +9833,19 @@ HTML_TEMPLATE = """
             setVisible(document.getElementById('login-screen'), false);
             showNavAfterLogin();
 
-            document.getElementById('squad-name').textContent =
-                currentSquad.display_name || currentSquad.squad_id;
+            safeSetText('squad-name', currentSquad.display_name || currentSquad.squad_id);
+
+            refreshSquadFromServer()
+                .then((fresh) => {
+                    if (!fresh) return;
+                    currentSquad = { ...currentSquad, ...fresh };
+                    saveLocalSession({
+                        ...currentSquad,
+                        restore_token: fresh.restore_token || currentSquad.restore_token,
+                    });
+                    updateDashboard(currentSquad);
+                })
+                .catch((e) => console.warn('background squad refresh failed', e));
 
             if (shouldPromptSetPin(data)) {
                 const sid = currentSquad?.squad_id;
@@ -10702,9 +10754,12 @@ HTML_TEMPLATE = """
             });
         }
 
-        // 頁面載入：套用設定 + 還原登入狀態（Render 冷啟動會重試）
-        loadSettings();
-        restoreSession();
+        // 頁面載入：等 DOM 就緒後還原登入（含逾時保護，避免卡在 loading）
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootApp);
+        } else {
+            bootApp();
+        }
     </script>
 
     <!-- PIN 設定 / 輸入 Modal -->
