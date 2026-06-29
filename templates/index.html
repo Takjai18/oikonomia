@@ -2055,13 +2055,22 @@
 
         // combat_instant_settlement: HP + 戰果 modal 即時，無 artificial delay
         function showFullRoundSettlement(data) {
-            data = applySettlementEnemyHp(data);
             const phase = Number(data?.current_phase) || 0;
+            const combatId = data?.combat_id || currentCombatId;
+            if (combatAwaitingSettlementAck) {
+                return;
+            }
+            if (phase > 0 && phase <= lastShownSettlementPhase
+                && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
+                return;
+            }
+            data = applySettlementEnemyHp(data);
             settlementTimerPending = false;
             combatAwaitingSettlementAck = true;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
             }
+            if (combatId) settlementCombatId = combatId;
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
@@ -2105,6 +2114,9 @@
         }
 
         async function finishCombatVictoryFromPayload(data) {
+            if (combatAwaitingSettlementAck && pendingVictoryAfterSettlement) {
+                return;
+            }
             const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
             if (victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome)) {
                 pendingVictoryAfterSettlement = data;
@@ -2169,27 +2181,28 @@
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
+            if (combatAwaitingSettlementAck || settlementTimerPending) {
+                return;
+            }
             if (shouldFinishCombatVictory(data)) {
                 finishCombatVictoryFromPayload(data);
                 return;
             }
             setCombatPhaseLock(false);
             hideCombatModal();
-            const phase = Number(data.current_phase) || 0;
             const settled = applySettlementEnemyHp(data);
             const settlement = getRoundSettlement(settled);
             const hasDamage = Number(settlement.team_damage_dealt) > 0
                 || (settled.log_entries || []).some(e => e?.type === 'damage');
             const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
-            if (!shouldShowRoundSettlement(settled) && !mustShow) {
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    return;
+            if (!shouldShowRoundSettlement(settled)) {
+                if (!mustShow) {
+                    combatWaitingForRound = false;
+                    hideCombatWaitingPanel();
+                    updateCombatUI(settled, { damageDelay: 0 });
+                    syncEnemyHpDisplay(settled);
+                    startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 }
-                combatWaitingForRound = false;
-                hideCombatWaitingPanel();
-                updateCombatUI(settled, { damageDelay: 0 });
-                syncEnemyHpDisplay(settled);
-                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
                 return;
             }
             showFullRoundSettlement(settled);
@@ -3535,12 +3548,17 @@
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
-                    hideRoundSettlementModal();
+
+                    if (combatAwaitingSettlementAck || settlementTimerPending) {
+                        queueVictoryDuringSettlement(data);
+                        return;
+                    }
 
                     if (victoryPayloadHasSettlement(data) || shouldFinishCombatVictory(data)) {
                         await finishCombatVictoryFromPayload(data);
                     } else {
                         resetCombatSettlementState();
+                        hideRoundSettlementModal();
                         showCombatResult(data);
                     }
 
