@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-29 · local/GitHub：`1bf2b9f` · PA：`0c43e04`（待 deploy）
+> 最後更新：2026-06-29 · local/GitHub：`56fc2bf` · PA：`0c43e04`（待 deploy）
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -18,8 +18,8 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `1bf2b9f` | ✅ |
-| **GitHub `main`** | `1bf2b9f` | ✅ |
+| **Local** | `56fc2bf` | ✅ |
+| **GitHub `main`** | `56fc2bf` | ✅ |
 | **PythonAnywhere** | `0c43e04` | ⏳ 待 deploy |
 
 ```bash
