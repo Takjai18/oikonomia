@@ -1870,6 +1870,17 @@ def migrate_db():
             except sqlite3.OperationalError:
                 pass
 
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='story_views'")
+    if not c.fetchone():
+        c.execute('''CREATE TABLE story_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            squad_id TEXT NOT NULL,
+            story_id TEXT NOT NULL,
+            viewed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(squad_id, story_id),
+            FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
+        )''')
+
     item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
     if item_count == 0:
         now = datetime.now().isoformat()
@@ -1996,6 +2007,245 @@ STORY_CONTENT = {
         3: {"title": "🌊 最終階段：覺醒", "content": "你已經掌握足夠嘅資訊，準備迎接最後嘅真相。"},
     },
 }
+
+# 劇情介面用嘅多行對話（story_id = {route}_stage{N}）
+NARRATIVE_PORTRAITS = {
+    "Iggy": "/static/portraits/guardian_male_01.png",
+    "Marah": "/static/portraits/healer_female_01.png",
+    "Judas": "/static/portraits/seeker_female_02.png",
+    "旁白": "/static/portraits/visionary_female_04.png",
+}
+
+NARRATIVE_STORIES = {
+    "welcome": {
+        "story_id": "welcome",
+        "chapter": "OIKONOMIA",
+        "title": "歡迎",
+        "current_stage": 0,
+        "total_stages": 1,
+        "route": None,
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": "歡迎來到 Oikonomia。呢個世界嘅界線正慢慢裂開，而你將會成為故事嘅一部分。"},
+            {"character": "旁白", "text": "選擇你嘅路線，加入小隊，完成任務，面對遭遇——故事會隨你嘅腳步展開。"},
+        ],
+    },
+    "iggy_stage0": {
+        "story_id": "iggy_stage0",
+        "chapter": "CHAPTER 01 — 裂縫",
+        "title": "裂縫的開端",
+        "current_stage": 1,
+        "total_stages": 4,
+        "route": "iggy",
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Iggy", "text": "這裡的空氣……有種熟悉的沉重。我好像曾經來過。"},
+            {"character": "Iggy", "text": "界線不是用來囚禁誰的，是用來保護還未準備好的人。"},
+            {"character": "旁白", "text": "你踏入了 Iggy 路線。第一個任務，將會喚醒一段被遺忘的記憶。"},
+        ],
+    },
+    "iggy_stage1": {
+        "story_id": "iggy_stage1",
+        "chapter": "CHAPTER 01 — 裂縫",
+        "title": "痛楚的回音",
+        "current_stage": 2,
+        "total_stages": 4,
+        "route": "iggy",
+        "min_stage": 1,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Judas", "text": "你以為守住界線就安全了嗎？痛楚從來不會因為轉身而消失。"},
+            {"character": "Iggy", "text": "我聽見了……那些低語。但這次，我不會再獨自承受。"},
+        ],
+    },
+    "iggy_stage2": {
+        "story_id": "iggy_stage2",
+        "chapter": "CHAPTER 01 — 裂縫",
+        "title": "界線的崩壞",
+        "current_stage": 3,
+        "total_stages": 4,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": False,
+        "replayable": True,
+        "lines": [
+            {"character": "Iggy", "text": "裂痕正在擴大。每一次退讓，都讓寄生者更靠近。"},
+            {"character": "旁白", "text": "全隊必須在戰鬥與任務中守住彼此——否則界線將徹底崩塌。"},
+        ],
+    },
+    "iggy_stage3": {
+        "story_id": "iggy_stage3",
+        "chapter": "CHAPTER 01 — 裂縫",
+        "title": "救贖或崩壞",
+        "current_stage": 4,
+        "total_stages": 4,
+        "route": "iggy",
+        "min_stage": 3,
+        "skippable": False,
+        "replayable": True,
+        "lines": [
+            {"character": "Iggy", "text": "最後一道界線就在眼前。救贖唔係逃避，係面對。"},
+            {"character": "Judas", "text": "選擇吧——繼續守護，或者讓一切歸於沉默。"},
+        ],
+    },
+    "marah_stage0": {
+        "story_id": "marah_stage0",
+        "chapter": "CHAPTER 01 — 深淵",
+        "title": "智慧的開端",
+        "current_stage": 1,
+        "total_stages": 4,
+        "route": "marah",
+        "min_stage": 0,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Marah", "text": "智慧不是答案本身，而是知道何時該開口、何時該沉默。"},
+            {"character": "旁白", "text": "你選擇了 Marah 路線。深淵的低語，需要用韌性去聆聽。"},
+        ],
+    },
+    "marah_stage1": {
+        "story_id": "marah_stage1",
+        "chapter": "CHAPTER 01 — 深淵",
+        "title": "低語的解析",
+        "current_stage": 2,
+        "total_stages": 4,
+        "route": "marah",
+        "min_stage": 1,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "Judas", "text": "理解我，你就能超越恐懼——這是你想要的嗎？"},
+            {"character": "Marah", "text": "我會聽，但不會被吞噬。界線是為了連結，不是為了服從。"},
+        ],
+    },
+    "marah_stage2": {
+        "story_id": "marah_stage2",
+        "chapter": "CHAPTER 01 — 深淵",
+        "title": "韌性的考驗",
+        "current_stage": 3,
+        "total_stages": 4,
+        "route": "marah",
+        "min_stage": 2,
+        "skippable": False,
+        "replayable": True,
+        "lines": [
+            {"character": "Marah", "text": "情緒勒索最擅長偽裝成關心。看清它，才能保護自己同隊友。"},
+            {"character": "旁白", "text": "遭遇與任務會考驗全隊的韌性——保持連結，不要孤軍作戰。"},
+        ],
+    },
+    "marah_stage3": {
+        "story_id": "marah_stage3",
+        "chapter": "CHAPTER 01 — 深淵",
+        "title": "覺醒",
+        "current_stage": 4,
+        "total_stages": 4,
+        "route": "marah",
+        "min_stage": 3,
+        "skippable": False,
+        "replayable": True,
+        "lines": [
+            {"character": "Marah", "text": "真相並不溫柔，但覺醒從來不需要完美。"},
+            {"character": "Judas", "text": "你準備好了嗎？最後的問題，只有全隊一起才能回答。"},
+        ],
+    },
+}
+
+
+def _enrich_story_lines(story):
+    """為每行補上 portrait URL。"""
+    enriched = dict(story)
+    lines = []
+    for line in story.get("lines") or []:
+        row = dict(line)
+        char = row.get("character") or "旁白"
+        row.setdefault("portrait", NARRATIVE_PORTRAITS.get(char, NARRATIVE_PORTRAITS["旁白"]))
+        lines.append(row)
+    enriched["lines"] = lines
+    return enriched
+
+
+def is_story_viewed(squad_id, story_id):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM story_views WHERE squad_id = ? AND story_id = ?",
+            (squad_id, story_id),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def mark_story_viewed(squad_id, story_id):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            """INSERT OR IGNORE INTO story_views (squad_id, story_id, viewed_at)
+               VALUES (?, ?, ?)""",
+            (squad_id, story_id, datetime.now().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def narrative_story_id_for_stage(route, stage):
+    if not route:
+        return None
+    story_id = f"{route}_stage{stage}"
+    return story_id if story_id in NARRATIVE_STORIES else None
+
+
+def get_pending_story_id(squad):
+    squad_id = squad.get("squad_id")
+    route = squad.get("route")
+    if not route:
+        pending_welcome = "welcome"
+        if not is_story_viewed(squad_id, pending_welcome):
+            return pending_welcome
+        return None
+
+    completed_count, completed_task_ids = count_team_distinct_tasks(
+        squad_id, squad.get("team_id")
+    )
+    stage = resolve_story_stage(completed_count, completed_task_ids)
+    story_id = narrative_story_id_for_stage(route, stage)
+    if not story_id:
+        return None
+    story = NARRATIVE_STORIES.get(story_id, {})
+    if story.get("min_stage", 0) > stage:
+        return None
+    if is_story_viewed(squad_id, story_id):
+        return None
+    return story_id
+
+
+def get_available_narrative_stories(squad):
+    squad_id = squad.get("squad_id")
+    route = squad.get("route")
+    completed_count, completed_task_ids = count_team_distinct_tasks(
+        squad_id, squad.get("team_id")
+    )
+    stage = resolve_story_stage(completed_count, completed_task_ids)
+    results = []
+    for story_id, story in NARRATIVE_STORIES.items():
+        story_route = story.get("route")
+        if story_route and story_route != route:
+            continue
+        if story.get("min_stage", 0) > stage:
+            continue
+        viewed = is_story_viewed(squad_id, story_id)
+        if viewed and not story.get("replayable"):
+            continue
+        payload = _enrich_story_lines(story)
+        payload["viewed"] = viewed
+        results.append(payload)
+    return results
 
 def count_team_distinct_tasks(squad_id, team_id):
     conn = sqlite3.connect(DB_PATH)
@@ -3115,12 +3365,81 @@ def story_progress():
     route = squad.get("route")
     story = get_story_for_route(route, stage)
 
+    pending_story_id = get_pending_story_id(squad)
+    narrative_stories = get_available_narrative_stories(squad)
+
     return jsonify({
         "stage": stage,
         "completed_tasks": completed_count,
         "route": route,
         "next_stage_at": next_stage_threshold(stage),
         "stage_thresholds": STORY_STAGE_THRESHOLDS,
+        "story": story,
+        "pending_story_id": pending_story_id,
+        "narrative_stories": narrative_stories,
+    })
+
+
+@app.route("/api/story/<story_id>")
+def api_get_story(story_id):
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    story = NARRATIVE_STORIES.get(story_id)
+    if not story:
+        return jsonify({"error": "劇情不存在"}), 404
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+
+    story_route = story.get("route")
+    if story_route and squad.get("route") != story_route:
+        return jsonify({"error": "此劇情不適用於你目前的路線"}), 403
+
+    if story.get("min_stage") is not None and story_route:
+        completed_count, completed_task_ids = count_team_distinct_tasks(
+            session["squad_id"], squad.get("team_id")
+        )
+        stage = resolve_story_stage(completed_count, completed_task_ids)
+        if story.get("min_stage", 0) > stage:
+            return jsonify({"error": "故事階段未解鎖"}), 403
+
+    payload = _enrich_story_lines(story)
+    payload["viewed"] = is_story_viewed(session["squad_id"], story_id)
+    payload["skippable"] = story.get("skippable", True)
+    return jsonify({"success": True, **payload})
+
+
+@app.route("/api/story/<story_id>/complete", methods=["POST"])
+def api_complete_story(story_id):
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    if story_id not in NARRATIVE_STORIES:
+        return jsonify({"error": "劇情不存在"}), 404
+
+    mark_story_viewed(session["squad_id"], story_id)
+    return jsonify({"success": True, "story_id": story_id})
+
+
+@app.route("/api/story/pending")
+def api_pending_story():
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+
+    pending_id = get_pending_story_id(squad)
+    if not pending_id:
+        return jsonify({"success": True, "pending_story_id": None})
+
+    story = _enrich_story_lines(NARRATIVE_STORIES[pending_id])
+    return jsonify({
+        "success": True,
+        "pending_story_id": pending_id,
         "story": story,
     })
 
@@ -4072,12 +4391,22 @@ def submit_task():
         conn.commit()
 
         if not already_submitted:
+            old_count, old_tasks = count_team_distinct_tasks(session["squad_id"], team_id)
             new_sanity = min(100, squad["sanity"] + 6)
             new_resources = squad["resources"] + 1
             update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
+            squad = get_squad(session["squad_id"])
+            new_count, new_tasks = count_team_distinct_tasks(session["squad_id"], team_id)
+            old_stage = resolve_story_stage(old_count, old_tasks)
+            new_stage = resolve_story_stage(new_count, new_tasks)
+            pending_story_id = None
+            if new_stage > old_stage and squad:
+                pending_story_id = get_pending_story_id(squad)
             return jsonify({
                 "success": True,
-                "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）"
+                "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）",
+                "pending_story_id": pending_story_id,
+                "stage": new_stage,
             })
         return jsonify({
             "success": True,
@@ -7512,6 +7841,158 @@ HTML_TEMPLATE = """
             await loadCombatStatus(false);
         }
 
+        let currentStory = null;
+        let currentLineIndex = 0;
+        let storyTypewriterTimer = null;
+        const storyAutoShown = new Set();
+
+        function clearStoryTypewriter() {
+            if (storyTypewriterTimer) {
+                clearInterval(storyTypewriterTimer);
+                storyTypewriterTimer = null;
+            }
+        }
+
+        function typewriterStoryText(textEl, text, onDone) {
+            clearStoryTypewriter();
+            if (!textEl) return;
+            textEl.textContent = '';
+            let i = 0;
+            const content = text || '';
+            if (!content.length) {
+                if (onDone) onDone();
+                return;
+            }
+            storyTypewriterTimer = setInterval(() => {
+                textEl.textContent += content[i];
+                i += 1;
+                if (i >= content.length) {
+                    clearStoryTypewriter();
+                    if (onDone) onDone();
+                }
+            }, 28);
+        }
+
+        function showStory(storyData) {
+            if (!storyData?.lines?.length) return;
+            currentStory = storyData;
+            currentLineIndex = 0;
+
+            document.getElementById('story-chapter').textContent = storyData.chapter || '';
+            document.getElementById('story-stage').textContent =
+                `Stage ${storyData.current_stage ?? 1} / ${storyData.total_stages ?? 1}`;
+            document.getElementById('story-title').textContent = storyData.title || '';
+
+            const skipBtn = document.getElementById('story-skip-btn');
+            if (skipBtn) {
+                setVisible(skipBtn, storyData.skippable !== false);
+            }
+
+            const modal = document.getElementById('story-modal');
+            setVisible(modal, true);
+            modal.classList.add('flex');
+
+            showCurrentStoryLine();
+        }
+
+        function showCurrentStoryLine() {
+            if (!currentStory?.lines) return;
+            const line = currentStory.lines[currentLineIndex];
+            const textEl = document.getElementById('story-text');
+            const portraitEl = document.getElementById('story-portrait');
+            const nameEl = document.getElementById('story-character-name');
+            const progressEl = document.getElementById('story-line-progress');
+
+            if (portraitEl) {
+                if (line.portrait) {
+                    portraitEl.src = line.portrait;
+                    setVisible(portraitEl.parentElement, true);
+                } else {
+                    setVisible(portraitEl.parentElement, false);
+                }
+            }
+            if (nameEl) nameEl.textContent = line.character || '';
+            if (progressEl) {
+                progressEl.textContent = `${currentLineIndex + 1} / ${currentStory.lines.length}`;
+            }
+
+            typewriterStoryText(textEl, line.text || '');
+        }
+
+        function nextStoryLine() {
+            if (!currentStory) return;
+            clearStoryTypewriter();
+            currentLineIndex += 1;
+            if (currentLineIndex < currentStory.lines.length) {
+                showCurrentStoryLine();
+            } else {
+                finishStoryModal();
+            }
+        }
+
+        async function finishStoryModal() {
+            const storyId = currentStory?.story_id;
+            closeStoryModal(false);
+            if (storyId) {
+                try {
+                    await fetch(`/api/story/${encodeURIComponent(storyId)}/complete`, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                    });
+                } catch (_) {}
+            }
+            if (currentStory?.onComplete) currentStory.onComplete();
+            currentStory = null;
+        }
+
+        function closeStoryModal(markComplete = true) {
+            clearStoryTypewriter();
+            const modal = document.getElementById('story-modal');
+            if (modal) {
+                modal.classList.remove('flex');
+                setVisible(modal, false);
+            }
+            if (markComplete && currentStory?.story_id) {
+                fetch(`/api/story/${encodeURIComponent(currentStory.story_id)}/complete`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                }).catch(() => {});
+            }
+            currentStory = null;
+        }
+
+        function tryCloseStoryModal() {
+            if (currentStory?.skippable === false) return;
+            closeStoryModal(true);
+        }
+
+        async function fetchStoryAndShow(storyId) {
+            try {
+                const res = await fetch(`/api/story/${encodeURIComponent(storyId)}`, { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || '無法載入劇情');
+                    return;
+                }
+                showStory(data);
+            } catch (e) {
+                alert('載入劇情失敗');
+            }
+        }
+
+        async function checkPendingStory() {
+            const modal = document.getElementById('story-modal');
+            if (modal && !modal.classList.contains('hidden')) return;
+            try {
+                const res = await fetch('/api/story/pending', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.pending_story_id || storyAutoShown.has(data.pending_story_id)) return;
+                storyAutoShown.add(data.pending_story_id);
+                if (data.story) showStory(data.story);
+                else fetchStoryAndShow(data.pending_story_id);
+            } catch (_) {}
+        }
+
         async function loadStoryLog() {
             const container = document.getElementById('story-log-content');
             container.innerHTML = '<div class="text-zinc-400">載入故事中...</div>';
@@ -7534,6 +8015,41 @@ HTML_TEMPLATE = """
                     progressHint = `<div class="text-xs text-amber-400/80 mt-3">你已達最終故事階段</div>`;
                 }
 
+                let narrativeSection = '';
+                const narratives = data.narrative_stories || [];
+                if (narratives.length) {
+                    narrativeSection = `
+                        <div class="mt-4 pt-4 border-t border-zinc-700">
+                            <div class="text-sm font-medium text-amber-400 mb-3">📖 劇情片段</div>
+                            <div class="space-y-2">
+                                ${narratives.map(s => `
+                                    <div class="flex items-center justify-between gap-2 bg-zinc-800/60 rounded-2xl px-4 py-3">
+                                        <div class="min-w-0">
+                                            <div class="font-medium text-sm truncate">${s.title || s.story_id}</div>
+                                            <div class="text-[10px] text-zinc-500">${s.chapter || ''} · Stage ${s.current_stage}/${s.total_stages}</div>
+                                        </div>
+                                        <button type="button" onclick="fetchStoryAndShow('${s.story_id}')"
+                                                class="shrink-0 text-xs px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-zinc-950 rounded-xl font-medium">
+                                            ${s.viewed ? '重溫' : '觀看'}
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>`;
+                }
+
+                if (data.pending_story_id) {
+                    narrativeSection = `
+                        <div class="mb-4 p-4 bg-amber-900/20 border border-amber-600/40 rounded-2xl">
+                            <div class="text-sm text-amber-300 mb-2">有新劇情等待你</div>
+                            <button type="button" onclick="fetchStoryAndShow('${data.pending_story_id}')"
+                                    class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 text-sm font-semibold rounded-xl">
+                                觀看劇情
+                            </button>
+                        </div>
+                    ` + narrativeSection;
+                }
+
                 let encounterHint = '';
                 try {
                     const encRes = await fetch('/encounters', { credentials: 'same-origin' });
@@ -7552,6 +8068,7 @@ HTML_TEMPLATE = """
                 } catch (_) {}
 
                 container.innerHTML = `
+                    ${narrativeSection}
                     <div class="mb-3 flex flex-wrap gap-2">
                         <div class="inline-block px-3 py-1 bg-zinc-700 rounded-full text-xs">
                             已完成任務：${completed} 個
@@ -8157,6 +8674,7 @@ HTML_TEMPLATE = """
                 if (data.team) currentSquad.team = data.team;
             }
             initPlayerAvatar();
+            setTimeout(() => checkPendingStory(), 600);
         }
 
         async function setTeamRoute(route) {
@@ -9282,6 +9800,7 @@ HTML_TEMPLATE = """
             const data = await res.json();
             alert(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'));
             if (modal) modal.remove();
+            if (data.pending_story_id) fetchStoryAndShow(data.pending_story_id);
         }
 
         async function submitPhotoTask(locId, btn) {
@@ -9295,6 +9814,7 @@ HTML_TEMPLATE = """
             const data = await res.json();
             alert(data.message);
             closeModal(btn);
+            if (data.pending_story_id) fetchStoryAndShow(data.pending_story_id);
         }
 
         async function startPuzzle(locId, btn) {
@@ -9919,6 +10439,45 @@ HTML_TEMPLATE = """
                 <button type="button" id="modal-cancel-btn" onclick="closeCombatModal()"
                         class="w-full py-2 text-sm text-zinc-400 hover:text-white">
                     取消
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 劇情介面 -->
+    <div id="story-modal"
+         onclick="if (event.target.id === 'story-modal') tryCloseStoryModal()"
+         class="hidden fixed inset-0 bg-black/95 z-[60] items-center justify-center">
+        <div class="w-full max-w-md px-4" onclick="event.stopPropagation()">
+            <div class="text-center mb-4">
+                <div id="story-chapter" class="text-amber-400 text-sm tracking-[2px] font-medium"></div>
+                <div id="story-stage" class="text-white text-lg font-semibold mt-0.5"></div>
+                <div id="story-title" class="text-zinc-400 text-sm mt-1"></div>
+            </div>
+
+            <div class="flex flex-col items-center mb-4">
+                <div class="w-24 h-24 rounded-full overflow-hidden border-[6px] border-zinc-800 shadow-2xl mb-2">
+                    <img id="story-portrait" class="w-full h-full object-cover" alt="角色" src="/static/portraits/guardian_male_01.png">
+                </div>
+                <div id="story-character-name" class="text-xs text-amber-400/90 tracking-wide"></div>
+            </div>
+
+            <div class="bg-zinc-900 border border-zinc-700 rounded-3xl px-6 py-7 min-h-[130px] flex items-center">
+                <div id="story-text" class="text-white text-[15px] leading-relaxed text-center w-full"></div>
+            </div>
+
+            <div class="mt-2 text-center text-[10px] text-zinc-600">
+                <span id="story-line-progress"></span>
+            </div>
+
+            <div class="mt-6 flex justify-center gap-x-4 items-center">
+                <button type="button" id="story-skip-btn" onclick="closeStoryModal()"
+                        class="px-6 py-2.5 text-sm text-zinc-400 hover:text-white transition-colors">
+                    跳過
+                </button>
+                <button type="button" onclick="nextStoryLine()"
+                        class="px-8 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-sm tracking-wider transition-colors">
+                    繼續
                 </button>
             </div>
         </div>
