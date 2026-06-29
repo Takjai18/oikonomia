@@ -121,6 +121,6 @@ python3 test_combat.py          # 需本地 DB / 環境
 
 | 角色 | 先讀 |
 |------|------|
-| **Grok**（方向） | `README.md` → `AGENT_HANDOFF.md`「尚未完成」 |
+| **Grok**（方向） | `README.md` → **[ARCHITECTURE_ROADMAP.md](./ARCHITECTURE_ROADMAP.md)** → `AGENT_HANDOFF.md`「尚未完成」 |
 | **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → `CURRENT_STRUCTURE.md` |
 | **Gemini**（review / debug） | **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** → `AGENT_HANDOFF.md` |
