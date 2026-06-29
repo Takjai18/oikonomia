@@ -8,12 +8,10 @@ from datetime import datetime, timedelta
 
 from models.settings import settings
 from models.encounter import load_encounter
-from models.encounter_outcomes import (
-    apply_encounter_failure,
-    apply_encounter_failure_solo,
-    apply_encounter_success,
-    apply_encounter_success_solo,
-    apply_trauma_bad_ending_victory,
+from services.combat_outcomes import (
+    build_defeat_outcome_payload,
+    build_victory_outcome_payload,
+    resolve_combat_outcome,
 )
 from models.item import get_item_by_id
 from models.squad import (
@@ -25,19 +23,14 @@ from models.squad import (
 )
 from models.protagonist import (
     apply_damage_to_protagonist,
-    check_ending_condition,
     get_controllable_protagonist_squad_id,
     get_player_control_protagonist_ids,
-    get_team_ending_state,
-    get_team_protagonist_trauma_total,
     get_team_story_stage,
-    has_trauma_bad_ending,
     is_protagonist_participant,
     parse_protagonist_squad_id,
     protagonist_player_control_enabled,
     refresh_combat_participants,
     resolve_combat_protagonist_keys,
-    trauma_bad_ending_narrative,
 )
 from models.team import get_team_by_id, get_team_protagonists, official_squad_route
 from utils.db_tx import immediate_transaction, with_db_retry
@@ -905,25 +898,16 @@ def _end_combat(combat_id, winner, encounter):
         clear_team_combat_id(team_id)
     elif starter_id:
         update_squad(starter_id, current_combat_id=None)
-    trauma_total = get_team_protagonist_trauma_total(team_id) if team_id else 0
-    if winner == "squad" and encounter:
-        if team_id and has_trauma_bad_ending(team_id):
-            apply_trauma_bad_ending_victory(team_id, encounter)
-            combat = append_combat_log(
-                get_combat(combat_id),
-                f"主角心理創傷過深（累計 {trauma_total}）——勝利無法帶來真正救贖",
-                log_type="trauma_ending",
-            )
-            save_combat(combat_id, logs=combat.get("logs"))
-        elif team_id:
-            apply_encounter_success(team_id, encounter, starter_id)
-        elif starter_id:
-            apply_encounter_success_solo(starter_id, encounter)
-    elif winner == "enemy" and encounter:
-        if team_id:
-            apply_encounter_failure(team_id, encounter)
-        elif starter_id:
-            apply_encounter_failure_solo(starter_id, encounter)
+    outcome = resolve_combat_outcome(
+        winner, team_id, encounter, starter_id, combat_id=combat_id,
+    )
+    for entry in outcome.get("log_messages") or []:
+        combat = append_combat_log(
+            get_combat(combat_id),
+            entry.get("message", ""),
+            log_type=entry.get("log_type", "event"),
+        )
+        save_combat(combat_id, logs=combat.get("logs"))
     return get_combat(combat_id)
 
 def build_enemy_combat_stats(combat, encounter=None):
@@ -1364,33 +1348,9 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
 
 def _combat_outcome_json(winner, encounter, team_id=None):
     if winner == "squad":
-        ending = get_team_ending_state(team_id) if team_id else {}
-        trauma_bad = bool(ending.get("trauma_bad_ending"))
-        payload = {
-            "success": True,
-            "status": "ended",
-            "outcome": "victory",
-            "winner": "squad",
-            "narrative": (encounter or {}).get("success", {}).get("narrative"),
-            "reflection_prompt": (encounter or {}).get("reflection_prompt"),
-            "ending_condition": ending.get("ending_condition") or check_ending_condition(team_id),
-            "protagonist_trauma_total": ending.get("protagonist_trauma_total", 0),
-        }
-        if team_id:
-            payload["ending"] = ending
-        if trauma_bad:
-            payload["trauma_bad_ending"] = True
-            payload["narrative"] = trauma_bad_ending_narrative(encounter)
-            payload["reflection_prompt"] = None
-        return payload
+        return build_victory_outcome_payload(encounter, team_id=team_id)
     if winner == "enemy":
-        return {
-            "success": True,
-            "status": "ended",
-            "outcome": "defeat",
-            "winner": "enemy",
-            "narrative": (encounter or {}).get("failure", {}).get("narrative"),
-        }
+        return build_defeat_outcome_payload(encounter)
     return None
 
 

@@ -1,5 +1,9 @@
 """Narrative story UI helpers."""
-from data.narrative_stories import NARRATIVE_PORTRAITS, NARRATIVE_STORIES
+from data.narrative_stories import (
+    CONDITIONAL_NARRATIVE_FRAGMENTS,
+    NARRATIVE_PORTRAITS,
+    NARRATIVE_STORIES,
+)
 from data.story_config import STORY_CONTENT, STORY_STAGE_THRESHOLDS
 from models.settings import settings
 from services.story import count_team_distinct_tasks, is_story_viewed, resolve_story_stage
@@ -63,3 +67,16 @@ def get_available_narrative_stories(squad):
         payload["viewed"] = viewed
         results.append(payload)
     return results
+
+
+def get_conditional_narrative_fragment(fragment_id, team_id=None):
+    """
+    Return trauma/ending fragment by id (weakness_grace, trauma_caution, …).
+    team_id reserved for future route-specific variants.
+    """
+    _ = team_id
+    fragments = CONDITIONAL_NARRATIVE_FRAGMENTS
+    configured = getattr(settings, "conditional_narrative_fragments", None)
+    if configured:
+        fragments = configured
+    return dict(fragments.get(fragment_id) or {})

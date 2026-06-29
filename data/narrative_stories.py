@@ -221,3 +221,47 @@ NARRATIVE_STORIES = {
         ],
     },
 }
+
+# Conditional fragments for trauma / ending (triggered via services.narrative)
+CONDITIONAL_NARRATIVE_FRAGMENTS = {
+    "weakness_grace": {
+        "fragment_id": "weakness_grace",
+        "summary": "界線仍清晰。記得：能力是在人的軟弱上顯得完全（林後 12:9）。",
+        "lines": [
+            {
+                "character": "旁白",
+                "text": "你們仍走在光中。軟弱不是羞恥，而是讓恩典有空間停留的地方。",
+            },
+        ],
+    },
+    "trauma_caution": {
+        "fragment_id": "trauma_caution",
+        "summary": "主角身上留有創傷——請彼此守望，在軟弱中同行。",
+        "lines": [
+            {
+                "character": "旁白",
+                "text": "裂縫正在加深。此刻需要的不是獨自硬撐，而是誠實與禱告。",
+            },
+        ],
+    },
+    "trauma_critical": {
+        "fragment_id": "trauma_critical",
+        "summary": "創傷已逼近臨界——再受重創可能無法迎來真正的救贖結局。",
+        "lines": [
+            {
+                "character": "旁白",
+                "text": "陰影在主角心裡扎根。全隊需要放慢腳步，為彼此守住界線。",
+            },
+        ],
+    },
+    "bad_ending_locked": {
+        "fragment_id": "bad_ending_locked",
+        "summary": "心理創傷過深，故事已走向陰影結局。",
+        "lines": [
+            {
+                "character": "旁白",
+                "text": "你們贏過不少戰役，卻輸給了未處理的傷。盼望仍在基督裡，但此行的結局已偏離。",
+            },
+        ],
+    },
+}

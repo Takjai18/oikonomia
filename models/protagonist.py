@@ -1,6 +1,7 @@
 """Protagonist combat state: persistence, participation, AI, trauma."""
 import sqlite3
 from datetime import datetime, timedelta
+from enum import Enum
 
 from models.settings import settings
 from models.squad import DEFAULT_MAX_HP, get_team_members
@@ -10,6 +11,16 @@ from services.story import count_team_distinct_tasks, resolve_story_stage
 PROTAGONIST_PREFIX = "protagonist:"
 FINAL_STAGE_THRESHOLD = 3
 TRAUMA_BAD_ENDING_LIMIT = 3
+
+
+class ProtagonistLifeState(str, Enum):
+    """High-level protagonist state for UI and narrative triggers."""
+
+    NORMAL = "normal"
+    NEAR_DEATH = "near_death"
+    TRAUMATIZED = "traumatized"
+    RESOLVED = "resolved"
+
 
 PROTAGONIST_PROFILES = {
     "iggy": {
@@ -110,13 +121,64 @@ def get_active_protagonists(team_id):
         conn.close()
 
 
-def apply_trauma(team_id, protagonist_key, amount=1):
+def log_trauma_event(team_id, protagonist_key, delta, reason=None):
+    """Append audit row for trauma changes (reason = near_death, encounter_failure, …)."""
+    clean_team = (team_id or "").strip().upper()
+    if not clean_team or protagonist_key not in ("iggy", "marah"):
+        return
+    conn = sqlite3.connect(_db())
+    try:
+        conn.execute(
+            """INSERT INTO protagonist_trauma_log
+               (team_id, protagonist, delta, reason, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (clean_team, protagonist_key, int(delta), reason, datetime.now().isoformat()),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+
+
+def apply_trauma(team_id, protagonist_key, amount=1, reason=None):
+    """Unified trauma increment; optional reason logged to protagonist_trauma_log."""
     state = get_protagonist_state(team_id, protagonist_key, create=False)
     if not state:
         return None
-    new_trauma = int(state.get("trauma_count") or 0) + int(amount)
+    delta = int(amount)
+    if delta == 0:
+        return int(state.get("trauma_count") or 0)
+    new_trauma = int(state.get("trauma_count") or 0) + delta
     update_protagonist_state(team_id, protagonist_key, trauma_count=new_trauma)
+    if reason:
+        log_trauma_event(team_id, protagonist_key, delta, reason)
     return new_trauma
+
+
+def get_protagonist_life_state(team_id, protagonist_key):
+    """Map DB row to ProtagonistLifeState."""
+    state = get_protagonist_state(team_id, protagonist_key, create=False)
+    if not state:
+        return ProtagonistLifeState.NORMAL
+
+    until = state.get("near_death_until")
+    if until:
+        try:
+            if datetime.now() < datetime.fromisoformat(until):
+                return ProtagonistLifeState.NEAR_DEATH
+        except ValueError:
+            pass
+
+    trauma = int(state.get("trauma_count") or 0)
+    hp = int(state.get("hp") or 0)
+    if has_trauma_bad_ending(team_id) or trauma > TRAUMA_BAD_ENDING_LIMIT:
+        return ProtagonistLifeState.TRAUMATIZED
+    if trauma >= 2:
+        return ProtagonistLifeState.TRAUMATIZED
+    if hp > 0 and trauma > 0 and not until:
+        return ProtagonistLifeState.RESOLVED
+    return ProtagonistLifeState.NORMAL
 
 
 def check_ending_condition(team_id):
@@ -438,7 +500,9 @@ def apply_damage_to_protagonist(team_id, protagonist_key, damage, participant=No
         updates["near_death_until"] = (
             datetime.now() + timedelta(minutes=settings.near_death_minutes)
         ).isoformat()
-        updates["trauma_count"] = apply_trauma(team_id, protagonist_key, 1)
+        updates["trauma_count"] = apply_trauma(
+            team_id, protagonist_key, 1, reason="near_death_damage",
+        )
     return update_protagonist_state(team_id, protagonist_key, **updates)
 
 

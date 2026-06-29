@@ -135,6 +135,8 @@ flowchart LR
 | 2026-06-29 | 採 Grok 三分工：Grok 方向 / Grok Build 實作 / Gemini review | Tak |
 | 2026-06-29 | 戰鬥模組標記 Production Ready（Gemini §15）；優先做 Phase 1 收斂 ending | Grok + Grok Build |
 | 2026-06-29 | Phase 2 Orchestrator 延後至營會後；營會前不拆 `index.html` | Grok Build 建議 |
+| 2026-06-29 | **Phase 1 完成**：`services/ending.py`、`apply_trauma(reason)`、`/status` trauma_level + ending_preview、`_end_combat` 經 `judge_ending` | Grok Build |
+| 2026-06-29 | **Phase 2 完成**：`services/combat_outcomes.py`、`ProtagonistLifeState`、`CONDITIONAL_NARRATIVE_FRAGMENTS`、`database.py` 拆出 migrations | Grok Build |
 
 ---
 
