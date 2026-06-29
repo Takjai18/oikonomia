@@ -1758,19 +1758,31 @@
             setVisible(modal, false);
         }
 
-        function parseEnemyRemainingHpFromLogs(logEntries) {
+        function parseEnemyRemainingHpFromLogs(logEntries, logLines) {
             for (let i = (logEntries || []).length - 1; i >= 0; i--) {
                 const e = logEntries[i];
                 if (e?.type !== 'summary') continue;
                 const m = (e.message || '').match(/剩餘\s*HP\s*(\d+)/);
                 if (m) return parseInt(m[1], 10);
             }
+            for (let i = (logLines || []).length - 1; i >= 0; i--) {
+                const m = String(logLines[i] || '').match(/剩餘\s*HP\s*(\d+)/);
+                if (m) return parseInt(m[1], 10);
+            }
             return null;
+        }
+
+        function parseEnemyRemainingHpFromStatus(data) {
+            return parseEnemyRemainingHpFromLogs(data?.log_entries || [], data?.log || []);
+        }
+
+        function isCombatModalBusy() {
+            return actionModalRolling || actionModalPauseTimer !== null;
         }
 
         function applySettlementEnemyHp(data) {
             if (!data?.enemy) return data;
-            const remaining = parseEnemyRemainingHpFromLogs(data.log_entries || []);
+            const remaining = parseEnemyRemainingHpFromStatus(data);
             if (remaining == null) return data;
             const current = Number(data.enemy.hp);
             if (Number.isFinite(current) && current <= remaining) return data;
@@ -1951,15 +1963,14 @@
             selectedDice = null;
             const phase = lastCombatStatus?.current_phase || 0;
             if (phase) lastDicePhase = phase;
-            if (lastCombatStatus) {
-                updateCombatUI(lastCombatStatus);
-            } else {
-                loadCombatStatus(false);
-            }
+            loadCombatStatus(false);
         }
 
         function showFullRoundSettlement(data) {
             data = applySettlementEnemyHp(data);
+            if (data.enemy?.hp != null) {
+                resetCombatEnemyHpTracking(data.enemy.hp);
+            }
             const phase = Number(data?.current_phase) || 0;
             combatAwaitingSettlementAck = true;
             settlementTimerPending = true;
@@ -2375,7 +2386,10 @@
                 setCombatModalControlsLocked(false);
                 document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
                     const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
-                        && !lastCombatStatus?.my_state?.submitted;
+                        && !lastCombatStatus?.my_state?.submitted
+                        && !combatAwaitingSettlementAck
+                        && !settlementTimerPending
+                        && !combatPhaseLocked;
                     el.disabled = !canAct;
                 });
 
@@ -3333,8 +3347,10 @@
             });
             if (canAct && phaseNum !== lastDicePhase) {
                 lastDicePhase = phaseNum;
-                resetCombatDiceUi();
-            } else if (me.submitted || !canAct) {
+                if (!isCombatModalBusy()) {
+                    resetCombatDiceUi();
+                }
+            } else if ((me.submitted || !canAct) && !isCombatModalBusy()) {
                 hideCombatModal();
             }
             if (hintEl) {
@@ -4414,17 +4430,20 @@
             safeSetText('enemy-name', enemy.name || '敵人');
             const quoteEl = document.getElementById('enemy-quote');
             if (quoteEl) quoteEl.textContent = description || '';
-            let hp = enemy.hp ?? 0;
+            const enemyHpRaw = enemy.hp;
+            let hp = enemyHpRaw != null ? Number(enemyHpRaw) : null;
             const maxHp = enemy.max_hp || enemy.hp || 1;
-            const logHp = parseEnemyRemainingHpFromLogs(lastCombatStatus?.log_entries || []);
-            if (logHp != null && (!Number.isFinite(Number(hp)) || Number(hp) > logHp)) {
+            const logHp = parseEnemyRemainingHpFromStatus(lastCombatStatus || {});
+            if (logHp != null && (!Number.isFinite(hp) || hp > logHp)) {
                 hp = logHp;
             }
+            if (!Number.isFinite(hp)) {
+                hp = logHp != null ? logHp : 0;
+            }
             const rawStatus = lastCombatStatus?.status;
-            const settlementPending = combatAwaitingSettlementAck || settlementTimerPending;
-            if (settlementPending && combatEnemyHpSeen !== null) {
-                hp = Math.min(hp, combatEnemyHpSeen);
-            } else if (rawStatus === 'resolving' && combatEnemyHpSeen !== null) {
+            if (rawStatus === 'resolving' && combatEnemyHpSeen !== null) {
+                hp = combatEnemyHpSeen;
+            } else if (combatEnemyHpSeen !== null && hp > combatEnemyHpSeen) {
                 hp = combatEnemyHpSeen;
             } else if (currentCombatId) {
                 combatEnemyHpSeen = hp;

@@ -922,10 +922,50 @@ def _end_combat(combat_id, winner, encounter):
         save_combat(combat_id, logs=combat.get("logs"))
     return get_combat(combat_id)
 
+def _enemy_hp_from_logs(logs):
+    """Latest post-damage enemy HP parsed from round summary logs."""
+    for entry in reversed(logs or []):
+        if not isinstance(entry, dict) or entry.get("type") != "summary":
+            continue
+        msg = entry.get("message") or ""
+        match = re.search(r"剩餘\s*HP\s*(\d+)", msg)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def reconcile_enemy_hp(combat, persist=False):
+    """
+    Align combat.enemy_hp with log summaries when DB snapshot is stale.
+    Logs are written in the same resolve pass as damage; if stored HP is higher
+    than the latest summary, trust the summary.
+    """
+    if not combat:
+        return combat
+    log_hp = _enemy_hp_from_logs(combat.get("logs"))
+    if log_hp is None:
+        return combat
+    stored = combat.get("enemy_hp")
+    if stored is not None and int(stored) <= log_hp:
+        return combat
+    combat = dict(combat)
+    combat["enemy_hp"] = log_hp
+    if persist and combat.get("id"):
+        save_combat(combat["id"], enemy_hp=log_hp)
+    return combat
+
+
 def build_enemy_combat_stats(combat, encounter=None):
     """敵人 5 維數值（同玩家：生命值／神智／力量／智力／韌性）。"""
+    combat = reconcile_enemy_hp(combat)
     enemy_def = (encounter or {}).get("enemy", {}) if encounter else {}
-    hp = int(combat.get("enemy_hp") if combat.get("enemy_hp") is not None else enemy_def.get("hp") or 0)
+    log_hp = _enemy_hp_from_logs(combat.get("logs"))
+    if log_hp is not None:
+        hp = log_hp
+    elif combat.get("enemy_hp") is not None:
+        hp = int(combat.get("enemy_hp"))
+    else:
+        hp = int(enemy_def.get("hp") or 0)
     max_hp = int(combat.get("enemy_max_hp") if combat.get("enemy_max_hp") is not None else enemy_def.get("hp") or hp)
     sanity = int(
         combat.get("enemy_sanity") if combat.get("enemy_sanity") is not None
@@ -960,6 +1000,8 @@ def build_enemy_combat_stats(combat, encounter=None):
 
 
 def build_combat_status_response(combat, encounter, squad_id, participants=None):
+    if combat:
+        combat = reconcile_enemy_hp(combat, persist=True)
     combat_settings = (encounter or {}).get("combat_settings", {})
     if participants is None and combat:
         participants = get_combat_participants(combat)

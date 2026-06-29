@@ -329,6 +329,50 @@ def test_defend_team_buff_integration(client, client2, leader_id, member_id):
     )
 
 
+def test_enemy_hp_reconciled_from_logs(client, client2, team_id):
+    """Status API must repair stale DB enemy_hp using log summaries (F5 refresh)."""
+    from models.combat import build_enemy_combat_stats, save_combat
+
+    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID},
+        content_type="application/json",
+    )
+    combat_id = (r.get_json() or {}).get("combat_id")
+    ok("reconcile test: start", combat_id, str(r.get_json())[:120])
+
+    with patch("routes.combat.roll_combat_dice", return_value=1):
+        client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        )
+        client2.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        )
+
+    combat = get_combat(combat_id)
+    true_hp = combat_enemy_hp(combat, default=55)
+    ok("reconcile test: damage applied", true_hp < 55, f"hp={true_hp}")
+
+    save_combat(combat_id, enemy_hp=55)
+    st = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    payload_hp = int((st.get("enemy") or {}).get("hp") or -1)
+    ok("reconcile test: status returns log HP", payload_hp == true_hp, f"{payload_hp} vs {true_hp}")
+
+    repaired = combat_enemy_hp(get_combat(combat_id), default=55)
+    ok("reconcile test: DB repaired", repaired == true_hp, f"db={repaired}")
+
+    stats = build_enemy_combat_stats(get_combat(combat_id))
+    ok("reconcile test: build_enemy stats", int(stats.get("hp") or -1) == true_hp, str(stats))
+
+    teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
+    clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
+
+
 def test_enemy_hp_updates_after_round(client, client2, team_id):
     """Round resolve must persist enemy HP; round_resolved payload must reflect damage."""
     from models.protagonist import update_protagonist_state
@@ -663,6 +707,7 @@ def main():
     test_trauma_ending_thresholds()
     test_encounter_catalog()
     test_enemy_hp_updates_after_round(client, client2, team_id)
+    test_enemy_hp_reconciled_from_logs(client, client2, team_id)
 
     # --- 開始 encounter（max_hp 測試會改 TestLeader stats，先跑主線）---
     r = client.post(
