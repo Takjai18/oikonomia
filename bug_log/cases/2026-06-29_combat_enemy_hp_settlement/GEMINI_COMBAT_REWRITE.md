@@ -232,4 +232,22 @@ def _build_round_resolved_response(combat, encounter, squad_id):
 
 ---
 
+---
+
+## 11. Gemini Architect 回覆摘要（2026-06-30 · 已收）
+
+Gemini 交付 FSM + `combat_flow.js` 骨架 + 3 PR 計劃 + Playwright 清單。
+
+**Grok Build 調整（與產品硬需求對齊）**：
+
+| Gemini 提案 | 產品實際 | PR#1 實作 |
+|-------------|----------|-----------|
+| 動畫完**自動** submit | 動畫完 → **玩家確認** → submit | 加 `DICE_CONFIRM` 狀態 |
+| killing blow 直達 VICTORY | **先 SETTLEMENT 再 VICTORY** | `onSubmitResponse` + `pendingVictory` |
+| 砍掉 confirm 步驟 | 保留 confirm | 維持 `confirmRound` |
+
+**PR #1 已落地**（shadow mode）：`static/js/combat_flow.js` + `combatFsmHook` in `index.html` · marker `combat_flow_fsm_v1`
+
+**PR #2/#3**：待 shadow 對照無 mismatch 後執行。
+
 *Grok Build 會根據你的設計實作 · 本檔可 commit 引用*

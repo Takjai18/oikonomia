@@ -120,6 +120,11 @@ def api_version():
                 and "restoreCombatConfirmBtn" in template_text,
             "combat_flow_v15": "combat_flow_v15" in template_text
                 and "showCombatSubmitLoadingShell" in template_text,
+            "combat_flow_fsm_v1": "combat_flow_fsm_v1" in template_text
+                and "combatFsmHook" in template_text,
+            "combat_flow_js": os.path.isfile(
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "js", "combat_flow.js")
+            ),
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },

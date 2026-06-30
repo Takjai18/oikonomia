@@ -677,4 +677,15 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §26 v15 + combat rewrite spec*
+## 27. Gemini FSM 方案 → PR #1 shadow（2026-06-30）
+
+| 項 | 狀態 |
+|----|------|
+| `static/js/combat_flow.js` | ✅ CombatFlowManager + DICE_CONFIRM |
+| `combatFsmHook` 接入 | ✅ performAction / confirm / submit / settlement / victory |
+| `reconcileLegacyState` | ✅ updateCombatUI shadow 對照 |
+| PR #2 移除舊 guard | 待 shadow 穩定 |
+
+---
+
+*最後更新：2026-06-30 · §27 FSM PR#1*

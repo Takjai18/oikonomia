@@ -1189,6 +1189,7 @@
         </div>
     </div>
 
+    <script src="/static/js/combat_flow.js"></script>
     <script>
         let currentSquad = null;
 
@@ -1233,6 +1234,11 @@
             } catch (_) {
                 return {};
             }
+        }
+
+        // combat_flow_fsm_v1: PR#1 shadow FSM (static/js/combat_flow.js)
+        if (typeof ensureCombatFlow === 'function') {
+            ensureCombatFlow({ shadowMode: true });
         }
 
         // combat_flow_v15: dice animation restored; confirm hides dice; early victory lock
@@ -2249,6 +2255,9 @@
             stopCombatPolling();
             resetCombatSettlementState();
             resetCombatVictoryFlowState(options);
+            if (!options.keepVictoryLock) {
+                combatFsmHook('onCombatReset', { combatId: null });
+            }
             combatWaitingForRound = false;
             combatSubmittedPhase = 0;
             setCombatPhaseLock(false);
@@ -2320,6 +2329,7 @@
             if (pendingVictoryAfterSettlement) {
                 const victoryPayload = pendingVictoryAfterSettlement;
                 const combatId = victoryPayload.combat_id || currentCombatId;
+                combatFsmHook('onSettlementConfirm', { pendingVictory: true, combatId });
                 pendingVictoryAfterSettlement = null;
                 stopCombatPolling();
                 markCombatVictorySequenceComplete(combatId);
@@ -2333,6 +2343,7 @@
             if (isFinalHitOrVictory(resumeData)) {
                 const victoryPayload = buildVictoryTransitionPayload(resumeData);
                 const combatId = victoryPayload.combat_id || currentCombatId;
+                combatFsmHook('onSettlementConfirm', { pendingVictory: true, combatId });
                 combatAwaitingSettlementAck = false;
                 clearSettlementModalGuard();
                 pendingVictoryAfterSettlement = null;
@@ -2348,6 +2359,7 @@
             lastCombatStatusJson = '';
             lastCombatUiSnapshotKey = '';
             clearLocalCombatSubmittedState();
+            combatFsmHook('onSettlementConfirm', { combatId: currentCombatId });
             if (lastCombatStatus) {
                 updateCombatUI(lastCombatStatus, { forceRefresh: true });
             }
@@ -2368,6 +2380,9 @@
             const combatId = data?.combat_id || currentCombatId;
             if (isCombatVictorySequenceComplete(combatId)) return;
             data = enrichRoundSettlementData(data);
+            combatFsmHook('onSettlementShown', data, {
+                pendingVictory: !!pendingVictoryAfterSettlement || isFinalHitOrVictory(data),
+            });
             const phase = Number(data?.current_phase) || 0;
             const roundKey = settlementRoundKey(data);
             const displayKey = settlementDisplayKey(data);
@@ -2577,6 +2592,7 @@
                 const outcome = payload.outcome
                     || (payload.winner === 'enemy' ? 'defeat' : 'victory');
                 markCombatVictorySequenceComplete(payload.combat_id || currentCombatId);
+                combatFsmHook('onVictoryShown', payload, { outcome });
                 showCombatResult({
                     ...payload,
                     outcome,
@@ -2980,6 +2996,7 @@
                 document.getElementById('modal-status-hint').textContent =
                     `擲出 ${result} — ${description} · 請確認並結束本回合`;
 
+                combatFsmHook('onDiceAnimationComplete', { dice: result });
                 actionModalRolling = false;
                 setCombatModalControlsLocked(false);
                 document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
@@ -3050,6 +3067,7 @@
             btn.disabled = true;
             btn.textContent = '結算中…';
             showCombatSubmitLoadingShell();
+            combatFsmHook('onConfirmSubmit', { action: selectedAction });
             submitAction();
         }
 
@@ -3096,6 +3114,9 @@
                 selectedItemId = null;
             }
             highlightCombatAction(action, opts);
+            combatFsmHook('onActionStart', action, {
+                combatId: currentCombatId,
+            });
             openCombatModal();
 
             if (action === 'use_zoo') {
@@ -3877,6 +3898,14 @@
                 else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
                 else hintEl.textContent = '選擇行動後確認提交';
             }
+            combatFsmHook('reconcileLegacyState', {
+                combatAwaitingSettlementAck,
+                settlementModalVisible: isRoundSettlementModalVisible(),
+                actionModalRolling,
+                victoryFinalizeInProgress,
+                combatLive: uiData.active === true
+                    || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status),
+            });
         }
 
         async function loadCombatStatus(showLoading, options = {}) {
@@ -4069,6 +4098,10 @@
             }
             if (data.outcome || shouldFinishCombatVictory(data)) {
                 resetCombatDiceUi();
+                combatFsmHook('onSubmitResponse', data, {
+                    isFinalHit: shouldFinishCombatVictory(data),
+                    enemyHpAfter: resolveEnemyHpAfter(data),
+                });
                 await finishCombatVictoryFromPayload(data);
                 return;
             }
@@ -4076,6 +4109,7 @@
             lastDicePhase = 0;
 
             if (data.status === 'waiting_for_teammates') {
+                combatFsmHook('onSubmitResponse', data);
                 resetCombatDiceUi();
                 combatWaitingForRound = true;
                 combatSubmittedPhase = data.current_phase || lastCombatStatus?.current_phase || 0;
@@ -4089,6 +4123,10 @@
 
             if (data.status === 'round_resolved' || data.round_resolved) {
                 resetCombatDiceUi();
+                combatFsmHook('onSubmitResponse', data, {
+                    isFinalHit: isFinalHitOrVictory(data),
+                    enemyHpAfter: resolveEnemyHpAfter(data),
+                });
                 if (data.enemy?.hp != null) {
                     resetCombatEnemyHpTracking(data.enemy.hp);
                 }
@@ -4097,6 +4135,7 @@
             }
 
             resetCombatDiceUi();
+            combatFsmHook('onSubmitResponse', data);
             updateCombatUI({ ...data, active: true }, { damageDelay: 0 });
         }
 
