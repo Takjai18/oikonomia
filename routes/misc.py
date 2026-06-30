@@ -109,6 +109,9 @@ def api_version():
                 and "resolveEnemyHpAfter" in template_text,
             "combat_flow_v11": "combat_flow_v11" in template_text
                 and "isRoundSettlementModalVisible" in template_text,
+            "combat_flow_v12": "combat_flow_v12" in template_text
+                and "combatVictorySequenceCompleteId" in template_text
+                and "enrichRoundSettlementData" in template_text,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },

@@ -1,64 +1,76 @@
-# GEMINI_CONSULT — BUG-2026-001（Phase 3：Delay 殘留 + Settlement v10）
+# GEMINI_CONSULT — BUG-2026-001（Phase 4：Safari 0 傷害 + Chrome 勝利後重複結算）
 
-> Phase 1（HP／modal）→ v4–v10 已多輪修復。Phase 2（人工 delay 移除 → `combat_instant_settlement`）已實作。  
-> **本檔聚焦**：實機仍覺得慢嘅 **殘留 delay** + settlement／victory 過渡是否穩健。  
-> 完整脈絡：`REPORT.md` §13–§19 · `decisions_log.md` § instant settlement · § Combat Settlement Modal Bug
+> Phase 1–3 → v4–v11 已多輪修復。Henry Safari §16 resolved；**2026-06-30 新回報** reopen 兩個子議題。  
+> 完整脈絡：`REPORT.md` §21–§23 · `decisions_log.md` § instant settlement
 
 ## 一句話
 
-**PA `6391b22`（`combat_flow_v10`）後端／CI 全綠；Henry／Tak 實機 settlement 大致 OK，但戶外仍覺得「攻擊→HP→modal」有 lag；另需確認 v10 final-hit 過渡無 regression。**
+**PA `40a2c53`（v11）後：Vini Safari 長戰結算顯示 0 傷害；Henry Chrome 勝利畫面後再彈結算。v12 patch 已實作，待實機驗證。**
 
-## 實機條件（2026-06-30）
+## 實機條件（2026-06-30 · 新回報）
+
+| 子議題 | 玩家 | 瀏覽器 | Encounter | 症狀 |
+|--------|------|--------|-----------|------|
+| §21 | Vini | **Safari** macOS | `practice_iggy_04_marathon` | 非 0 骰；結算 UI **全 0**（HP 有變） |
+| §22 | Henry · `PLAYER-75406` | **Chrome** macOS | （長戰／killing blow） | 結算→勝利→**再結算** |
 
 | 項目 | 值 |
 |------|-----|
-| 玩家 | Henry · `PLAYER-75406` · Iggy · 單人 |
-| PA / GitHub | `6391b22`（deploy 後 curl 核對） |
-| Markers | `combat_instant_settlement`, `combat_flow_v7`–`v10`, `enemy_hp_sync_v7`, `settlement_breakdown_v1` |
-| 已驗 encounter | `practice_iggy_01_quick`、`practice_iggy_03_boundary`（instant checklist OK） |
-| 新修復待驗 | `practice_iggy_02_leech`（情緒寄生影 final-hit stuck → v10） |
+| Baseline commit | `40a2c53`（`combat_flow_v11`） |
+| v12 markers | `combat_flow_v12`, `combatVictorySequenceCompleteId`, `enrichRoundSettlementData` |
+| 對照 | Henry Chrome §21 **無** 0 傷害；Henry Safari §16 **無** §22 |
 
-## 已確認
+## Code review 結論（Phase 4 — 請 Gemini 確認）
 
-- 後端 `enemy.hp` / `round_settlement.enemy_hp_after` / DB log **一致**（`test_combat_flow.py` 192+ 項）
-- `COMBAT_SETTLEMENT_DELAY_MS` 已移除；`pauseMs: 0`；settlement modal **即時**（無 1500ms 人工等待）
-- v8–v10：`settlementModalShown`、`isFinalHitOrVictory`、`resolveEnemyHpAfter` 防 duplicate + final-hit 過渡
+### §22 Critical：勝利後重複結算
 
-## 殘留 delay 懷疑（Phase 3 — 請 Gemini 重點查）
+**根因鏈**：
 
-| 來源 | 位置 | 體感 |
-|------|------|------|
-| 擲骰動畫 | `DICE_ROLL_PRESETS.normal`：8×55ms ≈ **440ms**（提交**前**） | 攻擊 confirm 前仍要等 |
-| 網絡 RTT | `submit_action` + `loadCombatStatus` poll（3s interval） | 戶外 Wi‑Fi 慢時體感 lag |
-| HP 顯示時機 | `deferEnemyHp`：modal 期間主畫面**舊 HP**；按「確定」先 `applyPendingSettlementHp` | 玩家以為 HP 未跌 |
-| Poll 凍結 | `combatAwaitingSettlementAck` 期間 `loadCombatStatus` 只做 `syncHpOnlyFromPoll` | 必要但可能加重「無反應」感 |
-| 血條 vs 數字 | `syncEnemyHpDisplay` instant；血條 width 即時 | 應已同步，請確認無 regression |
+```
+continueCombatAfterRound → finalizeCombatVictoryFromPayload
+  → showCombatResult → resetCombatSessionState()
+  → settlementModalShown = false, victorySettlementAcknowledgedCombatId = null
+  → in-flight loadCombatStatus(poll) 仍帶 round_settlement
+  → handleCombatRoundResolved → showFullRoundSettlement (再彈)
+```
 
-**注意**：唔好再建議恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms modal delay（已決策移除）。
+**v12 修復**：
 
-## Gemini Review 回應（2026-06-30）
+- `combatVictorySequenceCompleteId` — finalize 前標記；poll / `showFullRoundSettlement` / `loadCombatStatus` early return
+- `showCombatResult(..., { fromVictoryFinalize: true })` — `keepVictoryLock` 唔清勝利鎖
 
-| Gemini 項 | 現行 `main` 核對 | 處理 |
-|-----------|------------------|------|
-| `getSettlementModalDelayMs` 1500ms | ❌ **唔存在**（Gemini 可能睇舊版 upload） | 無需改；v11 註解標明 instant modal |
-| `victorySettlementModalCombatId` 過度 guard | ✅ 存在 | **v11** 改為 modal 可見才 skip；stuck 時恢復 |
-| `deferEnemyHp` 錯位 | ✅ 存在 | **v11** 改 `deferEnemyHp: false` + 即時 `syncEnemyHpDisplay` |
-| 雙重 `DICE_ROLL_PRESETS` pauseMs 1150 | ❌ 僅一處；`pauseMs: 0` | 無需改 |
+### §21 High：Safari 結算 0 傷害
 
-## 請 Gemini 產出
+**根因鏈**：
 
-1. **Delay**：在保留 v6–v10 race guard 前提下，邊條路徑仍可縮至「攻擊 confirm 後 <1s 見 HP+modal」？具體 pseudo-diff（只 frontend）。
-2. **Settlement**：v10 `isFinalHitOrVictory` / `buildVictoryTransitionPayload` 有無 edge case（poll 與 submit 競態、duplicate modal、stuck buttons）？
-3. **測試**：點樣加 contract／Playwright  assert「round_resolved → `#combat-round-settlement-modal` visible < 1500ms」？
-4. **優先序**：delay vs 雙人隊未驗 vs 營會前穩定性 — P0/P1 建議。
+```
+getRoundSettlement → round_settlement 存在但 team_damage_dealt=0 或 breakdown.total=0
+  → buildSettlementBreakdown 早期 return 空 breakdown
+  → renderSettlementBreakdown 顯示全 0
+  （enemy HP 仍由 applySettlementEnemyHp / enemy_hp_after 更新）
+```
 
-## 必讀（GitHub `6391b22`）
+**v12 修復**：
 
-見 `GEMINI_REVIEW.md` §16 檔案包；**唔使全讀** `index.html`，跟 packet §D 摘錄即可。
+- `enrichRoundSettlementData` — 從 `log_entries` 用 `buildClientRoundSettlement` 補數字
+- `buildSettlementBreakdown` — breakdown total=0 但 team_damage_dealt>0 時重算
 
-## 點讀
+**Safari 因素**：可能疊加 **快取舊 JS**；實機必須硬刷新 + 核對 `/api/version` `combat_flow_v12: true`。
+
+## 請 Gemini 產出（Phase 4）
+
+1. **§22**：`combatVictorySequenceCompleteId` 有無 race（`showCombatResult` 被 defeat 路徑呼叫、`resetCombatSessionState` 其他 caller）？
+2. **§21**：`enrichRoundSettlementData` 會否誤用**上一回合** log？如何加 `current_phase` / summary 邊界 assert？
+3. **測試**：最小 Playwright／contract —「勝利畫面 visible 後 `#combat-round-settlement-modal` 不可再 flex」？
+4. **優先序**：v12 deploy 後 Vini Safari vs Henry Chrome 驗證順序？
+
+**勿建議**：恢復 1500ms modal delay；勿移除 instant settlement。
+
+## 必讀
 
 ```bash
 bash scripts/build_gemini_packet.sh
-# → 貼 bug_log/cases/.../GEMINI_PACKET.md 全文入 Gemini
+# → GEMINI_PACKET.md（含 v12 摘錄）
 ```
+
+見 `GEMINI_REVIEW.md` §17。

@@ -657,3 +657,41 @@ High 項要寫清 exploit 或 bug 重現步驟，同具體修復建議（交 Gro
 - Packet：`https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
 - Consult：`https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md`
 - `index.html`（大檔）：`https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/templates/index.html`
+
+---
+
+## 17. BUG-2026-001 Phase 4（Safari 0 傷害 + Chrome 勝利後重複結算 · 2026-06-30）
+
+### 17.1 俾 Gemini 嘅檔案
+
+| 檔案 | 用途 |
+|------|------|
+| **`GEMINI_PACKET.md`** | `bash scripts/build_gemini_packet.sh` — 含 v12 摘錄 |
+| **`GEMINI_CONSULT.md`** | Phase 4 題目（§21–§22） |
+| **`REPORT.md` §21–§23** | 實機回報 + code review 根因 + v12 |
+
+### 17.2 重點符號（grep `templates/index.html`）
+
+| 符號 | 議題 |
+|------|------|
+| `combatVictorySequenceCompleteId` | §22 勝利後重複結算 |
+| `showCombatResult` + `keepVictoryLock` | §22 reset 清空 guard |
+| `enrichRoundSettlementData` | §21 Safari 0 傷害 |
+| `buildSettlementBreakdown` breakdown early return | §21 空 breakdown |
+| `loadCombatStatus` poll `round_settlement` 路徑 | §22 觸發點 |
+
+### 17.3 Copy-paste 開場白（Phase 4）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+請讀 GEMINI_PACKET.md（BUG-2026-001 Phase 4）同 GEMINI_REVIEW.md §17。
+基準：40a2c53（v11）→ v12 patch 描述見 REPORT §21–§23。
+
+新症狀：
+1. Vini Safari — practice_iggy_04_marathon 結算顯示 0 傷害（骰子非 0）
+2. Henry Chrome — 勝利畫面後再彈傷害結算
+
+請確認 v12 修復是否覆蓋根因；指出 race／edge case；建議自動化 assert。
+格式：根因 → 重現 → 最小修復 → 測試。
+```

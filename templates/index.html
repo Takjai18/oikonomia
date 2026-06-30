@@ -1590,6 +1590,8 @@
         let combatFinalizingVictory = false;
         let victoryFinalizeInProgress = false;
         let victorySettlementAcknowledgedCombatId = null;
+        // combat_flow_v12: blocks poll/UI from re-opening settlement after victory sequence
+        let combatVictorySequenceCompleteId = null;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let lastCombatUiSnapshotKey = '';
@@ -1655,6 +1657,16 @@
         function isCombatVictoryPayload(data) {
             if (!data) return false;
             return !!(data.outcome || data.status === 'ended' || data.winner);
+        }
+
+        function isCombatVictorySequenceComplete(combatId) {
+            const cid = combatId || currentCombatId;
+            return !!(combatVictorySequenceCompleteId && cid === combatVictorySequenceCompleteId);
+        }
+
+        function markCombatVictorySequenceComplete(combatId) {
+            const cid = combatId || currentCombatId;
+            if (cid) combatVictorySequenceCompleteId = cid;
         }
 
         function queueVictoryDuringSettlement(data) {
@@ -1976,8 +1988,48 @@
             return 'teammate';
         }
 
+        function settlementHasDamageNumbers(settlement) {
+            if (!settlement) return false;
+            if (Number(settlement.team_damage_dealt) > 0) return true;
+            if (Number(settlement.enemy_damage_dealt) > 0) return true;
+            return (settlement.player_hits || []).some(h => Number(h.damage) > 0)
+                || (settlement.counter_hits || []).some(h => Number(h.damage) > 0);
+        }
+
+        function enrichRoundSettlementData(data) {
+            if (!data) return data;
+            let settlement = getRoundSettlement(data);
+            if (settlementHasDamageNumbers(settlement)) {
+                const bd = settlement.breakdown;
+                const bdTotal = Number(bd?.dealt?.total) || 0;
+                if (!bd || bdTotal > 0 || Number(settlement.team_damage_dealt) === 0) {
+                    return { ...data, round_settlement: settlement };
+                }
+                settlement = { ...settlement, breakdown: undefined };
+            }
+            const logs = data.log_entries || data.log || [];
+            const normalized = Array.isArray(logs) && logs[0]?.type
+                ? logs
+                : logs.map((line) => ({ type: 'event', message: String(line) }));
+            if (!normalized.length) return data;
+            const built = buildClientRoundSettlement(normalized);
+            if (!settlementHasDamageNumbers(built)) return data;
+            return {
+                ...data,
+                round_settlement: built,
+                round_resolved: data.round_resolved ?? data.status === 'round_resolved',
+                round_enemy_damage: built.team_damage_dealt,
+                round_player_damage: built.enemy_damage_dealt,
+            };
+        }
+
         function buildSettlementBreakdown(data, settlement) {
-            if (settlement?.breakdown) return settlement.breakdown;
+            const teamDealt = Number(settlement?.team_damage_dealt) || 0;
+            if (settlement?.breakdown) {
+                const bd = settlement.breakdown;
+                const bdTotal = Number(bd?.dealt?.total) || 0;
+                if (bdTotal > 0 || teamDealt === 0) return bd;
+            }
             const lookup = buildCombatParticipantLookup(data);
             const dealt = { player: 0, protagonist: 0, teammate: 0 };
             const taken = { player: 0, protagonist: 0, teammate: 0 };
@@ -1997,7 +2049,6 @@
                 taken[role] += dmg;
                 if (dmg > 0 && hit.target) takenNames[role].push(`${hit.target} -${dmg}`);
             });
-            const teamDealt = Number(settlement?.team_damage_dealt) || 0;
             const enemyDealt = Number(settlement?.enemy_damage_dealt) || 0;
             return {
                 dealt: {
@@ -2119,17 +2170,20 @@
             showFullRoundSettlement._modalTimer = null;
         }
 
-        function resetCombatVictoryFlowState() {
+        function resetCombatVictoryFlowState(options = {}) {
             combatFinalizingVictory = false;
             victoryFinalizeInProgress = false;
-            victorySettlementAcknowledgedCombatId = null;
-            victorySettlementModalCombatId = null;
+            if (!options.keepVictoryLock) {
+                victorySettlementAcknowledgedCombatId = null;
+                victorySettlementModalCombatId = null;
+                combatVictorySequenceCompleteId = null;
+            }
         }
 
-        function resetCombatSessionState() {
+        function resetCombatSessionState(options = {}) {
             stopCombatPolling();
             resetCombatSettlementState();
-            resetCombatVictoryFlowState();
+            resetCombatVictoryFlowState(options);
             combatWaitingForRound = false;
             combatSubmittedPhase = 0;
             setCombatPhaseLock(false);
@@ -2236,9 +2290,12 @@
         // combat_flow_v9: settlementModalShown + currentSettlementRound idempotent guard
         // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
         // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
+        // combat_flow_v12: victory sequence lock; enrich settlement from logs when API zeros
         function showFullRoundSettlement(data) {
-            const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
+            if (isCombatVictorySequenceComplete(combatId)) return;
+            data = enrichRoundSettlementData(data);
+            const phase = Number(data?.current_phase) || 0;
             const roundKey = settlementRoundKey(data);
             const displayKey = settlementDisplayKey(data);
             if (settlementModalShown && currentSettlementRound === roundKey) {
@@ -2348,8 +2405,9 @@
 
         async function finishCombatVictoryFromPayload(data) {
             if (victoryFinalizeInProgress) return;
-            data = ensureVictorySettlementPayload(data);
             const combatId = data?.combat_id || currentCombatId;
+            if (isCombatVictorySequenceComplete(combatId)) return;
+            data = ensureVictorySettlementPayload(enrichRoundSettlementData(data));
 
             if (combatAwaitingSettlementAck && isFinalHitOrVictory(data)) {
                 if (isRoundSettlementModalVisible()) {
@@ -2446,11 +2504,12 @@
                 }
                 const outcome = payload.outcome
                     || (payload.winner === 'enemy' ? 'defeat' : 'victory');
+                markCombatVictorySequenceComplete(payload.combat_id || currentCombatId);
                 showCombatResult({
                     ...payload,
                     outcome,
                     active: false,
-                });
+                }, { fromVictoryFinalize: true });
                 const statusRes = await fetchNoCache('/status');
                 updateDashboard(await statusRes.json());
                 combatItemsLoaded = false;
@@ -2496,6 +2555,8 @@
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
+            if (isCombatVictorySequenceComplete(data?.combat_id)) return;
+            data = enrichRoundSettlementData(data);
             if (isVictoryFlowLocked(data?.combat_id)) return;
             if (combatAwaitingSettlementAck || settlementTimerPending) {
                 return;
@@ -3409,8 +3470,8 @@
             await loadCombatStatus(true, { skipSquadRefresh: true });
         }
 
-        function showCombatResult(data) {
-            resetCombatSessionState();
+        function showCombatResult(data, options = {}) {
+            resetCombatSessionState({ keepVictoryLock: !!options.fromVictoryFinalize });
             resetCombatEnemyHpTracking(null);
             controllingProtagonist = false;
             setVisible(document.getElementById('combat-screen'), false);
@@ -3499,6 +3560,10 @@
                 || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status);
             if (!combatLive) {
                 if (uiData.outcome) {
+                    if (isCombatVictorySequenceComplete(uiData.combat_id)) {
+                        setVisible(document.getElementById('combat-result-panel'), true);
+                        return;
+                    }
                     if (shouldFinishCombatVictory(uiData)) {
                         if (!isVictoryFlowLocked(uiData.combat_id)) {
                             void finishCombatVictoryFromPayload(uiData);
@@ -3659,6 +3724,7 @@
 
         async function loadCombatStatus(showLoading, options = {}) {
             try {
+                if (isCombatVictorySequenceComplete(currentCombatId)) return;
                 if (victoryFinalizeInProgress) return;
                 if (combatFinalizingVictory) return;
                 if (!options.skipSquadRefresh) {
@@ -3731,7 +3797,9 @@
                 }
 
                 if (data.round_settlement && !settlementModalShown
-                    && !combatAwaitingSettlementAck && !victoryFinalizeInProgress) {
+                    && !combatAwaitingSettlementAck && !victoryFinalizeInProgress
+                    && !isCombatVictorySequenceComplete(data.combat_id)
+                    && !data.outcome && data.status !== 'ended') {
                     const pollSettled = applySettlementEnemyHp({
                         ...data,
                         round_resolved: true,

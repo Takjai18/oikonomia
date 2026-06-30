@@ -27,7 +27,7 @@ extract() {
 
 > **生成時間**：$(date -u +"%Y-%m-%d %H:%M UTC")  
 > **Git commit**：\`${COMMIT}\`  
-> **Phase**：3 — **Delay 殘留** + settlement v10（instant settlement 已上線）  
+> **Phase**：4 — Safari **0 傷害** + Chrome **勝利後重複結算**（v12 patch）
 > **用途**：Gemini **讀唔到** Google Drive bug_log 時，將**成個檔案** Copy & Paste 到 Gemini chat。  
 > **重新生成**：\`bash scripts/build_gemini_packet.sh\`
 
@@ -57,15 +57,15 @@ EOF
     fi
 
     cat <<'EOF'
-## B. 請 Gemini 回答（Phase 3：Delay + Settlement v10）
+## B. 請 Gemini 回答（Phase 4：0 傷害 + 勝利後重複結算）
 
-1. instant settlement 後，剩餘 delay 最可能來自邊 1–2 條 path？（擲骰 / deferEnemyHp / poll 3s / 網絡）
-2. `deferEnemyHp` 會否令玩家誤判「HP 冇跌」？建議改法？
-3. v10 `isFinalHitOrVictory` 有無 submit vs poll race 仍 stuck 或 duplicate modal？
-4. 最低風險 patch 順序（營會前）？
-5. 點樣自動化「confirm 後 modal visible < 1.5s」？
+1. `showCombatResult` → `resetCombatSessionState` 係咪 §22 根因？`combatVictorySequenceCompleteId` 夠唔夠？
+2. `enrichRoundSettlementData` 會否誤 parse 舊回合 log？點加 phase 邊界？
+3. Safari 0 傷害除 stale settlement 外，仲有無 `breakdown` early return 以外嘅 path？
+4. Playwright assert：勝利 panel visible 後 settlement modal 不可再 `flex`？
+5. v12 deploy 後邊個 browser／玩家先驗？
 
-**勿建議**：恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms 人工 modal 等待（已決策移除）。
+**勿建議**：恢復 1500ms modal delay。
 
 ## C. DOM 目標
 
@@ -83,14 +83,15 @@ EOF
 EOF
 
     extract "templates/index.html" 1238 1271 "javascript"
-    extract "templates/index.html" 1576 1595 "javascript"
-    extract "templates/index.html" 1832 1886 "javascript"
-    extract "templates/index.html" 2065 2110 "javascript"
-    extract "templates/index.html" 2184 2290 "javascript"
-    extract "templates/index.html" 2336 2425 "javascript"
-    extract "templates/index.html" 2440 2525 "javascript"
-    extract "templates/index.html" 3641 3725 "javascript"
-    extract "templates/index.html" 3768 3825 "javascript"
+    extract "templates/index.html" 1576 1605 "javascript"
+    extract "templates/index.html" 1655 1685 "javascript"
+    extract "templates/index.html" 1988 2070 "javascript"
+    extract "templates/index.html" 2120 2160 "javascript"
+    extract "templates/index.html" 2288 2360 "javascript"
+    extract "templates/index.html" 2395 2520 "javascript"
+    extract "templates/index.html" 2545 2595 "javascript"
+    extract "templates/index.html" 3468 3525 "javascript"
+    extract "templates/index.html" 3715 3810 "javascript"
 
     cat <<EOF
 
@@ -115,10 +116,10 @@ EOF
 | 項目 | 狀態 |
 |------|------|
 | Commit | \`${COMMIT}\` |
-| Markers | \`combat_instant_settlement\`, \`combat_flow_v7\`–\`v10\`, \`enemy_hp_sync_v7\` |
-| Henry instant checklist | ✅ OK（quick + boundary） |
-| 殘留 | **Delay 體感**未完全解決；v10 final-hit 待 Henry 驗 \`practice_iggy_02_leech\` |
-| 後端 | Combat log / \`enemy_hp_after\` 正確 |
+| Markers | \`combat_flow_v11\`–\`v12\`, \`combatVictorySequenceCompleteId\`, \`enrichRoundSettlementData\` |
+| §21 Vini Safari | 結算 0 傷害（marathon）— v12 待驗 |
+| §22 Henry Chrome | 勝利後重複結算 — v12 待驗 |
+| Henry Safari §16 | 先前通過；Chrome 新 regression |
 
 ## H. 相關文檔
 

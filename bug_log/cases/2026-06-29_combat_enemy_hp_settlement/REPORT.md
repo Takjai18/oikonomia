@@ -564,4 +564,81 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-*最後更新：2026-06-30 · §20 Gemini Phase 3*
+## 21. Safari 結算顯示 0 傷害（Vini · 2026-06-30）
+
+| 欄位 | 值 |
+|------|-----|
+| **玩家** | Vini · Safari（macOS） |
+| **Encounter** | `practice_iggy_04_marathon`（【練習】長戰巨影 · 高 HP） |
+| **PA / baseline** | `40a2c53`（`combat_flow_v11`） |
+| **症狀** | 多次擲出**非 0** 骰子；敵 HP 有變化；**傷害結算 modal 各欄顯示 0** |
+| **對照** | Henry · Chrome macOS **無**此問題 |
+| **狀態** | **fix_in_progress** — `combat_flow_v12` |
+
+### 根因假設（Code review · Gemini Phase 4）
+
+1. **Stale / 空 `round_settlement`**：poll 或 submit 回傳帶 `round_settlement.breakdown` 但 `team_damage_dealt=0`；`buildSettlementBreakdown` 早期 return 空 breakdown → UI 全 0（HP 仍由 `enemy_hp_after` 更新）。
+2. **Safari cache**：未硬刷新可能載入舊 JS；請 Vini **Safari 硬刷新**後再驗 v12。
+3. **客戶端未從 `log_entries` 補建**：`loadCombatStatus` 有 `buildClientRoundSettlement` 路徑，但 `submitAction` → `handleCombatRoundResolved` 未必補齊。
+
+### v12 修復
+
+- `enrichRoundSettlementData`：settlement 無數字時從 `log_entries` 補建。
+- `buildSettlementBreakdown`：`breakdown.dealt.total===0` 但 `team_damage_dealt>0` 時強制重算。
+
+### 驗證 checklist（Vini · Safari）
+
+- [ ] 硬刷新（⌘⇧R）後 `curl /api/version` 見 `combat_flow_v12: true`
+- [ ] `practice_iggy_04_marathon` 每回合結算：Player／總計 **非 0**
+- [ ] 與主畫面 HP 跌幅一致
+
+---
+
+## 22. Chrome 勝利後重複傷害結算（Henry · 2026-06-30）
+
+| 欄位 | 值 |
+|------|-----|
+| **玩家** | Henry · `PLAYER-75406` · Chrome macOS |
+| **PA / baseline** | `40a2c53`（`combat_flow_v11`） |
+| **症狀** | 傷害結算 →「確定，查看勝利」→ 勝利畫面 → **再次彈出傷害結算** |
+| **Safari 對照** | Henry Safari 先前 §16 **通過**；本次回報為 **Chrome** |
+| **狀態** | **fix_in_progress** — `combat_flow_v12` |
+
+### 根因（Code review 確認）
+
+`finalizeCombatVictoryFromPayload` → `showCombatResult` → **`resetCombatSessionState()`** 清空 `settlementModalShown`、`lastShownSettlementPhase`、`victorySettlementAcknowledgedCombatId`。  
+勝利畫面顯示後，**in-flight poll** 或 `loadCombatStatus` 仍帶 `round_settlement` → `handleCombatRoundResolved` → `showFullRoundSettlement` **再彈一次**。
+
+v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無法**擋住此路徑（guard 已被 reset）。
+
+### v12 修復
+
+| 機制 | 說明 |
+|------|------|
+| `combatVictorySequenceCompleteId` | `finalize` 前標記；`loadCombatStatus` / `showFullRoundSettlement` / poll 補 settlement 路徑 early return |
+| `showCombatResult({ fromVictoryFinalize })` | `resetCombatSessionState({ keepVictoryLock: true })` 保留勝利鎖 |
+| `updateCombatUI` | 已 complete 時只顯示 `combat-result-panel`，唔再 `finishCombatVictoryFromPayload` |
+
+### 驗證 checklist（Henry · Chrome）
+
+- [ ] Killing blow：`practice_iggy_04_marathon` 或 `practice_iggy_01_quick`
+- [ ] 流程：結算 1 次 → 確定勝利 → 勝利畫面 → **唔再**結算
+- [ ] Console 無 error
+
+---
+
+## 23. Gemini Phase 4 review 摘要（2026-06-30）
+
+| 項 | 嚴重度 | 結論 |
+|----|--------|------|
+| `showCombatResult` reset 清空 guard | **Critical** | §22 根因；v12 `combatVictorySequenceCompleteId` |
+| 空 breakdown early return | **High** | §21 根因；v12 `enrichRoundSettlementData` |
+| v11 `deferEnemyHp: false` | Low | 保留；有助 HP 同步 |
+| 1500ms setTimeout modal | N/A | False positive（仍唔存在） |
+| Safari-only | Medium | 可能 cache + stale settlement 疊加；硬刷新必測 |
+
+**Consult 更新**：`GEMINI_CONSULT.md` Phase 4 · **Packet**：`bash scripts/build_gemini_packet.sh`
+
+---
+
+*最後更新：2026-06-30 · §21–§23 Gemini Phase 4 + v12*

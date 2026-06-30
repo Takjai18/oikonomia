@@ -1,8 +1,8 @@
 # GEMINI_PACKET — BUG-2026-001（自包含，可直接貼入 Gemini）
 
-> **生成時間**：2026-06-30 03:08 UTC  
-> **Git commit**：`bd2b855`  
-> **Phase**：3 — **Delay 殘留** + settlement v10（instant settlement 已上線）  
+> **生成時間**：2026-06-30 03:15 UTC  
+> **Git commit**：`40a2c53`  
+> **Phase**：4 — Safari **0 傷害** + Chrome **勝利後重複結算**（v12 patch）
 > **用途**：Gemini **讀唔到** Google Drive bug_log 時，將**成個檔案** Copy & Paste 到 Gemini chat。  
 > **重新生成**：`bash scripts/build_gemini_packet.sh`
 
@@ -13,90 +13,102 @@
 1. **最簡單（推薦）**：打開本檔 → 全選 Copy → 貼到 Gemini
 2. **加文檔**：另貼 `GEMINI_REVIEW.md` §16 或只貼 `GEMINI_CONSULT.md`
 3. **GitHub Raw**（若 Gemini 支援 URL）：
-   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/bd2b855/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - Consult：https://raw.githubusercontent.com/Takjai18/oikonomia/bd2b855/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md
-   - index.html（大檔）：https://raw.githubusercontent.com/Takjai18/oikonomia/bd2b855/templates/index.html
+   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/40a2c53/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
+   - Consult：https://raw.githubusercontent.com/Takjai18/oikonomia/40a2c53/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md
+   - index.html（大檔）：https://raw.githubusercontent.com/Takjai18/oikonomia/40a2c53/templates/index.html
 4. **唔好用**：Drive 資料夾連結、`attachments/` 舊快照
 
 ---
 
 ## A. GEMINI_CONSULT（Phase 3 摘要）
 
-# GEMINI_CONSULT — BUG-2026-001（Phase 3：Delay 殘留 + Settlement v10）
+# GEMINI_CONSULT — BUG-2026-001（Phase 4：Safari 0 傷害 + Chrome 勝利後重複結算）
 
-> Phase 1（HP／modal）→ v4–v10 已多輪修復。Phase 2（人工 delay 移除 → `combat_instant_settlement`）已實作。  
-> **本檔聚焦**：實機仍覺得慢嘅 **殘留 delay** + settlement／victory 過渡是否穩健。  
-> 完整脈絡：`REPORT.md` §13–§19 · `decisions_log.md` § instant settlement · § Combat Settlement Modal Bug
+> Phase 1–3 → v4–v11 已多輪修復。Henry Safari §16 resolved；**2026-06-30 新回報** reopen 兩個子議題。  
+> 完整脈絡：`REPORT.md` §21–§23 · `decisions_log.md` § instant settlement
 
 ## 一句話
 
-**PA `6391b22`（`combat_flow_v10`）後端／CI 全綠；Henry／Tak 實機 settlement 大致 OK，但戶外仍覺得「攻擊→HP→modal」有 lag；另需確認 v10 final-hit 過渡無 regression。**
+**PA `40a2c53`（v11）後：Vini Safari 長戰結算顯示 0 傷害；Henry Chrome 勝利畫面後再彈結算。v12 patch 已實作，待實機驗證。**
 
-## 實機條件（2026-06-30）
+## 實機條件（2026-06-30 · 新回報）
+
+| 子議題 | 玩家 | 瀏覽器 | Encounter | 症狀 |
+|--------|------|--------|-----------|------|
+| §21 | Vini | **Safari** macOS | `practice_iggy_04_marathon` | 非 0 骰；結算 UI **全 0**（HP 有變） |
+| §22 | Henry · `PLAYER-75406` | **Chrome** macOS | （長戰／killing blow） | 結算→勝利→**再結算** |
 
 | 項目 | 值 |
 |------|-----|
-| 玩家 | Henry · `PLAYER-75406` · Iggy · 單人 |
-| PA / GitHub | `6391b22`（deploy 後 curl 核對） |
-| Markers | `combat_instant_settlement`, `combat_flow_v7`–`v10`, `enemy_hp_sync_v7`, `settlement_breakdown_v1` |
-| 已驗 encounter | `practice_iggy_01_quick`、`practice_iggy_03_boundary`（instant checklist OK） |
-| 新修復待驗 | `practice_iggy_02_leech`（情緒寄生影 final-hit stuck → v10） |
+| Baseline commit | `40a2c53`（`combat_flow_v11`） |
+| v12 markers | `combat_flow_v12`, `combatVictorySequenceCompleteId`, `enrichRoundSettlementData` |
+| 對照 | Henry Chrome §21 **無** 0 傷害；Henry Safari §16 **無** §22 |
 
-## 已確認
+## Code review 結論（Phase 4 — 請 Gemini 確認）
 
-- 後端 `enemy.hp` / `round_settlement.enemy_hp_after` / DB log **一致**（`test_combat_flow.py` 192+ 項）
-- `COMBAT_SETTLEMENT_DELAY_MS` 已移除；`pauseMs: 0`；settlement modal **即時**（無 1500ms 人工等待）
-- v8–v10：`settlementModalShown`、`isFinalHitOrVictory`、`resolveEnemyHpAfter` 防 duplicate + final-hit 過渡
+### §22 Critical：勝利後重複結算
 
-## 殘留 delay 懷疑（Phase 3 — 請 Gemini 重點查）
+**根因鏈**：
 
-| 來源 | 位置 | 體感 |
-|------|------|------|
-| 擲骰動畫 | `DICE_ROLL_PRESETS.normal`：8×55ms ≈ **440ms**（提交**前**） | 攻擊 confirm 前仍要等 |
-| 網絡 RTT | `submit_action` + `loadCombatStatus` poll（3s interval） | 戶外 Wi‑Fi 慢時體感 lag |
-| HP 顯示時機 | `deferEnemyHp`：modal 期間主畫面**舊 HP**；按「確定」先 `applyPendingSettlementHp` | 玩家以為 HP 未跌 |
-| Poll 凍結 | `combatAwaitingSettlementAck` 期間 `loadCombatStatus` 只做 `syncHpOnlyFromPoll` | 必要但可能加重「無反應」感 |
-| 血條 vs 數字 | `syncEnemyHpDisplay` instant；血條 width 即時 | 應已同步，請確認無 regression |
+```
+continueCombatAfterRound → finalizeCombatVictoryFromPayload
+  → showCombatResult → resetCombatSessionState()
+  → settlementModalShown = false, victorySettlementAcknowledgedCombatId = null
+  → in-flight loadCombatStatus(poll) 仍帶 round_settlement
+  → handleCombatRoundResolved → showFullRoundSettlement (再彈)
+```
 
-**注意**：唔好再建議恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms modal delay（已決策移除）。
+**v12 修復**：
 
-## Gemini Review 回應（2026-06-30）
+- `combatVictorySequenceCompleteId` — finalize 前標記；poll / `showFullRoundSettlement` / `loadCombatStatus` early return
+- `showCombatResult(..., { fromVictoryFinalize: true })` — `keepVictoryLock` 唔清勝利鎖
 
-| Gemini 項 | 現行 `main` 核對 | 處理 |
-|-----------|------------------|------|
-| `getSettlementModalDelayMs` 1500ms | ❌ **唔存在**（Gemini 可能睇舊版 upload） | 無需改；v11 註解標明 instant modal |
-| `victorySettlementModalCombatId` 過度 guard | ✅ 存在 | **v11** 改為 modal 可見才 skip；stuck 時恢復 |
-| `deferEnemyHp` 錯位 | ✅ 存在 | **v11** 改 `deferEnemyHp: false` + 即時 `syncEnemyHpDisplay` |
-| 雙重 `DICE_ROLL_PRESETS` pauseMs 1150 | ❌ 僅一處；`pauseMs: 0` | 無需改 |
+### §21 High：Safari 結算 0 傷害
 
-## 請 Gemini 產出
+**根因鏈**：
 
-1. **Delay**：在保留 v6–v10 race guard 前提下，邊條路徑仍可縮至「攻擊 confirm 後 <1s 見 HP+modal」？具體 pseudo-diff（只 frontend）。
-2. **Settlement**：v10 `isFinalHitOrVictory` / `buildVictoryTransitionPayload` 有無 edge case（poll 與 submit 競態、duplicate modal、stuck buttons）？
-3. **測試**：點樣加 contract／Playwright  assert「round_resolved → `#combat-round-settlement-modal` visible < 1500ms」？
-4. **優先序**：delay vs 雙人隊未驗 vs 營會前穩定性 — P0/P1 建議。
+```
+getRoundSettlement → round_settlement 存在但 team_damage_dealt=0 或 breakdown.total=0
+  → buildSettlementBreakdown 早期 return 空 breakdown
+  → renderSettlementBreakdown 顯示全 0
+  （enemy HP 仍由 applySettlementEnemyHp / enemy_hp_after 更新）
+```
 
-## 必讀（GitHub `6391b22`）
+**v12 修復**：
 
-見 `GEMINI_REVIEW.md` §16 檔案包；**唔使全讀** `index.html`，跟 packet §D 摘錄即可。
+- `enrichRoundSettlementData` — 從 `log_entries` 用 `buildClientRoundSettlement` 補數字
+- `buildSettlementBreakdown` — breakdown total=0 但 team_damage_dealt>0 時重算
 
-## 點讀
+**Safari 因素**：可能疊加 **快取舊 JS**；實機必須硬刷新 + 核對 `/api/version` `combat_flow_v12: true`。
+
+## 請 Gemini 產出（Phase 4）
+
+1. **§22**：`combatVictorySequenceCompleteId` 有無 race（`showCombatResult` 被 defeat 路徑呼叫、`resetCombatSessionState` 其他 caller）？
+2. **§21**：`enrichRoundSettlementData` 會否誤用**上一回合** log？如何加 `current_phase` / summary 邊界 assert？
+3. **測試**：最小 Playwright／contract —「勝利畫面 visible 後 `#combat-round-settlement-modal` 不可再 flex」？
+4. **優先序**：v12 deploy 後 Vini Safari vs Henry Chrome 驗證順序？
+
+**勿建議**：恢復 1500ms modal delay；勿移除 instant settlement。
+
+## 必讀
 
 ```bash
 bash scripts/build_gemini_packet.sh
-# → 貼 bug_log/cases/.../GEMINI_PACKET.md 全文入 Gemini
+# → GEMINI_PACKET.md（含 v12 摘錄）
 ```
+
+見 `GEMINI_REVIEW.md` §17。
 ---
 
-## B. 請 Gemini 回答（Phase 3：Delay + Settlement v10）
+## B. 請 Gemini 回答（Phase 4：0 傷害 + 勝利後重複結算）
 
-1. instant settlement 後，剩餘 delay 最可能來自邊 1–2 條 path？（擲骰 / deferEnemyHp / poll 3s / 網絡）
-2. `deferEnemyHp` 會否令玩家誤判「HP 冇跌」？建議改法？
-3. v10 `isFinalHitOrVictory` 有無 submit vs poll race 仍 stuck 或 duplicate modal？
-4. 最低風險 patch 順序（營會前）？
-5. 點樣自動化「confirm 後 modal visible < 1.5s」？
+1. `showCombatResult` → `resetCombatSessionState` 係咪 §22 根因？`combatVictorySequenceCompleteId` 夠唔夠？
+2. `enrichRoundSettlementData` 會否誤 parse 舊回合 log？點加 phase 邊界？
+3. Safari 0 傷害除 stale settlement 外，仲有無 `breakdown` early return 以外嘅 path？
+4. Playwright assert：勝利 panel visible 後 settlement modal 不可再 `flex`？
+5. v12 deploy 後邊個 browser／玩家先驗？
 
-**勿建議**：恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms 人工 modal 等待（已決策移除）。
+**勿建議**：恢復 1500ms modal delay。
 
 ## C. DOM 目標
 
@@ -151,7 +163,7 @@ bash scripts/build_gemini_packet.sh
         }
 ```
 
-### `templates/index.html` L1576–L1595
+### `templates/index.html` L1576–L1605
 
 ```javascript
         let lastShownSettlementPhase = 0;
@@ -171,78 +183,148 @@ bash scripts/build_gemini_packet.sh
         let combatFinalizingVictory = false;
         let victoryFinalizeInProgress = false;
         let victorySettlementAcknowledgedCombatId = null;
+        // combat_flow_v12: blocks poll/UI from re-opening settlement after victory sequence
+        let combatVictorySequenceCompleteId = null;
         let combatPhaseLocked = false;
         let combatPhaseLockedRound = 0;
         let lastCombatUiSnapshotKey = '';
+        let lastCombatStatusJson = '';
+        const COMBAT_POLL_INTERVAL_NORMAL = 3000;
+        const COMBAT_POLL_INTERVAL_WAITING = 4000;
+        const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
+
+        function appendCacheBust(url) {
+            const sep = url.includes('?') ? '&' : '?';
+            return `${url}${sep}t=${Date.now()}`;
 ```
 
-### `templates/index.html` L1832–L1886
+### `templates/index.html` L1655–L1685
 
 ```javascript
-        function syncEnemyHpDisplay(data, options = {}) {
-            if (options && typeof options === 'object' && options.hp != null
-                && options.enemyOverride === undefined) {
-                options = { enemyOverride: options };
-            }
-            const enemyOverride = options.enemyOverride ?? null;
-            const ctx = enemyOverride
-                ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
-                : data;
-            let hp = resolveAuthoritativeEnemyHp(ctx);
-            if (!Number.isFinite(hp)) return;
-            const combatId = ctx?.combat_id || currentCombatId;
-            const sameCombat = !combatId || combatId === currentCombatId;
-            if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
-                hp = lastAnimatedEnemyHp;
-            }
-            const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
-            const prevHpRaw = Number.isFinite(lastAnimatedEnemyHp)
-                ? lastAnimatedEnemyHp
-                : resolveAuthoritativeEnemyHp(lastCombatStatus);
-            const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
-            const fmt = (n) => Number(n).toLocaleString('zh-Hant');
-            safeSetText('enemy-hp-max', fmt(maxHp));
-            safeSetText('enemy-hp-current', fmt(hp));
-            const bar = document.getElementById('enemy-hp-bar');
-            const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
-            if (bar) {
-                bar.style.width = `${targetPct}%`;
-                if (Number.isFinite(prevHp) && hp < prevHp) flashEnemyHpBar();
-            }
-            combatEnemyHpSeen = hp;
-            lastAnimatedEnemyHp = hp;
-            safeSetText('enemy-stat-hp', fmt(hp));
-            const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
-                const delta = prevHp - hp;
-                roundDmgEl.textContent = `敵人剩餘 ${fmt(hp)}（本回合 -${fmt(delta)}）`;
-                setVisible(roundDmgEl, true);
-            }
         }
 
-        function applySettlementEnemyHp(data) {
-            if (!data?.enemy) return data;
-            const settlement = getRoundSettlement(data);
-            let remaining = Number.isFinite(Number(settlement.enemy_hp_after))
-                ? Number(settlement.enemy_hp_after)
-                : parseEnemyRemainingHpFromStatus(data);
-            const current = Number(data.enemy.hp);
-            if (remaining == null && !Number.isFinite(current)) return data;
-            const candidates = [];
-            if (Number.isFinite(current)) candidates.push(current);
-            if (remaining != null) candidates.push(remaining);
-            if (!candidates.length) return data;
-            return { ...data, enemy: { ...data.enemy, hp: Math.min(...candidates) } };
+        function isCombatVictoryPayload(data) {
+            if (!data) return false;
+            return !!(data.outcome || data.status === 'ended' || data.winner);
         }
-```
 
-### `templates/index.html` L2065–L2110
+        function isCombatVictorySequenceComplete(combatId) {
+            const cid = combatId || currentCombatId;
+            return !!(combatVictorySequenceCompleteId && cid === combatVictorySequenceCompleteId);
+        }
 
-```javascript
+        function markCombatVictorySequenceComplete(combatId) {
+            const cid = combatId || currentCombatId;
+            if (cid) combatVictorySequenceCompleteId = cid;
+        }
+
+        function queueVictoryDuringSettlement(data) {
+            if (isCombatVictoryPayload(data)) {
+                pendingVictoryAfterSettlement = data;
+                return true;
+            }
+            if (shouldFinishCombatVictory(data)) {
+                pendingVictoryAfterSettlement = {
+                    ...data,
+                    outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
                 };
+                return true;
+            }
+            return false;
+        }
+```
+
+### `templates/index.html` L1988–L2070
+
+```javascript
+            return 'teammate';
         }
 
-        function settlementRoundKey(data) {
+        function settlementHasDamageNumbers(settlement) {
+            if (!settlement) return false;
+            if (Number(settlement.team_damage_dealt) > 0) return true;
+            if (Number(settlement.enemy_damage_dealt) > 0) return true;
+            return (settlement.player_hits || []).some(h => Number(h.damage) > 0)
+                || (settlement.counter_hits || []).some(h => Number(h.damage) > 0);
+        }
+
+        function enrichRoundSettlementData(data) {
+            if (!data) return data;
+            let settlement = getRoundSettlement(data);
+            if (settlementHasDamageNumbers(settlement)) {
+                const bd = settlement.breakdown;
+                const bdTotal = Number(bd?.dealt?.total) || 0;
+                if (!bd || bdTotal > 0 || Number(settlement.team_damage_dealt) === 0) {
+                    return { ...data, round_settlement: settlement };
+                }
+                settlement = { ...settlement, breakdown: undefined };
+            }
+            const logs = data.log_entries || data.log || [];
+            const normalized = Array.isArray(logs) && logs[0]?.type
+                ? logs
+                : logs.map((line) => ({ type: 'event', message: String(line) }));
+            if (!normalized.length) return data;
+            const built = buildClientRoundSettlement(normalized);
+            if (!settlementHasDamageNumbers(built)) return data;
+            return {
+                ...data,
+                round_settlement: built,
+                round_resolved: data.round_resolved ?? data.status === 'round_resolved',
+                round_enemy_damage: built.team_damage_dealt,
+                round_player_damage: built.enemy_damage_dealt,
+            };
+        }
+
+        function buildSettlementBreakdown(data, settlement) {
+            const teamDealt = Number(settlement?.team_damage_dealt) || 0;
+            if (settlement?.breakdown) {
+                const bd = settlement.breakdown;
+                const bdTotal = Number(bd?.dealt?.total) || 0;
+                if (bdTotal > 0 || teamDealt === 0) return bd;
+            }
+            const lookup = buildCombatParticipantLookup(data);
+            const dealt = { player: 0, protagonist: 0, teammate: 0 };
+            const taken = { player: 0, protagonist: 0, teammate: 0 };
+            const dealtNames = { player: [], protagonist: [], teammate: [] };
+            const takenNames = { player: [], protagonist: [], teammate: [] };
+            (settlement?.player_hits || []).forEach((hit) => {
+                const role = hit.role || resolveHitRole(hit.player, lookup);
+                const dmg = Number(hit.damage) || 0;
+                if (!dealt[role]) dealt[role] = 0;
+                dealt[role] += dmg;
+                if (dmg > 0 && hit.player) dealtNames[role].push(`${hit.player} -${dmg}`);
+            });
+            (settlement?.counter_hits || []).forEach((hit) => {
+                const role = hit.role || resolveHitRole(hit.target, lookup);
+                const dmg = Number(hit.damage) || 0;
+                if (!taken[role]) taken[role] = 0;
+                taken[role] += dmg;
+                if (dmg > 0 && hit.target) takenNames[role].push(`${hit.target} -${dmg}`);
+            });
+            const enemyDealt = Number(settlement?.enemy_damage_dealt) || 0;
+            return {
+                dealt: {
+                    ...dealt,
+                    total: teamDealt || dealt.player + dealt.protagonist + dealt.teammate,
+                    details: dealtNames,
+                },
+                taken: {
+                    ...taken,
+                    total: enemyDealt || taken.player + taken.protagonist + taken.teammate,
+                    details: takenNames,
+                },
+                enemy: {
+                    damage_taken: teamDealt || dealt.player + dealt.protagonist + dealt.teammate,
+                    damage_dealt: enemyDealt || taken.player + taken.protagonist + taken.teammate,
+                },
+            };
+        }
+
+```
+
+### `templates/index.html` L2120–L2160
+
+```javascript
             const cid = data?.combat_id || currentCombatId || '';
             const phase = data?.round ?? data?.current_phase ?? 'unknown';
             return `${cid}:${phase}`;
@@ -284,70 +366,22 @@ bash scripts/build_gemini_packet.sh
         function resetCombatSettlementState() {
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
-            pendingSettlementHpPayload = null;
 ```
 
-### `templates/index.html` L2184–L2290
+### `templates/index.html` L2288–L2360
 
 ```javascript
-            if (!modal) return;
-            modal.classList.remove('flex');
-            setVisible(modal, false);
-        }
-
-        function continueCombatAfterRound() {
-            applyPendingSettlementHp();
-            settlementTimerPending = false;
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = null;
-            hideRoundSettlementModal();
-            hideSinglePlayerResultModal();
-            combatWaitingForRound = false;
-            resetCombatDiceUi();
-            selectedDice = null;
-            const panel = document.getElementById('player-panel');
-            if (panel) panel.style.opacity = '1';
-            if (pendingVictoryAfterSettlement) {
-                const victoryPayload = pendingVictoryAfterSettlement;
-                const combatId = victoryPayload.combat_id || currentCombatId;
-                pendingVictoryAfterSettlement = null;
-                stopCombatPolling();
-                victorySettlementAcknowledgedCombatId = combatId;
-                combatAwaitingSettlementAck = false;
-                clearSettlementModalGuard();
-                void finalizeCombatVictoryFromPayload(victoryPayload);
-                return;
-            }
-            const resumeData = pendingSettlementHpPayload || lastCombatStatus;
-            if (isFinalHitOrVictory(resumeData)) {
-                const victoryPayload = buildVictoryTransitionPayload(resumeData);
-                const combatId = victoryPayload.combat_id || currentCombatId;
-                combatAwaitingSettlementAck = false;
-                clearSettlementModalGuard();
-                pendingVictoryAfterSettlement = null;
-                stopCombatPolling();
-                victorySettlementAcknowledgedCombatId = combatId;
-                void finalizeCombatVictoryFromPayload(victoryPayload);
-                return;
-            }
-            clearSettlementModalGuard();
-            combatAwaitingSettlementAck = false;
-            lastCombatStatusJson = '';
-            lastCombatUiSnapshotKey = '';
-            const phase = lastCombatStatus?.current_phase || 0;
-            if (phase) lastDicePhase = phase;
-            loadCombatStatus(false);
-        }
-
-        // combat_instant_settlement: 零人工 delay；HP + 傷害結算 modal 即時
         // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
         // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
         // combat_flow_v9: settlementModalShown + currentSettlementRound idempotent guard
         // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
         // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
+        // combat_flow_v12: victory sequence lock; enrich settlement from logs when API zeros
         function showFullRoundSettlement(data) {
-            const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
+            if (isCombatVictorySequenceComplete(combatId)) return;
+            data = enrichRoundSettlementData(data);
+            const phase = Number(data?.current_phase) || 0;
             const roundKey = settlementRoundKey(data);
             const displayKey = settlementDisplayKey(data);
             if (settlementModalShown && currentSettlementRound === roundKey) {
@@ -397,13 +431,24 @@ bash scripts/build_gemini_packet.sh
             if (isVictorySettlement && combatId) {
                 victorySettlementModalCombatId = combatId;
             }
+            showRoundSettlementModal(data);
+            const hpSynced = applySettlementEnemyHp(data);
+            updateCombatUI(hpSynced, {
+                damageDelay: 0,
+                skipActionEnable: true,
+                deferEnemyHp: false,
+            });
+            syncEnemyHpDisplay(hpSynced);
+            if (isVictorySettlement) {
+                stopCombatPolling();
+            } else {
+                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+            }
 ```
 
-### `templates/index.html` L2336–L2425
+### `templates/index.html` L2395–L2520
 
 ```javascript
-                    round_resolved: true,
-                    round_enemy_damage: built.team_damage_dealt,
                 };
             }
             return data;
@@ -417,8 +462,9 @@ bash scripts/build_gemini_packet.sh
 
         async function finishCombatVictoryFromPayload(data) {
             if (victoryFinalizeInProgress) return;
-            data = ensureVictorySettlementPayload(data);
             const combatId = data?.combat_id || currentCombatId;
+            if (isCombatVictorySequenceComplete(combatId)) return;
+            data = ensureVictorySettlementPayload(enrichRoundSettlementData(data));
 
             if (combatAwaitingSettlementAck && isFinalHitOrVictory(data)) {
                 if (isRoundSettlementModalVisible()) {
@@ -492,11 +538,20 @@ bash scripts/build_gemini_packet.sh
             hideCombatWaitingPanel();
             hideRoundSettlementModal();
             hideSinglePlayerResultModal();
-```
-
-### `templates/index.html` L2440–L2525
-
-```javascript
+            hideCombatModal();
+            try {
+                if (data?.log_entries?.length) {
+                    processCombatDamageAnimations(data, 0);
+                }
+                resetCombatEnemyHpTracking(0);
+                updateEnemyCombatStats(
+                    { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
+                    data.enemy_description || lastCombatStatus?.enemy_description || '',
+                );
+                let payload = data;
+                if (!payload.outcome) {
+                    try {
+                        const url = currentCombatId
                             ? `/combat/status?combat_id=${currentCombatId}`
                             : '/combat/status';
                         const res = await fetchNoCache(url);
@@ -506,11 +561,12 @@ bash scripts/build_gemini_packet.sh
                 }
                 const outcome = payload.outcome
                     || (payload.winner === 'enemy' ? 'defeat' : 'victory');
+                markCombatVictorySequenceComplete(payload.combat_id || currentCombatId);
                 showCombatResult({
                     ...payload,
                     outcome,
                     active: false,
-                });
+                }, { fromVictoryFinalize: true });
                 const statusRes = await fetchNoCache('/status');
                 updateDashboard(await statusRes.json());
                 combatItemsLoaded = false;
@@ -519,30 +575,11 @@ bash scripts/build_gemini_packet.sh
                 combatFinalizingVictory = false;
             }
         }
+```
 
-        // combat_flow_v10: final hit uses round_settlement.enemy_hp_after (not only enemy.hp)
-        function resolveEnemyHpAfter(data) {
-            if (!data) return null;
-            const settlement = getRoundSettlement(data);
-            const fromSettlement = Number(settlement.enemy_hp_after);
-            if (Number.isFinite(fromSettlement)) return fromSettlement;
-            const hp = Number(data.enemy?.hp);
-            if (Number.isFinite(hp)) return hp;
-            return null;
-        }
+### `templates/index.html` L2545–L2595
 
-        function isFinalHitOrVictory(data) {
-            if (!data) return false;
-            if (data.outcome) return true;
-            if (data.status === 'ended' || data.winner) return true;
-            const hpAfter = resolveEnemyHpAfter(data);
-            return hpAfter !== null && hpAfter <= 0;
-        }
-
-        function shouldFinishCombatVictory(data) {
-            return isFinalHitOrVictory(data);
-        }
-
+```javascript
         function buildVictoryTransitionPayload(data) {
             const hpAfter = resolveEnemyHpAfter(data);
             const enemyHp = Number.isFinite(hpAfter) ? Math.max(0, hpAfter) : 0;
@@ -556,6 +593,8 @@ bash scripts/build_gemini_packet.sh
 
         function handleCombatRoundResolved(data) {
             if (!data) return;
+            if (isCombatVictorySequenceComplete(data?.combat_id)) return;
+            data = enrichRoundSettlementData(data);
             if (isVictoryFlowLocked(data?.combat_id)) return;
             if (combatAwaitingSettlementAck || settlementTimerPending) {
                 return;
@@ -583,20 +622,83 @@ bash scripts/build_gemini_packet.sh
             if (mustShow || shouldShowRoundSettlement(settled)) {
                 showFullRoundSettlement(settled);
                 return;
+            }
+            combatWaitingForRound = false;
+            hideCombatWaitingPanel();
+            updateCombatUI(settled, { damageDelay: 0 });
+            syncEnemyHpDisplay(settled);
+            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+        }
+
+        function formatTimerDisplay(totalSeconds) {
 ```
 
-### `templates/index.html` L3641–L3725
+### `templates/index.html` L3468–L3525
 
 ```javascript
-                    resetCombatDiceUi();
-                }
-            } else if ((me.submitted || !canAct) && !isCombatModalBusy()) {
-                hideCombatModal();
+            resetCombatEnemyHpTracking(null);
+            showCombatScreen();
+            await loadCombatStatus(true, { skipSquadRefresh: true });
+        }
+
+        function showCombatResult(data, options = {}) {
+            resetCombatSessionState({ keepVictoryLock: !!options.fromVictoryFinalize });
+            resetCombatEnemyHpTracking(null);
+            controllingProtagonist = false;
+            setVisible(document.getElementById('combat-screen'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-lobby'), false);
+            setVisible(document.getElementById('combat-result-panel'), true);
+            const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
+            const victory = data.outcome === 'victory';
+            const titleEl = document.getElementById('combat-result-title');
+            if (badEnding) {
+                titleEl.textContent = '🌑 陰影結局';
+                titleEl.className = 'text-xl font-bold mb-3 text-violet-300';
+            } else {
+                titleEl.textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
+                titleEl.className = 'text-xl font-bold mb-3';
             }
-            if (hintEl) {
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    hintEl.textContent = '本回合傷害結算中，請稍候…';
-                } else if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
+            const traumaBadge = document.getElementById('combat-result-trauma-badge');
+            if (badEnding) {
+                const total = data.protagonist_trauma_total ?? data.ending?.protagonist_trauma_total ?? '?';
+                traumaBadge.textContent = `主角心理創傷過深（累計 ${total} 次）——即使贏了這一仗，也無法迎來真正的救贖。`;
+                setVisible(traumaBadge, true);
+            } else {
+                setVisible(traumaBadge, false);
+            }
+            document.getElementById('combat-result-narrative').textContent = data.narrative || '';
+            const reflection = badEnding ? null : data.reflection_prompt;
+            const reflectionBox = document.getElementById('combat-reflection');
+            if (reflection) {
+                setVisible(reflectionBox, true);
+                document.getElementById('combat-reflection-title').textContent = reflection.title || '界線反思';
+                document.getElementById('combat-reflection-theology').textContent = reflection.theological_tie || '';
+                document.getElementById('combat-reflection-questions').innerHTML =
+                    (reflection.questions || []).map((q, i) =>
+                        `<li class="pl-3 border-l-2 border-amber-600/50"><span class="text-amber-500/80 text-xs">Q${i + 1}</span><br>${q}</li>`
+                    ).join('');
+            } else {
+                setVisible(reflectionBox, false);
+            }
+        }
+
+        function updateNearDeathOverlay(me) {
+            const overlay = document.getElementById('combat-near-death-overlay');
+            const countdownEl = document.getElementById('near-death-countdown');
+            const inNearDeath = me?.near_death_until && new Date(me.near_death_until) > new Date();
+            setVisible(overlay, !!inNearDeath);
+            if (inNearDeath && countdownEl) {
+                const remaining = Math.max(0, Math.floor((new Date(me.near_death_until) - Date.now()) / 1000));
+                countdownEl.textContent = formatTimerDisplay(remaining);
+            }
+        }
+```
+
+### `templates/index.html` L3715–L3810
+
+```javascript
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
                 else if (isResolving || combatPhaseLocked) hintEl.textContent = '回合結算中，請稍候…';
                 else if (uiData.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
@@ -609,6 +711,7 @@ bash scripts/build_gemini_packet.sh
 
         async function loadCombatStatus(showLoading, options = {}) {
             try {
+                if (isCombatVictorySequenceComplete(currentCombatId)) return;
                 if (victoryFinalizeInProgress) return;
                 if (combatFinalizingVictory) return;
                 if (!options.skipSquadRefresh) {
@@ -673,69 +776,25 @@ bash scripts/build_gemini_packet.sh
                     }
                     handleCombatRoundResolved(data);
                     return;
-```
-
-### `templates/index.html` L3768–L3825
-
-```javascript
-                    showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
-                    startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
                 }
 
-                if (data.active) {
-                    setVisible(document.getElementById('combat-lobby'), false);
+                if (shouldFinishCombatVictory(data)) {
+                    await finishCombatVictoryFromPayload(data);
+                    return;
                 }
-                const uiOptions = showLoading ? { initLogsOnly: true } : {};
-                updateCombatUI(data, uiOptions);
-                if (data.active || data.in_precheck) {
-                    startCombatPolling(getCombatPollInterval(data));
-                } else {
-                    stopCombatPolling();
-                }
-            } catch (e) {
-                if (showLoading) console.error('載入戰鬥狀態失敗', e);
-            }
-        }
 
-        async function submitAction() {
-            if (combatAwaitingSettlementAck || settlementTimerPending) {
-                showToast('請先等待本回合傷害結算', 'error');
-                return;
-            }
-            if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
-                showToast('回合結算中，請稍候', 'error');
-                return;
-            }
-            if (selectedAction === 'use_item' && !selectedItemId) {
-                showToast('請先選擇要使用的物品', 'error');
-                return;
-            }
-            if (COMBAT_DICE_ACTIONS.has(selectedAction) && selectedDice === null) {
-                showToast('請先選擇攻擊行動並完成擲骰', 'error');
-                return;
-            }
-            if (selectedDice === null) selectedDice = 1;
-
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            if (confirmBtn) confirmBtn.disabled = true;
-
-            const payload = {
-                combat_id: currentCombatId,
-                action_type: selectedAction,
-            };
-            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
-                payload.as_protagonist = true;
-            }
-            if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
-
-            let data;
-            try {
-                const res = await fetch('/combat/submit_action', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
+                if (data.round_settlement && !settlementModalShown
+                    && !combatAwaitingSettlementAck && !victoryFinalizeInProgress
+                    && !isCombatVictorySequenceComplete(data.combat_id)
+                    && !data.outcome && data.status !== 'ended') {
+                    const pollSettled = applySettlementEnemyHp({
+                        ...data,
+                        round_resolved: true,
+                        active: data.active !== false,
+                    });
+                    const pollSettlement = getRoundSettlement(pollSettled);
+                    const pollHasDamage = Number(pollSettlement.team_damage_dealt) > 0
+                        || (pollSettled.log_entries || []).some(e => e?.type === 'damage');
 ```
 
 ## E. 後端 Python（API 合約摘錄）
@@ -1109,11 +1168,11 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 
 | 項目 | 狀態 |
 |------|------|
-| Commit | `bd2b855` |
-| Markers | `combat_instant_settlement`, `combat_flow_v7`–`v10`, `enemy_hp_sync_v7` |
-| Henry instant checklist | ✅ OK（quick + boundary） |
-| 殘留 | **Delay 體感**未完全解決；v10 final-hit 待 Henry 驗 `practice_iggy_02_leech` |
-| 後端 | Combat log / `enemy_hp_after` 正確 |
+| Commit | `40a2c53` |
+| Markers | `combat_flow_v11`–`v12`, `combatVictorySequenceCompleteId`, `enrichRoundSettlementData` |
+| §21 Vini Safari | 結算 0 傷害（marathon）— v12 待驗 |
+| §22 Henry Chrome | 勝利後重複結算 — v12 待驗 |
+| Henry Safari §16 | 先前通過；Chrome 新 regression |
 
 ## H. 相關文檔
 
