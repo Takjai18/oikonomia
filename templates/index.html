@@ -1897,8 +1897,56 @@
             return { ...data, enemy: { ...data.enemy, hp: Math.min(...candidates) } };
         }
 
-        function buildClientRoundSettlement(logEntries) {
+        // combat_flow_v13: slice logs by settled round — avoid marathon cross-round pollution
+        function getSettledRoundNumber(data) {
+            const phase = Number(data?.current_phase) || 0;
+            if (!phase) return 1;
+            const resolved = !!(data?.round_resolved || data?.status === 'round_resolved' || data?.outcome);
+            if (resolved && phase > 1) return phase - 1;
+            if (resolved) return 1;
+            return Math.max(1, phase);
+        }
+
+        function sliceLogsForSettledRound(logEntries, data) {
             const entries = logEntries || [];
+            if (!data) return entries;
+            const targetRound = getSettledRoundNumber(data);
+            let summaryCount = 0;
+            let targetSummaryIdx = -1;
+            let prevSummaryIdx = -1;
+            for (let i = 0; i < entries.length; i++) {
+                const e = entries[i];
+                if (e?.type === 'summary' && (e.message || '').includes('受到共')) {
+                    summaryCount += 1;
+                    if (summaryCount === targetRound) {
+                        targetSummaryIdx = i;
+                        break;
+                    }
+                    prevSummaryIdx = i;
+                }
+            }
+            const roundStart = prevSummaryIdx >= 0 ? prevSummaryIdx + 1 : 0;
+            if (targetSummaryIdx >= 0) {
+                let endIdx = targetSummaryIdx + 1;
+                while (endIdx < entries.length && entries[endIdx]?.type === 'enemy_attack') {
+                    endIdx += 1;
+                }
+                return entries.slice(roundStart, endIdx);
+            }
+            return entries.slice(roundStart);
+        }
+
+        function normalizeCombatLogEntries(logs) {
+            if (!Array.isArray(logs) || !logs.length) return [];
+            return logs[0]?.type
+                ? logs
+                : logs.map((line) => ({ type: 'event', message: String(line) }));
+        }
+
+        function buildClientRoundSettlement(logEntries, data) {
+            const entries = data
+                ? sliceLogsForSettledRound(logEntries || [], data)
+                : (logEntries || []);
             let summaryIdx = -1;
             for (let i = entries.length - 1; i >= 0; i--) {
                 const e = entries[i];
@@ -1935,6 +1983,25 @@
                         counterHits.push({ target: tm ? tm[1].trim() : '?', damage: dmg });
                     }
                 }
+            } else {
+                entries.forEach((e) => {
+                    if (e?.type !== 'damage') return;
+                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
+                    const pm = (e.message || '').match(/^(.+?)\s+(?:攻擊|Zoo 能力)/);
+                    if (!dm) return;
+                    const dmg = parseInt(dm[1], 10);
+                    teamDealt += dmg;
+                    playerHits.push({ player: pm ? pm[1].trim() : '隊友', damage: dmg });
+                });
+                entries.forEach((e) => {
+                    if (e?.type !== 'enemy_attack') return;
+                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
+                    const tm = (e.message || '').match(/反擊\s*([^，]+)/);
+                    if (!dm) return;
+                    const dmg = parseInt(dm[1], 10);
+                    enemyDealt += dmg;
+                    counterHits.push({ target: tm ? tm[1].trim() : '?', damage: dmg });
+                });
             }
             const lookup = buildCombatParticipantLookup(lastCombatStatus);
             playerHits.forEach((hit) => {
@@ -2007,12 +2074,9 @@
                 }
                 settlement = { ...settlement, breakdown: undefined };
             }
-            const logs = data.log_entries || data.log || [];
-            const normalized = Array.isArray(logs) && logs[0]?.type
-                ? logs
-                : logs.map((line) => ({ type: 'event', message: String(line) }));
+            const normalized = normalizeCombatLogEntries(data.log_entries || data.log || []);
             if (!normalized.length) return data;
-            const built = buildClientRoundSettlement(normalized);
+            const built = buildClientRoundSettlement(normalized, data);
             if (!settlementHasDamageNumbers(built)) return data;
             return {
                 ...data,
@@ -2026,9 +2090,9 @@
         function buildSettlementBreakdown(data, settlement) {
             const teamDealt = Number(settlement?.team_damage_dealt) || 0;
             if (settlement?.breakdown) {
-                const bd = settlement.breakdown;
-                const bdTotal = Number(bd?.dealt?.total) || 0;
-                if (bdTotal > 0 || teamDealt === 0) return bd;
+                const bdTotal = Number(settlement.breakdown?.dealt?.total) || 0;
+                // teamDealt > 0 but breakdown total 0 → stale breakdown, force recompute
+                if (teamDealt === 0 || bdTotal > 0) return settlement.breakdown;
             }
             const lookup = buildCombatParticipantLookup(data);
             const dealt = { player: 0, protagonist: 0, teammate: 0 };
@@ -2291,6 +2355,7 @@
         // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
         // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
         // combat_flow_v12: victory sequence lock; enrich settlement from logs when API zeros
+        // combat_flow_v13: sliceLogsForSettledRound; endgame lock on defeat too
         function showFullRoundSettlement(data) {
             const combatId = data?.combat_id || currentCombatId;
             if (isCombatVictorySequenceComplete(combatId)) return;
@@ -2381,11 +2446,7 @@
             if (victoryPayloadHasSettlement(data)) return data;
             const logs = data.log_entries || data.log || [];
             if (!logs.length) return data;
-            const built = buildClientRoundSettlement(
-                Array.isArray(logs) && logs[0]?.type
-                    ? logs
-                    : logs.map((line) => ({ type: 'event', message: String(line) })),
-            );
+            const built = buildClientRoundSettlement(normalizeCombatLogEntries(logs), data);
             if (Number(built.team_damage_dealt) > 0 || (built.player_hits || []).length) {
                 return {
                     ...data,
@@ -3471,6 +3532,12 @@
         }
 
         function showCombatResult(data, options = {}) {
+            // combat_flow_v13: endgame lock — victory or defeat blocks delayed poll settlement
+            const combatId = data?.combat_id || currentCombatId;
+            if (data?.outcome && combatId) {
+                markCombatVictorySequenceComplete(combatId);
+                options = { ...options, fromVictoryFinalize: true };
+            }
             resetCombatSessionState({ keepVictoryLock: !!options.fromVictoryFinalize });
             resetCombatEnemyHpTracking(null);
             controllingProtagonist = false;
@@ -3781,7 +3848,7 @@
 
                 if (roundResolved || phaseAdvanced) {
                     if (phaseAdvanced && !data.round_settlement && data.log_entries?.length) {
-                        data.round_settlement = buildClientRoundSettlement(data.log_entries);
+                        data.round_settlement = buildClientRoundSettlement(data.log_entries, data);
                     }
                     if (shouldFinishCombatVictory(data)) {
                         await finishCombatVictoryFromPayload(data);

@@ -641,4 +641,17 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §21–§23 Gemini Phase 4 + v12*
+## 24. Gemini Phase 4 review → v13（2026-06-30）
+
+| Gemini 項 | 嚴重度 | v13 處理 |
+|-----------|--------|----------|
+| `buildClientRoundSettlement` 跨回合 log 污染 | **Critical** | `getSettledRoundNumber` + `sliceLogsForSettledRound`；無 summary 時從 damage 累加 |
+| `buildSettlementBreakdown` 空 breakdown early return | **Critical** | `teamDealt > 0 && bdTotal === 0` 強制重算 |
+| Defeat 路徑未上 endgame lock | **High** | `showCombatResult`：`data.outcome` 即 `markCombatVictorySequenceComplete` + `keepVictoryLock` |
+| DICE_ROLL 440ms | Low | **保留** normal 8×55ms（參與感）；唔改 |
+
+**Markers**：`combat_flow_v13` · `sliceLogsForSettledRound`
+
+---
+
+*最後更新：2026-06-30 · §24 Gemini → v13*

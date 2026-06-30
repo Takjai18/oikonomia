@@ -112,6 +112,9 @@ def api_version():
             "combat_flow_v12": "combat_flow_v12" in template_text
                 and "combatVictorySequenceCompleteId" in template_text
                 and "enrichRoundSettlementData" in template_text,
+            "combat_flow_v13": "combat_flow_v13" in template_text
+                and "sliceLogsForSettledRound" in template_text
+                and "getSettledRoundNumber" in template_text,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },
