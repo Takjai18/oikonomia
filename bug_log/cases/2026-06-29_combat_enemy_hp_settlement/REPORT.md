@@ -688,4 +688,52 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §27 FSM PR#1*
+## 28. Henry 長戰三重回歸 + iPhone 敵人不可見（2026-06-30 · post FSM PR#1）
+
+| 欄位 | 值 |
+|------|-----|
+| **玩家** | Henry · `PLAYER-75406` |
+| **瀏覽器** | Chrome macOS |
+| **Encounter** | `practice_iggy_04_marathon`（【練習】長戰巨影 · HP 220） |
+| **PA / baseline** | `4806357`（`combat_flow_fsm_v1` + `combat_flow_v15`） |
+| **狀態** | **fix_in_progress** — `combat_flow_v16` |
+
+### 症狀
+
+| ID | 描述 |
+|----|------|
+| F1 | 擲骰**非 0**，傷害結算 modal 顯示**全 0** |
+| F2 | **非一擊必殺**回合：**無**傷害結算畫面、**無**敵人扣血動畫 |
+| F3 | 勝利畫面後**再次**彈出傷害結算（§22 復發） |
+| F4 | iPhone Safari：進戰鬥首屏見玩家／行動，**敵人資料在視窗上方看不見** |
+
+### 根因假設（Code review）
+
+1. **F2**：`handleCombatRoundResolved` 的 `hasDamage` heuristic 為 false → 跳過 `showFullRoundSettlement`，只走 `updateCombatUI` fallback。
+2. **F1**：`enrichRoundSettlementData`／`buildSettlementBreakdown` 對 stale 空 `breakdown` early return；marathon `sliceLogsForSettledRound` 可能補建失敗。
+3. **F3**：`victoryFinalizeInProgress` 結束後 in-flight poll 仍帶 `round_settlement`；`showFullRoundSettlement` 未擋 `combat-result-panel` 已顯示。
+4. **F4**：`showCombatScreen()` 無 scroll reset；header + 雙 panel + team strip 高度超出 iPhone fold。
+
+### v16 修復方向
+
+| 機制 | 說明 |
+|------|------|
+| 強制結算 | `round_resolved` → 必 `showFullRoundSettlement` |
+| 零傷害補建 | settlement 顯示全 0 時一律從 `log_entries` 重算 |
+| 勝利硬鎖 | result panel 可見 / `combatVictorySequenceCompleteId` → 阻擋二次結算 + `stopCombatPolling` |
+| 手機首屏 | `scrollTo(0)` + sticky 敵人 HP bar（`max-lg`） |
+
+### Gemini 跟進
+
+- **`GEMINI_PHASE7.md`** — F1–F4 全文 prompt、PR #2 規格、Playwright、iPhone UX wireframe 請求
+
+### 驗證 checklist（Henry · Chrome + iPhone Safari）
+
+- [ ] `/api/version` 見 `combat_flow_v16: true`
+- [ ] 長戰每回合：結算 modal 傷害 > 0、敵 HP 動畫
+- [ ] Killing blow：結算 1 次 → 勝利 → 唔再結算
+- [ ] iPhone：進戰鬥無捲動見敵 HP
+
+---
+
+*最後更新：2026-06-30 · §28 Henry 回歸 + GEMINI_PHASE7*

@@ -2,7 +2,7 @@
 
 | ID | 日期 | 標題 | 狀態 | 修復 commit | Case 路徑 |
 |----|------|------|------|-------------|-----------|
-| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP／結算 modal／delay 殘留 | **fix_in_progress** — v15 熱修；**Phase 6 狀態機重寫** 諮 Gemini | `da97fda`→v15 | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) · [Rewrite](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_COMBAT_REWRITE.md) · [Consult](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md) |
+| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP／結算 modal／delay 殘留 | **fix_in_progress** — v16 熱修；FSM PR#1 shadow；**GEMINI_PHASE7** 待 PR#2 | `4806357`→v16 | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) · [Phase7](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PHASE7.md) · [Rewrite](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_COMBAT_REWRITE.md) |
 
 ## 狀態說明
 

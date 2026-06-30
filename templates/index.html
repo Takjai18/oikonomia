@@ -267,6 +267,14 @@
         @media (max-width: 1023px) {
             #combat-screen .combat-action-btn { padding-top: 0.65rem; padding-bottom: 0.65rem; font-size: 0.8125rem; }
             #combat-log { max-height: 5.5rem; }
+            #enemy-panel {
+                position: sticky;
+                top: 0;
+                z-index: 20;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+            }
+            #combat-screen .combat-title { font-size: 1rem; }
+            #combat-screen #phase-timer { font-size: 1.25rem; }
         }
         #settings-modal .settings-sheet {
             padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -1242,6 +1250,7 @@
         }
 
         // combat_flow_v15: dice animation restored; confirm hides dice; early victory lock
+        // combat_flow_v16: force settlement on round_resolved; zero-breakdown enrich; victory panel guard; mobile enemy sticky
         const DICE_ROLL_PRESETS = {
             fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
             normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
@@ -1666,6 +1675,11 @@
             return !!(data.outcome || data.status === 'ended' || data.winner);
         }
 
+        function isCombatResultPanelVisible() {
+            const panel = document.getElementById('combat-result-panel');
+            return !!(panel && !panel.classList.contains('hidden'));
+        }
+
         function isCombatVictorySequenceComplete(combatId) {
             const cid = combatId || currentCombatId;
             return !!(combatVictorySequenceCompleteId && cid === combatVictorySequenceCompleteId);
@@ -2073,25 +2087,38 @@
         function enrichRoundSettlementData(data) {
             if (!data) return data;
             let settlement = getRoundSettlement(data);
+            const tryBuildFromLogs = () => {
+                const normalized = normalizeCombatLogEntries(data.log_entries || data.log || []);
+                if (!normalized.length) return null;
+                const built = buildClientRoundSettlement(normalized, data);
+                return settlementHasDamageNumbers(built) ? built : null;
+            };
             if (settlementHasDamageNumbers(settlement)) {
                 const bd = settlement.breakdown;
                 const bdTotal = Number(bd?.dealt?.total) || 0;
-                if (!bd || bdTotal > 0 || Number(settlement.team_damage_dealt) === 0) {
+                const teamDealt = Number(settlement.team_damage_dealt) || 0;
+                if (bd && bdTotal === 0 && teamDealt > 0) {
+                    settlement = { ...settlement, breakdown: undefined };
+                } else if (!bd || bdTotal > 0) {
                     return { ...data, round_settlement: settlement };
+                } else {
+                    settlement = { ...settlement, breakdown: undefined };
                 }
-                settlement = { ...settlement, breakdown: undefined };
             }
-            const normalized = normalizeCombatLogEntries(data.log_entries || data.log || []);
-            if (!normalized.length) return data;
-            const built = buildClientRoundSettlement(normalized, data);
-            if (!settlementHasDamageNumbers(built)) return data;
-            return {
-                ...data,
-                round_settlement: built,
-                round_resolved: data.round_resolved ?? data.status === 'round_resolved',
-                round_enemy_damage: built.team_damage_dealt,
-                round_player_damage: built.enemy_damage_dealt,
-            };
+            const built = tryBuildFromLogs();
+            if (built) {
+                return {
+                    ...data,
+                    round_settlement: built,
+                    round_resolved: data.round_resolved ?? data.status === 'round_resolved',
+                    round_enemy_damage: built.team_damage_dealt,
+                    round_player_damage: built.enemy_damage_dealt,
+                };
+            }
+            if (settlementHasDamageNumbers(settlement)) {
+                return { ...data, round_settlement: settlement };
+            }
+            return data;
         }
 
         function buildSettlementBreakdown(data, settlement) {
@@ -2376,9 +2403,10 @@
         // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
         // combat_flow_v12: victory sequence lock; enrich settlement from logs when API zeros
         // combat_flow_v13: sliceLogsForSettledRound; endgame lock on defeat too
+        // combat_flow_v16: block settlement after victory screen; force enrich on zero breakdown
         function showFullRoundSettlement(data) {
             const combatId = data?.combat_id || currentCombatId;
-            if (isCombatVictorySequenceComplete(combatId)) return;
+            if (isCombatVictorySequenceComplete(combatId) || isCombatResultPanelVisible()) return;
             data = enrichRoundSettlementData(data);
             combatFsmHook('onSettlementShown', data, {
                 pendingVictory: !!pendingVictoryAfterSettlement || isFinalHitOrVictory(data),
@@ -2660,16 +2688,12 @@
                 finishCombatVictoryFromPayload(buildVictoryTransitionPayload(settled));
                 return;
             }
-            const settlement = getRoundSettlement(settled);
-            const hasDamage = Number(settlement.team_damage_dealt) > 0
-                || (settled.log_entries || []).some(e => e?.type === 'damage');
-            const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
-            const hasSettlementPayload = !!(settled.round_settlement || data.round_settlement);
-            if (hasSettlementPayload && (mustShow || hasDamage)) {
+            const roundResolved = !!(settled.round_resolved || settled.status === 'round_resolved');
+            if (roundResolved) {
                 showFullRoundSettlement(settled);
                 return;
             }
-            if (mustShow || shouldShowRoundSettlement(settled)) {
+            if (shouldShowRoundSettlement(settled)) {
                 showFullRoundSettlement(settled);
                 return;
             }
@@ -3177,6 +3201,15 @@
             setVisible(document.getElementById('combat-lobby'), false);
             setVisible(document.getElementById('combat-screen'), true);
             setVisible(document.getElementById('combat-result-panel'), false);
+            try {
+                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+            } catch (_) {
+                window.scrollTo(0, 0);
+            }
+            const combatScreen = document.getElementById('combat-screen');
+            if (combatScreen) {
+                combatScreen.scrollIntoView({ block: 'start', behavior: 'instant' });
+            }
             document.querySelectorAll('.combat-action-btn[data-action]').forEach(btn => {
                 if (btn.dataset.action !== 'use_item') {
                     btn.onclick = () => performAction(btn.dataset.action);
@@ -3910,7 +3943,10 @@
 
         async function loadCombatStatus(showLoading, options = {}) {
             try {
-                if (isCombatVictorySequenceComplete(currentCombatId)) return;
+                if (isCombatVictorySequenceComplete(currentCombatId) || isCombatResultPanelVisible()) {
+                    stopCombatPolling();
+                    return;
+                }
                 if (victoryFinalizeInProgress) return;
                 if (combatFinalizingVictory) return;
                 if (!options.skipSquadRefresh) {
@@ -3985,19 +4021,15 @@
                 if (data.round_settlement && !settlementModalShown
                     && !combatAwaitingSettlementAck && !victoryFinalizeInProgress
                     && !isCombatVictorySequenceComplete(data.combat_id)
+                    && !isCombatResultPanelVisible()
                     && !data.outcome && data.status !== 'ended') {
                     const pollSettled = applySettlementEnemyHp({
                         ...data,
                         round_resolved: true,
                         active: data.active !== false,
                     });
-                    const pollSettlement = getRoundSettlement(pollSettled);
-                    const pollHasDamage = Number(pollSettlement.team_damage_dealt) > 0
-                        || (pollSettled.log_entries || []).some(e => e?.type === 'damage');
-                    if (pollHasDamage) {
-                        handleCombatRoundResolved(pollSettled);
-                        return;
-                    }
+                    handleCombatRoundResolved(pollSettled);
+                    return;
                 }
 
                 if (!showLoading) {
