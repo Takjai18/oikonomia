@@ -222,6 +222,13 @@
         }
 
         onSettlementConfirm(meta = {}) {
+            if (meta.recovery) {
+                this.pendingVictory = false;
+                this.pendingSettlementData = null;
+                this.clearSettlementRound();
+                this.transitionTo(CombatUiPhase.IDLE, { reason: 'submit_error_recovery', ...meta });
+                return CombatUiPhase.IDLE;
+            }
             this.clearSettlementRound();
             if (this.pendingVictory || meta.pendingVictory) {
                 this.pendingVictory = false;

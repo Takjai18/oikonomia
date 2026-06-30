@@ -753,4 +753,16 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §29 PR#2 FSM + mobile HUD*
+## 30. PR#2 實機回歸 — Henry R2 卡住 · iPhone 無頭像／無反應（2026-06-30）
+
+| ID | 症狀 | 狀態 |
+|----|------|------|
+| G1 | 長戰 R2 擲骰後無結算／無扣血 | **v17** phase guard + FSM recovery |
+| G2 | iPhone 無角色頭像 | **v17** 恢復 w-8 敵我頭像 |
+| G3 | iPhone 按開始戰鬥無反應 | 待驗；`onCombatReset` on start |
+
+**Gemini**：`GEMINI_PHASE8.md`
+
+---
+
+*最後更新：2026-06-30 · §30 GEMINI_PHASE8*
