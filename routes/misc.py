@@ -126,6 +126,9 @@ def api_version():
             "combat_flow_v17": "combat_flow_v17" in template_text
                 and "settlement_modal_missing_recovery" in template_text
                 and "combat-player-avatar-mobile" in template_text,
+            "combat_flow_v18": "combat_flow_v18" in template_text
+                and "enforceSettlementInvariant" in template_text
+                and "combat_mobile_hud_v2" in template_text,
             "combat_flow_fsm_v1": "combat_flow_fsm_v1" in template_text
                 and "combatFsmHook" in template_text,
             "combat_flow_fsm_v2": "combat_flow_fsm_v2" in template_text

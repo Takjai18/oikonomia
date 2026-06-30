@@ -1,5 +1,5 @@
 /**
- * Oikonomia Combat Flow — FSM (PR #2 production · combat_flow_fsm_v2)
+ * Oikonomia Combat Flow — FSM (PR #2 production · combat_flow_fsm_v2 · v18 invariant)
  * Single source of truth for combat UI phase; replaces legacy boolean guards.
  *
  * Product flow (solo):

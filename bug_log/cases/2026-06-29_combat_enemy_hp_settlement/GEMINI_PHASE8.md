@@ -194,4 +194,18 @@ loadCombatStatus(false);
 
 ---
 
-*Phase 8 · 2026-06-30 · Henry + iPhone 回歸*
+## 9. Grok v18 實作（Gemini Phase 8 回應後）
+
+| 項 | 實作 |
+|----|------|
+| G1 根因 | `settlementRoundKey` 改為 `logR{n}`（log summary 計數），避免 R1/R2 同 `current_phase=2` 碰撞 |
+| 不變式 | `enforceSettlementInvariant()` — `loadCombatStatus` + `handleCombatRoundResolved` |
+| HUD v2 | `order-1` 玩家左、`order-2` 敵右；`combat_mobile_hud_v2` |
+| Safari | `touch-action: manipulation`；`showConfirmModal` sync resolve + stopPropagation |
+| Playwright | Assert-5 已加入 `tests/combat_fsm_flow.spec.js` |
+
+**Marker**：`combat_flow_v18`
+
+---
+
+*Phase 8 · 2026-06-30 · Henry + iPhone 回歸 · v18 implemented*

@@ -66,6 +66,27 @@ test.describe('Oikonomia Combat FSM Engine Verification', () => {
         await expect(page.locator('#combat-round-settlement-modal')).toBeHidden();
     });
 
+    test('Assert-5: R1 settlement confirm then R2 attack shows second settlement modal', async ({ page }) => {
+        test.skip(!process.env.COMBAT_E2E_AUTH, 'Set COMBAT_E2E_AUTH=1 with logged-in storage state');
+
+        await page.click('#attack-action-btn');
+        await page.waitForSelector('#modal-confirm-btn', { state: 'visible' });
+        await page.click('#modal-confirm-btn');
+
+        const settlementModal = page.locator('#combat-round-settlement-modal');
+        await expect(settlementModal).toBeVisible({ timeout: 8000 });
+        await page.click('#round-settlement-confirm-btn');
+        await expect(settlementModal).toBeHidden({ timeout: 5000 });
+
+        const attackBtn = page.locator('#attack-action-btn');
+        await expect(attackBtn).toBeEnabled({ timeout: 5000 });
+        await attackBtn.click();
+        await page.waitForSelector('#modal-confirm-btn', { state: 'visible' });
+        await page.click('#modal-confirm-btn');
+
+        await expect(settlementModal).toBeVisible({ timeout: 8000 });
+    });
+
     test('Assert-4: iPhone viewport shows enemy and action buttons without scroll', async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.click('[data-section="combat"]');

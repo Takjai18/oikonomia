@@ -264,9 +264,15 @@
         .combat-team-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
         .combat-team-scroll::-webkit-scrollbar { display: none; }
         .combat-team-chip { flex: 0 0 auto; min-width: 4.5rem; }
+        button, [onclick], .combat-action-btn, .combat-item-btn {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            cursor: pointer;
+        }
         @media (max-width: 1023px) {
             #combat-screen .combat-action-btn { padding-top: 0.55rem; padding-bottom: 0.55rem; font-size: 0.75rem; }
             #combat-log { max-height: 4.5rem; }
+            #combat-item-list { max-height: 6rem; overflow-y: auto; }
             #combat-screen .combat-title { font-size: 1rem; }
             #combat-screen #phase-timer { font-size: 1.25rem; }
             #combat-team-strip { display: none; }
@@ -881,9 +887,9 @@
                         ⚠️ <span id="combat-berserk-bar-text">神智偏低，暴走風險上升</span>
                     </div>
 
-                    <!-- combat_mobile_hud_v1: 手機雙欄迷你 HUD + 行動區置底 -->
+                    <!-- combat_mobile_hud_v2: 手機左我右敵雙頭像 HUD + 行動區置底 -->
                     <div class="grid grid-cols-2 gap-2 lg:grid lg:grid-cols-2 lg:gap-6">
-                        <div id="enemy-panel" class="lg:order-2 bg-zinc-900/90 border border-red-500/40 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
+                        <div id="enemy-panel" class="order-2 lg:order-2 bg-zinc-900/90 border border-red-500/40 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
                             <div class="flex items-center gap-x-2 lg:gap-x-3 mb-1 lg:mb-3">
                                 <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
                                      class="w-8 h-8 lg:w-20 lg:h-20 rounded-lg lg:rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
@@ -927,7 +933,7 @@
                             <div id="enemy-quote" class="hidden lg:block text-sm text-zinc-300 leading-relaxed mt-4"></div>
                         </div>
 
-                        <div id="player-panel" class="lg:order-1 bg-zinc-900/90 border border-amber-500/30 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
+                        <div id="player-panel" class="order-1 lg:order-1 bg-zinc-900/90 border border-amber-500/30 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
                             <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-xl lg:rounded-3xl flex items-center justify-center bg-zinc-950/80">
                                 <div class="text-center text-red-200 font-bold text-base lg:text-lg px-4">神智不清，能力失控</div>
                             </div>
@@ -1249,6 +1255,7 @@
         // combat_flow_v15: dice animation restored; confirm hides dice; early victory lock
         // combat_flow_v16: force settlement on round_resolved; zero-breakdown enrich; victory panel guard; mobile enemy sticky
         // combat_flow_v17: skip phase guard when round_resolved; FSM submit recovery; mobile avatars restored
+        // combat_flow_v18: settlementRoundKey via logR; enforceSettlementInvariant; Safari touch-action
         const DICE_ROLL_PRESETS = {
             fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
             normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
@@ -1469,8 +1476,16 @@
                     if (e.key === 'Escape') cleanup(false);
                     if (e.key === 'Enter') cleanup(true);
                 };
-                cancelBtn.onclick = () => cleanup(false);
-                confirmBtn.onclick = () => cleanup(true);
+                const onCancel = (e) => {
+                    if (e) { e.preventDefault(); e.stopPropagation(); }
+                    cleanup(false);
+                };
+                const onConfirm = (e) => {
+                    if (e) { e.preventDefault(); e.stopPropagation(); }
+                    cleanup(true);
+                };
+                cancelBtn.onclick = onCancel;
+                confirmBtn.onclick = onConfirm;
                 document.addEventListener('keydown', onKey);
             });
         }
@@ -2229,10 +2244,44 @@
                 };
         }
 
+        function countResolvedRoundsInLog(data) {
+            const logs = normalizeCombatLogEntries(data?.log_entries || data?.log || []);
+            return logs.filter((e) => e?.type === 'summary' && (e.message || '').includes('受到共')).length;
+        }
+
         function settlementRoundKey(data) {
             const cid = data?.combat_id || currentCombatId || '';
-            const phase = data?.round ?? data?.current_phase ?? 'unknown';
-            return `${cid}:${phase}`;
+            const logRounds = countResolvedRoundsInLog(data);
+            if (logRounds > 0) return `${cid}:logR${logRounds}`;
+            const settled = getSettledRoundNumber(data);
+            const phase = Number(data?.current_phase) || 0;
+            const resolved = !!(data?.round_resolved || data?.status === 'round_resolved');
+            if (resolved) return `${cid}:settled${settled}`;
+            return `${cid}:p${phase || data?.round || 'unknown'}`;
+        }
+
+        function enforceSettlementInvariant(data) {
+            if (getCombatUiPhase() !== CombatUiPhase.SETTLEMENT) return;
+            if (isRoundSettlementModalVisible()) return;
+            console.warn('[Combat FSM] invariant: SETTLEMENT without visible modal — recovering');
+            const payload = pendingSettlementHpPayload || data || lastCombatStatus;
+            const canRetry = payload && (
+                payload.round_resolved
+                || payload.status === 'round_resolved'
+                || payload.round_settlement
+            );
+            if (canRetry) {
+                const enriched = enrichRoundSettlementData(applySettlementEnemyHp({
+                    ...payload,
+                    round_resolved: true,
+                }));
+                lastSettlementDisplayKey = '';
+                getCombatFlow().clearSettlementRound();
+                showFullRoundSettlement(enriched);
+                return;
+            }
+            combatFsmHook('onSettlementConfirm', { combatId: currentCombatId, recovery: true });
+            clearLocalCombatSubmittedState();
         }
 
         function clearSettlementModalGuard() {
@@ -2252,10 +2301,8 @@
         }
 
         function settlementDisplayKey(data) {
-            const cid = data?.combat_id || currentCombatId || '';
-            const phase = Number(data?.current_phase) || 0;
             const victory = !!(data?.outcome || pendingVictoryAfterSettlement);
-            return `${cid}:p${phase}:v${victory ? 1 : 0}`;
+            return `${settlementRoundKey(data)}:v${victory ? 1 : 0}`;
         }
 
         function shouldShowRoundSettlement(data) {
@@ -2457,8 +2504,11 @@
                 || !!data?.outcome
                 || isFinalHitOrVictory(data);
             pendingSettlementHpPayload = data;
-            if (phase > lastShownSettlementPhase) {
-                lastShownSettlementPhase = phase;
+            const settledRound = getSettledRoundNumber(data);
+            const logRounds = countResolvedRoundsInLog(data);
+            const trackRound = logRounds > 0 ? logRounds : settledRound;
+            if (trackRound > lastShownSettlementPhase) {
+                lastShownSettlementPhase = trackRound;
             }
             if (combatId) settlementCombatId = combatId;
             combatWaitingForRound = false;
@@ -2683,10 +2733,7 @@
             if (isVictoryFlowLocked(data?.combat_id)) return;
             if (isCombatEndgameFinalizing() || isCombatFsmEndgame()) return;
             if (isCombatFsmSettlement() && isRoundSettlementModalVisible()) return;
-            if (isCombatFsmSettlement() && !isRoundSettlementModalVisible()) {
-                combatFsmHook('clearSettlementRound');
-                getCombatFlow().transitionTo(CombatUiPhase.IDLE, { reason: 'settlement_modal_missing_recovery', force: true });
-            }
+            enforceSettlementInvariant(data);
             if (shouldFinishCombatVictory(data)) {
                 finishCombatVictoryFromPayload(data);
                 return;
@@ -3968,6 +4015,8 @@
                 if (!res.ok) throw new Error(`combat/status HTTP ${res.status}`);
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
+
+                enforceSettlementInvariant(data);
 
                 if (getCombatFlow().shouldBlockPoll()) {
                     if (queueVictoryDuringSettlement(data)) return;
