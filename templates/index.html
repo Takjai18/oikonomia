@@ -2081,6 +2081,11 @@
             currentSettlementRound = settlementRoundKey(data);
         }
 
+        function isRoundSettlementModalVisible() {
+            const modal = document.getElementById('combat-round-settlement-modal');
+            return !!(modal && modal.classList.contains('flex'));
+        }
+
         function settlementDisplayKey(data) {
             const cid = data?.combat_id || currentCombatId || '';
             const phase = Number(data?.current_phase) || 0;
@@ -2230,22 +2235,28 @@
         // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
         // combat_flow_v9: settlementModalShown + currentSettlementRound idempotent guard
         // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
+        // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
         function showFullRoundSettlement(data) {
             const phase = Number(data?.current_phase) || 0;
             const combatId = data?.combat_id || currentCombatId;
             const roundKey = settlementRoundKey(data);
             const displayKey = settlementDisplayKey(data);
             if (settlementModalShown && currentSettlementRound === roundKey) {
+                if (isFinalHitOrVictory(data) && !isRoundSettlementModalVisible()) {
+                    showRoundSettlementModal(applySettlementEnemyHp(data));
+                    lockCombatActionsForSettlement();
+                }
                 return;
             }
             if (combatFinalizingVictory || victoryFinalizeInProgress) return;
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) return;
-            if ((pendingVictoryAfterSettlement || data?.outcome || isFinalHitOrVictory(data))
-                && victorySettlementModalCombatId === combatId) return;
             if (lastSettlementDisplayKey === displayKey) return;
-            if (combatAwaitingSettlementAck) {
+            if (combatAwaitingSettlementAck && isRoundSettlementModalVisible()) {
                 return;
+            }
+            if (combatAwaitingSettlementAck) {
+                combatAwaitingSettlementAck = false;
             }
             if (phase > 0 && phase <= lastShownSettlementPhase
                 && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
@@ -2278,11 +2289,13 @@
                 victorySettlementModalCombatId = combatId;
             }
             showRoundSettlementModal(data);
-            updateCombatUI(data, {
+            const hpSynced = applySettlementEnemyHp(data);
+            updateCombatUI(hpSynced, {
                 damageDelay: 0,
                 skipActionEnable: true,
-                deferEnemyHp: true,
+                deferEnemyHp: false,
             });
+            syncEnemyHpDisplay(hpSynced);
             if (isVictorySettlement) {
                 stopCombatPolling();
             } else {
@@ -2338,12 +2351,16 @@
             data = ensureVictorySettlementPayload(data);
             const combatId = data?.combat_id || currentCombatId;
 
-            if (combatAwaitingSettlementAck && victorySettlementModalCombatId === combatId
-                && isFinalHitOrVictory(data)) {
-                if (!pendingVictoryAfterSettlement) {
-                    pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
+            if (combatAwaitingSettlementAck && isFinalHitOrVictory(data)) {
+                if (isRoundSettlementModalVisible()) {
+                    if (!pendingVictoryAfterSettlement) {
+                        pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
+                    }
+                    return;
                 }
-                return;
+                combatAwaitingSettlementAck = false;
+                victorySettlementModalCombatId = null;
+                clearSettlementModalGuard();
             }
 
             if (victorySettlementAcknowledgedCombatId
@@ -2368,7 +2385,9 @@
 
             if (hasSettlementUi) {
                 if (combatAwaitingSettlementAck && pendingVictoryAfterSettlement) return;
-                if (victorySettlementModalCombatId === combatId) return;
+                if (victorySettlementModalCombatId === combatId && isRoundSettlementModalVisible()) {
+                    return;
+                }
                 if (victorySettlementAlreadyShown(combatId, phase)) {
                     if (!combatAwaitingSettlementAck) {
                         pendingVictoryAfterSettlement = data;

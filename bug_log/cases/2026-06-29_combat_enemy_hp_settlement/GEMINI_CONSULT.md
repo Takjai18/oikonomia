@@ -36,6 +36,15 @@
 
 **注意**：唔好再建議恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms modal delay（已決策移除）。
 
+## Gemini Review 回應（2026-06-30）
+
+| Gemini 項 | 現行 `main` 核對 | 處理 |
+|-----------|------------------|------|
+| `getSettlementModalDelayMs` 1500ms | ❌ **唔存在**（Gemini 可能睇舊版 upload） | 無需改；v11 註解標明 instant modal |
+| `victorySettlementModalCombatId` 過度 guard | ✅ 存在 | **v11** 改為 modal 可見才 skip；stuck 時恢復 |
+| `deferEnemyHp` 錯位 | ✅ 存在 | **v11** 改 `deferEnemyHp: false` + 即時 `syncEnemyHpDisplay` |
+| 雙重 `DICE_ROLL_PRESETS` pauseMs 1150 | ❌ 僅一處；`pauseMs: 0` | 無需改 |
+
 ## 請 Gemini 產出
 
 1. **Delay**：在保留 v6–v10 race guard 前提下，邊條路徑仍可縮至「攻擊 confirm 後 <1s 見 HP+modal」？具體 pseudo-diff（只 frontend）。

@@ -552,7 +552,15 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 | **Packet** | `bash scripts/build_gemini_packet.sh` → `GEMINI_PACKET.md` |
 | **Review 指引** | `GEMINI_REVIEW.md` §16 |
 
-**唔好再問 Gemini**：純 killing blow payload（已修）、1500ms modal delay（已移除）。
+**唔好再問 Gemini**：純 killing blow payload（已修）、1500ms modal delay（現行 code 已無 `getSettlementModalDelayMs`）。
+
+### Gemini Critical 回應 → v11（2026-06-30）
+
+| 項 | 處理 |
+|----|------|
+| 1500ms ghost delay | **False positive**（現行無 setTimeout modal）；modal 即時 `showRoundSettlementModal` |
+| Final hit stuck | 移除 `victorySettlementModalCombatId` 硬 return；modal 不可見時恢復 |
+| deferEnemyHp | 改即時 HP + `syncEnemyHpDisplay` |
 
 ---
 
