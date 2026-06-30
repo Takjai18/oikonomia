@@ -736,4 +736,21 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §28 Henry 回歸 + GEMINI_PHASE7*
+## 29. Gemini Phase 7 → PR #2 FSM 主導 + 手機 HUD（2026-06-30）
+
+| 項 | 狀態 |
+|----|------|
+| `combat_flow_fsm_v2` | ✅ FSM production；移除 legacy boolean guards |
+| `combat_mobile_hud_v1` | ✅ 手機雙欄迷你卡 + `#combat-action-area` 置底 |
+| Playwright | ✅ `tests/combat_fsm_flow.spec.js`（需 `COMBAT_E2E_AUTH`／mock） |
+| Markers | `combat_flow_fsm_v2`, `combat_flow_v16` |
+
+### 變更摘要
+
+- `static/js/combat_flow.js`：`shadowMode` 預設 off；`DEFEAT` phase；`shouldBlockPoll`／`canPerformAction` SSOT
+- `templates/index.html`：`performAction`／`loadCombatStatus`／結算流程改聽 FSM；`continueCombatAfterRound` 清 `my_state.submitted`
+- 移除：`settlementModalShown`、`combatAwaitingSettlementAck`、`settlementTimerPending`、`combatFinalizingVictory`
+
+---
+
+*最後更新：2026-06-30 · §29 PR#2 FSM + mobile HUD*

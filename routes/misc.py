@@ -125,6 +125,9 @@ def api_version():
                 and "round_resolved" in template_text,
             "combat_flow_fsm_v1": "combat_flow_fsm_v1" in template_text
                 and "combatFsmHook" in template_text,
+            "combat_flow_fsm_v2": "combat_flow_fsm_v2" in template_text
+                and "combatFsmCanPerformAction" in template_text
+                and "combat_mobile_hud_v1" in template_text,
             "combat_flow_js": os.path.isfile(
                 os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "js", "combat_flow.js")
             ),

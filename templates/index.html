@@ -265,16 +265,11 @@
         .combat-team-scroll::-webkit-scrollbar { display: none; }
         .combat-team-chip { flex: 0 0 auto; min-width: 4.5rem; }
         @media (max-width: 1023px) {
-            #combat-screen .combat-action-btn { padding-top: 0.65rem; padding-bottom: 0.65rem; font-size: 0.8125rem; }
-            #combat-log { max-height: 5.5rem; }
-            #enemy-panel {
-                position: sticky;
-                top: 0;
-                z-index: 20;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-            }
+            #combat-screen .combat-action-btn { padding-top: 0.55rem; padding-bottom: 0.55rem; font-size: 0.75rem; }
+            #combat-log { max-height: 4.5rem; }
             #combat-screen .combat-title { font-size: 1rem; }
             #combat-screen #phase-timer { font-size: 1.25rem; }
+            #combat-team-strip { display: none; }
         }
         #settings-modal .settings-sheet {
             padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -886,89 +881,82 @@
                         ⚠️ <span id="combat-berserk-bar-text">神智偏低，暴走風險上升</span>
                     </div>
 
-                    <div class="flex flex-col lg:grid lg:grid-cols-2 gap-3 lg:gap-6">
-                        <!-- 敵人（手機 order-1 置頂；5 維同玩家） -->
-                        <div id="enemy-panel" class="order-1 lg:order-2 bg-zinc-900 border border-red-500/40 lg:border-zinc-700 rounded-2xl lg:rounded-3xl p-3 lg:p-6 relative overflow-hidden">
-                            <div class="flex items-center gap-x-3 mb-3">
+                    <!-- combat_mobile_hud_v1: 手機雙欄迷你 HUD + 行動區置底 -->
+                    <div class="grid grid-cols-2 gap-2 lg:grid lg:grid-cols-2 lg:gap-6">
+                        <div id="enemy-panel" class="lg:order-2 bg-zinc-900/90 border border-red-500/40 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
+                            <div class="flex items-center gap-x-2 lg:gap-x-3 mb-1 lg:mb-3">
                                 <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
-                                     class="w-11 h-11 lg:w-20 lg:h-20 rounded-xl lg:rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
+                                     class="hidden lg:block w-20 h-20 rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
                                 <div class="flex-1 min-w-0">
-                                    <div id="enemy-name" class="font-semibold lg:text-xl text-red-400 truncate">敵人</div>
-                                    <div class="hidden lg:block text-sm text-zinc-400">Enemy</div>
-                                    <div class="flex items-center gap-x-2 mt-1.5">
-                                        <div class="flex-1 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                            <div id="enemy-hp-bar" class="h-2.5 bg-gradient-to-r from-red-700 to-red-400" style="width:100%"></div>
-                                        </div>
-                                        <div class="font-mono text-xs lg:text-sm text-red-400 whitespace-nowrap">
+                                    <div class="flex items-center justify-between gap-1">
+                                        <div id="enemy-name" class="font-semibold text-sm lg:text-xl text-red-400 truncate">敵人</div>
+                                        <div class="font-mono text-xs lg:text-sm text-red-400 whitespace-nowrap shrink-0">
                                             <span id="enemy-hp-current">0</span>/<span id="enemy-hp-max">0</span>
                                         </div>
+                                    </div>
+                                    <div class="hidden lg:block text-sm text-zinc-400">Enemy</div>
+                                    <div class="h-2 lg:h-2.5 bg-zinc-800 rounded-full overflow-hidden mt-1">
+                                        <div id="enemy-hp-bar" class="h-full lg:h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-300" style="width:100%"></div>
                                     </div>
                                     <div id="enemy-round-damage" class="hidden text-[10px] lg:text-xs text-amber-400 font-mono mt-0.5"></div>
                                     <div id="enemy-hp-hint" class="hidden text-[10px] text-amber-400/90 mt-0.5 leading-snug"></div>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-5 gap-1 text-center">
-                                <div>
-                                    <div class="text-red-400 text-[10px] lg:text-xs">生命值</div>
+                            <div class="flex justify-between lg:grid lg:grid-cols-5 gap-1 text-center text-[10px] lg:text-xs mt-1.5 lg:mt-0">
+                                <div class="hidden lg:block">
+                                    <div class="text-red-400">生命值</div>
                                     <div id="enemy-stat-hp" class="font-mono text-sm lg:text-lg text-red-400">—</div>
                                 </div>
                                 <div>
-                                    <div class="text-purple-400 text-[10px] lg:text-xs">神智</div>
-                                    <div id="enemy-stat-sanity" class="font-mono text-sm lg:text-lg text-purple-400">—</div>
+                                    <div class="text-purple-400 lg:block hidden">神智</div>
+                                    <span class="lg:hidden">🧠</span><span id="enemy-stat-sanity" class="font-mono text-sm lg:text-lg text-purple-400">—</span>
                                 </div>
                                 <div>
-                                    <div class="text-orange-400 text-[10px] lg:text-xs">力量</div>
-                                    <div id="enemy-stat-power" class="font-mono text-sm lg:text-lg text-orange-400">—</div>
+                                    <div class="text-orange-400 lg:block hidden">力量</div>
+                                    <span class="lg:hidden">💪</span><span id="enemy-stat-power" class="font-mono text-sm lg:text-lg text-orange-400">—</span>
                                 </div>
                                 <div>
-                                    <div class="text-blue-400 text-[10px] lg:text-xs">智力</div>
-                                    <div id="enemy-stat-intellect" class="font-mono text-sm lg:text-lg text-blue-400">—</div>
+                                    <div class="text-blue-400 lg:block hidden">智力</div>
+                                    <span class="lg:hidden">📘</span><span id="enemy-stat-intellect" class="font-mono text-sm lg:text-lg text-blue-400">—</span>
                                 </div>
-                                <div>
-                                    <div class="text-emerald-400 text-[10px] lg:text-xs">韌性</div>
-                                    <div id="enemy-stat-resilience" class="font-mono text-sm lg:text-lg text-emerald-400">—</div>
+                                <div class="hidden lg:block">
+                                    <div class="text-emerald-400">韌性</div>
+                                    <div id="enemy-stat-resilience" class="font-mono text-lg text-emerald-400">—</div>
                                 </div>
                             </div>
                             <div id="enemy-quote" class="hidden lg:block text-sm text-zinc-300 leading-relaxed mt-4"></div>
                         </div>
 
-                        <!-- 玩家 + 行動（手機 order-2） -->
-                        <div id="player-panel" class="order-2 lg:order-1 bg-zinc-900 border border-zinc-700 rounded-2xl lg:rounded-3xl p-3 lg:p-6 relative overflow-hidden">
-                            <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-2xl lg:rounded-3xl flex items-center justify-center bg-zinc-950/80">
+                        <div id="player-panel" class="lg:order-1 bg-zinc-900/90 border border-amber-500/30 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
+                            <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-xl lg:rounded-3xl flex items-center justify-center bg-zinc-950/80">
                                 <div class="text-center text-red-200 font-bold text-base lg:text-lg px-4">神智不清，能力失控</div>
                             </div>
-
-                            <!-- 手機：名 + HP + 神智 同一行 -->
-                            <div class="flex items-center justify-between gap-2 mb-3 lg:mb-5">
-                                <div class="flex items-center gap-x-2 lg:gap-x-4 min-w-0">
-                                    <img id="combat-player-avatar" src="/static/avatars/default.png"
-                                         class="w-9 h-9 lg:w-20 lg:h-20 rounded-full lg:rounded-2xl border-2 border-amber-500 object-cover shrink-0" alt="玩家">
-                                    <div class="min-w-0">
-                                        <div id="combat-player-name" class="font-semibold lg:text-xl truncate">你</div>
-                                        <div id="combat-player-team" class="hidden lg:block text-sm text-zinc-400 truncate">—</div>
+                            <div class="lg:hidden">
+                                <div class="flex items-center justify-between gap-1">
+                                    <div id="combat-player-name" class="font-semibold text-sm text-amber-400 truncate">你</div>
+                                    <div class="font-mono text-xs text-amber-400 whitespace-nowrap shrink-0">
+                                        <span id="combat-player-hp">—</span><span class="text-[10px] text-zinc-500">/HP</span>
                                     </div>
                                 </div>
-                                <div class="lg:hidden flex items-center gap-x-4 text-sm shrink-0">
-                                    <div class="flex items-center gap-x-1">
-                                        <span class="text-red-400">❤️</span>
-                                        <span class="font-mono" id="combat-player-hp">—</span>
-                                    </div>
-                                    <div class="flex items-center gap-x-1">
-                                        <span class="text-purple-400">🧠</span>
-                                        <span class="font-mono" id="combat-player-sanity">—</span>
-                                    </div>
+                                <div class="h-2 bg-zinc-800 rounded-full overflow-hidden mt-1">
+                                    <div id="combat-hp-bar-mobile" class="h-full bg-amber-500 transition-all duration-300" style="width:0%"></div>
+                                </div>
+                                <div class="flex justify-between text-[10px] text-zinc-400 mt-1.5 font-mono">
+                                    <span>🧠<span id="combat-player-sanity">—</span></span>
+                                    <span>💪<span id="combat-m-power">—</span></span>
+                                    <span>📘<span id="combat-m-intellect">—</span></span>
                                 </div>
                             </div>
-
-                            <!-- 手機：力量／智力／韌性 單行 -->
-                            <div class="lg:hidden flex justify-between items-center text-xs mb-3 px-0.5 border-t border-zinc-800/80 pt-2">
-                                <div class="flex items-center gap-x-1"><span>💪</span><span id="combat-m-power" class="font-mono text-orange-400">—</span></div>
-                                <div class="flex items-center gap-x-1"><span>📘</span><span id="combat-m-intellect" class="font-mono text-blue-400">—</span></div>
-                                <div class="flex items-center gap-x-1"><span>🛡️</span><span id="combat-m-resilience" class="font-mono text-emerald-400">—</span></div>
+                            <div class="hidden lg:block">
+                            <div class="flex items-center gap-x-4 mb-5">
+                                <img id="combat-player-avatar" src="/static/avatars/default.png"
+                                     class="w-20 h-20 rounded-2xl border-2 border-amber-500 object-cover shrink-0" alt="玩家">
+                                <div class="min-w-0">
+                                    <div class="font-semibold text-xl truncate combat-player-name-lg">你</div>
+                                    <div id="combat-player-team" class="text-sm text-zinc-400 truncate">—</div>
+                                </div>
                             </div>
-
-                            <!-- 桌面：完整屬性 -->
-                            <div class="hidden lg:block space-y-3.5 mb-6">
+                            <div class="space-y-3.5">
                                 <div>
                                     <div class="flex justify-between text-sm mb-1">
                                         <span class="flex items-center gap-2"><span>❤️</span><span class="font-medium text-zinc-200">生命值</span></span>
@@ -1006,7 +994,11 @@
                                     <span id="combat-resilience-value" class="font-mono text-lg font-bold text-emerald-400">—</span>
                                 </div>
                             </div>
+                            </div>
+                        </div>
+                    </div>
 
+                    <div id="combat-action-area" class="mt-2 lg:mt-0 bg-zinc-900/80 lg:bg-transparent border border-zinc-800 lg:border-0 rounded-xl lg:rounded-none p-2.5 lg:p-0">
                             <div id="protagonist-control-bar" class="hidden mb-3 p-3 rounded-xl border border-amber-700/40 bg-amber-950/20">
                                 <button type="button" id="protagonist-control-toggle" onclick="toggleProtagonistControl()"
                                         class="w-full py-2 text-xs font-medium text-amber-200 bg-amber-900/40 hover:bg-amber-900/60 rounded-lg border border-amber-700/50">
@@ -1052,7 +1044,6 @@
                                     🤝 禱告救援瀕死隊友
                                 </button>
                             </div>
-                        </div>
                     </div>
 
                     <!-- 隊友 + 主角（水平 scroll） -->
@@ -1244,7 +1235,7 @@
             }
         }
 
-        // combat_flow_fsm_v1: PR#1 shadow FSM (static/js/combat_flow.js)
+        // combat_flow_fsm_v2: PR#2 production FSM (static/js/combat_flow.js)
         if (typeof ensureCombatFlow === 'function') {
             ensureCombatFlow({ shadowMode: true });
         }
@@ -1592,20 +1583,37 @@
         let lastShownSettlementPhase = 0;
         let lastSettlementDisplayKey = '';
         let victorySettlementModalCombatId = null;
-        // Settlement guard (combat_flow_v9): idempotent per round, blocks duplicate modal
+        // combat_flow_fsm_v2: settlement idempotency via FSM (static/js/combat_flow.js)
         let currentSettlementRound = null;
-        let settlementModalShown = false;
         let settlementCombatId = null;
-        let combatAwaitingSettlementAck = false;
-        let settlementTimerPending = false;
         let pendingSettlementHpPayload = null;
         let lastCombatStatus = null;
         let combatEnemyHpSeen = null;
         let lastAnimatedEnemyHp = null;
         let pendingVictoryAfterSettlement = null;
-        let combatFinalizingVictory = false;
-        let victoryFinalizeInProgress = false;
         let victorySettlementAcknowledgedCombatId = null;
+
+        function isCombatFsmSettlement() {
+            return getCombatUiPhase() === CombatUiPhase.SETTLEMENT;
+        }
+
+        function isCombatFsmSubmitting() {
+            return getCombatUiPhase() === CombatUiPhase.SUBMITTING;
+        }
+
+        function isCombatFsmEndgame() {
+            const p = getCombatUiPhase();
+            return p === CombatUiPhase.VICTORY || p === CombatUiPhase.DEFEAT;
+        }
+
+        function isCombatEndgameFinalizing() {
+            return getCombatFlow().finalizingEndgame;
+        }
+
+        function isCombatFsmBlockingActions() {
+            return isCombatFsmSettlement() || isCombatFsmSubmitting() || isCombatFsmEndgame()
+                || isCombatEndgameFinalizing();
+        }
         // combat_flow_v12: blocks poll/UI from re-opening settlement after victory sequence
         let combatVictorySequenceCompleteId = null;
         let combatPhaseLocked = false;
@@ -2221,13 +2229,14 @@
         }
 
         function clearSettlementModalGuard() {
-            settlementModalShown = false;
             currentSettlementRound = null;
+            combatFsmHook('clearSettlementRound');
         }
 
         function markSettlementModalShown(data) {
-            settlementModalShown = true;
-            currentSettlementRound = settlementRoundKey(data);
+            const key = settlementRoundKey(data);
+            currentSettlementRound = key;
+            combatFsmHook('markSettlementShown', key);
         }
 
         function isRoundSettlementModalVisible() {
@@ -2243,7 +2252,7 @@
         }
 
         function shouldShowRoundSettlement(data) {
-            if (combatAwaitingSettlementAck || settlementTimerPending) return false;
+            if (getCombatFlow().shouldBlockPoll()) return false;
             const phase = Number(data?.current_phase) || 0;
             const resolved = !!(data?.round_resolved || data?.status === 'round_resolved');
             const advancedWhileWaiting = combatWaitingForRound
@@ -2254,8 +2263,6 @@
         }
 
         function resetCombatSettlementState() {
-            combatAwaitingSettlementAck = false;
-            settlementTimerPending = false;
             pendingSettlementHpPayload = null;
             pendingVictoryAfterSettlement = null;
             lastShownSettlementPhase = 0;
@@ -2269,8 +2276,7 @@
         }
 
         function resetCombatVictoryFlowState(options = {}) {
-            combatFinalizingVictory = false;
-            victoryFinalizeInProgress = false;
+            getCombatFlow().setFinalizingEndgame(false);
             if (!options.keepVictoryLock) {
                 victorySettlementAcknowledgedCombatId = null;
                 victorySettlementModalCombatId = null;
@@ -2304,7 +2310,9 @@
                 el.disabled = true;
             });
             const panel = document.getElementById('player-panel');
+            const actionArea = document.getElementById('combat-action-area');
             if (panel) panel.style.opacity = '0.45';
+            if (actionArea) actionArea.style.opacity = '0.45';
             const hintEl = document.getElementById('combat-submit-hint');
             if (hintEl) hintEl.textContent = '請確認傷害結算';
         }
@@ -2343,7 +2351,6 @@
 
         function continueCombatAfterRound() {
             applyPendingSettlementHp();
-            settlementTimerPending = false;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
             hideRoundSettlementModal();
@@ -2352,7 +2359,9 @@
             resetCombatDiceUi();
             selectedDice = null;
             const panel = document.getElementById('player-panel');
+            const actionArea = document.getElementById('combat-action-area');
             if (panel) panel.style.opacity = '1';
+            if (actionArea) actionArea.style.opacity = '1';
             if (pendingVictoryAfterSettlement) {
                 const victoryPayload = pendingVictoryAfterSettlement;
                 const combatId = victoryPayload.combat_id || currentCombatId;
@@ -2361,7 +2370,6 @@
                 stopCombatPolling();
                 markCombatVictorySequenceComplete(combatId);
                 victorySettlementAcknowledgedCombatId = combatId;
-                combatAwaitingSettlementAck = false;
                 clearSettlementModalGuard();
                 void finalizeCombatVictoryFromPayload(victoryPayload);
                 return;
@@ -2371,7 +2379,6 @@
                 const victoryPayload = buildVictoryTransitionPayload(resumeData);
                 const combatId = victoryPayload.combat_id || currentCombatId;
                 combatFsmHook('onSettlementConfirm', { pendingVictory: true, combatId });
-                combatAwaitingSettlementAck = false;
                 clearSettlementModalGuard();
                 pendingVictoryAfterSettlement = null;
                 stopCombatPolling();
@@ -2381,11 +2388,12 @@
                 return;
             }
             clearSettlementModalGuard();
-            combatAwaitingSettlementAck = false;
-            settlementTimerPending = false;
             lastCombatStatusJson = '';
             lastCombatUiSnapshotKey = '';
             clearLocalCombatSubmittedState();
+            if (lastCombatStatus?.my_state) {
+                lastCombatStatus.my_state.submitted = false;
+            }
             combatFsmHook('onSettlementConfirm', { combatId: currentCombatId });
             if (lastCombatStatus) {
                 updateCombatUI(lastCombatStatus, { forceRefresh: true });
@@ -2398,7 +2406,7 @@
         // combat_instant_settlement: 零人工 delay；HP + 傷害結算 modal 即時
         // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
         // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
-        // combat_flow_v9: settlementModalShown + currentSettlementRound idempotent guard
+        // combat_flow_fsm_v2: FSM settlement idempotency via settlementRoundKey
         // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
         // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
         // combat_flow_v12: victory sequence lock; enrich settlement from logs when API zeros
@@ -2408,28 +2416,26 @@
             const combatId = data?.combat_id || currentCombatId;
             if (isCombatVictorySequenceComplete(combatId) || isCombatResultPanelVisible()) return;
             data = enrichRoundSettlementData(data);
-            combatFsmHook('onSettlementShown', data, {
-                pendingVictory: !!pendingVictoryAfterSettlement || isFinalHitOrVictory(data),
-            });
             const phase = Number(data?.current_phase) || 0;
             const roundKey = settlementRoundKey(data);
             const displayKey = settlementDisplayKey(data);
-            if (settlementModalShown && currentSettlementRound === roundKey) {
+            combatFsmHook('onSettlementShown', data, {
+                pendingVictory: !!pendingVictoryAfterSettlement || isFinalHitOrVictory(data),
+                roundKey,
+            });
+            if (getCombatFlow().hasShownSettlementFor(roundKey) && currentSettlementRound === roundKey) {
                 if (isFinalHitOrVictory(data) && !isRoundSettlementModalVisible()) {
                     showRoundSettlementModal(applySettlementEnemyHp(data));
                     lockCombatActionsForSettlement();
                 }
                 return;
             }
-            if (combatFinalizingVictory || victoryFinalizeInProgress) return;
+            if (isCombatEndgameFinalizing()) return;
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) return;
             if (lastSettlementDisplayKey === displayKey) return;
-            if (combatAwaitingSettlementAck && isRoundSettlementModalVisible()) {
+            if (isCombatFsmSettlement() && isRoundSettlementModalVisible()) {
                 return;
-            }
-            if (combatAwaitingSettlementAck) {
-                combatAwaitingSettlementAck = false;
             }
             if (phase > 0 && phase <= lastShownSettlementPhase
                 && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
@@ -2443,8 +2449,6 @@
                 || !!data?.outcome
                 || isFinalHitOrVictory(data);
             pendingSettlementHpPayload = data;
-            settlementTimerPending = false;
-            combatAwaitingSettlementAck = true;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
             }
@@ -2487,8 +2491,8 @@
 
         function isVictoryFlowLocked(combatId) {
             const cid = combatId || currentCombatId;
-            return combatFinalizingVictory
-                || victoryFinalizeInProgress
+            return isCombatEndgameFinalizing()
+                || isCombatFsmEndgame()
                 || (victorySettlementAcknowledgedCombatId && cid === victorySettlementAcknowledgedCombatId);
         }
 
@@ -2516,33 +2520,32 @@
         }
 
         async function finishCombatVictoryFromPayload(data) {
-            if (victoryFinalizeInProgress) return;
+            if (isCombatEndgameFinalizing()) return;
             const combatId = data?.combat_id || currentCombatId;
             if (isCombatVictorySequenceComplete(combatId)) return;
             data = ensureVictorySettlementPayload(enrichRoundSettlementData(data));
 
-            if (combatAwaitingSettlementAck && isFinalHitOrVictory(data)) {
+            if (isCombatFsmSettlement() && isFinalHitOrVictory(data)) {
                 if (isRoundSettlementModalVisible()) {
                     if (!pendingVictoryAfterSettlement) {
                         pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
                     }
                     return;
                 }
-                combatAwaitingSettlementAck = false;
                 victorySettlementModalCombatId = null;
                 clearSettlementModalGuard();
             }
 
             if (victorySettlementAcknowledgedCombatId
                 && combatId === victorySettlementAcknowledgedCombatId) {
-                if (!combatAwaitingSettlementAck && !victoryFinalizeInProgress) {
+                if (!isCombatFsmSettlement() && !isCombatEndgameFinalizing()) {
                     await finalizeCombatVictoryFromPayload(data);
                 }
                 return;
             }
-            if (combatFinalizingVictory) return;
+            if (isCombatFsmEndgame()) return;
 
-            if (combatAwaitingSettlementAck) {
+            if (isCombatFsmSettlement()) {
                 if (!pendingVictoryAfterSettlement) {
                     pendingVictoryAfterSettlement = data;
                 }
@@ -2554,12 +2557,12 @@
             const hasSettlementUi = victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome);
 
             if (hasSettlementUi) {
-                if (combatAwaitingSettlementAck && pendingVictoryAfterSettlement) return;
+                if (isCombatFsmSettlement() && pendingVictoryAfterSettlement) return;
                 if (victorySettlementModalCombatId === combatId && isRoundSettlementModalVisible()) {
                     return;
                 }
                 if (victorySettlementAlreadyShown(combatId, phase)) {
-                    if (!combatAwaitingSettlementAck) {
+                    if (!isCombatFsmSettlement()) {
                         pendingVictoryAfterSettlement = data;
                     }
                     return;
@@ -2578,15 +2581,12 @@
         }
 
         async function finalizeCombatVictoryFromPayload(data) {
-            if (victoryFinalizeInProgress) return;
+            if (isCombatEndgameFinalizing()) return;
             const combatId = data?.combat_id || currentCombatId;
             if (combatId) markCombatVictorySequenceComplete(combatId);
-            victoryFinalizeInProgress = true;
-            combatFinalizingVictory = true;
+            getCombatFlow().setFinalizingEndgame(true);
             stopCombatPolling();
             resetCombatDiceUi();
-            combatAwaitingSettlementAck = false;
-            settlementTimerPending = false;
             pendingSettlementHpPayload = null;
             pendingVictoryAfterSettlement = null;
             clearSettlementModalGuard();
@@ -2630,8 +2630,7 @@
                 updateDashboard(await statusRes.json());
                 combatItemsLoaded = false;
             } finally {
-                victoryFinalizeInProgress = false;
-                combatFinalizingVictory = false;
+                getCombatFlow().setFinalizingEndgame(false);
             }
         }
 
@@ -2674,9 +2673,8 @@
             if (isCombatVictorySequenceComplete(data?.combat_id)) return;
             data = enrichRoundSettlementData(data);
             if (isVictoryFlowLocked(data?.combat_id)) return;
-            if (combatAwaitingSettlementAck || settlementTimerPending) {
-                return;
-            }
+            if (isCombatEndgameFinalizing() || isCombatFsmEndgame()) return;
+            if (isCombatFsmSettlement() && isRoundSettlementModalVisible()) return;
             if (shouldFinishCombatVictory(data)) {
                 finishCombatVictoryFromPayload(data);
                 return;
@@ -3026,8 +3024,7 @@
                 document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
                     const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
                         && !lastCombatStatus?.my_state?.submitted
-                        && !combatAwaitingSettlementAck
-                        && !settlementTimerPending
+                        && !isCombatFsmBlockingActions()
                         && !combatPhaseLocked;
                     el.disabled = !canAct;
                 });
@@ -3096,16 +3093,18 @@
         }
 
         function performAction(action, opts = {}) {
+            const fsmGate = combatFsmCanPerformAction(action);
+            if (!fsmGate.ok) {
+                const toastType = getCombatUiPhase() === CombatUiPhase.SETTLEMENT ? 'error' : 'info';
+                showToast(fsmGate.message, toastType);
+                return;
+            }
             if (actionModalRolling) {
                 showToast('系統擲骰中', 'info');
                 return;
             }
             if (isCombatModalOpen()) {
                 showToast('請先完成當前行動', 'info');
-                return;
-            }
-            if (combatAwaitingSettlementAck || settlementTimerPending) {
-                showToast('請先等待本回合傷害結算', 'error');
                 return;
             }
             if (controllingProtagonist && action === 'use_item') {
@@ -3119,7 +3118,7 @@
                 return;
             }
             if (me.submitted) {
-                showToast('等待伺服器同步回合狀態…', 'error');
+                showToast('你已提交本回合行動，等待隊友中…', 'info');
                 return;
             }
             if (effectiveCombatStatus(lastCombatStatus) !== 'player_phase') {
@@ -3795,8 +3794,6 @@
                 clearSettlementModalGuard();
                 lastCombatUiSnapshotKey = '';
                 lastCombatStatusJson = '';
-                combatAwaitingSettlementAck = false;
-                settlementTimerPending = false;
                 clearTimeout(showFullRoundSettlement._modalTimer);
                 showFullRoundSettlement._modalTimer = null;
                 resetCombatEnemyHpTracking(null);
@@ -3827,7 +3824,11 @@
                 deferHp: !!options.deferEnemyHp,
             });
             updateCombatPlayerAvatar(me);
-            safeSetText('combat-player-name', me.display_name || '你');
+            const playerName = me.display_name || '你';
+            safeSetText('combat-player-name', playerName);
+            document.querySelectorAll('.combat-player-name-lg').forEach(el => {
+                el.textContent = playerName;
+            });
             safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
             updateCombatPlayerStats(me, squad);
             updateAttackButtonHint();
@@ -3898,16 +3899,17 @@
             updateNearDeathOverlay(me);
 
             const hintEl = document.getElementById('combat-submit-hint');
-            const actionContainer = document.getElementById('player-panel');
+            const actionContainer = document.getElementById('combat-action-area');
             const canAct = uiData.status === 'player_phase'
                 && !combatPhaseLocked
                 && !isResolving
                 && !inNearDeath
                 && !me.submitted
-                && !combatAwaitingSettlementAck
-                && !settlementTimerPending
+                && !isCombatFsmBlockingActions()
                 && !options.skipActionEnable;
             if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.45';
+            const playerPanel = document.getElementById('player-panel');
+            if (playerPanel) playerPanel.style.opacity = canAct ? '1' : '0.45';
             document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
                 el.disabled = !canAct || actionModalRolling || combatPhaseLocked || isResolving;
             });
@@ -3920,8 +3922,10 @@
                 hideCombatModal();
             }
             if (hintEl) {
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    hintEl.textContent = '本回合傷害結算中，請稍候…';
+                if (isCombatFsmSubmitting()) {
+                    hintEl.textContent = '回合提交結算中，請稍候…';
+                } else if (isCombatFsmSettlement()) {
+                    hintEl.textContent = '本回合傷害結算中，請先確認';
                 } else if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
                 else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
                 else if (isResolving || combatPhaseLocked) hintEl.textContent = '回合結算中，請稍候…';
@@ -3931,14 +3935,6 @@
                 else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
                 else hintEl.textContent = '選擇行動後確認提交';
             }
-            combatFsmHook('reconcileLegacyState', {
-                combatAwaitingSettlementAck,
-                settlementModalVisible: isRoundSettlementModalVisible(),
-                actionModalRolling,
-                victoryFinalizeInProgress,
-                combatLive: uiData.active === true
-                    || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status),
-            });
         }
 
         async function loadCombatStatus(showLoading, options = {}) {
@@ -3947,8 +3943,8 @@
                     stopCombatPolling();
                     return;
                 }
-                if (victoryFinalizeInProgress) return;
-                if (combatFinalizingVictory) return;
+                if (isCombatEndgameFinalizing()) return;
+                if (isCombatFsmEndgame()) return;
                 if (!options.skipSquadRefresh) {
                     await refreshSquadFromServer();
                 }
@@ -3960,7 +3956,7 @@
                 const data = await res.json();
                 if (data.success === false && !data.my_state && !data.active) return;
 
-                if (settlementTimerPending || combatAwaitingSettlementAck) {
+                if (getCombatFlow().shouldBlockPoll()) {
                     if (queueVictoryDuringSettlement(data)) return;
                     syncHpOnlyFromPoll(data);
                     return;
@@ -3972,11 +3968,11 @@
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
 
-                    if (victoryFinalizeInProgress || combatFinalizingVictory) {
+                    if (isCombatEndgameFinalizing() || isCombatFsmEndgame()) {
                         return;
                     }
 
-                    if (combatAwaitingSettlementAck || settlementTimerPending) {
+                    if (getCombatFlow().shouldBlockPoll()) {
                         queueVictoryDuringSettlement(data);
                         return;
                     }
@@ -4018,8 +4014,8 @@
                     return;
                 }
 
-                if (data.round_settlement && !settlementModalShown
-                    && !combatAwaitingSettlementAck && !victoryFinalizeInProgress
+                if (data.round_settlement && !getCombatFlow().hasShownSettlementFor(settlementRoundKey(data))
+                    && !isCombatFsmSettlement() && !isCombatEndgameFinalizing()
                     && !isCombatVictorySequenceComplete(data.combat_id)
                     && !isCombatResultPanelVisible()
                     && !data.outcome && data.status !== 'ended') {
@@ -4071,9 +4067,14 @@
         }
 
         async function submitAction() {
-            if (combatAwaitingSettlementAck || settlementTimerPending) {
+            if (isCombatFsmSettlement()) {
                 restoreCombatConfirmBtn();
-                showToast('請先等待本回合傷害結算', 'error');
+                showToast('請先關閉當前結算彈窗', 'error');
+                return;
+            }
+            if (isCombatFsmSubmitting()) {
+                restoreCombatConfirmBtn();
+                showToast('回合提交結算中，請稍候…', 'info');
                 return;
             }
             if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
@@ -5064,6 +5065,11 @@
             safeSetText('combat-m-power', stats.power);
             safeSetText('combat-m-intellect', stats.intellect);
             safeSetText('combat-m-resilience', stats.resilience);
+            const mobileBar = document.getElementById('combat-hp-bar-mobile');
+            if (mobileBar) {
+                const pct = Math.max(0, Math.min(100, Math.round((stats.hp / maxHp) * 100)));
+                mobileBar.style.width = `${pct}%`;
+            }
         }
 
         function resetCombatEnemyHpTracking(enemyHp = null) {
