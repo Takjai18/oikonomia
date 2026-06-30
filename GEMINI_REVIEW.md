@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-06-29 · 現行 docs commit `41b7630`（以 `git rev-parse --short HEAD` 為準）
+> **最後更新**：2026-06-30 · 現行 commit 以 `git rev-parse --short HEAD` 為準（戰鬥 UX 見 §16）
 
 ---
 
@@ -569,3 +569,91 @@ High 項要寫清 exploit 或 bug 重現步驟，同具體修復建議（交 Gro
 | Double-resolve 鎖 | — | ✅ **已確認** | §14 維持；`payload.resolving=true` 輔助前端 |
 
 **Reviewer 結論（Grok Build）**：戰鬥模組在 `main` 上可視為 **Production Ready**；部署後請實機驗證 resolving spinner 與敵 HP 動畫。
+
+---
+
+## 16. Combat UX Review — Delay 殘留 + Settlement v10（2026-06-30）
+
+> **Active case**：BUG-2026-001 · `fix_in_progress` / **monitoring**  
+> **基準 commit**：`6391b22`（或 `git rev-parse --short HEAD`）  
+> **背景**：`combat_instant_settlement` 已移除人工 modal／HP delay；v8–v10 修 settlement duplicate + final-hit stuck。  
+> **實機**：Henry instant checklist OK，但 **delay 體感仍未完全解決**（擲骰動畫、deferEnemyHp、戶外 poll）。
+
+### 16.1 俾 Gemini 嘅檔案（按優先）
+
+#### ① 必讀文檔（Copy 貼上 — 最可靠）
+
+| 檔案 | 用途 |
+|------|------|
+| **`bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`** | **自包含包**（摘要 + JS/Python 摘錄）— `bash scripts/build_gemini_packet.sh` 生成 |
+| `bug_log/cases/.../GEMINI_CONSULT.md` | Phase 3 一頁題目（delay + v10） |
+| `bug_log/cases/.../REPORT.md` §13–§19 | 完整調查時間線 |
+| `decisions_log.md` § instant settlement · § Combat Settlement Modal Bug | 架構決策（唔好建議恢復 1500ms delay） |
+| `UPDATE_LOG.md` § BUG-2026-001 / combat_flow_v8–v10 | 已知陷阱 |
+
+#### ② 後端（API 合約 — 確認問題喺 frontend）
+
+| 檔案 | 行數級 |
+|------|--------|
+| `routes/combat.py` | `submit_action`、`combat/status` |
+| `models/combat.py` | `resolve_player_phase`、`build_victory_outcome_response`、`_round_settlement_from_logs` |
+| `services/combat_engine.py` | 純計算（Step 1；與 delay 無關） |
+| `scripts/test_combat_flow.py` | 回歸基線（應全綠） |
+
+#### ③ 前端（核心 — delay + settlement）
+
+| 檔案 | 重點符號（grep） |
+|------|------------------|
+| **`templates/index.html`** | `DICE_ROLL_PRESETS`, `showFullRoundSettlement`, `finishCombatVictoryFromPayload`, `loadCombatStatus`, `handleCombatRoundResolved`, `isFinalHitOrVictory`, `resolveEnemyHpAfter`, `settlementModalShown`, `syncEnemyHpDisplay`, `applyPendingSettlementHp`, `combatAwaitingSettlementAck` |
+
+**唔使**全檔 7000+ 行 — 用 `GEMINI_PACKET.md` §D 摘錄 + 上表 grep 補充即可。
+
+#### ④ 唔使俾
+
+- `*.db`、`venv/`、`uploads/`、`attachments/`（可能過時快照）
+- Drive **資料夾**連結（Gemini 讀唔到）
+- 成個 repo zip（除非 Gemini 支援且你有 quota）
+
+### 16.2 `index.html` 戰鬥區塊（2026-06-30 約略行號）
+
+| 區塊 | 行號 | 重點 |
+|------|------|------|
+| 擲骰 preset | ~1238–1271 | `pauseMs: 0`；`intervalMs`×`maxRolls` = 提交前延遲 |
+| HP sync | ~1832–1900 | `syncEnemyHpDisplay`、`applySettlementEnemyHp` |
+| Settlement guard | ~2065–2290 | `settlementModalShown`、`showFullRoundSettlement` |
+| Victory 過渡 | ~2336–2420 | `finishCombatVictoryFromPayload`、`finalizeCombatVictoryFromPayload` |
+| Final hit | ~2445–2475 | `isFinalHitOrVictory`、`resolveEnemyHpAfter` |
+| Round resolved | ~2478–2520 | `handleCombatRoundResolved` |
+| Poll | ~3641–3720 | `loadCombatStatus` early return、`syncHpOnlyFromPoll` |
+| Submit | ~3768–3820 | `submitAction` |
+
+### 16.3 請 Gemini 回答（Phase 3）
+
+1. 在 **instant settlement 已上線** 前提下，剩餘 delay 最可能來自邊 1–2 條 path？量化每段 ms。
+2. `deferEnemyHp`（modal 期間主畫面舊 HP）係咪主要 UX 誤判來源？建議改法？
+3. v10 final-hit 流程有無 race（submit vs poll）仍會 stuck 或 duplicate modal？
+4. 最低風險 patch 順序（營會前 3 日）？
+5. 可自動化嘅延遲／modal 回歸測試建議。
+
+### 16.4 Copy-paste 開場白（Combat Delay + Settlement）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+請讀我附上嘅 GEMINI_PACKET.md（BUG-2026-001 Phase 3）同 GEMINI_REVIEW.md §16。
+基準 commit：6391b22
+範圍：戰鬥 UX — 殘留 delay（instant settlement 後）+ settlement/v10 穩健性
+
+後端 API／CI 已全綠；問題集中在 templates/index.html timing。
+唔好建議恢復 COMBAT_SETTLEMENT_DELAY_MS 或 1500ms modal 人工等待。
+
+請跟 §5 Debug 格式：根因 → 重現步驟 → 最小修復建議（交 Grok Build）→ 建議測試。
+```
+
+### 16.5 GitHub Raw（若 Gemini 支援 URL）
+
+將 `6391b22` 換成實際 commit：
+
+- Packet：`https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
+- Consult：`https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md`
+- `index.html`（大檔）：`https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/templates/index.html`

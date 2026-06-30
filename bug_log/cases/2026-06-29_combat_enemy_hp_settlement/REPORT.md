@@ -543,4 +543,17 @@ Frontend 有多條獨立勝利捷徑，只有 `submitAction` 同部分 `roundRes
 
 ---
 
-*最後更新：2026-06-30 · §18 combat_flow_v8*
+## 20. Gemini Phase 3 諮詢（Delay 殘留 · 2026-06-30）
+
+| 項目 | 內容 |
+|------|------|
+| **焦點** | instant settlement 後仍覺 lag；v10 settlement 穩健性 |
+| **Consult** | `GEMINI_CONSULT.md` |
+| **Packet** | `bash scripts/build_gemini_packet.sh` → `GEMINI_PACKET.md` |
+| **Review 指引** | `GEMINI_REVIEW.md` §16 |
+
+**唔好再問 Gemini**：純 killing blow payload（已修）、1500ms modal delay（已移除）。
+
+---
+
+*最後更新：2026-06-30 · §20 Gemini Phase 3*

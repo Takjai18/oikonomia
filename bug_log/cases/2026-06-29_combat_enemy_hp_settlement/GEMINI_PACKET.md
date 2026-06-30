@@ -1,462 +1,186 @@
 # GEMINI_PACKET — BUG-2026-001（自包含，可直接貼入 Gemini）
 
-> **生成時間**：2026-06-29 16:07 UTC  
-> **Git commit**：`aecffa9`  
-> **用途**：Gemini **讀唔到** Google Drive bug_log 資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。
+> **生成時間**：2026-06-30 03:03 UTC  
+> **Git commit**：`6391b22`  
+> **Phase**：3 — **Delay 殘留** + settlement v10（instant settlement 已上線）  
+> **用途**：Gemini **讀唔到** Google Drive bug_log 時，將**成個檔案** Copy & Paste 到 Gemini chat。  
 > **重新生成**：`bash scripts/build_gemini_packet.sh`
 
 ---
 
 ## 點樣俾 Gemini（下次照做）
 
-1. **最簡單**：打開本檔 `GEMINI_PACKET.md` → 全選 Copy → 貼到 Gemini
-2. **GitHub Raw**（若 Gemini 支援 URL）：
-   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/aecffa9/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - 完整 index.html：https://raw.githubusercontent.com/Takjai18/oikonomia/aecffa9/templates/index.html
-   - routes/combat.py：https://raw.githubusercontent.com/Takjai18/oikonomia/aecffa9/routes/combat.py
-3. **唔好用**：Drive 資料夾連結（Gemini API 索引唔到 .md / bug_log）
-4. **可選**：將本檔 Upload 為 **Google Doc**（單檔分享連結）再俾 Gemini
+1. **最簡單（推薦）**：打開本檔 → 全選 Copy → 貼到 Gemini
+2. **加文檔**：另貼 `GEMINI_REVIEW.md` §16 或只貼 `GEMINI_CONSULT.md`
+3. **GitHub Raw**（若 Gemini 支援 URL）：
+   - 本檔：https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
+   - Consult：https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md
+   - index.html（大檔）：https://raw.githubusercontent.com/Takjai18/oikonomia/6391b22/templates/index.html
+4. **唔好用**：Drive 資料夾連結、`attachments/` 舊快照
 
 ---
 
-## A. GEMINI_CONSULT（精簡摘要）
+## A. GEMINI_CONSULT（Phase 3 摘要）
 
-# GEMINI_CONSULT — BUG-2026-001（Phase 2：動畫 delay）
+# GEMINI_CONSULT — BUG-2026-001（Phase 3：Delay 殘留 + Settlement v10）
 
-> Phase 1（HP 唔跌／modal 缺失）經 v4–v6 修復後 **大幅改善**。本檔聚焦 **殘留動畫 delay**。完整脈絡見 `REPORT.md` §13。
+> Phase 1（HP／modal）→ v4–v10 已多輪修復。Phase 2（人工 delay 移除 → `combat_instant_settlement`）已實作。  
+> **本檔聚焦**：實機仍覺得慢嘅 **殘留 delay** + settlement／victory 過渡是否穩健。  
+> 完整脈絡：`REPORT.md` §13–§19 · `decisions_log.md` § instant settlement · § Combat Settlement Modal Bug
 
 ## 一句話
 
-**PA `aecffa9`（`enemy_hp_sync_v6`）後端 HP 正確，Henry 實機 HP／settlement 大致正常，但每回合攻擊後敵 HP 更新同「本回合戰果」modal 仍覺得慢（動畫／計時器堆疊）。**
+**PA `6391b22`（`combat_flow_v10`）後端／CI 全綠；Henry／Tak 實機 settlement 大致 OK，但戶外仍覺得「攻擊→HP→modal」有 lag；另需確認 v10 final-hit 過渡無 regression。**
 
-## 實機條件
+## 實機條件（2026-06-30）
 
 | 項目 | 值 |
 |------|-----|
 | 玩家 | Henry · `PLAYER-75406` · Iggy · 單人 |
-| PA version | `aecffa9`（2026-06-30 curl） |
-| 頭先戰鬥 | Combat **#35** `practice_iggy_01_quick`（一輪勝利，後端 HP 48→0 ✓） |
-| 近期 boundary | Combat **#34** `practice_iggy_03_boundary`：R1 140→91，R2→0（後端 log ✓） |
+| PA / GitHub | `6391b22`（deploy 後 curl 核對） |
+| Markers | `combat_instant_settlement`, `combat_flow_v7`–`v10`, `enemy_hp_sync_v7`, `settlement_breakdown_v1` |
+| 已驗 encounter | `practice_iggy_01_quick`、`practice_iggy_03_boundary`（instant checklist OK） |
+| 新修復待驗 | `practice_iggy_02_leech`（情緒寄生影 final-hit stuck → v10） |
 
-## 已確認（後台）
+## 已確認
 
-- `/combat/status?combat_id=34|35`：`enemy.hp`、`round_settlement.enemy_hp_after`、summary log **一致**
-- 問題 **唔係** stale cache 或 HP sync regression（v6 poll 凍結係刻意設計）
+- 後端 `enemy.hp` / `round_settlement.enemy_hp_after` / DB log **一致**（`test_combat_flow.py` 192+ 項）
+- `COMBAT_SETTLEMENT_DELAY_MS` 已移除；`pauseMs: 0`；settlement modal **即時**（無 1500ms 人工等待）
+- v8–v10：`settlementModalShown`、`isFinalHitOrVictory`、`resolveEnemyHpAfter` 防 duplicate + final-hit 過渡
 
-## 懷疑方向（計時器堆疊）
+## 殘留 delay 懷疑（Phase 3 — 請 Gemini 重點查）
 
-1. 擲骰：`DICE_ROLL_PRESETS.normal` ≈ 2.2s（提交前）
-2. HP tween：`animateCombatNumber` **420ms**；血條即時跳、數字後追
-3. Settlement：`COMBAT_SETTLEMENT_DELAY_MS.normal` **1500ms** 先彈 modal
-4. `settlementTimerPending` 期間 `loadCombatStatus` **零 DOM 更新**（修 race 副作用）
+| 來源 | 位置 | 體感 |
+|------|------|------|
+| 擲骰動畫 | `DICE_ROLL_PRESETS.normal`：8×55ms ≈ **440ms**（提交**前**） | 攻擊 confirm 前仍要等 |
+| 網絡 RTT | `submit_action` + `loadCombatStatus` poll（3s interval） | 戶外 Wi‑Fi 慢時體感 lag |
+| HP 顯示時機 | `deferEnemyHp`：modal 期間主畫面**舊 HP**；按「確定」先 `applyPendingSettlementHp` | 玩家以為 HP 未跌 |
+| Poll 凍結 | `combatAwaitingSettlementAck` 期間 `loadCombatStatus` 只做 `syncHpOnlyFromPoll` | 必要但可能加重「無反應」感 |
+| 血條 vs 數字 | `syncEnemyHpDisplay` instant；血條 width 即時 | 應已同步，請確認無 regression |
 
-## 請產出
+**注意**：唔好再建議恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms modal delay（已決策移除）。
 
-1. 推薦修復方案（縮 delay / 跳過 tween / 練習模式 fast path / 分拆 poll 凍結）+ pseudo-diff
-2. 保留 v6 race 修復前提下嘅 **最低風險** 改動順序
-3. 建議新預設（`combatSettlementDelay`、practice encounter 特例）
-4. 可自動化嘅延遲上限測試（例如 round_resolved → modal visible < 1200ms）
+## 請 Gemini 產出
 
-## 必讀檔案（GitHub `aecffa9`）
+1. **Delay**：在保留 v6–v10 race guard 前提下，邊條路徑仍可縮至「攻擊 confirm 後 <1s 見 HP+modal」？具體 pseudo-diff（只 frontend）。
+2. **Settlement**：v10 `isFinalHitOrVictory` / `buildVictoryTransitionPayload` 有無 edge case（poll 與 submit 競態、duplicate modal、stuck buttons）？
+3. **測試**：點樣加 contract／Playwright  assert「round_resolved → `#combat-round-settlement-modal` visible < 1500ms」？
+4. **優先序**：delay vs 雙人隊未驗 vs 營會前穩定性 — P0/P1 建議。
 
-- `templates/index.html` — `animateCombatNumber`, `showFullRoundSettlement`, `getSettlementModalDelayMs`, `settlementTimerPending`, `loadCombatStatus` early return
-- `DICE_ROLL_PRESETS` / `COMBAT_SETTLEMENT_DELAY_MS` 常數（~L1238）
+## 必讀（GitHub `6391b22`）
+
+見 `GEMINI_REVIEW.md` §16 檔案包；**唔使全讀** `index.html`，跟 packet §D 摘錄即可。
 
 ## 點讀
 
-**`GEMINI_PACKET.md`**（`bash scripts/build_gemini_packet.sh` 重新生成）
+```bash
+bash scripts/build_gemini_packet.sh
+# → 貼 bug_log/cases/.../GEMINI_PACKET.md 全文入 Gemini
+```
 ---
 
-## B. §13.5 請 Gemini 回答（Phase 2：動畫 delay）
+## B. 請 Gemini 回答（Phase 3：Delay + Settlement v10）
 
-1. 縮 `modalDelay`、取消 HP tween、重排 pipeline — 邊個對 140 HP 多回合最好？
-2. 保留 `settlementTimerPending` poll 凍結 vs 只凍結 `updateCombatUI`、仍更新 HP — race 風險？
-3. `combatSettlementDelay` 預設改 fast？`practice_*` encounter 自動 fast？
-4. `syncEnemyHpDisplay(..., { animate: false })` + `modalDelay = max(0, delay - hpAnimMs)` 是否足夠？
-5. 點樣自動化「round_resolved → modal < 1.5s」？
+1. instant settlement 後，剩餘 delay 最可能來自邊 1–2 條 path？（擲骰 / deferEnemyHp / poll 3s / 網絡）
+2. `deferEnemyHp` 會否令玩家誤判「HP 冇跌」？建議改法？
+3. v10 `isFinalHitOrVictory` 有無 submit vs poll race 仍 stuck 或 duplicate modal？
+4. 最低風險 patch 順序（營會前）？
+5. 點樣自動化「confirm 後 modal visible < 1.5s」？
 
-## C. DOM 目標（HP 顯示）
+**勿建議**：恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms 人工 modal 等待（已決策移除）。
+
+## C. DOM 目標
 
 | Element ID | 用途 |
 |------------|------|
 | `enemy-hp-current` | 敵人當前 HP 數字 |
-| `enemy-hp-max` | 敵人最大 HP |
 | `enemy-hp-bar` | 血條 width % |
-| `enemy-stat-hp` | 敵人面板 stat |
-| `enemy-round-damage` | 本回合傷害提示 |
+| `combat-round-settlement-modal` | 傷害結算 modal |
+| `round-settlement-confirm-btn` | 確定／確定，查看勝利 |
 
-更新函數鏈：`loadCombatStatus` / `submitAction` → `handleCombatRoundResolved` → `updateCombatUI` → `updateEnemyCombatStats` → **`syncEnemyHpDisplay`**
+函數鏈：`submitAction` → `handleCombatRoundResolved` / `finishCombatVictoryFromPayload` → `showFullRoundSettlement` → `continueCombatAfterRound` → `loadCombatStatus`（poll）
 
-## D. 關鍵 JavaScript（templates/index.html）
+## D. 關鍵 JavaScript（templates/index.html 摘錄）
 
 
-### `templates/index.html` L1238–L1254
+### `templates/index.html` L1238–L1271
 
 ```javascript
-        const COMBAT_SETTLEMENT_DELAY_MS = {
-            fast: 800,
-            normal: 1500,
-            slow: 2500,
-            very_slow: 3500,
-        };
-
         const DICE_ROLL_PRESETS = {
-            fast: { intervalMs: 45, maxRolls: 10, pauseMs: 600 },
-            normal: { intervalMs: 75, maxRolls: 14, pauseMs: 1150 },
-            slow: { intervalMs: 110, maxRolls: 18, pauseMs: 1700 },
+            fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
+            normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
+            slow: { intervalMs: 75, maxRolls: 10, pauseMs: 0 },
         };
 
-        function getSettlementModalDelayMs() {
-            const preset = getGameSettings().combatSettlementDelay || 'normal';
-            return COMBAT_SETTLEMENT_DELAY_MS[preset] ?? COMBAT_SETTLEMENT_DELAY_MS.normal;
-        }
-```
-
-### `templates/index.html` L1736–L1904
-
-```javascript
-        function animateCombatNumber(elementId, fromVal, toVal, durationMs = 420, formatFn = null, onComplete = null) {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            const render = (v) => (formatFn ? formatFn(v) : String(v));
-            const from = Number(fromVal);
-            const to = Number(toVal);
-            if (!Number.isFinite(from) || !Number.isFinite(to)) {
-                safeSetText(elementId, render(toVal));
-                if (onComplete) onComplete(toVal);
-                return;
-            }
-            if (from === to) {
-                el.textContent = render(to);
-                if (onComplete) onComplete(to);
-                return;
-            }
-            if (enemyHpAnimFrame) cancelAnimationFrame(enemyHpAnimFrame);
-            const start = performance.now();
-            const step = (now) => {
-                const t = Math.min(1, (now - start) / durationMs);
-                const val = Math.round(from + (to - from) * t);
-                el.textContent = render(val);
-                if (t < 1) {
-                    enemyHpAnimFrame = requestAnimationFrame(step);
-                } else {
-                    enemyHpAnimFrame = null;
-                    if (onComplete) onComplete(to);
-                }
-            };
-            requestAnimationFrame(step);
+        function syncHpOnlyFromPoll(data) {
+            if (!data?.enemy || pendingSettlementHpPayload) return;
+            syncEnemyHpDisplay(applySettlementEnemyHp(data));
         }
 
-        function showCombatWaitingPanel(submitted, total) {
-            const panel = document.getElementById('combat-waiting-panel');
-            const countEl = document.getElementById('combat-waiting-count');
-            if (countEl) countEl.textContent = `${submitted} / ${total}`;
-            setVisible(panel, true);
-        }
-
-        function hideCombatWaitingPanel() {
-            setVisible(document.getElementById('combat-waiting-panel'), false);
-        }
-
-        function showSinglePlayerResultModal(preview) {
-            if (!preview) return;
-            const modal = document.getElementById('combat-single-result-modal');
-            const diceLabels = ['失手', '普通', '良好', '爆擊'];
-            const diceLabel = diceLabels[preview.dice_result] ?? '';
-            document.getElementById('single-result-title').textContent =
-                `${preview.player_name || '你'} · ${preview.action_label || ''}（骰 ${preview.dice_result} ${diceLabel}）`;
-            document.getElementById('single-result-summary').textContent = preview.summary || '';
-            document.getElementById('single-result-dealt').textContent = String(preview.damage_dealt ?? 0);
-
-            const takenPending = preview.damage_taken_pending;
-            const takenWrap = document.getElementById('single-result-taken-wrap');
-            const takenEl = document.getElementById('single-result-taken');
-            const takenPendingEl = document.getElementById('single-result-taken-pending');
-            if (takenPending) {
-                if (takenEl) takenEl.textContent = String(preview.estimated_counter_damage ?? '?');
-                setVisible(takenPendingEl, true);
-            } else {
-                if (takenEl) takenEl.textContent = String(preview.damage_taken ?? 0);
-                setVisible(takenPendingEl, false);
-            }
-
-            const risksEl = document.getElementById('single-result-risks');
-            if (risksEl) {
-                if (preview.risks?.length) {
-                    risksEl.innerHTML = preview.risks.map(r =>
-                        `<div class="text-orange-300 px-2 py-1 bg-orange-900/20 rounded-lg">⚠️ ${r.message}</div>`
-                    ).join('');
-                } else {
-                    risksEl.innerHTML = '';
-                }
-            }
-            setVisible(modal, true);
-            modal.classList.add('flex');
-        }
-
-        function hideSinglePlayerResultModal() {
-            const modal = document.getElementById('combat-single-result-modal');
-            if (!modal) return;
-            modal.classList.remove('flex');
-            setVisible(modal, false);
-        }
-
-        function parseEnemyRemainingHpFromLogs(logEntries, logLines) {
-            for (let i = (logEntries || []).length - 1; i >= 0; i--) {
-                const e = logEntries[i];
-                if (e?.type !== 'summary') continue;
-                const m = (e.message || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (m) return parseInt(m[1], 10);
-            }
-            for (let i = (logLines || []).length - 1; i >= 0; i--) {
-                const m = String(logLines[i] || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (m) return parseInt(m[1], 10);
-            }
-            return null;
-        }
-
-        function parseEnemyRemainingHpFromStatus(data) {
-            return parseEnemyRemainingHpFromLogs(data?.log_entries || [], data?.log || []);
-        }
-
-        function isCombatModalBusy() {
-            return actionModalRolling || actionModalPauseTimer !== null || combatPreviewPending;
-        }
-
-        function resolveAuthoritativeEnemyHp(data) {
-            if (!data) return null;
-            const settlement = getRoundSettlement(data);
-            const fromSettlement = Number(settlement.enemy_hp_after);
-            const fromEnemy = Number(data.enemy?.hp);
-            const fromLog = parseEnemyRemainingHpFromStatus(data);
-            const candidates = [];
-            if (Number.isFinite(fromEnemy)) candidates.push(fromEnemy);
-            if (Number.isFinite(fromSettlement)) candidates.push(fromSettlement);
-            if (fromLog != null) candidates.push(fromLog);
-            if (!candidates.length) return null;
-            // Never show inflated HP when settlement snapshot lags behind enemy.hp
-            return Math.min(...candidates);
-        }
-
-        function syncEnemyHpDisplay(data, enemyOverride = null) {
-            const ctx = enemyOverride
-                ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
-                : data;
-            let hp = resolveAuthoritativeEnemyHp(ctx);
-            if (!Number.isFinite(hp)) return;
-            // Same combat only: stale poll must not inflate HP (never bleed across combats)
-            const combatId = ctx?.combat_id || currentCombatId;
-            const sameCombat = !combatId || combatId === currentCombatId;
-            if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
-                hp = lastAnimatedEnemyHp;
-            }
-            const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
-            const prevHpRaw = Number.isFinite(lastAnimatedEnemyHp)
-                ? lastAnimatedEnemyHp
-                : resolveAuthoritativeEnemyHp(lastCombatStatus);
-            const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
-            const fmt = (n) => Number(n).toLocaleString('zh-Hant');
-            safeSetText('enemy-hp-max', fmt(maxHp));
-            const bar = document.getElementById('enemy-hp-bar');
-            const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
-            const commitHpDisplay = (displayHp) => {
-                combatEnemyHpSeen = displayHp;
-                lastAnimatedEnemyHp = displayHp;
-                safeSetText('enemy-stat-hp', fmt(displayHp));
-            };
-            if (Number.isFinite(prevHp) && prevHp !== hp) {
-                if (bar) {
-                    bar.style.width = `${targetPct}%`;
-                    if (hp < prevHp) flashEnemyHpBar();
-                }
-                animateCombatNumber('enemy-hp-current', prevHp, hp, 420, fmt, (finalHp) => {
-                    commitHpDisplay(finalHp);
-                });
-            } else {
-                safeSetText('enemy-hp-current', fmt(hp));
-                if (bar) bar.style.width = `${targetPct}%`;
-                commitHpDisplay(hp);
-            }
+        /** 確認結算後即刻扣血（無 delay）；主畫面結算期間保持舊 HP */
+        function applyPendingSettlementHp() {
+            const data = pendingSettlementHpPayload;
+            pendingSettlementHpPayload = null;
+            if (!data?.enemy) return;
+            const enriched = applySettlementEnemyHp(data);
+            const settlement = getRoundSettlement(enriched);
+            const teamDealt = Number(settlement.team_damage_dealt) || 0;
+            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
+            if (teamDealt > 0) showDamageNumber('enemy-panel', teamDealt, false);
+            if (enemyDealt > 0) showDamageNumber('player-panel', enemyDealt, false);
+            syncEnemyHpDisplay(enriched);
             const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
-                const delta = prevHp - hp;
-                roundDmgEl.textContent = `敵人剩餘 ${fmt(hp)}（本回合 -${fmt(delta)}）`;
+            if (roundDmgEl && teamDealt > 0) {
+                roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
                 setVisible(roundDmgEl, true);
             }
         }
-```
 
-### `templates/index.html` L2117–L2170
-
-```javascript
-        function showFullRoundSettlement(data) {
-            data = applySettlementEnemyHp(data);
-            if (data.enemy?.hp != null) {
-                resetCombatEnemyHpTracking(data.enemy.hp);
-            }
-            const phase = Number(data?.current_phase) || 0;
-            settlementTimerPending = true;
-            combatAwaitingSettlementAck = false;
-            if (phase > lastShownSettlementPhase) {
-                lastShownSettlementPhase = phase;
-            }
-            combatWaitingForRound = false;
-            hideCombatWaitingPanel();
-            hideSinglePlayerResultModal();
-            hideCombatModal();
-            processCombatDamageAnimations(data, 120);
-            updateCombatUI(data, { damageDelay: 200, skipActionEnable: true });
-            syncEnemyHpDisplay(data);
-            lockCombatActionsForSettlement();
-            const settlement = getRoundSettlement(data);
-            const teamDealt = Number(settlement.team_damage_dealt) || 0;
-            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
-            const hasDamageLogs = (data.log_entries || []).some(e => e.type === 'damage');
-            if (teamDealt > 0) {
-                showDamageNumber('enemy-panel', teamDealt, false);
-            }
-            if (enemyDealt > 0) {
-                showDamageNumber('player-panel', enemyDealt, false);
-            }
-            const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl) {
-                if (teamDealt > 0) {
-                    roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
-                    setVisible(roundDmgEl, true);
-                } else {
-                    roundDmgEl.textContent = '';
-                    setVisible(roundDmgEl, false);
-                }
-            }
-            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
-                ? getSettlementModalDelayMs()
-                : Math.min(500, Math.round(getSettlementModalDelayMs() * 0.3));
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = setTimeout(() => {
-                settlementTimerPending = false;
-                combatAwaitingSettlementAck = true;
-                showRoundSettlementModal(data);
-            }, modalDelay);
-            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-        }
-
-        function victoryPayloadHasSettlement(data) {
-            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
-            if (data?.outcome && data?.round_settlement) return true;
-```
-
-### `templates/index.html` L2348–L2370
-
-```javascript
-        function processCombatDamageAnimations(data, delayMs = 300, initOnly = false) {
-            const entries = data.log_entries || [];
-            if (entries.length < lastCombatLogCount) lastCombatLogCount = 0;
-            if (initOnly) {
-                lastCombatLogCount = entries.length;
-                return;
-            }
-            const newEntries = entries.slice(lastCombatLogCount);
-            lastCombatLogCount = entries.length;
-            if (!newEntries.length) return;
-
-            const myName = currentSquad?.display_name || data.my_state?.display_name || '';
-            const hasDamageLine = newEntries.some(e => e.type === 'damage');
-
-            newEntries.forEach((entry, index) => {
-                const hit = parseLogDamageEvent(entry, myName);
-                if (!hit) return;
-                if (hit.total && hasDamageLine) return;
-                setTimeout(() => {
-                    showDamageNumber(hit.target, hit.amount, hit.crit);
-                }, delayMs + index * 180);
-            });
+        function getDiceRollConfig() {
+            const preset = getGameSettings().diceRollSpeed || 'normal';
+            return DICE_ROLL_PRESETS[preset] || DICE_ROLL_PRESETS.normal;
         }
 ```
 
-### `templates/index.html` L1785–L2199
+### `templates/index.html` L1576–L1595
 
 ```javascript
-                `${preview.player_name || '你'} · ${preview.action_label || ''}（骰 ${preview.dice_result} ${diceLabel}）`;
-            document.getElementById('single-result-summary').textContent = preview.summary || '';
-            document.getElementById('single-result-dealt').textContent = String(preview.damage_dealt ?? 0);
+        let lastShownSettlementPhase = 0;
+        let lastSettlementDisplayKey = '';
+        let victorySettlementModalCombatId = null;
+        // Settlement guard (combat_flow_v9): idempotent per round, blocks duplicate modal
+        let currentSettlementRound = null;
+        let settlementModalShown = false;
+        let settlementCombatId = null;
+        let combatAwaitingSettlementAck = false;
+        let settlementTimerPending = false;
+        let pendingSettlementHpPayload = null;
+        let lastCombatStatus = null;
+        let combatEnemyHpSeen = null;
+        let lastAnimatedEnemyHp = null;
+        let pendingVictoryAfterSettlement = null;
+        let combatFinalizingVictory = false;
+        let victoryFinalizeInProgress = false;
+        let victorySettlementAcknowledgedCombatId = null;
+        let combatPhaseLocked = false;
+        let combatPhaseLockedRound = 0;
+        let lastCombatUiSnapshotKey = '';
+```
 
-            const takenPending = preview.damage_taken_pending;
-            const takenWrap = document.getElementById('single-result-taken-wrap');
-            const takenEl = document.getElementById('single-result-taken');
-            const takenPendingEl = document.getElementById('single-result-taken-pending');
-            if (takenPending) {
-                if (takenEl) takenEl.textContent = String(preview.estimated_counter_damage ?? '?');
-                setVisible(takenPendingEl, true);
-            } else {
-                if (takenEl) takenEl.textContent = String(preview.damage_taken ?? 0);
-                setVisible(takenPendingEl, false);
+### `templates/index.html` L1832–L1886
+
+```javascript
+        function syncEnemyHpDisplay(data, options = {}) {
+            if (options && typeof options === 'object' && options.hp != null
+                && options.enemyOverride === undefined) {
+                options = { enemyOverride: options };
             }
-
-            const risksEl = document.getElementById('single-result-risks');
-            if (risksEl) {
-                if (preview.risks?.length) {
-                    risksEl.innerHTML = preview.risks.map(r =>
-                        `<div class="text-orange-300 px-2 py-1 bg-orange-900/20 rounded-lg">⚠️ ${r.message}</div>`
-                    ).join('');
-                } else {
-                    risksEl.innerHTML = '';
-                }
-            }
-            setVisible(modal, true);
-            modal.classList.add('flex');
-        }
-
-        function hideSinglePlayerResultModal() {
-            const modal = document.getElementById('combat-single-result-modal');
-            if (!modal) return;
-            modal.classList.remove('flex');
-            setVisible(modal, false);
-        }
-
-        function parseEnemyRemainingHpFromLogs(logEntries, logLines) {
-            for (let i = (logEntries || []).length - 1; i >= 0; i--) {
-                const e = logEntries[i];
-                if (e?.type !== 'summary') continue;
-                const m = (e.message || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (m) return parseInt(m[1], 10);
-            }
-            for (let i = (logLines || []).length - 1; i >= 0; i--) {
-                const m = String(logLines[i] || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (m) return parseInt(m[1], 10);
-            }
-            return null;
-        }
-
-        function parseEnemyRemainingHpFromStatus(data) {
-            return parseEnemyRemainingHpFromLogs(data?.log_entries || [], data?.log || []);
-        }
-
-        function isCombatModalBusy() {
-            return actionModalRolling || actionModalPauseTimer !== null || combatPreviewPending;
-        }
-
-        function resolveAuthoritativeEnemyHp(data) {
-            if (!data) return null;
-            const settlement = getRoundSettlement(data);
-            const fromSettlement = Number(settlement.enemy_hp_after);
-            const fromEnemy = Number(data.enemy?.hp);
-            const fromLog = parseEnemyRemainingHpFromStatus(data);
-            const candidates = [];
-            if (Number.isFinite(fromEnemy)) candidates.push(fromEnemy);
-            if (Number.isFinite(fromSettlement)) candidates.push(fromSettlement);
-            if (fromLog != null) candidates.push(fromLog);
-            if (!candidates.length) return null;
-            // Never show inflated HP when settlement snapshot lags behind enemy.hp
-            return Math.min(...candidates);
-        }
-
-        function syncEnemyHpDisplay(data, enemyOverride = null) {
+            const enemyOverride = options.enemyOverride ?? null;
             const ctx = enemyOverride
                 ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
                 : data;
             let hp = resolveAuthoritativeEnemyHp(ctx);
             if (!Number.isFinite(hp)) return;
-            // Same combat only: stale poll must not inflate HP (never bleed across combats)
             const combatId = ctx?.combat_id || currentCombatId;
             const sameCombat = !combatId || combatId === currentCombatId;
             if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
@@ -469,26 +193,16 @@
             const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
             const fmt = (n) => Number(n).toLocaleString('zh-Hant');
             safeSetText('enemy-hp-max', fmt(maxHp));
+            safeSetText('enemy-hp-current', fmt(hp));
             const bar = document.getElementById('enemy-hp-bar');
             const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
-            const commitHpDisplay = (displayHp) => {
-                combatEnemyHpSeen = displayHp;
-                lastAnimatedEnemyHp = displayHp;
-                safeSetText('enemy-stat-hp', fmt(displayHp));
-            };
-            if (Number.isFinite(prevHp) && prevHp !== hp) {
-                if (bar) {
-                    bar.style.width = `${targetPct}%`;
-                    if (hp < prevHp) flashEnemyHpBar();
-                }
-                animateCombatNumber('enemy-hp-current', prevHp, hp, 420, fmt, (finalHp) => {
-                    commitHpDisplay(finalHp);
-                });
-            } else {
-                safeSetText('enemy-hp-current', fmt(hp));
-                if (bar) bar.style.width = `${targetPct}%`;
-                commitHpDisplay(hp);
+            if (bar) {
+                bar.style.width = `${targetPct}%`;
+                if (Number.isFinite(prevHp) && hp < prevHp) flashEnemyHpBar();
             }
+            combatEnemyHpSeen = hp;
+            lastAnimatedEnemyHp = hp;
+            safeSetText('enemy-stat-hp', fmt(hp));
             const roundDmgEl = document.getElementById('enemy-round-damage');
             if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
                 const delta = prevHp - hp;
@@ -511,67 +225,35 @@
             if (!candidates.length) return data;
             return { ...data, enemy: { ...data.enemy, hp: Math.min(...candidates) } };
         }
+```
 
-        function buildClientRoundSettlement(logEntries) {
-            const entries = logEntries || [];
-            let summaryIdx = -1;
-            for (let i = entries.length - 1; i >= 0; i--) {
-                const e = entries[i];
-                if (e?.type === 'summary' && (e.message || '').includes('受到共')) {
-                    summaryIdx = i;
-                    break;
-                }
-            }
-            let teamDealt = 0;
-            let enemyDealt = 0;
-            const playerHits = [];
-            const counterHits = [];
-            if (summaryIdx >= 0) {
-                const m = (entries[summaryIdx].message || '').match(/受到共\s*(\d+)\s*點傷害/);
-                if (m) teamDealt = parseInt(m[1], 10);
-                for (let i = summaryIdx - 1; i >= 0; i--) {
-                    const e = entries[i];
-                    if (e?.type !== 'damage') break;
-                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
-                    const pm = (e.message || '').match(/^(.+?)\s+(?:攻擊|Zoo 能力)/);
-                    if (dm) playerHits.unshift({ player: pm ? pm[1].trim() : '隊友', damage: parseInt(dm[1], 10) });
-                }
-                for (let i = summaryIdx + 1; i < entries.length; i++) {
-                    const e = entries[i];
-                    if (e?.type !== 'enemy_attack') break;
-                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
-                    const tm = (e.message || '').match(/反擊\s*([^，]+)/);
-                    if (dm) {
-                        const dmg = parseInt(dm[1], 10);
-                        enemyDealt += dmg;
-                        counterHits.push({ target: tm ? tm[1].trim() : '?', damage: dmg });
-                    }
-                }
-            }
-            let enemyHpAfter = null;
-            if (summaryIdx >= 0) {
-                const hm = (entries[summaryIdx].message || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (hm) enemyHpAfter = parseInt(hm[1], 10);
-            }
-            return {
-                team_damage_dealt: teamDealt,
-                enemy_damage_dealt: enemyDealt,
-                player_hits: playerHits,
-                counter_hits: counterHits,
-                enemy_hp_after: enemyHpAfter,
-            };
+### `templates/index.html` L2065–L2110
+
+```javascript
+                };
         }
 
-        function getRoundSettlement(data) {
-            const preview = data?.full_preview || {};
-            return data?.round_settlement
-                || preview.round_settlement
-                || {
-                    team_damage_dealt: parseInt(data?.round_enemy_damage, 10) || 0,
-                    enemy_damage_dealt: parseInt(data?.round_player_damage, 10) || 0,
-                    counter_hits: [],
-                    player_hits: [],
-                };
+        function settlementRoundKey(data) {
+            const cid = data?.combat_id || currentCombatId || '';
+            const phase = data?.round ?? data?.current_phase ?? 'unknown';
+            return `${cid}:${phase}`;
+        }
+
+        function clearSettlementModalGuard() {
+            settlementModalShown = false;
+            currentSettlementRound = null;
+        }
+
+        function markSettlementModalShown(data) {
+            settlementModalShown = true;
+            currentSettlementRound = settlementRoundKey(data);
+        }
+
+        function settlementDisplayKey(data) {
+            const cid = data?.combat_id || currentCombatId || '';
+            const phase = Number(data?.current_phase) || 0;
+            const victory = !!(data?.outcome || pendingVictoryAfterSettlement);
+            return `${cid}:p${phase}:v${victory ? 1 : 0}`;
         }
 
         function shouldShowRoundSettlement(data) {
@@ -588,107 +270,19 @@
         function resetCombatSettlementState() {
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
+            pendingSettlementHpPayload = null;
+            pendingVictoryAfterSettlement = null;
             lastShownSettlementPhase = 0;
-            lastCombatStatusJson = '';
-            settlementCombatId = null;
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = null;
-        }
+            lastSettlementDisplayKey = '';
+            victorySettlementModalCombatId = null;
+            clearSettlementModalGuard();
+```
 
-        function lockCombatActionsForSettlement() {
-            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                el.disabled = true;
-            });
-            const panel = document.getElementById('player-panel');
-            if (panel) panel.style.opacity = '0.45';
-            const hintEl = document.getElementById('combat-submit-hint');
-            if (hintEl) hintEl.textContent = '本回合傷害結算中，請稍候…';
-        }
+### `templates/index.html` L2184–L2290
 
-        function showRoundSettlementModal(data) {
-            const modal = document.getElementById('combat-round-settlement-modal');
-            const logsEl = document.getElementById('round-settlement-logs');
-            const preview = data.full_preview || {};
-            const settlement = getRoundSettlement(data);
-            const teamDealt = Number(settlement.team_damage_dealt) || 0;
-            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
-            const phase = Number(data.current_phase) || 0;
-
-            safeSetText('round-settlement-phase', phase > 1 ? `第 ${phase - 1} 回合` : '第 1 回合');
-            safeSetText('round-settlement-team-dealt', teamDealt.toLocaleString('zh-Hant'));
-            safeSetText('round-settlement-enemy-dealt', enemyDealt.toLocaleString('zh-Hant'));
-
-            const enemy = data.enemy || preview.enemy || lastCombatStatus?.enemy || {};
-            const enemyHp = Number(enemy.hp);
-            const enemyMax = Number(enemy.max_hp || enemy.hp);
-            const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
-            safeSetText('round-settlement-enemy-hp', fmtHp(enemyHp));
-            safeSetText('round-settlement-enemy-hp-max', Number.isFinite(enemyMax) ? ` / ${fmtHp(enemyMax)}` : '');
-            const hpNote = document.getElementById('round-settlement-hp-note');
-            if (hpNote) {
-                if (teamDealt <= 0) {
-                    hpNote.textContent = '本回合對敵方造成 0 點傷害（失手或暴走）';
-                } else if (Number.isFinite(enemyMax) && enemyMax >= 500) {
-                    hpNote.textContent = '高 HP 敵人血條幾乎唔郁，請以數字同本回合傷害為準';
-                } else {
-                    hpNote.textContent = '';
-                }
-            }
-
-            const counterNote = document.getElementById('round-settlement-counter-note');
-            if (counterNote) {
-                const hits = settlement.counter_hits || [];
-                if (hits.length === 1) {
-                    counterNote.textContent = `${hits[0].target} 受到反擊`;
-                } else if (hits.length > 1) {
-                    counterNote.textContent = hits.map(h => h.target).join('、');
-                } else if (enemyDealt > 0) {
-                    counterNote.textContent = '全隊受到反擊';
-                } else {
-                    counterNote.textContent = '本回合無反擊';
-                }
-            }
-
-            const breakdownEl = document.getElementById('round-settlement-breakdown');
-            if (breakdownEl) {
-                const lines = [];
-                (settlement.player_hits || []).forEach(h => {
-                    lines.push(`<div class="py-0.5 text-emerald-300">• ${h.player} 造成 ${h.damage} 點</div>`);
-                });
-                (settlement.counter_hits || []).forEach(h => {
-                    lines.push(`<div class="py-0.5 text-red-300">• ${h.target} 受到反擊 ${h.damage} 點</div>`);
-                });
-                breakdownEl.innerHTML = lines.join('') || '<div class="text-zinc-500">本回合已結算</div>';
-            }
-
-            const entries = preview.log_entries || data.log_entries || [];
-            const recent = entries.slice(-8);
-            if (logsEl) {
-                logsEl.innerHTML = recent.length
-                    ? recent.map(e => `<div class="py-0.5">• ${e.message || e}</div>`).join('')
-                    : (preview.log || data.log || []).slice(-8).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
-                      || '<div class="text-zinc-500">尚無詳細紀錄</div>';
-            }
-            hideCombatModal();
-            setVisible(modal, true);
-            modal.classList.add('flex');
-            const continueBtn = modal?.querySelector('.px-5.py-4 button');
-            if (continueBtn) {
-                continueBtn.textContent = pendingVictoryAfterSettlement
-                    ? '確認戰果，查看勝利'
-                    : '繼續下一回合';
-            }
-        }
-
-        function hideRoundSettlementModal() {
-            const modal = document.getElementById('combat-round-settlement-modal');
-            if (!modal) return;
-            modal.classList.remove('flex');
-            setVisible(modal, false);
-        }
-
+```javascript
         function continueCombatAfterRound() {
-            combatAwaitingSettlementAck = false;
+            applyPendingSettlementHp();
             settlementTimerPending = false;
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
@@ -697,80 +291,150 @@
             combatWaitingForRound = false;
             resetCombatDiceUi();
             selectedDice = null;
+            const panel = document.getElementById('player-panel');
+            if (panel) panel.style.opacity = '1';
             if (pendingVictoryAfterSettlement) {
                 const victoryPayload = pendingVictoryAfterSettlement;
+                const combatId = victoryPayload.combat_id || currentCombatId;
                 pendingVictoryAfterSettlement = null;
+                stopCombatPolling();
+                victorySettlementAcknowledgedCombatId = combatId;
+                combatAwaitingSettlementAck = false;
+                clearSettlementModalGuard();
                 void finalizeCombatVictoryFromPayload(victoryPayload);
                 return;
             }
+            const resumeData = pendingSettlementHpPayload || lastCombatStatus;
+            if (isFinalHitOrVictory(resumeData)) {
+                const victoryPayload = buildVictoryTransitionPayload(resumeData);
+                const combatId = victoryPayload.combat_id || currentCombatId;
+                combatAwaitingSettlementAck = false;
+                clearSettlementModalGuard();
+                pendingVictoryAfterSettlement = null;
+                stopCombatPolling();
+                victorySettlementAcknowledgedCombatId = combatId;
+                void finalizeCombatVictoryFromPayload(victoryPayload);
+                return;
+            }
+            clearSettlementModalGuard();
+            combatAwaitingSettlementAck = false;
+            lastCombatStatusJson = '';
+            lastCombatUiSnapshotKey = '';
             const phase = lastCombatStatus?.current_phase || 0;
             if (phase) lastDicePhase = phase;
             loadCombatStatus(false);
         }
 
+        // combat_instant_settlement: 零人工 delay；HP + 傷害結算 modal 即時
+        // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
+        // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
+        // combat_flow_v9: settlementModalShown + currentSettlementRound idempotent guard
+        // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
         function showFullRoundSettlement(data) {
-            data = applySettlementEnemyHp(data);
-            if (data.enemy?.hp != null) {
-                resetCombatEnemyHpTracking(data.enemy.hp);
-            }
             const phase = Number(data?.current_phase) || 0;
-            settlementTimerPending = true;
-            combatAwaitingSettlementAck = false;
+            const combatId = data?.combat_id || currentCombatId;
+            const roundKey = settlementRoundKey(data);
+            const displayKey = settlementDisplayKey(data);
+            if (settlementModalShown && currentSettlementRound === roundKey) {
+                return;
+            }
+            if (combatFinalizingVictory || victoryFinalizeInProgress) return;
+            if (victorySettlementAcknowledgedCombatId
+                && combatId === victorySettlementAcknowledgedCombatId) return;
+            if ((pendingVictoryAfterSettlement || data?.outcome || isFinalHitOrVictory(data))
+                && victorySettlementModalCombatId === combatId) return;
+            if (lastSettlementDisplayKey === displayKey) return;
+            if (combatAwaitingSettlementAck) {
+                return;
+            }
+            if (phase > 0 && phase <= lastShownSettlementPhase
+                && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
+                return;
+            }
+            data = applySettlementEnemyHp(data);
+            if (isFinalHitOrVictory(data) && !pendingVictoryAfterSettlement) {
+                pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
+            }
+            const isVictorySettlement = !!pendingVictoryAfterSettlement
+                || !!data?.outcome
+                || isFinalHitOrVictory(data);
+            pendingSettlementHpPayload = data;
+            settlementTimerPending = false;
+            combatAwaitingSettlementAck = true;
             if (phase > lastShownSettlementPhase) {
                 lastShownSettlementPhase = phase;
             }
+            if (combatId) settlementCombatId = combatId;
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
             hideCombatModal();
-            processCombatDamageAnimations(data, 120);
-            updateCombatUI(data, { damageDelay: 200, skipActionEnable: true });
-            syncEnemyHpDisplay(data);
-            lockCombatActionsForSettlement();
-            const settlement = getRoundSettlement(data);
-            const teamDealt = Number(settlement.team_damage_dealt) || 0;
-            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
-            const hasDamageLogs = (data.log_entries || []).some(e => e.type === 'damage');
-            if (teamDealt > 0) {
-                showDamageNumber('enemy-panel', teamDealt, false);
-            }
-            if (enemyDealt > 0) {
-                showDamageNumber('player-panel', enemyDealt, false);
-            }
-            const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl) {
-                if (teamDealt > 0) {
-                    roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
-                    setVisible(roundDmgEl, true);
-                } else {
-                    roundDmgEl.textContent = '';
-                    setVisible(roundDmgEl, false);
-                }
-            }
-            const modalDelay = (teamDealt > 0 || enemyDealt > 0 || hasDamageLogs)
-                ? getSettlementModalDelayMs()
-                : Math.min(500, Math.round(getSettlementModalDelayMs() * 0.3));
             clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = setTimeout(() => {
-                settlementTimerPending = false;
-                combatAwaitingSettlementAck = true;
-                showRoundSettlementModal(data);
-            }, modalDelay);
-            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-        }
+            showFullRoundSettlement._modalTimer = null;
+            lockCombatActionsForSettlement();
+            lastSettlementDisplayKey = displayKey;
+            markSettlementModalShown(data);
+            if (isVictorySettlement && combatId) {
+                victorySettlementModalCombatId = combatId;
+            }
+            showRoundSettlementModal(data);
+            updateCombatUI(data, {
+                damageDelay: 0,
+                skipActionEnable: true,
+                deferEnemyHp: true,
+            });
+            if (isVictorySettlement) {
+                stopCombatPolling();
+            } else {
+                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
+            }
+```
 
-        function victoryPayloadHasSettlement(data) {
-            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
-            if (data?.outcome && data?.round_settlement) return true;
-            if (!roundResolved) return false;
-            const settlement = getRoundSettlement(data);
-            if (Number(settlement.team_damage_dealt) > 0) return true;
-            return (data.log_entries || []).some(e => e?.type === 'damage');
-        }
+### `templates/index.html` L2336–L2425
 
+```javascript
         async function finishCombatVictoryFromPayload(data) {
+            if (victoryFinalizeInProgress) return;
+            data = ensureVictorySettlementPayload(data);
+            const combatId = data?.combat_id || currentCombatId;
+
+            if (combatAwaitingSettlementAck && victorySettlementModalCombatId === combatId
+                && isFinalHitOrVictory(data)) {
+                if (!pendingVictoryAfterSettlement) {
+                    pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
+                }
+                return;
+            }
+
+            if (victorySettlementAcknowledgedCombatId
+                && combatId === victorySettlementAcknowledgedCombatId) {
+                if (!combatAwaitingSettlementAck && !victoryFinalizeInProgress) {
+                    await finalizeCombatVictoryFromPayload(data);
+                }
+                return;
+            }
+            if (combatFinalizingVictory) return;
+
+            if (combatAwaitingSettlementAck) {
+                if (!pendingVictoryAfterSettlement) {
+                    pendingVictoryAfterSettlement = data;
+                }
+                return;
+            }
+
             const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
-            if (victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome)) {
+            const phase = Number(data?.current_phase) || 0;
+            const hasSettlementUi = victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome);
+
+            if (hasSettlementUi) {
+                if (combatAwaitingSettlementAck && pendingVictoryAfterSettlement) return;
+                if (victorySettlementModalCombatId === combatId) return;
+                if (victorySettlementAlreadyShown(combatId, phase)) {
+                    if (!combatAwaitingSettlementAck) {
+                        pendingVictoryAfterSettlement = data;
+                    }
+                    return;
+                }
                 pendingVictoryAfterSettlement = data;
                 const enriched = applySettlementEnemyHp({
                     ...data,
@@ -778,7 +442,6 @@
                     round_resolved: true,
                     active: true,
                 });
-                syncEnemyHpDisplay(enriched);
                 showFullRoundSettlement(enriched);
                 return;
             }
@@ -786,277 +449,143 @@
         }
 
         async function finalizeCombatVictoryFromPayload(data) {
-            resetCombatSettlementState();
+            if (victoryFinalizeInProgress) return;
+            victoryFinalizeInProgress = true;
+            combatFinalizingVictory = true;
+            stopCombatPolling();
+            combatAwaitingSettlementAck = false;
+            settlementTimerPending = false;
+            pendingSettlementHpPayload = null;
             pendingVictoryAfterSettlement = null;
+            clearSettlementModalGuard();
+            clearTimeout(showFullRoundSettlement._modalTimer);
+            showFullRoundSettlement._modalTimer = null;
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideRoundSettlementModal();
+            hideSinglePlayerResultModal();
+            hideCombatModal();
+            try {
+                if (data?.log_entries?.length) {
+                    processCombatDamageAnimations(data, 0);
+                }
+                resetCombatEnemyHpTracking(0);
+                updateEnemyCombatStats(
+                    { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
+                    data.enemy_description || lastCombatStatus?.enemy_description || '',
+                );
+                let payload = data;
+                if (!payload.outcome) {
+                    try {
+                        const url = currentCombatId
+                            ? `/combat/status?combat_id=${currentCombatId}`
+                            : '/combat/status';
+                        const res = await fetchNoCache(url);
+                        const fresh = await res.json();
+                        if (fresh.outcome) payload = { ...payload, ...fresh };
 ```
 
-### `templates/index.html` L3323–L3680
+### `templates/index.html` L2440–L2525
 
 ```javascript
-            }
-            setVisible(document.getElementById('combat-precheck-modal'), false);
-            if (data.skipped) {
-                showCombatResult({ outcome: 'victory', narrative: data.narrative, reflection_prompt: data.reflection_prompt });
-                const statusRes = await fetchNoCache('/status');
-                updateDashboard(await statusRes.json());
-                return;
-            }
-            currentCombatId = data.combat_id;
-            resetCombatSettlementState();
-            resetCombatEnemyHpTracking(null);
-            showCombatScreen();
-            await loadCombatStatus(true);
-        }
-
-        function showCombatResult(data) {
-            stopCombatPolling();
-            resetCombatSettlementState();
-            combatWaitingForRound = false;
-            resetCombatEnemyHpTracking(null);
-            controllingProtagonist = false;
-            setVisible(document.getElementById('combat-screen'), false);
-            setVisible(document.getElementById('combat-near-death-overlay'), false);
-            setVisible(document.getElementById('combat-precheck-modal'), false);
-            setVisible(document.getElementById('combat-lobby'), false);
-            setVisible(document.getElementById('combat-result-panel'), true);
-            const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
-            const victory = data.outcome === 'victory';
-            const titleEl = document.getElementById('combat-result-title');
-            if (badEnding) {
-                titleEl.textContent = '🌑 陰影結局';
-                titleEl.className = 'text-xl font-bold mb-3 text-violet-300';
-            } else {
-                titleEl.textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
-                titleEl.className = 'text-xl font-bold mb-3';
-            }
-            const traumaBadge = document.getElementById('combat-result-trauma-badge');
-            if (badEnding) {
-                const total = data.protagonist_trauma_total ?? data.ending?.protagonist_trauma_total ?? '?';
-                traumaBadge.textContent = `主角心理創傷過深（累計 ${total} 次）——即使贏了這一仗，也無法迎來真正的救贖。`;
-                setVisible(traumaBadge, true);
-            } else {
-                setVisible(traumaBadge, false);
-            }
-            document.getElementById('combat-result-narrative').textContent = data.narrative || '';
-            const reflection = badEnding ? null : data.reflection_prompt;
-            const reflectionBox = document.getElementById('combat-reflection');
-            if (reflection) {
-                setVisible(reflectionBox, true);
-                document.getElementById('combat-reflection-title').textContent = reflection.title || '界線反思';
-                document.getElementById('combat-reflection-theology').textContent = reflection.theological_tie || '';
-                document.getElementById('combat-reflection-questions').innerHTML =
-                    (reflection.questions || []).map((q, i) =>
-                        `<li class="pl-3 border-l-2 border-amber-600/50"><span class="text-amber-500/80 text-xs">Q${i + 1}</span><br>${q}</li>`
-                    ).join('');
-            } else {
-                setVisible(reflectionBox, false);
+                combatFinalizingVictory = false;
             }
         }
 
-        function updateNearDeathOverlay(me) {
-            const overlay = document.getElementById('combat-near-death-overlay');
-            const countdownEl = document.getElementById('near-death-countdown');
-            const inNearDeath = me?.near_death_until && new Date(me.near_death_until) > new Date();
-            setVisible(overlay, !!inNearDeath);
-            if (inNearDeath && countdownEl) {
-                const remaining = Math.max(0, Math.floor((new Date(me.near_death_until) - Date.now()) / 1000));
-                countdownEl.textContent = formatTimerDisplay(remaining);
-            }
+        // combat_flow_v10: final hit uses round_settlement.enemy_hp_after (not only enemy.hp)
+        function resolveEnemyHpAfter(data) {
+            if (!data) return null;
+            const settlement = getRoundSettlement(data);
+            const fromSettlement = Number(settlement.enemy_hp_after);
+            if (Number.isFinite(fromSettlement)) return fromSettlement;
+            const hp = Number(data.enemy?.hp);
+            if (Number.isFinite(hp)) return hp;
+            return null;
         }
 
-        function updateCombatUI(data, options = {}) {
+        function isFinalHitOrVictory(data) {
+            if (!data) return false;
+            if (data.outcome) return true;
+            if (data.status === 'ended' || data.winner) return true;
+            const hpAfter = resolveEnemyHpAfter(data);
+            return hpAfter !== null && hpAfter <= 0;
+        }
+
+        function shouldFinishCombatVictory(data) {
+            return isFinalHitOrVictory(data);
+        }
+
+        function buildVictoryTransitionPayload(data) {
+            const hpAfter = resolveEnemyHpAfter(data);
+            const enemyHp = Number.isFinite(hpAfter) ? Math.max(0, hpAfter) : 0;
+            return {
+                ...data,
+                outcome: data.outcome || (data.winner === 'enemy' ? 'defeat' : 'victory'),
+                enemy: { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: enemyHp },
+                round_resolved: true,
+            };
+        }
+
+        function handleCombatRoundResolved(data) {
             if (!data) return;
-            const uiData = normalizeCombatStatusData(applySettlementEnemyHp(data));
-            const snapKey = combatUiSnapshotKey(uiData);
-            const skipRedundantDom = !options.damageDelay
-                && !options.skipActionEnable
-                && !options.initLogsOnly
-                && !options.forceRefresh
-                && snapKey === lastCombatUiSnapshotKey;
-            if (skipRedundantDom) return;
-            lastCombatUiSnapshotKey = snapKey;
-            if (!uiData.my_state && (uiData.active || uiData.status === 'player_phase' || uiData.status === 'enemy_phase')) {
-                console.warn('Combat data missing my_state');
-            }
-            lastCombatStatus = uiData;
-            setVisible(document.getElementById('combat-result-panel'), false);
-
-            if (uiData.in_precheck) {
-                setVisible(document.getElementById('combat-precheck-modal'), true);
+            if (isVictoryFlowLocked(data?.combat_id)) return;
+            if (combatAwaitingSettlementAck || settlementTimerPending) {
                 return;
             }
-
-            const isResolving = uiData.status === 'resolving';
-            if (isResolving) {
-                setCombatPhaseLock(true, uiData);
-            } else if (combatPhaseLocked) {
-                const phase = uiData.current_phase || 0;
-                if (uiData.status === 'player_phase' && phase > combatPhaseLockedRound) {
-                    setCombatPhaseLock(false);
-                }
-            }
-
-            const combatLive = uiData.active === true
-                || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status);
-            if (!combatLive) {
-                if (uiData.outcome) {
-                    if (shouldFinishCombatVictory(uiData)) {
-                        void finishCombatVictoryFromPayload(uiData);
-                    } else {
-                        showCombatResult(uiData);
-                    }
-                }
+            if (shouldFinishCombatVictory(data)) {
+                finishCombatVictoryFromPayload(data);
                 return;
             }
-
-            currentCombatId = uiData.combat_id || currentCombatId;
-            if (uiData.combat_id && uiData.combat_id !== settlementCombatId) {
-                settlementCombatId = uiData.combat_id;
-                lastShownSettlementPhase = 0;
-                lastCombatUiSnapshotKey = '';
-                lastCombatStatusJson = '';
-                combatAwaitingSettlementAck = false;
-                settlementTimerPending = false;
-                clearTimeout(showFullRoundSettlement._modalTimer);
-                showFullRoundSettlement._modalTimer = null;
-                resetCombatEnemyHpTracking(null);
+            setCombatPhaseLock(false);
+            hideCombatModal();
+            const settled = applySettlementEnemyHp(data);
+            if (isFinalHitOrVictory(settled)) {
+                finishCombatVictoryFromPayload(buildVictoryTransitionPayload(settled));
+                return;
             }
-            showCombatScreen();
-            applyCombatAccent(uiData.route);
-
-            safeSetText('combat-title', uiData.title || '戰鬥中');
-            const routeLabel = ROUTE_SUBTITLES[uiData.route] || 'Encounter';
-            const phaseNum = uiData.current_phase || 1;
-            safeSetText('combat-subtitle', `${routeLabel} · 第 ${phaseNum} 回合`);
-            safeSetText('max-phase', uiData.max_phases || 5);
-
-            const phaseLabels = {
-                player_phase: { text: 'Player Phase', color: 'text-emerald-400' },
-                enemy_phase: { text: 'Enemy Phase', color: 'text-red-400' },
-                resolving: { text: '結算中', color: 'text-sky-400' },
-            };
-            const pl = phaseLabels[uiData.status] || { text: uiData.status, color: 'text-zinc-400' };
-            safeSetText('phase-status-label', pl.text);
-            safeSetClass('phase-status-label', `text-xs ${pl.color}`);
-
-            const squad = currentSquad || {};
-            const me = buildCombatMyState(uiData);
-            const enemy = uiData.enemy || {};
-
-            updateEnemyCombatStats(enemy, uiData.enemy_description || '');
-            updateCombatPlayerAvatar(me);
-            safeSetText('combat-player-name', me.display_name || '你');
-            safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
-            updateCombatPlayerStats(me, squad);
-            updateAttackButtonHint();
-
-            const protagonists = uiData.protagonists || squad.protagonists || {};
-            const teamData = {
-                ...uiData,
-                my_squad_id: uiData.my_squad_id || squad.squad_id,
-                route: uiData.route || protagonists.active_route || squad.route,
-                protagonists,
-                member_states: uiData.member_states || {},
-            };
-            renderCombatTeamRow(teamData);
-            updateProtagonistControlUi();
-
-            const sanity = me.sanity ?? 100;
-            const berserkBar = document.getElementById('combat-berserk-bar');
-            const berserkChance = uiData.berserk_chance || 0;
-            if (sanity < 40) {
-                setVisible(berserkBar, true);
-                let berserkMsg;
-                if (sanity < 10) {
-                    berserkMsg = `神智崩潰邊緣！暴走機率 ${berserkChance}% — 極高風險`;
-                } else if (sanity < 20) {
-                    berserkMsg = `神智危險！暴走機率 ${berserkChance}% — 提交前請確認`;
-                } else {
-                    berserkMsg = `神智偏低（${sanity}），暴走風險 ${berserkChance}%`;
-                }
-                safeSetText('combat-berserk-bar-text', berserkMsg);
-                if (berserkBar) berserkBar.classList.toggle('berserk-critical', sanity < 10);
-            } else {
-                setVisible(berserkBar, false);
-                if (berserkBar) berserkBar.classList.remove('berserk-critical');
+            const settlement = getRoundSettlement(settled);
+            const hasDamage = Number(settlement.team_damage_dealt) > 0
+                || (settled.log_entries || []).some(e => e?.type === 'damage');
+            const mustShow = (settled.round_resolved || settled.status === 'round_resolved') && hasDamage;
+            const hasSettlementPayload = !!(settled.round_settlement || data.round_settlement);
+            if (hasSettlementPayload && (mustShow || hasDamage)) {
+                showFullRoundSettlement(settled);
+                return;
             }
-
-            setVisible(document.getElementById('combat-berserk-overlay'),
-                sanity < 10 && uiData.status === 'player_phase' && !me.submitted);
-
-            const zooHint = document.getElementById('zoo-hint');
-            if (zooHint) {
-                if (sanity >= 100) zooHint.textContent = 'Zoo 加成 ×1.8';
-                else if (sanity >= 90) zooHint.textContent = 'Zoo 加成 ×1.5';
-                else if (sanity >= 80) zooHint.textContent = 'Zoo 加成 ×1.4';
-                else if (sanity >= 70) zooHint.textContent = 'Zoo 加成 ×1.3 ✓';
-                else zooHint.textContent = `神智 ${sanity}，需 ≥70`;
-                zooHint.className = sanity >= 70 ? 'text-[10px] text-orange-300 font-medium' : 'text-[10px] text-zinc-500';
+            if (mustShow || shouldShowRoundSettlement(settled)) {
+                showFullRoundSettlement(settled);
+                return;
             }
-
-            if (uiData.phase_deadline && uiData.status === 'player_phase') {
-                startPhaseCountdown(uiData.phase_deadline);
-            } else if (uiData.phase_expired) {
-                safeSetText('phase-timer', '0:00');
-            }
-
-            const logEl = document.getElementById('combat-log');
-            if (logEl) {
-                logEl.innerHTML = (uiData.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
-                    || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
-                logEl.scrollTop = logEl.scrollHeight;
-            }
-            processCombatDamageAnimations(
-                uiData,
-                options.damageDelay ?? 0,
-                !!options.initLogsOnly,
-            );
-
-            const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
-            updateNearDeathOverlay(me);
-
-            const hintEl = document.getElementById('combat-submit-hint');
-            const actionContainer = document.getElementById('player-panel');
-            const canAct = uiData.status === 'player_phase'
-                && !combatPhaseLocked
-                && !isResolving
-                && !inNearDeath
-                && !me.submitted
-                && !combatAwaitingSettlementAck
-                && !settlementTimerPending
-                && !options.skipActionEnable;
-            if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.45';
-            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                el.disabled = !canAct || actionModalRolling || combatPhaseLocked || isResolving;
-            });
-            if (canAct && phaseNum !== lastDicePhase) {
-                lastDicePhase = phaseNum;
-                if (!isCombatModalBusy()) {
-                    resetCombatDiceUi();
-                }
-            } else if ((me.submitted || !canAct) && !isCombatModalBusy()) {
-                hideCombatModal();
-            }
-            if (hintEl) {
-                if (combatAwaitingSettlementAck || settlementTimerPending) {
-                    hintEl.textContent = '本回合傷害結算中，請稍候…';
-                } else if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
-                else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
-                else if (isResolving || combatPhaseLocked) hintEl.textContent = '回合結算中，請稍候…';
-                else if (uiData.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
-                else if (actionModalRolling) hintEl.textContent = '系統擲骰中，請稍候…';
-                else if (isCombatModalOpen()) hintEl.textContent = '請於彈窗內確認並結束本回合';
-                else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
-                else hintEl.textContent = '選擇行動後將彈出戰況預覽';
-            }
+            combatWaitingForRound = false;
+            hideCombatWaitingPanel();
+            updateCombatUI(settled, { damageDelay: 0 });
+            syncEnemyHpDisplay(settled);
+            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
         }
 
-        async function loadCombatStatus(showLoading) {
+        function formatTimerDisplay(totalSeconds) {
+            const s = Math.max(0, totalSeconds);
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${m}:${String(sec).padStart(2, '0')}`;
+        }
+
+        function startPhaseCountdown(deadlineIso) {
+            if (combatPhaseTimer) clearInterval(combatPhaseTimer);
+            const timerEl = document.getElementById('phase-timer');
+            if (!deadlineIso || !timerEl) return;
+```
+
+### `templates/index.html` L3641–L3725
+
+```javascript
+        async function loadCombatStatus(showLoading, options = {}) {
             try {
-                await refreshSquadFromServer();
+                if (victoryFinalizeInProgress) return;
+                if (combatFinalizingVictory) return;
+                if (!options.skipSquadRefresh) {
+                    await refreshSquadFromServer();
+                }
                 const url = currentCombatId
                     ? `/combat/status?combat_id=${currentCombatId}`
                     : '/combat/status';
@@ -1067,19 +596,32 @@
 
                 if (settlementTimerPending || combatAwaitingSettlementAck) {
                     if (queueVictoryDuringSettlement(data)) return;
+                    syncHpOnlyFromPoll(data);
                     return;
                 }
 
-                if (isCombatVictoryPayload(data)) {
+                if (isCombatVictoryPayload(data)
+                    || (isFinalHitOrVictory(data) && Number(resolveEnemyHpAfter(data)) <= 0)) {
                     combatWaitingForRound = false;
                     hideCombatWaitingPanel();
                     hideSinglePlayerResultModal();
-                    hideRoundSettlementModal();
 
-                    if (victoryPayloadHasSettlement(data) || shouldFinishCombatVictory(data)) {
-                        await finishCombatVictoryFromPayload(data);
+                    if (victoryFinalizeInProgress || combatFinalizingVictory) {
+                        return;
+                    }
+
+                    if (combatAwaitingSettlementAck || settlementTimerPending) {
+                        queueVictoryDuringSettlement(data);
+                        return;
+                    }
+
+                    if (victoryPayloadHasSettlement(data) || isFinalHitOrVictory(data)) {
+                        await finishCombatVictoryFromPayload(
+                            buildVictoryTransitionPayload(data),
+                        );
                     } else {
                         resetCombatSettlementState();
+                        hideRoundSettlementModal();
                         showCombatResult(data);
                     }
 
@@ -1110,82 +652,84 @@
                     return;
                 }
 
-                if (!showLoading) {
-                    const statusJson = JSON.stringify(data);
-                    if (statusJson === lastCombatStatusJson) {
-                        if (data.active || data.in_precheck) {
-                            startCombatPolling(getCombatPollInterval(data));
-                        } else {
-                            stopCombatPolling();
-                        }
-                        return;
-                    }
-                    lastCombatStatusJson = statusJson;
-                }
-
-                if (data.status === 'resolving') {
-                    setCombatPhaseLock(true, data);
-                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
-                } else if (data.waiting_for_teammates || data.status === 'waiting_for_teammates') {
-                    combatWaitingForRound = true;
-                    showCombatResolvingPanel(false);
-                    showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
-                    startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
-                }
-
-                if (data.active) {
-                    setVisible(document.getElementById('combat-lobby'), false);
-                }
-                const uiOptions = showLoading ? { initLogsOnly: true } : {};
-                const applyCombatUi = () => updateCombatUI(data, uiOptions);
-                if (data.active || data.in_precheck) {
-                    setTimeout(applyCombatUi, 50);
-                } else {
-                    applyCombatUi();
-                }
-                if (data.active || data.in_precheck) {
-                    startCombatPolling(getCombatPollInterval(data));
-                } else {
-                    stopCombatPolling();
-                }
-            } catch (e) {
-                if (showLoading) console.error('載入戰鬥狀態失敗', e);
-            }
-        }
-
-        async function submitAction() {
+                if (data.round_settlement && !settlementModalShown
+                    && !combatAwaitingSettlementAck && !victoryFinalizeInProgress) {
+                    const pollSettled = applySettlementEnemyHp({
+                        ...data,
+                        round_resolved: true,
+                        active: data.active !== false,
+                    });
+                    const pollSettlement = getRoundSettlement(pollSettled);
+                    const pollHasDamage = Number(pollSettlement.team_damage_dealt) > 0
+                        || (pollSettled.log_entries || []).some(e => e?.type === 'damage');
+                    if (pollHasDamage) {
+                        handleCombatRoundResolved(pollSettled);
 ```
 
-### `templates/index.html` L4562–L4585
+### `templates/index.html` L3768–L3825
 
 ```javascript
-                    container.appendChild(el);
-                });
-            } catch (e) {
-                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+        async function submitAction() {
+            if (combatAwaitingSettlementAck || settlementTimerPending) {
+                showToast('請先等待本回合傷害結算', 'error');
+                return;
             }
-        }
+            if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
+                showToast('回合結算中，請稍候', 'error');
+                return;
+            }
+            if (selectedAction === 'use_item' && !selectedItemId) {
+                showToast('請先選擇要使用的物品', 'error');
+                return;
+            }
+            if (COMBAT_DICE_ACTIONS.has(selectedAction) && selectedDice === null) {
+                showToast('請先選擇攻擊行動並完成擲骰', 'error');
+                return;
+            }
+            if (selectedDice === null) selectedDice = 1;
 
-        function closeModal(el) {
-            const modal = el?.closest?.('.modal-overlay') || el?.closest?.('.fixed');
-            if (modal) modal.remove();
-        }
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            if (confirmBtn) confirmBtn.disabled = true;
 
-        const CAPPED_SQUAD_STATS = new Set(['hp', 'sanity']);
-        const SQUAD_CAP_MAX = { sanity: 100 };
-        const DEFAULT_PLAYER_MAX_HP = 100;
+            const payload = {
+                combat_id: currentCombatId,
+                action_type: selectedAction,
+            };
+            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
+                payload.as_protagonist = true;
+            }
+            if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
 
-        function effectivePlayerMaxHp(stats) {
-            const hp = Number(stats?.hp ?? 0);
-            const maxHp = Number(stats?.max_hp ?? DEFAULT_PLAYER_MAX_HP);
-            return Math.max(DEFAULT_PLAYER_MAX_HP, maxHp, hp);
-        }
-        const DASHBOARD_STAT_META = {
-            hp: { text: 'text-red-400', bar: 'bg-red-500' },
-            sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
+            let data;
+            try {
+                const res = await fetch('/combat/submit_action', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                data = await res.json();
+            } catch (e) {
+                if (confirmBtn) confirmBtn.disabled = false;
+                showToast('提交失敗，請稍後再試', 'error');
+                return;
+            }
+            if (!data.success && data.error) {
+                if (confirmBtn) confirmBtn.disabled = false;
+                if (data.error.includes('結算中')) {
+                    setCombatPhaseLock(true, lastCombatStatus || { current_phase: combatSubmittedPhase });
+                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
+                }
+                showToast(data.error, 'error');
+                return;
+            }
+            if (data.outcome || shouldFinishCombatVictory(data)) {
+                await finishCombatVictoryFromPayload(data);
+                return;
+            }
 ```
 
-## E. 後端 Python
+## E. 後端 Python（API 合約摘錄）
 
 
 ### `routes/combat.py` L161–L278
@@ -1464,6 +1008,8 @@ def combat_submit_action_api():
 ### `models/combat.py` L931–L1010
 
 ```python
+    return get_combat(combat_id)
+
 def _enemy_hp_from_logs(logs):
     """Latest post-damage enemy HP parsed from round summary logs."""
     for entry in reversed(logs or []):
@@ -1542,23 +1088,30 @@ def build_enemy_combat_stats(combat, encounter=None):
 
 
 def build_combat_status_response(combat, encounter, squad_id, participants=None):
-    if combat:
-        combat = reconcile_enemy_hp(combat, persist=True)
 ```
 
-## F. CI 已通過（API 層）
+## F. CI 已通過
 
-- `test_solo_multi_round_poll_hp_monotonic` — 單人 practice_iggy_03_boundary 每回合 enemy.hp 遞減
-- `test_practice_combat_start_enemy_hp_full` — 開局 48/140 HP
-- `test_zombie_hp_zero_status_poll_returns_victory`
-- `test_solo_killing_blow_practice_quick`
+- `scripts/test_combat_engine.py` — 14 項純計算
+- `scripts/test_combat_flow.py` — 192+ 項（含 killing blow、poll HP、practice）
+- `scripts/pre_deploy_checks.sh` — 全綠
 
-## G. 實機狀態（Henry · Phase 2）
+## G. 實機狀態（2026-06-30）
 
-- PA `aecffa9`、`enemy_hp_sync_v6: true`
-- **HP／settlement 大幅改善**；後台 Combat #34/#35 log 正確
-- **殘留**：動畫 delay（擲骰 ~2.2s + HP tween 420ms + settlement 1500ms + poll 凍結）
+| 項目 | 狀態 |
+|------|------|
+| Commit | `6391b22` |
+| Markers | `combat_instant_settlement`, `combat_flow_v7`–`v10`, `enemy_hp_sync_v7` |
+| Henry instant checklist | ✅ OK（quick + boundary） |
+| 殘留 | **Delay 體感**未完全解決；v10 final-hit 待 Henry 驗 `practice_iggy_02_leech` |
+| 後端 | Combat log / `enemy_hp_after` 正確 |
+
+## H. 相關文檔
+
+- `GEMINI_REVIEW.md` §16 — 檔案包清單
+- `bug_log/.../REPORT.md` §13–§19
+- `decisions_log.md` § instant settlement
 
 ---
 
-*由 scripts/build_gemini_packet.sh 自動生成 · 勿手改（改源碼後重新 run script）*
+*由 scripts/build_gemini_packet.sh 自動生成 · 改 code 後重新 run*

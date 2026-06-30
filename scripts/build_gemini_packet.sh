@@ -27,27 +27,28 @@ extract() {
 
 > **生成時間**：$(date -u +"%Y-%m-%d %H:%M UTC")  
 > **Git commit**：\`${COMMIT}\`  
-> **用途**：Gemini **讀唔到** Google Drive bug_log 資料夾時，將**成個檔案** Copy & Paste 到 Gemini chat。
+> **Phase**：3 — **Delay 殘留** + settlement v10（instant settlement 已上線）  
+> **用途**：Gemini **讀唔到** Google Drive bug_log 時，將**成個檔案** Copy & Paste 到 Gemini chat。  
 > **重新生成**：\`bash scripts/build_gemini_packet.sh\`
 
 ---
 
 ## 點樣俾 Gemini（下次照做）
 
-1. **最簡單**：打開本檔 \`GEMINI_PACKET.md\` → 全選 Copy → 貼到 Gemini
-2. **GitHub Raw**（若 Gemini 支援 URL）：
+1. **最簡單（推薦）**：打開本檔 → 全選 Copy → 貼到 Gemini
+2. **加文檔**：另貼 \`GEMINI_REVIEW.md\` §16 或只貼 \`GEMINI_CONSULT.md\`
+3. **GitHub Raw**（若 Gemini 支援 URL）：
    - 本檔：${GITHUB_RAW}/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md
-   - 完整 index.html：${GITHUB_RAW}/templates/index.html
-   - routes/combat.py：${GITHUB_RAW}/routes/combat.py
-3. **唔好用**：Drive 資料夾連結（Gemini API 索引唔到 .md / bug_log）
-4. **可選**：將本檔 Upload 為 **Google Doc**（單檔分享連結）再俾 Gemini
+   - Consult：${GITHUB_RAW}/bug_log/cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md
+   - index.html（大檔）：${GITHUB_RAW}/templates/index.html
+4. **唔好用**：Drive 資料夾連結、\`attachments/\` 舊快照
 
 ---
 
 EOF
 
     if [[ -f "$CASE_DIR/GEMINI_CONSULT.md" ]]; then
-        echo "## A. GEMINI_CONSULT（精簡摘要）"
+        echo "## A. GEMINI_CONSULT（Phase 3 摘要）"
         echo ""
         cat "$CASE_DIR/GEMINI_CONSULT.md"
         echo ""
@@ -56,36 +57,44 @@ EOF
     fi
 
     cat <<'EOF'
-## B. §12.5 請 Gemini 回答
+## B. 請 Gemini 回答（Phase 3：Delay + Settlement v10）
 
-1. API 正確但 DOM 唔更新 — 最可能邊條 code path？
-2. 方案 A（前端簡化）vs B（後端 `display_enemy_hp`）vs C（cache-bust + 只用 `enemy.hp`）— 邊個風險最低？
-3. Henry 最少採證：Network JSON、Console、Safari 清快取？
-4. 架構級建議（拆 JS module、Service Worker）？
+1. instant settlement 後，剩餘 delay 最可能來自邊 1–2 條 path？（擲骰 / deferEnemyHp / poll 3s / 網絡）
+2. `deferEnemyHp` 會否令玩家誤判「HP 冇跌」？建議改法？
+3. v10 `isFinalHitOrVictory` 有無 submit vs poll race 仍 stuck 或 duplicate modal？
+4. 最低風險 patch 順序（營會前）？
+5. 點樣自動化「confirm 後 modal visible < 1.5s」？
 
-## C. DOM 目標（HP 顯示）
+**勿建議**：恢復 `COMBAT_SETTLEMENT_DELAY_MS` 或 1500ms 人工 modal 等待（已決策移除）。
+
+## C. DOM 目標
 
 | Element ID | 用途 |
 |------------|------|
 | `enemy-hp-current` | 敵人當前 HP 數字 |
-| `enemy-hp-max` | 敵人最大 HP |
 | `enemy-hp-bar` | 血條 width % |
-| `enemy-stat-hp` | 敵人面板 stat |
-| `enemy-round-damage` | 本回合傷害提示 |
+| `combat-round-settlement-modal` | 傷害結算 modal |
+| `round-settlement-confirm-btn` | 確定／確定，查看勝利 |
 
-更新函數鏈：`loadCombatStatus` / `submitAction` → `handleCombatRoundResolved` → `updateCombatUI` → `updateEnemyCombatStats` → **`syncEnemyHpDisplay`**
+函數鏈：`submitAction` → `handleCombatRoundResolved` / `finishCombatVictoryFromPayload` → `showFullRoundSettlement` → `continueCombatAfterRound` → `loadCombatStatus`（poll）
 
-## D. 關鍵 JavaScript（templates/index.html）
+## D. 關鍵 JavaScript（templates/index.html 摘錄）
 
 EOF
 
-    extract "templates/index.html" 1785 2199 "javascript"
-    extract "templates/index.html" 3323 3680 "javascript"
-    extract "templates/index.html" 4562 4585 "javascript"
+    extract "templates/index.html" 1238 1271 "javascript"
+    extract "templates/index.html" 1576 1595 "javascript"
+    extract "templates/index.html" 1832 1886 "javascript"
+    extract "templates/index.html" 2065 2110 "javascript"
+    extract "templates/index.html" 2184 2290 "javascript"
+    extract "templates/index.html" 2336 2425 "javascript"
+    extract "templates/index.html" 2440 2525 "javascript"
+    extract "templates/index.html" 3641 3725 "javascript"
+    extract "templates/index.html" 3768 3825 "javascript"
 
     cat <<EOF
 
-## E. 後端 Python
+## E. 後端 Python（API 合約摘錄）
 
 EOF
 
@@ -95,22 +104,31 @@ EOF
 
     cat <<EOF
 
-## F. CI 已通過（API 層）
+## F. CI 已通過
 
-- \`test_solo_multi_round_poll_hp_monotonic\` — 單人 practice_iggy_03_boundary 每回合 enemy.hp 遞減
-- \`test_practice_combat_start_enemy_hp_full\` — 開局 48/140 HP
-- \`test_zombie_hp_zero_status_poll_returns_victory\`
-- \`test_solo_killing_blow_practice_quick\`
+- \`scripts/test_combat_engine.py\` — 14 項純計算
+- \`scripts/test_combat_flow.py\` — 192+ 項（含 killing blow、poll HP、practice）
+- \`scripts/pre_deploy_checks.sh\` — 全綠
 
-## G. 實機仍 fail 條件（Henry）
+## G. 實機狀態（2026-06-30）
 
-- Iggy 線、**單人**、\`practice_iggy_03_boundary\`（140 HP）
-- PA \`${COMMIT}\`、\`enemy_hp_sync_v3: true\`
-- 戰鬥中敵 HP **顯示**唔更新
+| 項目 | 狀態 |
+|------|------|
+| Commit | \`${COMMIT}\` |
+| Markers | \`combat_instant_settlement\`, \`combat_flow_v7\`–\`v10\`, \`enemy_hp_sync_v7\` |
+| Henry instant checklist | ✅ OK（quick + boundary） |
+| 殘留 | **Delay 體感**未完全解決；v10 final-hit 待 Henry 驗 \`practice_iggy_02_leech\` |
+| 後端 | Combat log / \`enemy_hp_after\` 正確 |
+
+## H. 相關文檔
+
+- \`GEMINI_REVIEW.md\` §16 — 檔案包清單
+- \`bug_log/.../REPORT.md\` §13–§19
+- \`decisions_log.md\` § instant settlement
 
 ---
 
-*由 scripts/build_gemini_packet.sh 自動生成 · 勿手改（改源碼後重新 run script）*
+*由 scripts/build_gemini_packet.sh 自動生成 · 改 code 後重新 run*
 EOF
 
 } > "$OUT"

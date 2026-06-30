@@ -83,11 +83,12 @@ bash scripts/build_gemini_packet.sh
 
 然後 Copy 新 `GEMINI_PACKET.md` 俾 Gemini。順便 `git add` + push，等 GitHub Raw link 同步。
 
-### 當前 active case 快速入口
+### 當前 active case 快速入口（BUG-2026-001 · Phase 3）
 
-- 摘要：`cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_CONSULT.md`
-- **完整包（貼 Gemini）**：`cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`
-- 主報告：`cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md` §12
+- **貼 Gemini（最可靠）**：`cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PACKET.md`（`bash scripts/build_gemini_packet.sh`）
+- 一頁題目：`cases/.../GEMINI_CONSULT.md`（Delay 殘留 + settlement v10）
+- 檔案包清單：`GEMINI_REVIEW.md` §16
+- 主報告：`cases/.../REPORT.md` §13–§19
 
 ---
 
