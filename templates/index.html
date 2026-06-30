@@ -1235,11 +1235,11 @@
             }
         }
 
-        // combat_flow_v14: instant dice (0ms, 1 roll) — no pre-confirm animation delay
+        // combat_flow_v15: dice animation restored; confirm hides dice; early victory lock
         const DICE_ROLL_PRESETS = {
-            fast: { intervalMs: 0, maxRolls: 1, pauseMs: 0 },
-            normal: { intervalMs: 0, maxRolls: 1, pauseMs: 0 },
-            slow: { intervalMs: 0, maxRolls: 1, pauseMs: 0 },
+            fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
+            normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
+            slow: { intervalMs: 75, maxRolls: 10, pauseMs: 0 },
         };
 
         function syncHpOnlyFromPoll(data) {
@@ -2322,6 +2322,7 @@
                 const combatId = victoryPayload.combat_id || currentCombatId;
                 pendingVictoryAfterSettlement = null;
                 stopCombatPolling();
+                markCombatVictorySequenceComplete(combatId);
                 victorySettlementAcknowledgedCombatId = combatId;
                 combatAwaitingSettlementAck = false;
                 clearSettlementModalGuard();
@@ -2336,6 +2337,7 @@
                 clearSettlementModalGuard();
                 pendingVictoryAfterSettlement = null;
                 stopCombatPolling();
+                markCombatVictorySequenceComplete(combatId);
                 victorySettlementAcknowledgedCombatId = combatId;
                 void finalizeCombatVictoryFromPayload(victoryPayload);
                 return;
@@ -2407,7 +2409,7 @@
             combatWaitingForRound = false;
             hideCombatWaitingPanel();
             hideSinglePlayerResultModal();
-            hideCombatModal();
+            resetCombatDiceUi();
             clearTimeout(showFullRoundSettlement._modalTimer);
             showFullRoundSettlement._modalTimer = null;
             lockCombatActionsForSettlement();
@@ -2534,9 +2536,12 @@
 
         async function finalizeCombatVictoryFromPayload(data) {
             if (victoryFinalizeInProgress) return;
+            const combatId = data?.combat_id || currentCombatId;
+            if (combatId) markCombatVictorySequenceComplete(combatId);
             victoryFinalizeInProgress = true;
             combatFinalizingVictory = true;
             stopCombatPolling();
+            resetCombatDiceUi();
             combatAwaitingSettlementAck = false;
             settlementTimerPending = false;
             pendingSettlementHpPayload = null;
@@ -3029,13 +3034,22 @@
             if (hint) hint.textContent = '請於彈窗內確認並結束本回合';
         }
 
+        function showCombatSubmitLoadingShell() {
+            showCombatModalPanel('modal-dice-area', false);
+            showCombatModalPanel('modal-confirm-btn', false);
+            document.getElementById('modal-dice-final')?.classList.add('hidden');
+            const diceBox = document.getElementById('modal-dice-box');
+            if (diceBox) diceBox.classList.remove('animate-pulse', 'dice-crit');
+            const hint = document.getElementById('modal-status-hint');
+            if (hint) hint.textContent = '伺服器結算中…';
+        }
+
         function confirmRound() {
             const btn = document.getElementById('modal-confirm-btn');
             if (btn?.disabled || actionModalRolling) return;
             btn.disabled = true;
             btn.textContent = '結算中…';
-            const hint = document.getElementById('modal-status-hint');
-            if (hint) hint.textContent = '伺服器結算中…';
+            showCombatSubmitLoadingShell();
             submitAction();
         }
 
@@ -4054,14 +4068,15 @@
                 return;
             }
             if (data.outcome || shouldFinishCombatVictory(data)) {
+                resetCombatDiceUi();
                 await finishCombatVictoryFromPayload(data);
                 return;
             }
 
-            resetCombatDiceUi();
             lastDicePhase = 0;
 
             if (data.status === 'waiting_for_teammates') {
+                resetCombatDiceUi();
                 combatWaitingForRound = true;
                 combatSubmittedPhase = data.current_phase || lastCombatStatus?.current_phase || 0;
                 showSinglePlayerResultModal(data.single_preview);
@@ -4073,6 +4088,7 @@
             }
 
             if (data.status === 'round_resolved' || data.round_resolved) {
+                resetCombatDiceUi();
                 if (data.enemy?.hp != null) {
                     resetCombatEnemyHpTracking(data.enemy.hp);
                 }
@@ -4080,6 +4096,7 @@
                 return;
             }
 
+            resetCombatDiceUi();
             updateCombatUI({ ...data, active: true }, { damageDelay: 0 });
         }
 

@@ -666,4 +666,15 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §25 Gemini Phase 5 → v14*
+## 26. v15 熱修 + Phase 6 重寫諮詢（2026-06-30）
+
+| 項 | 處理 |
+|----|------|
+| 恢復擲骰動畫 | v14 誤刪 → v15 還原 8×55ms |
+| Confirm 後骰子殘留 | `showCombatSubmitLoadingShell` 隱藏骰子區 |
+| 勝利後再結算 | `markCombatVictorySequenceComplete` 提前到 `continueCombatAfterRound` / `finalize` 開頭 |
+| 長期方案 | **`GEMINI_COMBAT_REWRITE.md`** — 叫 Gemini 設計狀態機重寫 |
+
+---
+
+*最後更新：2026-06-30 · §26 v15 + combat rewrite spec*

@@ -118,6 +118,8 @@ def api_version():
             "combat_flow_v14": "combat_flow_v14" in template_text
                 and "clearLocalCombatSubmittedState" in template_text
                 and "restoreCombatConfirmBtn" in template_text,
+            "combat_flow_v15": "combat_flow_v15" in template_text
+                and "showCombatSubmitLoadingShell" in template_text,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },
