@@ -765,4 +765,14 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §30 GEMINI_PHASE8*
+## 31. 決策：放棄補丁，請 Gemini Greenfield 重寫（2026-06-30）
+
+| 項 | 內容 |
+|----|------|
+| **決策** | v4–v18 + FSM PR#1/#2 實機仍大量 bug；**唔再熱修** |
+| **下一步** | **`GEMINI_COMBAT_ZERO_REWRITE.md`** — 從 0 設計新 `static/js/combat/*` |
+| **狀態** | `rewrite_planned` |
+
+---
+
+*最後更新：2026-06-30 · §31 Greenfield 重寫諮詢*

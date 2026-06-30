@@ -2,7 +2,7 @@
 
 | ID | 日期 | 標題 | 狀態 | 修復 commit | Case 路徑 |
 |----|------|------|------|-------------|-----------|
-| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP／結算 modal／delay 殘留 | **fix_in_progress** — v16 + **FSM PR#2** + mobile HUD；待 Henry 實機 | `492513c`→fsm_v2 | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) · [Phase7](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_PHASE7.md) |
+| BUG-2026-001 | 2026-06-29 | 戰鬥敵人 HP／結算 modal／delay 殘留 | **rewrite_planned** — 停止 patch；**[ZERO_REWRITE](./cases/2026-06-29_combat_enemy_hp_settlement/GEMINI_COMBAT_ZERO_REWRITE.md)** | `a386c14` | [REPORT](./cases/2026-06-29_combat_enemy_hp_settlement/REPORT.md) |
 
 ## 狀態說明
 
