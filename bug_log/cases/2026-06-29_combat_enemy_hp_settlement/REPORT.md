@@ -654,4 +654,16 @@ v11 的 `victorySettlementModalCombatId` / `isRoundSettlementModalVisible` **無
 
 ---
 
-*最後更新：2026-06-30 · §24 Gemini → v13*
+## 25. Gemini Phase 5 → v14（delay + R2 silent fail · 2026-06-30）
+
+| 項 | 處理 |
+|----|------|
+| 擲骰 440ms 動畫 | `DICE_ROLL_PRESETS` → `intervalMs:0, maxRolls:1`；同步 `revealDiceResult` |
+| Confirm 後 RTT 空窗 | `confirmRound` 保留 modal +「結算中…」；`restoreCombatConfirmBtn` on error |
+| R2 攻擊無反應 | `clearLocalCombatSubmittedState` + `performAction` toast 防呆 |
+
+**Markers**：`combat_flow_v14`
+
+---
+
+*最後更新：2026-06-30 · §25 Gemini Phase 5 → v14*

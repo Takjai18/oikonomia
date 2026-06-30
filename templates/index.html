@@ -1235,10 +1235,11 @@
             }
         }
 
+        // combat_flow_v14: instant dice (0ms, 1 roll) — no pre-confirm animation delay
         const DICE_ROLL_PRESETS = {
-            fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
-            normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
-            slow: { intervalMs: 75, maxRolls: 10, pauseMs: 0 },
+            fast: { intervalMs: 0, maxRolls: 1, pauseMs: 0 },
+            normal: { intervalMs: 0, maxRolls: 1, pauseMs: 0 },
+            slow: { intervalMs: 0, maxRolls: 1, pauseMs: 0 },
         };
 
         function syncHpOnlyFromPoll(data) {
@@ -2341,8 +2342,13 @@
             }
             clearSettlementModalGuard();
             combatAwaitingSettlementAck = false;
+            settlementTimerPending = false;
             lastCombatStatusJson = '';
             lastCombatUiSnapshotKey = '';
+            clearLocalCombatSubmittedState();
+            if (lastCombatStatus) {
+                updateCombatUI(lastCombatStatus, { forceRefresh: true });
+            }
             const phase = lastCombatStatus?.current_phase || 0;
             if (phase) lastDicePhase = phase;
             loadCombatStatus(false);
@@ -2850,7 +2856,49 @@
                 diceDesc.classList.remove('text-yellow-400', 'font-bold');
             }
             const confirmBtn = document.getElementById('modal-confirm-btn');
-            if (confirmBtn) confirmBtn.disabled = false;
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '確認並結束本回合';
+            }
+        }
+
+        function restoreCombatConfirmBtn() {
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '確認並結束本回合';
+            }
+            const hint = document.getElementById('modal-status-hint');
+            if (hint && isCombatModalOpen()) {
+                hint.textContent = '請確認並結束本回合';
+            }
+        }
+
+        function clearLocalCombatSubmittedState() {
+            if (!lastCombatStatus) return;
+            const myId = lastCombatStatus.my_squad_id || currentSquad?.squad_id;
+            const next = { ...lastCombatStatus };
+            if (next.my_state) {
+                next.my_state = {
+                    ...next.my_state,
+                    submitted: false,
+                    action_type: null,
+                    dice_result: null,
+                };
+            }
+            if (myId && next.member_states?.[myId]) {
+                next.member_states = {
+                    ...next.member_states,
+                    [myId]: {
+                        ...next.member_states[myId],
+                        submitted: false,
+                        action_type: null,
+                        dice_result: null,
+                    },
+                };
+            }
+            lastCombatStatus = next;
+            setCombatPhaseLock(false);
         }
 
         function openCombatModal() {
@@ -2906,18 +2954,7 @@
             document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
 
             const diceCfg = getDiceRollConfig();
-            let rollCount = 0;
-            const maxRolls = diceCfg.maxRolls;
-            clearActionModalRollTimer();
-            actionModalRollTimer = setInterval(() => {
-                diceValue.textContent = String(Math.floor(Math.random() * 4));
-                diceBox.style.transform = `scale(${0.95 + Math.random() * 0.1})`;
-                rollCount += 1;
-                if (rollCount < maxRolls) return;
-
-                clearInterval(actionModalRollTimer);
-                actionModalRollTimer = null;
-
+            const revealDiceResult = () => {
                 const result = Math.floor(Math.random() * 4);
                 selectedDice = result;
                 diceValue.textContent = String(result);
@@ -2958,6 +2995,25 @@
                 } else {
                     revealConfirm();
                 }
+            };
+
+            clearActionModalRollTimer();
+            if (diceCfg.intervalMs === 0 && diceCfg.maxRolls <= 1) {
+                revealDiceResult();
+                return;
+            }
+
+            let rollCount = 0;
+            const maxRolls = diceCfg.maxRolls;
+            actionModalRollTimer = setInterval(() => {
+                diceValue.textContent = String(Math.floor(Math.random() * 4));
+                diceBox.style.transform = `scale(${0.95 + Math.random() * 0.1})`;
+                rollCount += 1;
+                if (rollCount < maxRolls) return;
+
+                clearInterval(actionModalRollTimer);
+                actionModalRollTimer = null;
+                revealDiceResult();
             }, diceCfg.intervalMs);
         }
 
@@ -2977,12 +3033,21 @@
             const btn = document.getElementById('modal-confirm-btn');
             if (btn?.disabled || actionModalRolling) return;
             btn.disabled = true;
-            hideCombatModal();
+            btn.textContent = '結算中…';
+            const hint = document.getElementById('modal-status-hint');
+            if (hint) hint.textContent = '伺服器結算中…';
             submitAction();
         }
 
         function performAction(action, opts = {}) {
-            if (actionModalRolling || isCombatModalOpen()) return;
+            if (actionModalRolling) {
+                showToast('系統擲骰中', 'info');
+                return;
+            }
+            if (isCombatModalOpen()) {
+                showToast('請先完成當前行動', 'info');
+                return;
+            }
             if (combatAwaitingSettlementAck || settlementTimerPending) {
                 showToast('請先等待本回合傷害結算', 'error');
                 return;
@@ -2993,7 +3058,18 @@
             }
             const me = buildCombatMyState(lastCombatStatus || {});
             const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
-            if (effectiveCombatStatus(lastCombatStatus) !== 'player_phase' || me.submitted || inNearDeath) return;
+            if (inNearDeath) {
+                showToast('你已瀕死，等待救援', 'error');
+                return;
+            }
+            if (me.submitted) {
+                showToast('等待伺服器同步回合狀態…', 'error');
+                return;
+            }
+            if (effectiveCombatStatus(lastCombatStatus) !== 'player_phase') {
+                showToast('非玩家回合', 'error');
+                return;
+            }
 
             selectedAction = action;
             if (action === 'use_item') {
@@ -3921,18 +3997,22 @@
 
         async function submitAction() {
             if (combatAwaitingSettlementAck || settlementTimerPending) {
+                restoreCombatConfirmBtn();
                 showToast('請先等待本回合傷害結算', 'error');
                 return;
             }
             if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
+                restoreCombatConfirmBtn();
                 showToast('回合結算中，請稍候', 'error');
                 return;
             }
             if (selectedAction === 'use_item' && !selectedItemId) {
+                restoreCombatConfirmBtn();
                 showToast('請先選擇要使用的物品', 'error');
                 return;
             }
             if (COMBAT_DICE_ACTIONS.has(selectedAction) && selectedDice === null) {
+                restoreCombatConfirmBtn();
                 showToast('請先選擇攻擊行動並完成擲骰', 'error');
                 return;
             }
@@ -3960,12 +4040,12 @@
                 });
                 data = await res.json();
             } catch (e) {
-                if (confirmBtn) confirmBtn.disabled = false;
+                restoreCombatConfirmBtn();
                 showToast('提交失敗，請稍後再試', 'error');
                 return;
             }
             if (!data.success && data.error) {
-                if (confirmBtn) confirmBtn.disabled = false;
+                restoreCombatConfirmBtn();
                 if (data.error.includes('結算中')) {
                     setCombatPhaseLock(true, lastCombatStatus || { current_phase: combatSubmittedPhase });
                     startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
