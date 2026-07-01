@@ -271,29 +271,25 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
             return None
 
         base = default_protagonist_template()
-        profile = PROTAGONIST_PROFILES.get(protagonist_key, {})
         now = datetime.now().isoformat()
         hp = int(base.get("hp", 100))
         max_hp = int(base.get("hp", DEFAULT_MAX_HP))
         sanity = int(base.get("sanity", 100))
         conn.execute(
-            """INSERT INTO protagonist_states
+            """INSERT OR IGNORE INTO protagonist_states
                (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
                VALUES (?, ?, ?, ?, ?, 0, 1, ?)""",
             (clean_team, protagonist_key, hp, max_hp, sanity, now),
         )
         conn.commit()
-        return {
-            "team_id": clean_team,
-            "protagonist": protagonist_key,
-            "hp": hp,
-            "max_hp": max_hp,
-            "sanity": sanity,
-            "trauma_count": 0,
-            "is_active": 1,
-            "near_death_until": None,
-            "last_updated": now,
-        }
+        row = conn.execute(
+            """SELECT team_id, protagonist, hp, max_hp, sanity, trauma_count,
+                      is_active, near_death_until, last_updated
+               FROM protagonist_states
+               WHERE team_id = ? AND protagonist = ?""",
+            (clean_team, protagonist_key),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 

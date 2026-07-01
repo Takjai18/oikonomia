@@ -39,13 +39,17 @@ echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "Remote:"
 git remote -v 2>/dev/null || true
 
-has_combat_modal() {
+has_combat_ui() {
     grep -q "combat-action-modal" templates/index.html 2>/dev/null \
-        || grep -q "combat-action-modal" app.py 2>/dev/null
+        || grep -q "combat-action-modal" app.py 2>/dev/null \
+        || grep -q "combat-root-v2" templates/combat_screen.html 2>/dev/null \
+        || grep -q "combat_screen.html" templates/index.html 2>/dev/null
 }
 
 code_marker() {
-    if has_combat_modal; then
+    if grep -q "combat-root-v2" templates/combat_screen.html 2>/dev/null; then
+        echo "COMBAT_V2"
+    elif has_combat_ui; then
         echo "COMBAT_MODAL"
     elif grep -q "build_combat_round_preview" models/combat.py 2>/dev/null; then
         echo "COMBAT_PREVIEW"
@@ -98,9 +102,9 @@ echo "Commit: $NEW_COMMIT"
 echo "origin/main: $(git rev-parse --short origin/main 2>/dev/null || echo unknown)"
 echo "Code marker: $(code_marker)"
 
-if ! has_combat_modal; then
+if ! has_combat_ui; then
     echo ""
-    echo "WARNING: combat-action-modal NOT found in templates/index.html."
+    echo "WARNING: no combat UI marker (combat-action-modal or combat-root-v2)."
     echo "Check: git remote -v  (should point to github.com/Takjai18/oikonomia)"
     echo "       Web tab source code path should be: $REPO"
 fi

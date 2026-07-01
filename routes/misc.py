@@ -62,7 +62,11 @@ def api_version():
             "show_only_protagonist": "showOnlyProtagonistCard",
             "combat_system": callable(resolve_player_phase),
             "combat_preview": callable(build_combat_round_preview),
-            "combat_modal": "combat-action-modal" in template_text,
+            "combat_modal": (
+                "combat-action-modal" in template_text
+                or "combat-root-v2" in template_text
+            ),
+            "combat_v2_module": "combat-root-v2" in template_text,
             "session_restore_v2": "tryLoginWithStoredSquad" in template_text,
             "settings_modal": "openSettingsModal" in template_text,
             "settings_js_safe": "resetAllSettings" in template_text and ".join('\\n')" in template_text,

@@ -164,6 +164,11 @@ def test_concurrent_combat_start():
         print("FAIL start race errors:", errors)
         return 1
 
+    server_errors = [code for code, _ in results if code >= 500]
+    if server_errors:
+        print("FAIL: combat/start returned 5xx (e.g. protagonist_states race):", results)
+        return 1
+
     success_ids = [cid for code, cid in results if code == 200 and cid]
     conflict_codes = [code for code, _ in results if code in (400, 409)]
     if len(success_ids) != 1:

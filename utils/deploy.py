@@ -13,8 +13,10 @@ def read_deploy_version():
 
 
 def player_template_text():
-    path = os.path.join(PROJECT_DIR, "templates", "index.html")
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as f:
-            return f.read()
-    return ""
+    parts = []
+    for rel in ("templates/index.html", "templates/combat_screen.html"):
+        path = os.path.join(PROJECT_DIR, rel)
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                parts.append(f.read())
+    return "\n".join(parts)

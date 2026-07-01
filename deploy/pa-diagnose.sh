@@ -55,8 +55,9 @@ fi
 
 echo ""
 echo "--- Code markers (templates/index.html + models/combat.py) ---"
-for marker in combat-action-modal resolve_player_phase build_combat_round_preview; do
-    if grep -q "$marker" templates/index.html 2>/dev/null \
+for marker in combat-root-v2 combat-action-modal resolve_player_phase build_combat_round_preview; do
+    if grep -q "$marker" templates/combat_screen.html 2>/dev/null \
+        || grep -q "$marker" templates/index.html 2>/dev/null \
         || grep -q "$marker" models/combat.py 2>/dev/null; then
         echo "  OK  $marker"
     else
