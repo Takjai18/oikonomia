@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Phase,
+  TERMINAL_PHASES,
   createInitialContext,
   transition,
   canDispatch,
@@ -19,6 +20,15 @@ import {
 import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
 
 describe('Combat V2 state machine', () => {
+  it('TERMINAL_PHASES SSOT covers endgame absorbing phases', () => {
+    assert.deepEqual(TERMINAL_PHASES, [
+      Phase.COMBAT_FAILED,
+      Phase.VICTORY,
+      Phase.DEFEAT,
+      Phase.ESCAPED,
+    ]);
+  });
+
   it('IDLE + ACTION_ATTACK → DICE_ROLLING', () => {
     const ctx = createInitialContext('c1');
     const { ctx: next } = transition(ctx, 'ACTION_ATTACK', { action: 'attack', dice: 3 });

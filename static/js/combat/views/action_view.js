@@ -3,6 +3,7 @@
  * @description 戰鬥主行動控制面板 — P2-2 Zoo / P2-3 主角代打
  */
 
+import { Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { DOM_IDS } from '../selectors.js';
 
 function zooBonusMultiplier(sanity) {
@@ -19,6 +20,15 @@ function berserkChancePct(sanity) {
   if (sanity < 40) return 20;
   return 0;
 }
+
+const BUSY_PHASES = [
+  Phase.DICE_ROLLING,
+  Phase.DICE_CONFIRM,
+  Phase.SUBMITTING,
+  Phase.SETTLEMENT,
+  Phase.WAITING_FOR_PLAYERS,
+  Phase.ESCAPE_ATTEMPT,
+];
 
 export function createActionView(rootEl, handlers = {}) {
   const attackBtn = rootEl.querySelector(`#${DOM_IDS.ATTACK_BTN}`);
@@ -46,7 +56,7 @@ export function createActionView(rootEl, handlers = {}) {
   function updateZooTip(ctx) {
     if (!zooTip) return;
     const me = ctx.hud?.me;
-    if (!me || ['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(ctx.phase)) {
+    if (!me || TERMINAL_PHASES.includes(ctx.phase)) {
       zooTip.className = 'hidden';
       zooTip.innerHTML = '';
       return;
@@ -79,8 +89,7 @@ export function createActionView(rootEl, handlers = {}) {
     if (!protagonistBar) return;
     const ctrlId = ctx.hud?.controllable_protagonist_id;
     const isLeader = !!ctx.hud?.me?.is_team_leader;
-    const show = !!ctrlId && isLeader
-      && !['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(ctx.phase);
+    const show = !!ctrlId && isLeader && !TERMINAL_PHASES.includes(ctx.phase);
     if (show) {
       protagonistBar.classList.remove('hidden');
       const members = ctx.hud?.members || {};
@@ -94,15 +103,8 @@ export function createActionView(rootEl, handlers = {}) {
 
   return {
     update(ctx) {
-      const absorbing = ['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(ctx.phase);
-      const busy = [
-        'DICE_ROLLING',
-        'DICE_CONFIRM',
-        'SUBMITTING',
-        'SETTLEMENT',
-        'WAITING_FOR_PLAYERS',
-        'ESCAPE_ATTEMPT',
-      ].includes(ctx.phase);
+      const absorbing = TERMINAL_PHASES.includes(ctx.phase);
+      const busy = BUSY_PHASES.includes(ctx.phase);
       const submitted = !!ctx.hud?.me?.submitted;
       const allowZoo = ctx.hud?.allow_zoo !== false;
       const sanity = parseInt(ctx.hud?.me?.sanity ?? 0, 10);

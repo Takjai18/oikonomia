@@ -6,6 +6,7 @@
 import { CombatApi, ResilientPollingManager } from './api_client.js';
 import {
   Phase,
+  TERMINAL_PHASES,
   createInitialContext,
   transition,
   canDispatch,
@@ -45,6 +46,7 @@ export class CombatApp {
     this.ctx = createInitialContext();
     this.invRecoveryCount = 0;
     this.hasTriggeredTimeoutDefense = false;
+    this.submittingActive = false;
     this._activeRafIds = new Set();
     this._activeTimeoutIds = new Set();
 
@@ -117,6 +119,7 @@ export class CombatApp {
         delete this.rootEl.__combat_app_instance__;
       }
       this.hasTriggeredTimeoutDefense = false;
+      this.submittingActive = false;
       console.log('[CombatV2] 本地狀態機環境已完全釋放。');
     } catch (err) {
       console.error('[CombatV2] destroy failed', err);
@@ -152,6 +155,7 @@ export class CombatApp {
     this.ctx.shownSettlementIds.clear();
     this.ctx.entrySyncPending = true;
     this.hasTriggeredTimeoutDefense = false;
+    this.submittingActive = false;
     this.invRecoveryCount = 0;
 
     if (data.combat_id) {
@@ -183,7 +187,7 @@ export class CombatApp {
   }
 
   openItemSelect() {
-    if (['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(this.ctx.phase)) {
+    if (TERMINAL_PHASES.includes(this.ctx.phase)) {
       return;
     }
     if (this.ctx.phase !== Phase.IDLE || this.ctx.hud?.me?.submitted) {
@@ -277,6 +281,7 @@ export class CombatApp {
 
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
+    this.submittingActive = true;
 
     try {
       const actionMap = {
@@ -300,6 +305,7 @@ export class CombatApp {
     } catch (err) {
       this.dispatch('SUBMIT_ERROR', { error: err.message || '提交失敗' });
     } finally {
+      this.submittingActive = false;
       if (!this.ctx.pollPaused) this.poller.resume();
     }
   }
@@ -453,6 +459,7 @@ export class CombatApp {
 
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
+    this.submittingActive = true;
 
     try {
       const data = await CombatApi.submit({
@@ -466,12 +473,22 @@ export class CombatApp {
       this.hasTriggeredTimeoutDefense = false;
       this.dispatch('SUBMIT_ERROR', { error: err.message || '自動提交失敗' });
     } finally {
+      this.submittingActive = false;
       if (!this.ctx.pollPaused) this.poller.resume();
     }
   }
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
+
+    if (this.submittingActive) {
+      if (this.debug) console.log('[CombatV2] poll muted during in-flight submit');
+      if (snapshot.enemy || snapshot.my_state || snapshot.member_states) {
+        this.ctx.hud = extractHud(snapshot);
+        this.views.hud?.update(this.ctx, { hpOnly: true });
+      }
+      return;
+    }
 
     const deathCheck = handleAnyDeath(
       { ...this.ctx, hud: extractHud(snapshot) },
@@ -492,7 +509,7 @@ export class CombatApp {
       if (this.hasTriggeredTimeoutDefense) return;
     }
 
-    if (['VICTORY', 'DEFEAT', 'COMBAT_FAILED', 'ESCAPED'].includes(this.ctx.phase)) {
+    if (TERMINAL_PHASES.includes(this.ctx.phase)) {
       return;
     }
 

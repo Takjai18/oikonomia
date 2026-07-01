@@ -19,6 +19,14 @@ export const Phase = {
   ESCAPED: 'ESCAPED',
 };
 
+/** SSOT: terminal absorbing phases (views + poll guards) */
+export const TERMINAL_PHASES = Object.freeze([
+  Phase.COMBAT_FAILED,
+  Phase.VICTORY,
+  Phase.DEFEAT,
+  Phase.ESCAPED,
+]);
+
 const PHASE_LABELS = {
   [Phase.IDLE]: '等待行動',
   [Phase.DICE_ROLLING]: '擲骰中',
@@ -33,22 +41,12 @@ const PHASE_LABELS = {
   [Phase.ESCAPED]: '成功逃跑',
 };
 
-const ABSORBING = new Set([
-  Phase.COMBAT_FAILED,
-  Phase.VICTORY,
-  Phase.DEFEAT,
-  Phase.ESCAPED,
-]);
+const ABSORBING = new Set(TERMINAL_PHASES);
 
 const DICE_BUSY = new Set([Phase.DICE_ROLLING, Phase.DICE_CONFIRM]);
 
 /** Phases that must exit SETTLEMENT without pinning poll handler */
-const SETTLEMENT_EXIT_PHASES = new Set([
-  Phase.VICTORY,
-  Phase.DEFEAT,
-  Phase.COMBAT_FAILED,
-  Phase.ESCAPED,
-]);
+const SETTLEMENT_EXIT_PHASES = new Set(TERMINAL_PHASES);
 
 function terminalModalTeardownEffects(effects) {
   return [
