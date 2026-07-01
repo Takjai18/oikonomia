@@ -350,12 +350,12 @@ def build_r15_zoo_spec(today: str, head: str) -> str:
 - **任何神智值均可發動 Zoo**（僅 `allow_zoo === false` 禁止）
 - 神智加成（只影響 Zoo 傷害，不 gate 按鈕）：
   - ≤70 → ×1.0
-  - >70 → ×1.3 · >80 → ×1.4 · >90 → ×1.5
+  - ≥70 → ×1.3 · ≥80 → ×1.4 · ≥90 → ×1.5 · ≥100 → ×1.8
 
 **焦點問題**：
 1. FSM `ACTION_USE_ZOO` guard 是否**只**檢查 `allow_zoo` / `submitted`，唔檢查神智？
 2. `action_view.js` Zoo 按鈕是否僅在 `!allowZoo` 時 disable（唔因神智 <70）？
-3. 前後端 `zoo_bonus_multiplier` 邊界是否一致（嚴格 `>70/>80/>90`）？
+3. 前後端 `zoo_bonus_multiplier` 邊界是否一致（`>=70/>=80/>=90/>=100`）？
 4. `routes/combat.py` 是否無 sanity gate 拒絕 `use_zoo`？
 5. 邊界：神智恰好 70 / 80 / 90 應為哪個 tier？
 

@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_C_STEP4_ORCHESTRATION（局部審計 · 純計算層與戰後編排）
 
 > **目的**：審計 **Greenfield Step 4** — `combat_engine` 純函式、`combat_flow` INV-E 混合結算、`combat_outcomes` 冪等與 `settlement_id`  
-> **日期**：2026-07-02 · **commit**：`137dfa9`  
+> **日期**：2026-07-02 · **commit**：`d3539bd`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` + `combat_greenfield_final.md` §1.1 INV-E  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -370,7 +370,7 @@ def process_mixed_round_actions(
 
 ## 3. 生產路徑 escape 接入
 
-# models/combat.py (L1224–L1313)
+# models/combat.py (L1226–L1315)
 
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)

@@ -682,6 +682,29 @@ def test_player_max_hp(leader_id):
     ok("squad_max_hp helper", squad_max_hp(squad) == 125)
 
 
+def test_zoo_bonus_multiplier_boundaries():
+    """Zoo tier boundaries: >=70/80/90/100 (Final v1.1)."""
+    from models.combat import zoo_bonus_multiplier
+
+    cases = [
+        (69, 1.0),
+        (70, 1.3),
+        (79, 1.3),
+        (80, 1.4),
+        (89, 1.4),
+        (90, 1.5),
+        (99, 1.5),
+        (100, 1.8),
+    ]
+    for sanity, expected in cases:
+        got = zoo_bonus_multiplier(sanity)
+        ok(
+            f"zoo_bonus_multiplier({sanity}) == {expected}",
+            got == expected,
+            f"got {got}",
+        )
+
+
 def test_defend_team_buff_helpers():
     """Unit checks for Defend team-wide damage reduction."""
     actions = {
@@ -2108,6 +2131,7 @@ def main():
     join_data = r2.get_json()
     ok("玩家2 加入隊伍", join_data.get("success"), str(join_data))
 
+    test_zoo_bonus_multiplier_boundaries()
     test_defend_team_buff_helpers()
     test_trauma_ending_thresholds()
     test_encounter_catalog()

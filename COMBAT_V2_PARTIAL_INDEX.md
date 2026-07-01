@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-02 · **commit**：`137dfa9`  
+> **日期**：2026-07-02 · **commit**：`d3539bd`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -39,11 +39,11 @@
 | 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
 | 7 | R15 Zoo 規格 | ✅ 本生成 · §25 |
-| 8 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `137dfa9` §25 |
+| 8 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `d3539bd` §25 |
 
 ---
 
-## 測試基線（2026-07-02 · `137dfa9`）
+## 測試基線（2026-07-02 · `d3539bd`）
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py      # 283/283

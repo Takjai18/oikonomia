@@ -517,7 +517,7 @@ def gm_override_trauma_ending_api():
 
 ## 3. Scope C — Co-op 併發 resolve
 
-# models/combat.py (L708–L722)
+# models/combat.py (L710–L724)
 
 def _claim_player_phase_resolution(combat_id):
     with immediate_transaction() as conn:
@@ -534,7 +534,7 @@ def _claim_player_phase_resolution(combat_id):
         return cur.rowcount > 0
 
 
-# models/combat.py (L964–L1014)
+# models/combat.py (L966–L1016)
 
 def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """

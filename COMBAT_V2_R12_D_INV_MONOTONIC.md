@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
 > **目的**：審計 **前端權威狀態機** — `settlement_id` / `settled_round_index` 單調防護、`entrySyncPending` 進場吸收、INV-D 失敗搶占  
-> **日期**：2026-07-02 · **commit**：`137dfa9`  
+> **日期**：2026-07-02 · **commit**：`d3539bd`  
 > **Baseline**：假設已讀 `combat_greenfield_final.md` §3 不變式表  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -943,7 +943,7 @@ export function extractHud(snapshot) {
 
 ## 4. 後端 settlement meta
 
-# models/combat.py (L2472–L2487)
+# models/combat.py (L2474–L2489)
 
 def _enrich_settlement_meta(payload, combat=None):
     """Additive COMBAT_V2 fields: stable settlement progress on every status snapshot."""

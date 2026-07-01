@@ -7,9 +7,10 @@ import { Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { DOM_IDS } from '../selectors.js';
 
 function zooBonusMultiplier(sanity) {
-  if (sanity > 90) return 1.5;
-  if (sanity > 80) return 1.4;
-  if (sanity > 70) return 1.3;
+  if (sanity >= 100) return 1.8;
+  if (sanity >= 90) return 1.5;
+  if (sanity >= 80) return 1.4;
+  if (sanity >= 70) return 1.3;
   return 1.0;
 }
 
@@ -80,7 +81,7 @@ export function createActionView(rootEl, handlers = {}) {
       zooTip.innerHTML = `✨ Zoo 就緒：神智 ${sanity}，發動 Zoo 可獲 <b>×${zooMult}</b> 算力增益`;
     } else {
       zooTip.className = 'text-[10px] text-zinc-500 font-mono bg-zinc-900/40 border border-zinc-800 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 >70 才有加成（目前 ×1.0）`;
+      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 ≥70 才有加成（目前 ×1.0）`;
     }
   }
 

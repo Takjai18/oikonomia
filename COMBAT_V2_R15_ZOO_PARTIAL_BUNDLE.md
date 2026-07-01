@@ -1,7 +1,7 @@
 # COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE（局部審計 · Zoo 能力規格對齊）
 
 > **目的**：審計 **Greenfield v1.1 Zoo 權威規格** — 糾正「神智 >70 才能發動」舊誤；驗證前後端一致  
-> **日期**：2026-07-02 · **commit**：`137dfa9`  
+> **日期**：2026-07-02 · **commit**：`d3539bd`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` v15 或 `combat_greenfield_final.md` §1.1  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -13,12 +13,12 @@
 - **任何神智值均可發動 Zoo**（僅 `allow_zoo === false` 禁止）
 - 神智加成（只影響 Zoo 傷害，不 gate 按鈕）：
   - ≤70 → ×1.0
-  - >70 → ×1.3 · >80 → ×1.4 · >90 → ×1.5
+  - ≥70 → ×1.3 · ≥80 → ×1.4 · ≥90 → ×1.5 · ≥100 → ×1.8
 
 **焦點問題**：
 1. FSM `ACTION_USE_ZOO` guard 是否**只**檢查 `allow_zoo` / `submitted`，唔檢查神智？
 2. `action_view.js` Zoo 按鈕是否僅在 `!allowZoo` 時 disable（唔因神智 <70）？
-3. 前後端 `zoo_bonus_multiplier` 邊界是否一致（嚴格 `>70/>80/>90`）？
+3. 前後端 `zoo_bonus_multiplier` 邊界是否一致（`>=70/>=80/>=90/>=100`）？
 4. `routes/combat.py` 是否無 sanity gate 拒絕 `use_zoo`？
 5. 邊界：神智恰好 70 / 80 / 90 應為哪個 tier？
 
@@ -29,34 +29,38 @@
 ## 1. Greenfield 規格摘錄
 
 - **Zoo 能力**（Greenfield 權威規格）：
-  - **任何神智值均可發動 Zoo**——唔係「神智 >70 先用得」；僅當遭遇 `combat_settings.allow_zoo === false` 時禁止
+  - **任何神智值均可發動 Zoo**——唔係「神智 ≥70 先用得」；僅當遭遇 `combat_settings.allow_zoo === false` 時禁止
   - Zoo 行動同樣經後端擲骰（0–3）並計入傷害結算；低神智仍有**暴走**風險（見下方暴走規則）
-  - **神智加成乘數**（只喺選擇 Zoo 行動時套用，唔影響攻擊／防禦；神智 ≤70 仍可發動，但無加成）：
+  - **神智加成乘數**（只喺選擇 Zoo 行動時套用，唔影響攻擊／防禦；神智 <70 仍可發動，但無加成）：
     | 神智 | Zoo 傷害乘數 |
     |------|-------------|
-    | ≤70 | ×1.0 |
-    | >70 | ×1.3 |
-    | >80 | ×1.4 |
-    | >90 | ×1.5 |
-  - UI：**唔應**因神智不足而 disable Zoo 按鈕；神智 ≤70 顯示「可發動、無加成（×1.0）」；>70 顯示當前 tier 乘數
+    | <70 | ×1.0 |
+    | ≥70 | ×1.3 |
+    | ≥80 | ×1.4 |
+    | ≥90 | ×1.5 |
+    | ≥100 | ×1.8 |
+  - UI：**唔應**因神智不足而 disable Zoo 按鈕；神智 <70 顯示「可發動、無加成（×1.0）」；≥70 顯示當前 tier 乘數
+  - AI 主角：`choose_protagonist_auto_action` 喺 `allow_zoo` 且神智 ≥30 時可有機率自動 Zoo（唔 gate 於 ≥70）；神智 <30 仍強制防禦
 
 ---
 
 ## 2. 後端乘數與結算
 
-# models/combat.py (L422–L431)
+# models/combat.py (L422–L433)
 
 def zoo_bonus_multiplier(sanity):
     sanity = int(sanity or 0)
-    if sanity > 90:
+    if sanity >= 100:
+        return 1.8
+    if sanity >= 90:
         return 1.5
-    if sanity > 80:
+    if sanity >= 80:
         return 1.4
-    if sanity > 70:
+    if sanity >= 70:
         return 1.3
     return 1.0
 
-# models/combat.py (L519–L531)
+# models/combat.py (L521–L533)
 
 def choose_protagonist_auto_action(participant, combat_settings=None):
     combat_settings = combat_settings or {}
@@ -64,7 +68,7 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
     dice = roll_combat_dice()
     if sanity < 30:
         return {"action_type": "defend", "dice_result": dice}
-    if sanity > 70 and combat_settings.get("allow_zoo", True):
+    if combat_settings.get("allow_zoo", True) and random.random() < 0.35:
         return {"action_type": "use_zoo", "dice_result": dice}
     if sanity < 40 and dice == 0:
         return {"action_type": "pass", "dice_result": dice}
@@ -96,6 +100,8 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
         acting_id,
 # models/combat.py (L1390–L1420)
 
+                )
+            else:
                 combat = append_combat_log(
                     combat,
                     f"{display} 消耗了 [{used_item_name}]！效果已生效",
@@ -125,10 +131,10 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
             ) else ""
             combat = append_combat_log(
                 combat,
-                f"{display} {action_label}對{enemy_name}造成 {dmg} 點傷害"
-                f"（{stat_info['label']} {stat_info['value']} · 骰 {dice}）{pro_tag}",
 # models/combat.py (L1900–L1915)
 
+        item = get_item_by_id(int(item_id))
+        if item:
             effect = item.get("effect_type")
             if effect == "power_up":
                 item_bonus = abs(int(item.get("effect_value") or 0))
@@ -143,8 +149,6 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
         meta["attack_stat_value"] = stat_info["value"]
         meta["attack_stat_label"] = stat_info["label"]
         dmg = calculate_attack_damage(
-            player, enemy_resilience, multiplier=multiplier, item_bonus=item_bonus,
-        )
 
 ## 3. 前端 FSM + UI
 
@@ -172,9 +176,10 @@ import { Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { DOM_IDS } from '../selectors.js';
 
 function zooBonusMultiplier(sanity) {
-  if (sanity > 90) return 1.5;
-  if (sanity > 80) return 1.4;
-  if (sanity > 70) return 1.3;
+  if (sanity >= 100) return 1.8;
+  if (sanity >= 90) return 1.5;
+  if (sanity >= 80) return 1.4;
+  if (sanity >= 70) return 1.3;
   return 1.0;
 }
 
@@ -245,7 +250,7 @@ export function createActionView(rootEl, handlers = {}) {
       zooTip.innerHTML = `✨ Zoo 就緒：神智 ${sanity}，發動 Zoo 可獲 <b>×${zooMult}</b> 算力增益`;
     } else {
       zooTip.className = 'text-[10px] text-zinc-500 font-mono bg-zinc-900/40 border border-zinc-800 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 >70 才有加成（目前 ×1.0）`;
+      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 ≥70 才有加成（目前 ×1.0）`;
     }
   }
 
@@ -316,4 +321,4 @@ describe('Settlement normalization', () => {
   it('uses round_settlement when damage > 0', () => {
 
 ---
-*End of R15 Zoo · 2026-07-02 · `137dfa9`*
+*End of R15 Zoo · 2026-07-02 · `d3539bd`*

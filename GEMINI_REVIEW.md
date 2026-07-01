@@ -1053,8 +1053,8 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
 | 項目 | 規格 |
 |------|------|
 | 發動條件 | **任何神智值均可發動**；僅 `combat_settings.allow_zoo === false` 禁止 |
-| 加成乘數 | ≤70 → ×1.0 · **>70** → ×1.3 · **>80** → ×1.4 · **>90** → ×1.5 |
-| UI | **唔應**因神智不足 disable Zoo 按鈕；≤70 顯示「可發動、無加成」 |
+| 加成乘數 | **見 §26**（R18 改為 ≥70/≥80/≥90/≥100） |
+| UI | **唔應**因神智不足 disable Zoo 按鈕 |
 | 暴走 | 與攻擊相同（神智 <10/20/40 → 90%/50%/20%） |
 
 ### 25.2 已修對照表
@@ -1063,7 +1063,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
 |------|------|------|----------------|
 | **R17** | 移除 FSM `sanity >= 70` Zoo guard | ✅ | `048adba` `state_machine.js` |
 | **R17** | UI 低神智仍可點 Zoo；提示無加成 | ✅ | `048adba` `action_view.js` |
-| **R17** | 後端／前端乘數嚴格 `>70/>80/>90` | ✅ | `137dfa9` `models/combat.py` · `action_view.js` |
+| **R17** | 後端／前端乘數（初版誤用 `>`） | ⚠️ 已 supersede | `137dfa9` → §26 改 `>=` |
 | **R17** | Greenfield 文件 v1.1 權威表 | ✅ | `137dfa9` `combat_greenfield_final.md` |
 | **R17** | 單元測試 sanity 55 可 `ACTION_USE_ZOO` | ✅ | `048adba` `combat_state_machine.test.js` |
 
@@ -1085,7 +1085,42 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）
 本次範圍：貼 COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md 全文
 已修對照：GEMINI_REVIEW.md §18–§25（唔重複報）
 基準 commit：137dfa9
-焦點：Zoo 任何神智可發動；>70/>80/>90 加成；前後端邊界一致
+焦點：Zoo 任何神智可發動；≥70/≥80/≥90 加成；前後端邊界一致
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 26. Zoo 乘數邊界 ≥ 與 AI 低神智發動（2026-07-02 · Gemini R15 審計後）
+
+> **性質**：Gemini R15 審計（7.5/10）— 邊界 `>` 改 `>=`；AI 主角放開低神智 Zoo；下一輪 **唔好重複報**。
+
+### 26.1 權威規格（`combat_greenfield_final.md` v1.1 更新）
+
+| 神智 | Zoo 傷害乘數 |
+|------|-------------|
+| <70 | ×1.0（可發動） |
+| ≥70 | ×1.3 |
+| ≥80 | ×1.4 |
+| ≥90 | ×1.5 |
+| ≥100 | ×1.8 |
+
+### 26.2 已修對照表
+
+| 輪次 | 議題 | 狀態 | 檔案 |
+|------|------|------|------|
+| **R18** | `zoo_bonus_multiplier` 邊界 `>=70/80/90/100` | ✅ | `models/combat.py` · `action_view.js` |
+| **R18** | AI `choose_protagonist_auto_action` 放開 sanity gate | ✅ | `models/combat.py`（35% 隨機 Zoo） |
+| **R18** | UI 提示「≥70 才有加成」 | ✅ | `action_view.js` |
+| **R18** | 邊界單元測試 69/70/80/90/100 | ✅ | `test_combat_flow.py` |
+
+### 26.3 Copy-paste 開場白（R18 後回歸）
+
+```
+【審計模式】
+Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）
+已修對照：GEMINI_REVIEW.md §18–§26（唔重複報）
+基準 commit：<HEAD>
+本次範圍：R15 Zoo 回歸或 §20.3 新 scope
 ```

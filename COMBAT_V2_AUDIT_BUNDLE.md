@@ -1,11 +1,11 @@
 # COMBAT_V2_AUDIT_BUNDLE v15（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-02 · **commit**：`137dfa9`  
+> **日期**：2026-07-02 · **commit**：`d3539bd`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md` v1.1（附錄內含全文）  
-> **上一輪**：Greenfield Zoo 規格修正 — 任何神智可發動；>70/>80/>90 加成 ✅（見 `GEMINI_REVIEW.md` §25）
-> **本輪**：v15 錨點（`137dfa9`）；日常審計用 **R15 Zoo Partial** 或 §20.3 **新 scope**
+> **上一輪**：Zoo 乘數邊界 `>=70/80/90/100` + AI 低神智 Zoo ✅（見 `GEMINI_REVIEW.md` §26）
+> **本輪**：v15 錨點（`d3539bd`）；日常審計用 **R15 Zoo Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D / **R15**  
@@ -17,10 +17,10 @@
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§25 — 唔好重複報已落地項（含 §25 Zoo 規格）
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§26 — 唔好重複報已落地項（含 §26 Zoo 邊界）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3 或 `COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md`
 
-### 0.1 Partial 審計狀態（`137dfa9` · 已審已修，回歸 only）
+### 0.1 Partial 審計狀態（`d3539bd` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
@@ -41,7 +41,7 @@
 | 功能 | 狀態 | 主要檔案 |
 |------|------|----------|
 | P2-1 戰鬥物品（power_up） | ✅ | `item_select_view.js`, `routes/items.py`, `models/item.py` |
-| P2-2 Zoo UI + 暴走提示 | ✅ | 任何神智可發動；>70/>80/>90 → ×1.3/1.4/1.5；`action_view.js`, `state_machine.js`, `models/combat.py` |
+| P2-2 Zoo UI + 暴走提示 | ✅ | 任何神智可發動；≥70/≥80/≥90/≥100 → ×1.3/1.4/1.5/1.8；`action_view.js`, `models/combat.py` |
 | P2-3 主角代打（隊長專屬） | ✅ | `routes/combat.py` 403 gate, `index.js` asProtagonist, `action_view.js` toggle |
 | P2-4 物品效果擴展（醫療/解控） | ✅ | `models/combat.py` use_item, `settlement_view.js` Breakdown |
 | P2-5 雙人 Co-op E2E | ✅ | `tests/combat_v2.spec.js` T12, `state_machine.js` poll settlement |
@@ -63,7 +63,7 @@
 
 ---
 
-## 3. 測試狀態（R15 · `137dfa9`）
+## 3. 測試狀態（R15 · `d3539bd`）
 
 ```bash
 npm run test:combat                                    # 26/26 pass
@@ -2941,9 +2941,10 @@ import { Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { DOM_IDS } from '../selectors.js';
 
 function zooBonusMultiplier(sanity) {
-  if (sanity > 90) return 1.5;
-  if (sanity > 80) return 1.4;
-  if (sanity > 70) return 1.3;
+  if (sanity >= 100) return 1.8;
+  if (sanity >= 90) return 1.5;
+  if (sanity >= 80) return 1.4;
+  if (sanity >= 70) return 1.3;
   return 1.0;
 }
 
@@ -3014,7 +3015,7 @@ export function createActionView(rootEl, handlers = {}) {
       zooTip.innerHTML = `✨ Zoo 就緒：神智 ${sanity}，發動 Zoo 可獲 <b>×${zooMult}</b> 算力增益`;
     } else {
       zooTip.className = 'text-[10px] text-zinc-500 font-mono bg-zinc-900/40 border border-zinc-800 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 >70 才有加成（目前 ×1.0）`;
+      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 ≥70 才有加成（目前 ×1.0）`;
     }
   }
 
@@ -5915,11 +5916,13 @@ def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, i
 
 def zoo_bonus_multiplier(sanity):
     sanity = int(sanity or 0)
-    if sanity > 90:
+    if sanity >= 100:
+        return 1.8
+    if sanity >= 90:
         return 1.5
-    if sanity > 80:
+    if sanity >= 80:
         return 1.4
-    if sanity > 70:
+    if sanity >= 70:
         return 1.3
     return 1.0
 
@@ -6016,7 +6019,7 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
     dice = roll_combat_dice()
     if sanity < 30:
         return {"action_type": "defend", "dice_result": dice}
-    if sanity > 70 and combat_settings.get("allow_zoo", True):
+    if combat_settings.get("allow_zoo", True) and random.random() < 0.35:
         return {"action_type": "use_zoo", "dice_result": dice}
     if sanity < 40 and dice == 0:
         return {"action_type": "pass", "dice_result": dice}
@@ -6366,7 +6369,7 @@ def resolve_player_phase(combat_id):
     """
     完整解析 Player Phase：
     - 攻擊傷害（max(力量, 智力)）+ dice multiplier
-    - Zoo 加成（>70/>80/>90 → 1.3x/1.4x/1.5x；≤70 為 1.0x，仍可發動）
+    - Zoo 加成（≥70/≥80/≥90/≥100 → 1.3x/1.4x/1.5x/1.8x；<70 為 1.0x，仍可發動）
     - 暴走（指定機率 + 30% 自傷）
     - 敵人反擊（韌性最低者；任一同隊 Defend → 全隊減傷 50%）
     - 瀕死檢查、日誌、Phase 狀態更新
@@ -10133,16 +10136,18 @@ def create_global_event(title, description="", effect_type=None, effect_value=0,
 - **任何角色（包括主角）HP ≤ 0 → 戰鬥即時失敗**（絕對規則）
 - 玩家可選擇：攻擊、防御、Zoo能力、使用道具、逃跑
 - **Zoo 能力**（Greenfield 權威規格）：
-  - **任何神智值均可發動 Zoo**——唔係「神智 >70 先用得」；僅當遭遇 `combat_settings.allow_zoo === false` 時禁止
+  - **任何神智值均可發動 Zoo**——唔係「神智 ≥70 先用得」；僅當遭遇 `combat_settings.allow_zoo === false` 時禁止
   - Zoo 行動同樣經後端擲骰（0–3）並計入傷害結算；低神智仍有**暴走**風險（見下方暴走規則）
-  - **神智加成乘數**（只喺選擇 Zoo 行動時套用，唔影響攻擊／防禦；神智 ≤70 仍可發動，但無加成）：
+  - **神智加成乘數**（只喺選擇 Zoo 行動時套用，唔影響攻擊／防禦；神智 <70 仍可發動，但無加成）：
     | 神智 | Zoo 傷害乘數 |
     |------|-------------|
-    | ≤70 | ×1.0 |
-    | >70 | ×1.3 |
-    | >80 | ×1.4 |
-    | >90 | ×1.5 |
-  - UI：**唔應**因神智不足而 disable Zoo 按鈕；神智 ≤70 顯示「可發動、無加成（×1.0）」；>70 顯示當前 tier 乘數
+    | <70 | ×1.0 |
+    | ≥70 | ×1.3 |
+    | ≥80 | ×1.4 |
+    | ≥90 | ×1.5 |
+    | ≥100 | ×1.8 |
+  - UI：**唔應**因神智不足而 disable Zoo 按鈕；神智 <70 顯示「可發動、無加成（×1.0）」；≥70 顯示當前 tier 乘數
+  - AI 主角：`choose_protagonist_auto_action` 喺 `allow_zoo` 且神智 ≥30 時可有機率自動 Zoo（唔 gate 於 ≥70）；神智 <30 仍強制防禦
 - 攻擊擲骰：0-3（後端權威），乘以角色 Power
 - **暴走**（任何攻擊類行動，含 Zoo）：神智 <10→90%、<20→50%、<40→20% 機率失控（可能無敵傷害）
 - **Defense 公式**（只限主動選擇 Defense 行動時生效）：
@@ -12736,6 +12741,29 @@ def test_player_max_hp(leader_id):
     ok("squad_max_hp helper", squad_max_hp(squad) == 125)
 
 
+def test_zoo_bonus_multiplier_boundaries():
+    """Zoo tier boundaries: >=70/80/90/100 (Final v1.1)."""
+    from models.combat import zoo_bonus_multiplier
+
+    cases = [
+        (69, 1.0),
+        (70, 1.3),
+        (79, 1.3),
+        (80, 1.4),
+        (89, 1.4),
+        (90, 1.5),
+        (99, 1.5),
+        (100, 1.8),
+    ]
+    for sanity, expected in cases:
+        got = zoo_bonus_multiplier(sanity)
+        ok(
+            f"zoo_bonus_multiplier({sanity}) == {expected}",
+            got == expected,
+            f"got {got}",
+        )
+
+
 def test_defend_team_buff_helpers():
     """Unit checks for Defend team-wide damage reduction."""
     actions = {
@@ -14162,6 +14190,7 @@ def main():
     join_data = r2.get_json()
     ok("玩家2 加入隊伍", join_data.get("success"), str(join_data))
 
+    test_zoo_bonus_multiplier_boundaries()
     test_defend_team_buff_helpers()
     test_trauma_ending_thresholds()
     test_encounter_catalog()
@@ -14658,4 +14687,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v15 · 2026-07-02 · `137dfa9`*
+*End of COMBAT_V2_AUDIT_BUNDLE v15 · 2026-07-02 · `d3539bd`*
