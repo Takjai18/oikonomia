@@ -1,0 +1,176 @@
+/**
+ * Combat V2 FSM unit tests (no DOM)
+ * Run: npm run test:combat
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  Phase,
+  createInitialContext,
+  transition,
+  canDispatch,
+  handleAnyDeath,
+  syncState,
+} from '../static/js/combat/state_machine.js';
+import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
+
+describe('Combat V2 state machine', () => {
+  it('IDLE + ACTION_ATTACK → DICE_ROLLING', () => {
+    const ctx = createInitialContext('c1');
+    const { ctx: next } = transition(ctx, 'ACTION_ATTACK', { action: 'attack', dice: 3 });
+    assert.equal(next.phase, Phase.DICE_ROLLING);
+    assert.equal(next.dice.action, 'attack');
+  });
+
+  it('DICE_ROLLING + ACTION_ATTACK → toast (blocked)', () => {
+    let ctx = createInitialContext('c1');
+    ctx = transition(ctx, 'ACTION_ATTACK', { action: 'attack', dice: 3 }).ctx;
+    const { ctx: same, effects } = transition(ctx, 'ACTION_ATTACK');
+    assert.equal(same.phase, Phase.DICE_ROLLING);
+    assert.equal(effects[0].type, 'TOAST');
+  });
+
+  it('full solo round: IDLE → … → SETTLEMENT → IDLE', () => {
+    let ctx = createInitialContext(42);
+    ctx = transition(ctx, 'ACTION_ATTACK', { action: 'attack', dice: 2 }).ctx;
+    ctx = transition(ctx, 'DICE_ANIMATION_DONE', { dice: 2 }).ctx;
+    assert.equal(ctx.phase, Phase.DICE_CONFIRM);
+    ctx = transition(ctx, 'CONFIRM_DICE').ctx;
+    assert.equal(ctx.phase, Phase.SUBMITTING);
+    const settlement = { team_damage_dealt: 15, enemy_damage_dealt: 5, player_hits: [] };
+    ctx = transition(ctx, 'SUBMIT_SUCCESS', {
+      roundResolved: true,
+      settlement,
+      settlementId: '42:0',
+      isKillingBlow: false,
+    }).ctx;
+    assert.equal(ctx.phase, Phase.SETTLEMENT);
+    ctx = transition(ctx, 'ACK_SETTLEMENT', { killing: false }).ctx;
+    assert.equal(ctx.phase, Phase.IDLE);
+  });
+
+  it('killing blow: SETTLEMENT → VICTORY', () => {
+    let ctx = createInitialContext(1);
+    ctx.phase = Phase.SETTLEMENT;
+    ctx.isKillingBlow = true;
+    ctx.pendingSettlementId = '1:5';
+    const { ctx: next, effects } = transition(ctx, 'ACK_SETTLEMENT', { killing: true });
+    assert.equal(next.phase, Phase.VICTORY);
+    assert.ok(effects.some((e) => e.type === 'STOP_POLL'));
+  });
+
+  it('INV-D: any death → COMBAT_FAILED', () => {
+    const ctx = createInitialContext(1);
+    const { ctx: failed, effects } = handleAnyDeath(ctx, {
+      p1: { display_name: 'Alice', hp: 0 },
+      p2: { display_name: 'Bob', hp: 50 },
+    });
+    assert.equal(failed.phase, Phase.COMBAT_FAILED);
+    assert.deepEqual(failed.failedMembers, ['Alice']);
+    assert.ok(effects.some((e) => e.type === 'STOP_POLL'));
+  });
+
+  it('poll tick does not open settlement for non-victory sync', () => {
+    let ctx = createInitialContext(1);
+    ctx.phase = Phase.IDLE;
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      round_resolved: true,
+      round_settlement: { team_damage_dealt: 10 },
+      enemy: { hp: 200, max_hp: 220 },
+      my_state: { hp: 80, max_hp: 100, submitted: false },
+      member_states: { s1: { hp: 80, submitted: false } },
+    });
+    assert.notEqual(next.phase, Phase.SETTLEMENT);
+    assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('G2: poll victory with unseen settlement → SETTLEMENT before VICTORY', () => {
+    const ctx = { ...createInitialContext(1), phase: Phase.WAITING_FOR_PLAYERS };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 1,
+      settled_round_index: 4,
+      settlement_id: '1:4',
+      round_settlement: { team_damage_dealt: 22, player_hits: [{ player: '隊友', damage: 22 }] },
+      enemy: { hp: 0, max_hp: 220 },
+      my_state: { hp: 80, submitted: true },
+      member_states: { s1: { hp: 80, submitted: true } },
+    });
+    assert.equal(next.phase, Phase.SETTLEMENT);
+    assert.equal(next.isKillingBlow, true);
+    assert.ok(effects.some((e) => e.type === 'SHOW_SETTLEMENT' && e.killing === true));
+  });
+
+  it('submitted guard blocks ACTION_ATTACK', () => {
+    const ctx = { ...createInitialContext(1), hud: { me: { submitted: true } } };
+    assert.equal(canDispatch(ctx, 'ACTION_ATTACK'), false);
+  });
+
+  it('entry sync absorbs stale settlement on first poll (INV-C)', () => {
+    const ctx = {
+      ...createInitialContext(99),
+      phase: Phase.IDLE,
+      entrySyncPending: true,
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 99,
+      status: 'player_phase',
+      current_phase: 3,
+      settled_round_index: 2,
+      settlement_id: '99:2',
+      round_resolved: true,
+      round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
+      enemy: { hp: 160, max_hp: 200 },
+      my_state: { hp: 100, submitted: false },
+      member_states: { s1: { hp: 100, submitted: false } },
+    });
+    assert.equal(next.phase, Phase.IDLE);
+    assert.equal(next.settledRoundIndex, 2);
+    assert.equal(next.entrySyncPending, false);
+    assert.ok(next.shownSettlementIds.has('99:2'));
+    assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('P2-5: WAITING_FOR_PLAYERS poll round_resolved → SETTLEMENT', () => {
+    const ctx = { ...createInitialContext(1012), phase: Phase.WAITING_FOR_PLAYERS };
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1012,
+      status: 'round_resolved',
+      round_resolved: true,
+      settlement_id: '1012:1',
+      waiting_for_teammates: false,
+      round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
+      enemy: { hp: 160, max_hp: 200 },
+      my_state: { hp: 100, submitted: true },
+      member_states: { s1: { hp: 100, submitted: true } },
+    });
+    assert.equal(next.phase, Phase.SETTLEMENT);
+    assert.ok(effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('IDLE + ACTION_USE_ZOO → DICE_ROLLING (P2-2)', () => {
+    const ctx = {
+      ...createInitialContext('c1'),
+      hud: { me: { submitted: false, sanity: 80 }, allow_zoo: true },
+    };
+    const { ctx: next } = transition(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 2 });
+    assert.equal(next.phase, Phase.DICE_ROLLING);
+    assert.equal(next.dice.action, 'use_zoo');
+  });
+});
+
+describe('Settlement normalization', () => {
+  it('uses round_settlement when damage > 0', () => {
+    const s = normalizeSettlement({
+      round_settlement: { team_damage_dealt: 12, enemy_damage_dealt: 3, player_hits: [] },
+      enemy: { hp: 208 },
+    });
+    assert.equal(s.team_damage_dealt, 12);
+  });
+
+  it('deriveSettlementId prefers API field', () => {
+    assert.equal(deriveSettlementId({ settlement_id: '9:3', combat_id: 9 }), '9:3');
+    assert.equal(deriveSettlementId({ combat_id: 9, settled_round_index: 2 }), '9:2');
+  });
+});
