@@ -2,6 +2,7 @@
 import io
 import os
 import random
+import re
 import sqlite3
 import zipfile
 from datetime import datetime
@@ -804,7 +805,8 @@ def gm_override_trauma_ending_api():
         return jsonify({"success": False, "error": "缺少有效的覆蓋變更指令"}), 400
 
     now = datetime.now().isoformat()
-    gm_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    raw_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    gm_operator = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_operator)
     if not gm_operator:
         return jsonify({
             "success": False,

@@ -3,6 +3,10 @@
  * @description 戰鬥結局（勝利/失敗/致命崩潰）全屏渲染器，已解耦舊版 Section 依賴
  */
 
+import {
+  isValidProtagonistRouteKey,
+  PROTAGONIST_ROUTE_KEY_HINT,
+} from '../constants.js';
 import { DOM_IDS } from '../selectors.js';
 import { showToast } from '../toast.js';
 
@@ -48,8 +52,8 @@ export function createVictoryView(rootEl) {
   }
 
   async function resolveProtagonistKeyForOverride(app) {
-    const route = app.ctx.hud?.route;
-    if (route === 'iggy' || route === 'marah') return route;
+    const route = String(app.ctx.hud?.route || '').trim().toLowerCase();
+    if (isValidProtagonistRouteKey(route)) return route;
     const promptFn = typeof window.showInputModal === 'function' ? window.showInputModal : null;
     if (!promptFn) {
       showToast('無法取得主角路線，請 GM 後台手動處理', 'error');
@@ -57,12 +61,12 @@ export function createVictoryView(rootEl) {
     }
     const raw = await promptFn({
       title: '請輸入欲重置的主角代號',
-      placeholder: 'iggy 或 marah',
+      placeholder: PROTAGONIST_ROUTE_KEY_HINT,
       maxLength: 10,
     });
     const key = String(raw || '').trim().toLowerCase();
-    if (key !== 'iggy' && key !== 'marah') {
-      showToast('主角代號無效，請輸入 iggy 或 marah', 'error');
+    if (!isValidProtagonistRouteKey(key)) {
+      showToast(`主角代號無效，請輸入 ${PROTAGONIST_ROUTE_KEY_HINT}`, 'error');
       return null;
     }
     return key;

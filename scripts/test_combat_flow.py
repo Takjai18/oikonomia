@@ -306,7 +306,24 @@ def test_phase2_gm_override_gateway():
 
     with client.session_transaction() as sess:
         establish_gm_session(sess)
-        sess["squad_id"] = "GM-CHIEF-01"
+        sess["squad_id"] = "\x00\x01\x02"
+    r_dirty = client.post(
+        "/gm/api/override_trauma_ending",
+        json={
+            "team_id": team_id,
+            "protagonist_key": proto_key,
+            "target_trauma": 0,
+        },
+    )
+    ok(
+        "GM Override Gate: 不可見字元 operator 遭 403",
+        r_dirty.status_code == 403,
+        str(r_dirty.status_code),
+    )
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+        sess["squad_id"] = "GM-CHIEF-01\x00"
 
     r_ok = client.post(
         "/gm/api/override_trauma_ending",
@@ -333,20 +350,34 @@ def test_phase2_gm_override_gateway():
         "SELECT ending_type FROM teams WHERE team_id = ?",
         (team_id,),
     ).fetchone()[0]
-    log_exists = conn.execute(
-        """SELECT COUNT(*) FROM protagonist_trauma_log
+    log_row = conn.execute(
+        """SELECT reason FROM protagonist_trauma_log
            WHERE team_id = ? AND reason LIKE '%GM_OVERRIDE%'""",
         (team_id,),
-    ).fetchone()[0]
-    event_exists = conn.execute(
-        "SELECT COUNT(*) FROM global_events WHERE created_by = 'GM-CHIEF-01'",
-    ).fetchone()[0]
+    ).fetchone()
+    log_exists = 1 if log_row else 0
+    event_row = conn.execute(
+        "SELECT created_by FROM global_events WHERE title LIKE '%GM 人工干預%'"
+        " AND title LIKE ? ORDER BY id DESC LIMIT 1",
+        (f"%{team_id}%",),
+    ).fetchone()
+    event_exists = 1 if event_row else 0
     conn.close()
 
     ok("GM Override Gate: 實體表主角創傷已清零 SSOT", int(trauma) == 0)
     ok("GM Override Gate: 實體表團隊結局解鎖重置", ending is None)
     ok("GM Override Gate: 歷史審計日誌留痕合規", log_exists == 1)
+    ok(
+        "GM Override Gate: operator 審計字串已清洗",
+        log_row and log_row[0] == "GM_OVERRIDE_BY_GM-CHIEF-01",
+        str(log_row),
+    )
     ok("GM Override Gate: 全營廣播通知發送成功", event_exists == 1)
+    ok(
+        "GM Override Gate: global event created_by 已清洗",
+        event_row and event_row[0] == "GM-CHIEF-01",
+        str(event_row),
+    )
 
 
 def test_phase2_narrative_orchestrator_pipeline():

@@ -340,9 +340,23 @@ export class CombatApp {
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
 
+    if (this.ctx.phase === Phase.DICE_CONFIRM) {
+      console.warn(
+        '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
+      );
+      this.hasTriggeredTimeoutDefense = true;
+      this.ctx = {
+        ...this.ctx,
+        dice: { ...this.ctx.dice, action: 'defend', value: null, cosmetic: false },
+      };
+      this.views?.dice?.hide();
+      showToast('操作超時！系統已自動為您執行「防禦」指令。', 'warn');
+      void this.performActionDirectly('defend');
+      return;
+    }
+
     const protectedPhases = [
       Phase.DICE_ROLLING,
-      Phase.DICE_CONFIRM,
       Phase.SUBMITTING,
       Phase.SETTLEMENT,
       Phase.WAITING_FOR_PLAYERS,
