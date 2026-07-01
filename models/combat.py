@@ -698,7 +698,9 @@ def _phase_actions_from_conn(conn, combat_id, phase, json_fallback=None):
     return dict(json_fallback or {})
 
 
-def _claim_ready_player_phase_resolution(combat_id, combat_settings=None):
+def _claim_ready_player_phase_resolution(
+    combat_id, combat_settings=None, cached_participants=None,
+):
     """
     CAS claim player_phase -> resolving only when resolve preconditions hold.
     Participant assembly runs outside TX; phase_actions are re-read inside TX.
@@ -706,7 +708,10 @@ def _claim_ready_player_phase_resolution(combat_id, combat_settings=None):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != "player_phase":
         return False, None
-    participants = get_combat_participants(combat) or []
+    if cached_participants is not None:
+        participants = cached_participants
+    else:
+        participants = get_combat_participants(combat) or []
     settings = combat_settings or {}
 
     with immediate_transaction() as conn:
@@ -851,11 +856,11 @@ def resolve_player_phase(combat_id):
 def advance_combat_from_poll(combat_id, combat_settings=None):
     """
     Poll-side resolve gate — delegates to maybe_resolve_player_phase (CAS + TX).
-    Returns (combat, winner, round_just_resolved).
+    Returns (combat, winner, round_just_resolved, participants_cache).
     """
     combat = get_combat(combat_id)
     if not combat:
-        return None, None, False
+        return None, None, False, None
 
     if combat.get("status") == COMBAT_STATUS_RESOLVING:
         combat, winner = _wait_for_resolution_complete(combat_id)
@@ -863,10 +868,10 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
             winner
             or (combat and combat.get("status") == "ended")
         )
-        return combat, winner, resolved
+        return combat, winner, resolved, None
 
     if combat.get("status") != "player_phase":
-        return combat, None, False
+        return combat, None, False, None
 
     settings = combat_settings or {}
     participants = get_combat_participants(combat) or []
@@ -877,20 +882,22 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
         all_phase_actions_submitted(fresh, participants)
         or combat_phase_expired(fresh, settings)
     ):
-        return combat, None, False
+        return combat, None, False, participants
 
     prev_phase = phase
     prev_log_len = len(combat.get("logs") or [])
-    combat, winner = maybe_resolve_player_phase(combat_id, settings)
+    combat, winner = maybe_resolve_player_phase(
+        combat_id, settings, cached_participants=participants,
+    )
     combat = get_combat(combat_id) or combat
     round_just_resolved = (
         int(combat.get("current_phase") or 0) > prev_phase
         or len(combat.get("logs") or []) > prev_log_len
     )
-    return combat, winner, round_just_resolved
+    return combat, winner, round_just_resolved, participants
 
 
-def maybe_resolve_player_phase(combat_id, combat_settings=None):
+def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """
     Authoritative resolve gate for routes: re-read DB snapshot, resolve at most once.
     Readiness is validated inside _claim_ready_player_phase_resolution (CAS + TX).
@@ -912,7 +919,11 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None):
     encounter = load_encounter(combat.get("encounter_id") or "")
     settings = combat_settings or (encounter or {}).get("combat_settings", {})
 
-    claimed, snapshot = _claim_ready_player_phase_resolution(combat_id, settings)
+    if cached_participants is None:
+        cached_participants = get_combat_participants(combat) or []
+    claimed, snapshot = _claim_ready_player_phase_resolution(
+        combat_id, settings, cached_participants=cached_participants,
+    )
     if not claimed:
         combat = get_combat(combat_id) or snapshot
         if combat and combat.get("status") == COMBAT_STATUS_RESOLVING:

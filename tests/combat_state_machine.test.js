@@ -202,4 +202,16 @@ describe('Settlement normalization', () => {
     assert.equal(deriveSettlementId({ settlement_id: '9:3', combat_id: 9 }), '9:3');
     assert.equal(deriveSettlementId({ combat_id: 9, settled_round_index: 2 }), '9:2');
   });
+
+  it('falls back to authoritative round fields when settlement missing', () => {
+    const s = normalizeSettlement({
+      round_enemy_damage: 15,
+      round_player_damage: 4,
+      enemy: { hp: 85 },
+    });
+    assert.equal(s.team_damage_dealt, 15);
+    assert.equal(s.enemy_damage_dealt, 4);
+    assert.equal(s.enemy_hp_after, 85);
+    assert.deepEqual(s.player_hits, []);
+  });
 });

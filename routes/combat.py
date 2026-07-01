@@ -214,9 +214,11 @@ def combat_status_api():
     settings = (encounter or {}).get("combat_settings", {})
 
     round_just_resolved = False
-    participants = None
+    poll_participants = None
     if combat.get("status") in ("player_phase", COMBAT_STATUS_RESOLVING):
-        combat, winner, round_just_resolved = advance_combat_from_poll(combat["id"], settings)
+        combat, winner, round_just_resolved, poll_participants = advance_combat_from_poll(
+            combat["id"], settings,
+        )
         actor = get_squad(session["squad_id"])
         actor_team_id = actor.get("team_id") if actor else None
         if winner == "squad":
@@ -249,11 +251,8 @@ def combat_status_api():
             )
             if finished:
                 return jsonify({**finished, "active": False})
-        if round_just_resolved:
-            participants = None
-
     payload = build_combat_status_response(
-        combat, encounter, session["squad_id"], participants=participants,
+        combat, encounter, session["squad_id"], participants=poll_participants,
     )
     _attach_round_settlement(payload, combat=combat)
     payload["active"] = combat.get("status") not in ("ended", "precheck")
@@ -267,8 +266,7 @@ def combat_status_api():
         _enrich_settlement_meta(payload, combat=combat)
         payload["full_preview"] = _build_full_preview_from_status(payload)
     elif combat.get("status") == "player_phase":
-        if participants is None:
-            participants = get_combat_participants(combat) or []
+        participants = poll_participants or get_combat_participants(combat) or []
         active_ids = get_active_combat_member_ids(participants or [])
         phase_actions = combat.get("phase_actions") or {}
         if session["squad_id"] in phase_actions and len(phase_actions) < len(active_ids):

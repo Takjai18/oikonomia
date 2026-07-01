@@ -206,6 +206,16 @@ export class CombatApp {
       return;
     }
 
+    const isProtagonistToggled = !!this.rootEl.querySelector(
+      `#${DOM_IDS.PROTAGONIST_TOGGLE}`,
+    )?.checked;
+    if (isProtagonistToggled && !this.ctx.hud?.me?.is_team_leader) {
+      showToast('只有隊長特權才能啟動主角代打模式', 'error');
+      const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
+      if (toggle) toggle.checked = false;
+      return;
+    }
+
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
 
@@ -218,9 +228,6 @@ export class CombatApp {
         use_zoo: 'use_zoo',
       };
       const actionType = actionMap[this.ctx.dice.action] || 'attack';
-      const isProtagonistToggled = !!this.rootEl.querySelector(
-        `#${DOM_IDS.PROTAGONIST_TOGGLE}`,
-      )?.checked;
       const asProtagonist = isProtagonistToggled
         && !!this.ctx.hud?.controllable_protagonist_id
         && !!this.ctx.hud?.me?.is_team_leader;
