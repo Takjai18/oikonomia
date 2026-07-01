@@ -1333,18 +1333,77 @@
     // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
     let pendingEncounterId = null;
     let currentCombatId = null;
+    const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
 
-    /** INV-C: pause global /status poll while V2 combat root is visible */
+    function setActiveCombatBridge(combatId) {
+        if (combatId != null && combatId !== '') {
+            sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(combatId));
+            currentCombatId = combatId;
+        }
+    }
+
+    function clearActiveCombatBridge() {
+        sessionStorage.removeItem(ACTIVE_COMBAT_STORAGE_KEY);
+        currentCombatId = null;
+        pendingEncounterId = null;
+    }
+
+    function revealCombatV2Surface() {
+        showSection('combat', { skipCombatLobbyLoad: true });
+        setVisible(document.getElementById('combat-lobby'), false);
+        setVisible(document.getElementById('combat-result-panel'), false);
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        document.getElementById('combat-root-v2')?.classList.remove('hidden');
+    }
+
+    async function waitForCombatV2Ready(maxMs = 8000) {
+        const deadline = Date.now() + maxMs;
+        while (Date.now() < deadline) {
+            if (window.combatV2?.isEnabled?.()) return true;
+            if (window.combatV2 && typeof window.combatV2.isEnabled === 'function' && !window.combatV2.isEnabled()) {
+                return false;
+            }
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        return !!window.combatV2?.isEnabled?.();
+    }
+
+    function removeLegacyCombatGarbage() {
+        [
+            '.settlement-modal-backdrop',
+            '#combat-failed-mask',
+            '.legacy-dice-roller',
+            '#combat-round-settlement-modal',
+        ].forEach((selector) => {
+            document.querySelectorAll(selector).forEach((el) => {
+                try { el.remove(); } catch (_) { /* noop */ }
+            });
+        });
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+    }
+
+    /** INV-C: pause global /status poll while V2 combat is authoritative */
     function isPlayerInActiveCombatV2() {
-        if (!window.combatV2?.isEnabled?.()) return false;
-        const combatRootV2 = document.getElementById('combat-root-v2');
-        return combatRootV2 && !combatRootV2.classList.contains('hidden');
+        if (sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY)) {
+            return true;
+        }
+        if (window.combatV2?.isEnabled?.()) {
+            const state = window.combatV2.getState?.();
+            if (state?.combatId) return true;
+            const combatRootV2 = document.getElementById('combat-root-v2');
+            if (combatRootV2 && !combatRootV2.classList.contains('hidden')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     window.AppRouter = {
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
             if (route === 'dashboard' || route === 'combat-hub') {
+                clearActiveCombatBridge();
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
                 document.getElementById('combat-root-v2')?.classList.add('hidden');
@@ -1374,20 +1433,21 @@
 
     async function onLegacyEncounterTrigger(data) {
         if (window.combatV2?.isEnabled?.()) {
-            const lobby = document.getElementById('combat-lobby');
-            if (lobby) lobby.classList.add('hidden');
-            if (data.combat_id) currentCombatId = data.combat_id;
+            if (data.combat_id) setActiveCombatBridge(data.combat_id);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
         }
     }
 
     function exitCombatScreen(options = {}) {
-        if (!options.fromV2 && window.combatV2?.isEnabled?.()) {
-            window.combatV2.exitToLobby();
-            return;
-        }
+        console.log('[Bridge] 執行戰鬥退出，清理殘留環境...');
+        clearActiveCombatBridge();
+        removeLegacyCombatGarbage();
 
-        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
+        const app = window.combatV2?.getApp?.();
+        if (app && typeof app.destroy === 'function') {
+            app.destroy();
+        }
 
         setVisible(document.getElementById('combat-result-panel'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
@@ -1395,8 +1455,9 @@
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
 
-        currentCombatId = null;
-        pendingEncounterId = null;
+        if (!options.fromV2) {
+            showToast('已安全退出戰場', 'info');
+        }
 
         setTimeout(async () => {
             await loadEncounters();
@@ -1405,21 +1466,29 @@
     window.exitCombatScreen = exitCombatScreen;
 
     async function loadCombatPage(combatId) {
-        if (combatId) currentCombatId = combatId;
-        setVisible(document.getElementById('combat-lobby'), true);
-        setVisible(document.getElementById('combat-result-panel'), false);
-        setVisible(document.getElementById('combat-precheck-modal'), false);
-        setVisible(document.getElementById('combat-near-death-overlay'), false);
-        document.getElementById('combat-root-v2')?.classList.add('hidden');
+        if (combatId) {
+            setActiveCombatBridge(combatId);
+            revealCombatV2Surface();
+        } else {
+            clearActiveCombatBridge();
+            setVisible(document.getElementById('combat-lobby'), true);
+            setVisible(document.getElementById('combat-result-panel'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            document.getElementById('combat-root-v2')?.classList.add('hidden');
+        }
         const fresh = await refreshSquadFromServer();
         if (fresh) {
             initPlayerAvatar();
             updateDashboard(fresh);
         }
-        await loadEncounters();
+        if (!combatId) {
+            await loadEncounters();
+        }
         if (combatId && window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
             await window.combatV2.onCombatStarted({ combat_id: combatId });
+        } else if (combatId) {
+            await loadEncounters();
         }
     }
 
@@ -1489,11 +1558,11 @@
                 hint.innerHTML = '⚔️ 進行中的戰鬥 — <span class="underline">點擊繼續</span>';
                 const resumeCombatId = data.active_combat_id;
                 hint.onclick = async () => {
-                    if (resumeCombatId) currentCombatId = resumeCombatId;
-                    showSection('combat', { skipCombatLobbyLoad: true });
+                    const resumeId = resumeCombatId || currentCombatId;
+                    if (resumeId) setActiveCombatBridge(resumeId);
+                    revealCombatV2Surface();
                     if (window.combatV2?.isEnabled?.()) {
-                        setVisible(document.getElementById('combat-lobby'), false);
-                        await window.combatV2.onCombatStarted({ combat_id: resumeCombatId || currentCombatId });
+                        await window.combatV2.onCombatStarted({ combat_id: resumeId });
                     } else {
                         showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
                     }
@@ -1523,7 +1592,7 @@
             showToast(data.error || '無法開始', 'error');
             return;
         }
-        currentCombatId = data.combat_id;
+        setActiveCombatBridge(data.combat_id);
         showSection('combat', { skipCombatLobbyLoad: true });
         if (data.can_skip && data.status === 'precheck') {
             setVisible(document.getElementById('combat-lobby'), false);
@@ -1534,7 +1603,7 @@
             return;
         }
         if (window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
             return;
         }
@@ -1563,9 +1632,9 @@
             updateDashboard(await statusRes.json());
             return;
         }
-        currentCombatId = data.combat_id;
+        setActiveCombatBridge(data.combat_id);
         if (window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
             return;
         }
@@ -1573,6 +1642,7 @@
     }
 
     function showCombatResult(data) {
+        clearActiveCombatBridge();
         setVisible(document.getElementById('combat-near-death-overlay'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
         setVisible(document.getElementById('combat-lobby'), false);
@@ -3402,17 +3472,19 @@
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
-                    setTimeout(async () => {
-                        showSection('combat', { skipCombatLobbyLoad: true });
-                        if (window.combatV2?.isEnabled?.()) {
-                            const lobby = document.getElementById('combat-lobby');
-                            if (lobby) lobby.classList.add('hidden');
-                            currentCombatId = data.current_combat_id;
-                            await window.combatV2.onCombatStarted({ combat_id: data.current_combat_id });
-                        } else if (typeof loadCombatPage === 'function') {
-                            await loadCombatPage(data.current_combat_id);
-                        }
-                    }, 400);
+                    const combatId = data.current_combat_id;
+                    console.log(`[Bridge] 偵測到進行中戰鬥 ${combatId}，啟動權威引導...`);
+                    setActiveCombatBridge(combatId);
+                    revealCombatV2Surface();
+
+                    const ready = await waitForCombatV2Ready();
+                    if (ready) {
+                        await window.combatV2.onCombatStarted({ combat_id: combatId });
+                    } else if (typeof loadCombatPage === 'function') {
+                        await loadCombatPage(combatId);
+                    }
+                } else {
+                    clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {

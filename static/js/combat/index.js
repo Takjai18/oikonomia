@@ -81,10 +81,27 @@ export class CombatApp {
   }
 
   unmount() {
-    this.poller.destroy();
-    this.views.endgame.hideAll();
-    this.views.items?.hide();
-    this.hideAllModals();
+    this.destroy();
+  }
+
+  destroy() {
+    try {
+      if (this.poller) {
+        this.poller.stop();
+        if (typeof this.poller.destroy === 'function') {
+          this.poller.destroy();
+        }
+      }
+      this.hideAllModals();
+      this.views?.endgame?.hideAll();
+      this.views?.items?.hide();
+      if (this.rootEl) {
+        this.rootEl.classList.add('hidden');
+      }
+      this.hasTriggeredTimeoutDefense = false;
+    } catch (err) {
+      console.error('[CombatV2] destroy failed', err);
+    }
   }
 
   getState() {
@@ -99,6 +116,10 @@ export class CombatApp {
     this.ctx.entrySyncPending = true;
     this.hasTriggeredTimeoutDefense = false;
     this.invRecoveryCount = 0;
+
+    if (data.combat_id) {
+      sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
+    }
 
     this.hideAllModals();
     this.views.endgame.hideAll();
@@ -532,16 +553,14 @@ export class CombatApp {
   }
 
   exitToLobby() {
-    this.poller.stop();
-    this.unmount();
-    this.rootEl.classList.add('hidden');
-    this.views.endgame.hideAll();
-
     if (typeof window.exitCombatScreen === 'function') {
       showToast('已安全退出戰場', 'info');
       window.exitCombatScreen({ fromV2: true });
       return;
     }
+
+    sessionStorage.removeItem('OIKONOMIA_ACTIVE_COMBAT_ID');
+    this.destroy();
 
     if (window.AppRouter && typeof window.AppRouter.navigateTo === 'function') {
       window.AppRouter.navigateTo('dashboard');
