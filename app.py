@@ -182,7 +182,7 @@ ENCOUNTERS_DIR = os.path.join(PROJECT_DIR, "encounters")
 NEAR_DEATH_MINUTES = 15
 COMBAT_ACTION_TYPES = (
     "attack", "attack_physical", "attack_nonphysical",
-    "defend", "use_item", "use_zoo", "pass",
+    "defend", "use_item", "use_zoo", "pass", "escape",
 )
 COMBAT_ATTACK_BASE_DAMAGE = 10
 ATTACK_ACTION_TYPES = frozenset({

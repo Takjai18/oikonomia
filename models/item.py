@@ -253,6 +253,162 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
     return True, f"成功獲得物品：{item['name']}", applied_effect
 
 
+COMBAT_USABLE_EFFECT_TYPES = frozenset({"power_up", "hp_up", "sanity_up"})
+
+COMBAT_ITEM_EFFECT_DISPLAY_LABELS = {
+    "power_up": "算力乘數增益",
+    "hp_up": "生命回復",
+    "sanity_up": "神智解控",
+}
+
+
+def combat_item_effect_display_label(effect_type):
+    """Localized combat settlement label (SSOT for frontend breakdown)."""
+    if not effect_type:
+        return None
+    return COMBAT_ITEM_EFFECT_DISPLAY_LABELS.get(effect_type, "觸發戰術整備")
+
+
+def get_items_by_ids(item_ids):
+    """Batch-fetch catalog items by id (avoids N+1 in combat resolve / status)."""
+    try:
+        ids = sorted({int(i) for i in item_ids if i is not None})
+    except (TypeError, ValueError):
+        return {}
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            f"SELECT * FROM items WHERE id IN ({placeholders}) AND COALESCE(is_active, 1) = 1",
+            ids,
+        ).fetchall()
+    finally:
+        conn.close()
+    return {int(row["id"]): dict(row) for row in rows}
+
+
+def _item_combat_usable(item):
+    if not item:
+        return False
+    return bool(item.get("has_ability")) or item.get("effect_type") in COMBAT_USABLE_EFFECT_TYPES
+
+
+class CombatItemConsumeBatch:
+    """
+    Prefetch ownership + catalog for all use_item actions in one round.
+    Loop consumes use O(1) memory lookups; DELETE stays per-item in immediate_transaction.
+    """
+
+    def __init__(self, actions):
+        self._catalog = {}
+        self._owned = set()
+        self._consumed = set()
+        pairs = []
+        for squad_id, action_data in (actions or {}).items():
+            action_type = action_data.get("action_type") or action_data.get("action")
+            if action_type != "use_item":
+                continue
+            raw_item_id = action_data.get("item_id")
+            if raw_item_id is None:
+                continue
+            try:
+                catalog_item_id = int(raw_item_id)
+            except (TypeError, ValueError):
+                continue
+            pairs.append((squad_id, catalog_item_id))
+        if not pairs:
+            return
+        catalog_ids = {pid for _, pid in pairs}
+        self._catalog = get_items_by_ids(catalog_ids)
+        conn = sqlite3.connect(settings.db_path)
+        try:
+            clauses = " OR ".join(["(squad_id = ? AND item_id = ?)"] * len(pairs))
+            params = [val for pair in pairs for val in pair]
+            rows = conn.execute(
+                f"SELECT squad_id, item_id FROM player_items WHERE {clauses}",
+                params,
+            ).fetchall()
+            self._owned = {(row[0], int(row[1])) for row in rows}
+        finally:
+            conn.close()
+
+    def consume(self, squad_id, catalog_item_id):
+        try:
+            catalog_item_id = int(catalog_item_id)
+        except (TypeError, ValueError):
+            return False, None, "無效的物品"
+
+        key = (squad_id, catalog_item_id)
+        if key in self._consumed:
+            return False, None, "物品消耗失敗"
+
+        item = self._catalog.get(catalog_item_id)
+        if not item:
+            return False, None, "物品不存在或已停用"
+        if not _item_combat_usable(item):
+            return False, None, "此物品無法在戰鬥中使用"
+        if key not in self._owned:
+            return False, None, "你沒有這件物品"
+
+        try:
+            with immediate_transaction() as conn:
+                deleted = conn.execute(
+                    "DELETE FROM player_items WHERE squad_id = ? AND item_id = ?",
+                    (squad_id, catalog_item_id),
+                )
+                if deleted.rowcount != 1:
+                    return False, None, "物品消耗失敗"
+        except sqlite3.Error:
+            return False, None, "物品消耗失敗，請稍後再試"
+
+        self._consumed.add(key)
+        self._owned.discard(key)
+        return True, item, ""
+
+
+def build_combat_item_consume_batch(actions):
+    return CombatItemConsumeBatch(actions)
+
+
+def consume_squad_item_for_combat(squad_id, catalog_item_id):
+    """
+    Verify ownership, delete player_items row, return catalog item dict.
+    catalog_item_id is items.id (same as legacy combat submit_action item_id).
+    """
+    try:
+        catalog_item_id = int(catalog_item_id)
+    except (TypeError, ValueError):
+        return False, None, "無效的物品"
+
+    item = get_item_by_id(catalog_item_id)
+    if not item:
+        return False, None, "物品不存在或已停用"
+    if not _item_combat_usable(item):
+        return False, None, "此物品無法在戰鬥中使用"
+
+    try:
+        with immediate_transaction() as conn:
+            owned = conn.execute(
+                "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
+                (squad_id, catalog_item_id),
+            ).fetchone()
+            if not owned:
+                return False, None, "你沒有這件物品"
+            deleted = conn.execute(
+                "DELETE FROM player_items WHERE squad_id = ? AND item_id = ?",
+                (squad_id, catalog_item_id),
+            )
+            if deleted.rowcount != 1:
+                return False, None, "物品消耗失敗"
+    except sqlite3.Error:
+        return False, None, "物品消耗失敗，請稍後再試"
+
+    return True, item, ""
+
+
 def is_near_death_rescue_item(item):
     """Items that may revive a near-death teammate when consumed."""
     if not item or not item.get("has_ability"):

@@ -26,7 +26,16 @@ misc_bp = Blueprint("misc", __name__)
 
 @misc_bp.route("/")
 def index():
-    return render_template("index.html")
+    combat_v2_enabled = os.environ.get("COMBAT_V2", "").lower() in ("1", "true", "yes")
+    return render_template("index.html", combat_v2_enabled=combat_v2_enabled)
+
+
+@misc_bp.route("/__e2e__/combat-v2")
+def combat_v2_e2e_harness():
+    """Minimal Combat V2 mount for Playwright PR-7 (COMBAT_E2E=1 only)."""
+    if os.environ.get("COMBAT_E2E", "").lower() not in ("1", "true", "yes"):
+        abort(404)
+    return render_template("combat_v2_harness.html")
 
 
 @misc_bp.route("/api/version")
@@ -39,9 +48,14 @@ def api_version():
     avatar_dir = settings.avatar_dir
     portrait_dir = settings.portrait_dir
     template_text = player_template_text()
+    combat_v2_flag = os.environ.get("COMBAT_V2", "").lower() in ("1", "true", "yes")
+    combat_v2_js = os.path.isfile(
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "js", "combat", "index.js")
+    )
     return jsonify({
         "success": DB_INIT_ERROR is None,
         "version": read_deploy_version(),
+        "combat_v2": combat_v2_flag and combat_v2_js,
         "db_init_error": DB_INIT_ERROR,
         "markers": {
             "iggy_card": "iggy-card",
@@ -137,6 +151,8 @@ def api_version():
             "combat_flow_js": os.path.isfile(
                 os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "js", "combat_flow.js")
             ),
+            "combat_v2": combat_v2_flag and combat_v2_js,
+            "combat_v2_module": combat_v2_js,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
         },

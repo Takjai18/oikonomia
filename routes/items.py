@@ -54,6 +54,39 @@ def my_items():
     })
 
 
+@items_bp.route("/api/inventory", methods=["GET"])
+def get_combat_inventory_api():
+    """Combat V2: uncached inventory slice for in-battle item picker."""
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    squad_id = session["squad_id"]
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("""
+            SELECT pi.id AS player_item_id, pi.item_id, i.name, i.description, i.icon,
+                   i.effect_type, i.effect_value, i.has_ability, i.image_path
+            FROM player_items pi
+            INNER JOIN items i ON pi.item_id = i.id
+            WHERE pi.squad_id = ? AND COALESCE(i.is_active, 1) = 1
+              AND (COALESCE(i.has_ability, 0) = 1 OR i.effect_type IS NOT NULL)
+            ORDER BY pi.obtained_at DESC
+        """, (squad_id,)).fetchall()
+        items = []
+        for row in rows:
+            item = dict(row)
+            item["has_ability"] = bool(item.get("has_ability"))
+            item["effect_text"] = (
+                format_item_effect_text(item.get("effect_type"), item.get("effect_value"))
+                if item.get("has_ability") else None
+            )
+            items.append(item)
+        return jsonify({"success": True, "items": items})
+    finally:
+        conn.close()
+
+
 @items_bp.route("/add_item", methods=["POST"])
 def add_item():
     if "squad_id" not in session:
