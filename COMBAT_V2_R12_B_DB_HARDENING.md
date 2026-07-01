@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_B_DB_HARDENING（局部審計 · SQLite 併發與資料 SSOT）
 
 > **目的**：審計 **20 人西貢戶外** 資料層 — WAL 模式、orphan `combat_actions`、主角狀態單一真相源、斷線重連後端握手  
-> **日期**：2026-07-01 · **commit**：`0e2fa93`  
+> **日期**：2026-07-01 · **commit**：`649526a`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -130,7 +130,7 @@ def migrate_db():
 
 ## 3. combat_actions 清理
 
-# models/combat.py (L161–L176)
+# models/combat.py (L155–L170)
 
 def purge_combat_actions(combat_id, *, conn=None):
     """Remove orphaned phase submissions when a combat room closes."""
@@ -141,14 +141,14 @@ def purge_combat_actions(combat_id, *, conn=None):
             "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
         )
         return cur.rowcount
-    with immediate_transaction() as tx:
+    with immediate_transaction(settings.db_path) as tx:
         cur = tx.execute(
             "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
         )
         return cur.rowcount
 
 
-# models/combat.py (L1320–L1359)
+# models/combat.py (L1316–L1355)
 
 def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)

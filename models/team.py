@@ -2,8 +2,17 @@ import sqlite3
 from datetime import datetime
 
 from models.settings import default_protagonist_template, settings
-from utils.db_tx import immediate_transaction
+from utils.db_tx import get_db_connection, immediate_transaction
 from utils.helpers import normalize_team_id
+
+
+def _protagonist_pair_payload(default_base, active_route=None):
+    """Shallow pair template — one default_base copy per protagonist slot."""
+    return {
+        "iggy": {**default_base},
+        "marah": {**default_base},
+        "active_route": active_route,
+    }
 
 
 def resolve_team_display_route(team_id, team_row=None):
@@ -163,49 +172,39 @@ def get_team_protagonists(team_id):
     """
     SSOT: protagonist HP/sanity/trauma from protagonist_states;
     static combat stats from PROTAGONIST_PROFILES (not squads.protagonist_stats JSON).
+    Reads team route via get_db_connection (WAL + busy_timeout).
     """
     from models.protagonist import PROTAGONIST_PROFILES, get_protagonist_state
 
     clean_team_id = normalize_team_id(team_id)
-    default = default_protagonist_template()
+    default_base = default_protagonist_template()
     if not clean_team_id:
-        return {
-            "iggy": default.copy(),
-            "marah": default.copy(),
-            "active_route": None,
-        }
+        return _protagonist_pair_payload(default_base)
 
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
-    team_row = conn.execute(
-        "SELECT route FROM teams WHERE team_id = ?", (clean_team_id,)
-    ).fetchone()
-    conn.close()
+    conn = get_db_connection(settings.db_path, row_factory=sqlite3.Row)
+    try:
+        team_row = conn.execute(
+            "SELECT route FROM teams WHERE team_id = ?", (clean_team_id,),
+        ).fetchone()
+    finally:
+        conn.close()
 
     if not team_row:
-        return {
-            "iggy": default.copy(),
-            "marah": default.copy(),
-            "active_route": None,
-        }
+        return _protagonist_pair_payload(default_base)
 
     route = team_row["route"]
-    result = {
-        "iggy": default.copy(),
-        "marah": default.copy(),
-        "active_route": route,
-    }
+    result = _protagonist_pair_payload(default_base, active_route=route)
 
     for key in ("iggy", "marah"):
         profile = PROTAGONIST_PROFILES.get(key, {})
         state = get_protagonist_state(clean_team_id, key, create=True)
         entry = {
-            **default.copy(),
+            **default_base,
             "name": profile.get("display_name", key.title()),
             "avatar": profile.get("avatar"),
-            "power": int(profile.get("power", default.get("power", 100))),
-            "intellect": int(profile.get("intellect", default.get("intellect", 100))),
-            "resilience": int(profile.get("resilience", default.get("resilience", 100))),
+            "power": int(profile.get("power", default_base.get("power", 100))),
+            "intellect": int(profile.get("intellect", default_base.get("intellect", 100))),
+            "resilience": int(profile.get("resilience", default_base.get("resilience", 100))),
         }
         if state:
             entry.update({

@@ -192,8 +192,10 @@ def init_db():
         FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
     )''')
 
-    conn.commit()
-    conn.close()
+    try:
+        conn.commit()
+    finally:
+        conn.close()
     migrate_db()
     ensure_wal_mode(_db_path())
 
@@ -567,8 +569,11 @@ def migrate_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )''')
 
-    conn.commit()
-    conn.close()
+    try:
+        conn.commit()
+    finally:
+        conn.close()
+    ensure_wal_mode(_db_path())
     try:
         backfill_team_routes_from_members()
     except Exception as e:

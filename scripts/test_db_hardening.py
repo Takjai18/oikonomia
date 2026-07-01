@@ -348,6 +348,40 @@ def test_reconcile_finished_combat_purges_actions():
             ok("reconcile finished combat purges stale combat_actions")
         else:
             fail("reconcile finished combat purges stale combat_actions", f"remaining={remaining}")
+
+        ended_combat = {
+            "id": combat_id,
+            "status": "ended",
+            "enemy_hp": 0,
+            "encounter_id": "enc_test",
+        }
+        conn = sqlite3.connect(path)
+        configure_sqlite_connection(conn)
+        conn.execute(
+            """INSERT INTO combat_actions
+               (combat_id, squad_id, phase, action_type, dice_result, submitted_at)
+               VALUES (?, 'solo1', 1, 'defend', 1, ?)""",
+            (combat_id, now),
+        )
+        conn.execute(
+            "UPDATE squads SET current_combat_id = ? WHERE squad_id = 'solo1'",
+            (combat_id,),
+        )
+        conn.commit()
+        conn.close()
+        reconcile_finished_active_combat(ended_combat, team_id="T-PURGE")
+        conn = sqlite3.connect(path)
+        re_remaining = conn.execute(
+            "SELECT COUNT(*) FROM combat_actions WHERE combat_id = ?", (combat_id,),
+        ).fetchone()[0]
+        conn.close()
+        if re_remaining == 0:
+            ok("reconcile ended combat still purges orphan combat_actions")
+        else:
+            fail(
+                "reconcile ended combat still purges orphan combat_actions",
+                f"remaining={re_remaining}",
+            )
         if squad_combat is None:
             ok("reconcile finished combat clears squad current_combat_id")
         else:

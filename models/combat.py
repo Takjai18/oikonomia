@@ -169,7 +169,10 @@ def purge_combat_actions(combat_id, *, conn=None):
 
 
 def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
-    """Drop stale active markers when combat is already finished (SSOT heal)."""
+    """
+    SSOT heal on session restore: seal finished combats, purge orphan actions,
+    and release squad current_combat_id inside one BEGIN IMMEDIATE transaction.
+    """
     if not combat:
         return False, None, None
 
@@ -180,18 +183,22 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     if not is_finished:
         return True, combat_id, combat.get("encounter_id")
 
+    if not combat_id:
+        return False, None, None
+
     now_str = datetime.now().isoformat()
-    with immediate_transaction() as conn:
+    with immediate_transaction(settings.db_path) as conn:
         if combat.get("status") != "ended":
             conn.execute(
                 """UPDATE combats SET status = 'ended', ended_at = ?, enemy_hp = ?
                    WHERE id = ?""",
                 (
                     now_str,
-                    0 if enemy_hp <= 0 else combat.get("enemy_hp"),
-                    combat_id,
+                    0 if enemy_hp <= 0 else enemy_hp,
+                    int(combat_id),
                 ),
             )
+        purge_combat_actions(combat_id, conn=conn)
         if team_id:
             conn.execute(
                 "UPDATE squads SET current_combat_id = NULL WHERE team_id = ?",
@@ -202,7 +209,6 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
                 "UPDATE squads SET current_combat_id = NULL WHERE squad_id = ?",
                 (squad_id,),
             )
-        purge_combat_actions(combat_id, conn=conn)
 
     return False, None, None
 
