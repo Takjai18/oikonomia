@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_C_STEP4_ORCHESTRATION（局部審計 · 純計算層與戰後編排）
 
 > **目的**：審計 **Greenfield Step 4** — `combat_engine` 純函式、`combat_flow` INV-E 混合結算、`combat_outcomes` 冪等與 `settlement_id`  
-> **日期**：2026-07-01 · **commit**：`adf54a8`  
+> **日期**：2026-07-01 · **commit**：`129b6b6`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` + `combat_greenfield_final.md` §1.1 INV-E  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -9,10 +9,10 @@
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**：
+**焦點問題**（§22 已修：`failed_escape` targeting · `conn=` pipeline — 回歸 only）：
 1. 逃跑失敗後防禦分母與攻擊結算是否滿足 INV-E？（`normalize_failed_escape_actions` vs `_resolve_player_phase_body`）
-2. `calculate_incoming_damage` piercing 10% 是否可被極端 buff 繞過？
-3. `resolve_combat_outcome` 冪等閘門 vs 巢狀 transaction 死鎖取捨是否安全？
+2. `select_enemy_counter_target` 是否同時相容 `escape` 與 `failed_escape` 優先級？
+3. `execute_post_combat_success_pipeline(conn=)` 是否杜絕巢狀 transaction？
 4. `build_victory_outcome_payload` 的 `settlement_id` 是否單調遞增？
 
 **輸出**：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
@@ -171,10 +171,11 @@ def select_enemy_counter_target(
         hp = int(member.get("hp") or 0)
         max_hp = max(1, int(member.get("max_hp") or hp or 1))
         sid = member.get("squad_id")
-        action_type = (actions.get(sid) or {}).get("action_type") or ""
+        act = actions.get(sid) or {}
+        action_type = act.get("action_type") or act.get("action") or ""
         trauma = int(member.get("trauma_count") or 0)
         can_oneshot = 1 if int(enemy_base_damage) >= hp else 0
-        is_escaping = 1 if action_type == "escape" else 0
+        is_escaping = 1 if action_type in ("escape", "failed_escape") else 0
         low_hp = 1 if (hp / max_hp) < 0.5 else 0
         has_trauma = 1 if trauma > 0 else 0
         non_protagonist = 0 if member.get("is_protagonist") else 1
@@ -369,7 +370,7 @@ def process_mixed_round_actions(
 
 ## 3. 生產路徑 escape 接入
 
-# models/combat.py (L979–L1068)
+# models/combat.py (L1017–L1106)
 
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
@@ -407,6 +408,7 @@ def _resolve_player_phase_body(combat_id):
         (a.get("action_type") or a.get("action")) == "escape"
         for a in actions.values()
     )
+    counter_target_actions = actions
     if escape_triggered:
         escape_rate = _escape_success_rate(combat_settings)
         if random.random() < escape_rate:
@@ -427,6 +429,7 @@ def _resolve_player_phase_body(combat_id):
             escape_triggered=True,
             escape_success=False,
         )
+        counter_target_actions = actions
 
     total_damage_to_enemy = 0
     berserk_players = []
@@ -459,8 +462,6 @@ def _resolve_player_phase_body(combat_id):
             berserk_players.append(player_squad_id)
             if random.random() < 0.30:
                 self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
-                apply_damage_to_combat_participant(player_squad_id, self_dmg, participant=player)
-                combat = append_combat_log(
 
 ## 4. 戰後編排與 settlement_id
 
@@ -899,6 +900,20 @@ def test_select_enemy_counter_target_engine():
         fail("select_enemy_counter_target prefers escaper", str(target))
 
 
+def test_select_enemy_counter_target_failed_escape():
+    """INV-E: post-normalize failed_escape still counts as escape priority."""
+    participants = [
+        {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
+        {"squad_id": "B", "hp": 30, "max_hp": 100, "resilience": 3, "is_protagonist": False},
+    ]
+    actions = {"B": {"action_type": "failed_escape"}}
+    target = select_enemy_counter_target(participants, actions, enemy_base_damage=50)
+    if target and target.get("squad_id") == "B":
+        ok("select_enemy_counter_target prefers failed_escape escaper")
+    else:
+        fail("select_enemy_counter_target prefers failed_escape escaper", str(target))
+
+
 def main():
     print("=== Combat engine unit tests ===\n")
     test_calculate_attack_damage_basic()
@@ -908,6 +923,7 @@ def main():
     test_incoming_damage_piercing_floor()
     test_incoming_damage_extreme_team_defend()
     test_select_enemy_counter_target_engine()
+    test_select_enemy_counter_target_failed_escape()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1
 

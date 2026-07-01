@@ -267,7 +267,7 @@ export function createVictoryView(rootEl) {
 
 ===== EXCERPT: static/js/combat/index.js — executeGmOverride =====
 
-# static/js/combat/index.js (L612–L630)
+# static/js/combat/index.js (L668–L686)
 
   async executeGmOverride(opts) {
     try {
@@ -328,7 +328,7 @@ export class ResilientPollingManager {
 
 ===== EXCERPT: routes/gm.py — gm_override_trauma_ending_api =====
 
-# routes/gm.py (L766–L911)
+# routes/gm.py (L770–L922)
 
 def gm_override_trauma_ending_api():
     """
@@ -375,6 +375,13 @@ def gm_override_trauma_ending_api():
     raw_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
     gm_operator = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_operator)
     if not gm_operator:
+        current_app.logger.error(
+            "CRITICAL PRIVILEGE VIOLATION: Anonymous or malformed GM operator "
+            "bypass attempted from IP %s at %s (raw=%r)",
+            request.remote_addr,
+            now,
+            raw_operator,
+        )
         return jsonify({
             "success": False,
             "error": "資安審計攔截：未能識別當前工作人員身分，操作已遭封鎖",
@@ -480,26 +487,20 @@ def gm_override_trauma_ending_api():
 
 ## 2. Scope B — 超時自動防禦
 
-# static/js/combat/index.js (L343–L359)
+# static/js/combat/index.js (L377–L387)
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
 
-    if (this.ctx.phase === Phase.DICE_CONFIRM) {
+    const myCurrentAction = this.ctx.hud?.me?.action_type;
+    if (myCurrentAction === 'failed_escape') {
       console.warn(
-        '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
+        '[FSM] Player is in failed_escape recovery — automatic defense suppressed.',
       );
       this.hasTriggeredTimeoutDefense = true;
-      this.ctx = {
-        ...this.ctx,
-        dice: { ...this.ctx.dice, action: 'defend', value: null, cosmetic: false },
-      };
-      this.views?.dice?.hide();
-      showToast('操作超時！系統已自動為您執行「防禦」指令。', 'warn');
-      void this.performActionDirectly('defend');
       return;
     }
-# static/js/combat/index.js (L416–L427)
+# static/js/combat/index.js (L472–L483)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
@@ -517,7 +518,7 @@ def gm_override_trauma_ending_api():
 
 ## 3. Scope C — Co-op 併發 resolve
 
-# models/combat.py (L676–L690)
+# models/combat.py (L710–L724)
 
 def _claim_player_phase_resolution(combat_id):
     with immediate_transaction() as conn:
@@ -534,7 +535,7 @@ def _claim_player_phase_resolution(combat_id):
         return cur.rowcount > 0
 
 
-# models/combat.py (L928–L978)
+# models/combat.py (L966–L1016)
 
 def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """

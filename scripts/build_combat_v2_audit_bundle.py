@@ -35,6 +35,8 @@ BACKEND_FILES = [
     "models/combat.py",
     "models/item.py",
     "models/protagonist.py",
+    "services/combat_engine.py",
+    "services/combat_flow.py",
     "services/combat_outcomes.py",
     "services/trauma_service.py",
     "services/narrative_orchestrator.py",
@@ -48,6 +50,8 @@ BACKEND_FILES = [
     "tests/combat_v2.spec.js",
     "playwright.config.cjs",
     "scripts/test_combat_flow.py",
+    "scripts/test_combat_engine.py",
+    "scripts/test_combat_flow_orchestrator.py",
     "scripts/pre_deploy_checks.sh",
 ]
 
@@ -128,14 +132,14 @@ def main():
         ref = ROOT / ".git" / "refs" / "heads" / "main"
         head = ref.read_text(encoding="utf-8").strip()[:7] if ref.exists() else "unknown"
 
-    header = f"""# COMBAT_V2_AUDIT_BUNDLE v13（營會 SSOT · R14 封頂版）
+    header = f"""# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · R12-C/D 第三輪錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
 > **日期**：{today} · **commit**：`{head}`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R11～R13 + R12 Partial 二輪審計 ✅（見 `GEMINI_REVIEW.md` §18–§21）  
-> **本輪**：v13 錨點（PA 可部署 · `adf54a8`）；下一輪用 **Partial** 或 §20.3 **新 scope**
+> **上一輪**：R12-C₃ INV-E targeting · R12-D₄ settlement teardown ✅（見 `GEMINI_REVIEW.md` §22）  
+> **本輪**：v14 錨點（PA 可部署 · `{head}`）；下一輪用 **Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
@@ -147,17 +151,17 @@ def main():
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§21 — 唔好重複報已落地項（含 §21 PA hotfix）
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§22 — 唔好重複報已落地項（含 §22 R12-C/D 第三輪）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
 ### 0.1 Partial 審計狀態（`{head}` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
-| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 |
+| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 · §22 |
 | **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
 | **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
-| **R12-C** | Solo SOLO: scope · dice fallback · INV-E | ✅ §20 |
+| **R12-C** | failed_escape targeting · conn= pipeline · INV-E | ✅ §20 · §22 |
 | **R11** | GM sanitize · DICE_CONFIRM timeout · co-op CAS | ✅ §18–§20 |
 | **R13** | combat_start IDOR · rescue target · lazy import | ✅ §19 |
 
@@ -196,10 +200,10 @@ def main():
 ## 3. 測試狀態（R14 · `{head}`）
 
 ```bash
-npm run test:combat                                    # 23/23 pass
-./venv/bin/python3 scripts/test_combat_flow.py         # 280/280 pass
-./venv/bin/python3 scripts/test_db_hardening.py        # 12/12 pass
-./venv/bin/python3 scripts/test_combat_engine.py       # 17/17 pass
+npm run test:combat                                    # 24/24 pass
+./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
+./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
+./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 scripts/test_ending_flow.py                            # 23/23 pass
@@ -235,8 +239,8 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 | INV-A | Settlement 主觸發 `onSubmitSuccess`；co-op poll 例外 | `index.js` syncState |
 | INV-B | `settlement_id` 冪等，不重複開 modal | `settlement.js` deriveSettlementId |
 | INV-C | poll tick 被動，不主動製造 settlement | `state_machine.js` |
-| INV-D | HP≤0 搶占中斷所有 UI | `handleAnyDeath` |
-| INV-E | escape 失敗後仍顯示混合結算 | T8, `escape_result_view.js` |
+| INV-D | HP≤0 搶占中斷所有 UI（含 `HIDE_SETTLEMENT`） | `handleAnyDeath` · `terminalModalTeardownEffects` |
+| INV-E | escape 失敗後仍顯示混合結算；反擊優先 targeting | T8 · `select_enemy_counter_target` |
 
 ---
 
@@ -271,7 +275,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
     for rel in BACKEND_FILES:
         append_file(buf, rel)
 
-    buf.append(f"\n\n---\n*End of COMBAT_V2_AUDIT_BUNDLE v13 · {today} · `{head}`*\n")
+    buf.append(f"\n\n---\n*End of COMBAT_V2_AUDIT_BUNDLE v14 · {today} · `{head}`*\n")
 
     OUT.write_text("".join(buf), encoding="utf-8")
     size_kb = OUT.stat().st_size / 1024

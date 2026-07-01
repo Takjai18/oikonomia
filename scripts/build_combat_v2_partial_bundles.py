@@ -163,25 +163,25 @@ def build_index(today: str, head: str) -> str:
 
 | 輪次 | Bundle / Scope | 狀態 |
 |------|----------------|------|
-| 1 | Full SSOT v13（僅一次） | ✅ 本生成 |
-| 2 | R12-D 不變式 | ✅ 已審已修 · `GEMINI_REVIEW.md` §20 |
+| 1 | Full SSOT v14（僅一次） | ✅ 本生成 |
+| 2 | R12-D 不變式 | ✅ 已審已修 · §20 · §22 |
 | 3 | R12-A 大廳橋接 | ✅ 已審已修 · §20 |
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
-| 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 |
+| 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · PA 基準 `adf54a8` §21 |
+| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `{head}` §22 |
 
 ---
 
 ## 測試基線（{today} · `{head}`）
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py      # 280/280
-./venv/bin/python3 scripts/test_db_hardening.py     # 12/12
-./venv/bin/python3 scripts/test_combat_engine.py    # 17/17
+./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
+./venv/bin/python3 scripts/test_db_hardening.py     # 13/13
+./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
 ./venv/bin/python3 scripts/test_combat_concurrency.py
-npm run test:combat                                 # 23/23
+npm run test:combat                                 # 24/24
 npm run test:e2e:v2                               # T8–T14
 bash scripts/pre_deploy_checks.sh
 ```
@@ -297,10 +297,10 @@ def build_r12_c_step4_orchestration(today: str, head: str) -> str:
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**：
+**焦點問題**（§22 已修：`failed_escape` targeting · `conn=` pipeline — 回歸 only）：
 1. 逃跑失敗後防禦分母與攻擊結算是否滿足 INV-E？（`normalize_failed_escape_actions` vs `_resolve_player_phase_body`）
-2. `calculate_incoming_damage` piercing 10% 是否可被極端 buff 繞過？
-3. `resolve_combat_outcome` 冪等閘門 vs 巢狀 transaction 死鎖取捨是否安全？
+2. `select_enemy_counter_target` 是否同時相容 `escape` 與 `failed_escape` 優先級？
+3. `execute_post_combat_success_pipeline(conn=)` 是否杜絕巢狀 transaction？
 4. `build_victory_outcome_payload` 的 `settlement_id` 是否單調遞增？
 
 **輸出**：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
@@ -337,12 +337,12 @@ def build_r12_d_inv_monotonic(today: str, head: str) -> str:
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**：
+**焦點問題**（§22 已修：`handleAnyDeath` teardown · SETTLEMENT defeat pending 清零 — 回歸 only）：
 | INV | 審計問題 |
 |-----|----------|
-| INV-A | SETTLEMENT ⇔ modal 可見是否雙向成立？ |
+| INV-A | SETTLEMENT ⇔ modal 可見是否雙向成立？終端轉移是否清零 `pendingSettlement`？ |
 | INV-B/C | 同一 `settlement_id` 是否只渲染一次？stale round 是否被拒？ |
-| INV-D | HP≤0 / `dead_squad_names` 是否進 COMBAT_FAILED？ |
+| INV-D | HP≤0 / `dead_squad_names` 是否進 COMBAT_FAILED 並 `HIDE_SETTLEMENT`？ |
 | INV-E | escape 失敗後攻擊方傷害是否仍結算？ |
 
 **輸出**：【Critical】→【High/Medium】→【Low】→ 健康度 X/10

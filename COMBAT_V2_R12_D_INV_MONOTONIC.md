@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
 > **目的**：審計 **前端權威狀態機** — `settlement_id` / `settled_round_index` 單調防護、`entrySyncPending` 進場吸收、INV-D 失敗搶占  
-> **日期**：2026-07-01 · **commit**：`adf54a8`  
+> **日期**：2026-07-01 · **commit**：`129b6b6`  
 > **Baseline**：假設已讀 `combat_greenfield_final.md` §3 不變式表  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -9,12 +9,12 @@
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**：
+**焦點問題**（§22 已修：`handleAnyDeath` teardown · SETTLEMENT defeat pending 清零 — 回歸 only）：
 | INV | 審計問題 |
 |-----|----------|
-| INV-A | SETTLEMENT ⇔ modal 可見是否雙向成立？ |
+| INV-A | SETTLEMENT ⇔ modal 可見是否雙向成立？終端轉移是否清零 `pendingSettlement`？ |
 | INV-B/C | 同一 `settlement_id` 是否只渲染一次？stale round 是否被拒？ |
-| INV-D | HP≤0 / `dead_squad_names` 是否進 COMBAT_FAILED？ |
+| INV-D | HP≤0 / `dead_squad_names` 是否進 COMBAT_FAILED 並 `HIDE_SETTLEMENT`？ |
 | INV-E | escape 失敗後攻擊方傷害是否仍結算？ |
 
 **輸出**：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
@@ -210,11 +210,10 @@ export function handleAnyDeath(ctx, members) {
   };
   return {
     ctx: newCtx,
-    effects: [
-      { type: 'HIDE_ALL_MODALS' },
+    effects: terminalModalTeardownEffects([
       { type: 'SHOW_FAILED', members: dead },
       { type: 'STOP_POLL' },
-    ],
+    ]),
   };
 }
 
@@ -919,7 +918,7 @@ export function extractHud(snapshot) {
 
 ## 3. poll 與 entry sync
 
-# static/js/combat/index.js (L416–L427)
+# static/js/combat/index.js (L472–L483)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
@@ -933,7 +932,7 @@ export function extractHud(snapshot) {
       this.applyEffects(deathCheck.effects);
       return;
     }
-# static/js/combat/index.js (L273–L282)
+# static/js/combat/index.js (L307–L316)
 
   async onSubmitSuccess(data) {
     const deathCheck = handleAnyDeath(
@@ -948,7 +947,7 @@ export function extractHud(snapshot) {
 
 ## 4. 後端 settlement meta
 
-# models/combat.py (L2199–L2214)
+# models/combat.py (L2241–L2256)
 
 def _enrich_settlement_meta(payload, combat=None):
     """Additive COMBAT_V2 fields: stable settlement progress on every status snapshot."""
@@ -1150,6 +1149,31 @@ describe('Combat V2 state machine', () => {
     });
     assert.equal(next.hud.enemy.hp, 0);
     assert.equal(effects.length, 0);
+  });
+
+  it('R12-D: defeat poll during SETTLEMENT clears pending settlement (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(888),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 1,
+      pendingSettlement: { team_damage_dealt: 12 },
+      pendingSettlementId: '888:1',
+      hud: { enemy: { hp: 5, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'defeat',
+      winner: 'enemy',
+      combat_id: 888,
+      dead_squad_ids: ['s1'],
+      dead_squad_names: ['Alice'],
+      member_states: { s1: { display_name: 'Alice', hp: 50 } },
+      enemy: { hp: 5, max_hp: 200 },
+      my_state: { hp: 80 },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.equal(next.pendingSettlement, null);
+    assert.equal(next.pendingSettlementId, null);
+    assert.ok(effects.some((e) => e.type === 'HIDE_SETTLEMENT'));
   });
 
   it('R12-D: victory poll during SETTLEMENT does not skip to VICTORY', () => {

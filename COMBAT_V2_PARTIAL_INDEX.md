@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-01 · **commit**：`adf54a8`  
+> **日期**：2026-07-01 · **commit**：`129b6b6`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -31,25 +31,25 @@
 
 | 輪次 | Bundle / Scope | 狀態 |
 |------|----------------|------|
-| 1 | Full SSOT v13（僅一次） | ✅ 本生成 |
-| 2 | R12-D 不變式 | ✅ 已審已修 · `GEMINI_REVIEW.md` §20 |
+| 1 | Full SSOT v14（僅一次） | ✅ 本生成 |
+| 2 | R12-D 不變式 | ✅ 已審已修 · §20 · §22 |
 | 3 | R12-A 大廳橋接 | ✅ 已審已修 · §20 |
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
-| 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 |
+| 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · PA 基準 `adf54a8` §21 |
+| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `129b6b6` §22 |
 
 ---
 
-## 測試基線（2026-07-01 · `adf54a8`）
+## 測試基線（2026-07-01 · `129b6b6`）
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py      # 280/280
-./venv/bin/python3 scripts/test_db_hardening.py     # 12/12
-./venv/bin/python3 scripts/test_combat_engine.py    # 17/17
+./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
+./venv/bin/python3 scripts/test_db_hardening.py     # 13/13
+./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
 ./venv/bin/python3 scripts/test_combat_concurrency.py
-npm run test:combat                                 # 23/23
+npm run test:combat                                 # 24/24
 npm run test:e2e:v2                               # T8–T14
 bash scripts/pre_deploy_checks.sh
 ```

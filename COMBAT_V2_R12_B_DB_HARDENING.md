@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_B_DB_HARDENING（局部審計 · SQLite 併發與資料 SSOT）
 
 > **目的**：審計 **20 人西貢戶外** 資料層 — WAL 模式、orphan `combat_actions`、主角狀態單一真相源、斷線重連後端握手  
-> **日期**：2026-07-01 · **commit**：`adf54a8`  
+> **日期**：2026-07-01 · **commit**：`129b6b6`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -110,6 +110,7 @@ def init_db():
         resources INTEGER DEFAULT 0,
 # database.py (L196–L212)
 
+    try:
         conn.commit()
     finally:
         conn.close()
@@ -126,11 +127,10 @@ def migrate_db():
     c = conn.cursor()
 
     c.execute("PRAGMA table_info(squads)")
-    cols = {row[1] for row in c.fetchall()}
 
 ## 3. combat_actions 清理
 
-# models/combat.py (L155–L170)
+# models/combat.py (L191–L206)
 
 def purge_combat_actions(combat_id, *, conn=None):
     """Remove orphaned phase submissions when a combat room closes."""
@@ -148,7 +148,7 @@ def purge_combat_actions(combat_id, *, conn=None):
         return cur.rowcount
 
 
-# models/combat.py (L1322–L1361)
+# models/combat.py (L1364–L1403)
 
 def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)
@@ -249,7 +249,7 @@ def get_team_protagonists(team_id):
 
 ## 5. Session restore fast-forward
 
-# routes/auth.py (L94–L122)
+# routes/auth.py (L98–L132)
 
 def session_restore():
     body = request.json if request.is_json else {}
@@ -268,18 +268,24 @@ def session_restore():
 
     team_id = squad.get("team_id")
     if team_id:
-        active_combat = get_active_combat_for_team(team_id)
-        if active_combat:
+        from utils.db_tx import with_db_retry
+
+        def _restore_active_combat_hint():
+            active_combat = get_active_combat_for_team(team_id)
+            if not active_combat:
+                return None
             is_live, combat_id, _enc_id = reconcile_finished_active_combat(
                 active_combat, team_id=team_id,
             )
-            if is_live and combat_id:
-                status["current_combat_id"] = combat_id
-                status["combat_status_interrupted"] = active_combat.get("status")
+            if not is_live or not combat_id:
+                return None
+            fresh = get_combat(combat_id) or active_combat
+            if fresh.get("status") in ("ended",):
+                return None
+            return combat_id, fresh.get("status")
 
-    return jsonify(status)
-
-
+        hint = with_db_retry(_restore_active_combat_hint)
+        if hint:
 
 ## 6. 測試
 
@@ -477,6 +483,68 @@ def test_purge_combat_actions_on_end():
     finally:
         settings.db_path = old_path
         os.unlink(path)
+
+
+def test_reconcile_does_not_seal_live_player_phase_at_zero_hp():
+    import sqlite3
+    from datetime import datetime
+
+    from models.combat import reconcile_finished_active_combat
+    from models.settings import settings
+    from utils.db_tx import configure_sqlite_connection
+
+    path = _temp_db()
+    old_path = settings.db_path
+    settings.db_path = path
+    try:
+        from database import configure_database, init_db
+
+        configure_database(
+            db_path=path,
+            data_dir=os.path.dirname(path),
+            upload_folder=os.path.join(os.path.dirname(path), "uploads"),
+            legacy_upload_folder=os.path.join(os.path.dirname(path), "legacy_uploads"),
+            sample_items=[],
+        )
+        init_db()
+
+        conn = sqlite3.connect(path)
+        configure_sqlite_connection(conn)
+        now = datetime.now().isoformat()
+        conn.execute(
+            "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
+            ("T-ZERO", "Zero HP Team", "iggy", now),
+        )
+        conn.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, team_id, is_team_leader, last_update)
+               VALUES ('pz1', 'Player', 'T-ZERO', 1, ?)""",
+            (now,),
+        )
+        cur = conn.execute(
+            """INSERT INTO combats
+               (squad_id, encounter_id, status, enemy_hp, current_phase, started_at)
+               VALUES ('pz1', 'enc_test', 'resolving', 0, 1, ?)""",
+            (now,),
+        )
+        combat_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+
+        combat = {
+            "id": combat_id,
+            "status": "resolving",
+            "enemy_hp": 0,
+            "encounter_id": "enc_test",
+        }
+        is_live, live_id, _ = reconcile_finished_active_combat(combat, team_id="T-ZERO")
+        ok(
+            "reconcile keeps resolving combat live during peer resolve",
+            is_live and live_id == combat_id,
+            f"{is_live} {live_id}",
+        )
+    finally:
+        settings.db_path = old_path
 
 
 def test_session_restore_includes_active_combat():

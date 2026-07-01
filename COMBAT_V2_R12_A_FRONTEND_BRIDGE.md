@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_A_FRONTEND_BRIDGE（局部審計 · 大廳橋接與 Poll 隔離）
 
 > **目的**：審計 **Legacy `index.html` 全局腳本** 與 **Combat V2 模組** 的交界 — 防止雙 poll、重連幽靈狀態、舊 overlay 疊加  
-> **日期**：2026-07-01 · **commit**：`adf54a8`  
+> **日期**：2026-07-01 · **commit**：`129b6b6`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -24,6 +24,7 @@
     // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
     let pendingEncounterId = null;
     let currentCombatId = null;
+    let isSessionRestoringCombatLock = false;
     const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
     const COMBAT_V2_LOCK_KEY = 'OIKONOMIA_COMBAT_V2_LOCK';
 
@@ -115,6 +116,14 @@
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
             if (route === 'dashboard' || route === 'combat-hub') {
+                if (typeof window.combatV2?.destroy === 'function') {
+                    window.combatV2.destroy();
+                } else {
+                    const app = window.combatV2?.getApp?.();
+                    if (app && typeof app.destroy === 'function') {
+                        app.destroy();
+                    }
+                }
                 clearActiveCombatBridge();
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
@@ -284,14 +293,6 @@
                     const resumeId = resumeCombatId || currentCombatId;
                     if (resumeId) setActiveCombatBridge(resumeId);
                     revealCombatV2Surface();
-                    if (window.combatV2?.isEnabled?.()) {
-                        await window.combatV2.onCombatStarted({ combat_id: resumeId });
-                    } else {
-                        showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
-                    }
-                };
-                container.prepend(hint);
-            }
 
         async function finishSessionRestore(data) {
             hideSessionLoading();
@@ -304,6 +305,9 @@
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
+                    if (isSessionRestoringCombatLock) return true;
+                    isSessionRestoringCombatLock = true;
+
                     const combatId = data.current_combat_id;
                     console.log(`[Bridge] 偵測到重連進行中戰鬥 ${combatId}，強開權威引導渲染...`);
                     setActiveCombatBridge(combatId);
@@ -312,21 +316,24 @@
                     await new Promise((r) => setTimeout(r, 60));
 
                     const ready = await waitForCombatV2Ready();
-                    if (ready) {
-                        revealCombatV2Surface();
-                        await waitForCombatRepaint();
+                    if (
+                        ready
+                        && sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY) === String(combatId)
+                    ) {
                         await window.combatV2.onCombatStarted({ combat_id: combatId });
                     } else {
-                        console.warn('[Bridge] Combat V2 未能及時就緒，執行降級引導。');
+                        console.warn('[Bridge] Combat V2 未能及時就緒或目標已變更，執行降級引導。');
                         if (typeof loadCombatPage === 'function') {
                             await loadCombatPage(combatId);
                         }
                     }
+                    isSessionRestoringCombatLock = false;
                 } else {
                     clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {
+                isSessionRestoringCombatLock = false;
                 console.error('finishSessionRestore 遭遇競態崩潰:', e);
                 showLoginScreenAfterFailedRestore(loadLocalSession());
                 return false;
@@ -454,7 +461,7 @@ if (document.readyState === 'loading') {
 
 ## 3. exitToLobby 與 entry sync
 
-# static/js/combat/index.js (L114–L126)
+# static/js/combat/index.js (L148–L160)
 
   async onCombatStarted(data) {
     this.dispatch('COMBAT_RESET', { combatId: data.combat_id });
@@ -469,7 +476,7 @@ if (document.readyState === 'loading') {
       sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
       sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
     }
-# static/js/combat/index.js (L573–L578)
+# static/js/combat/index.js (L629–L634)
 
   exitToLobby() {
     if (typeof window.exitCombatScreen === 'function') {

@@ -1,11 +1,11 @@
-# COMBAT_V2_AUDIT_BUNDLE v13（營會 SSOT · R14 封頂版）
+# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · R12-C/D 第三輪錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-01 · **commit**：`adf54a8`  
+> **日期**：2026-07-01 · **commit**：`129b6b6`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R11～R13 + R12 Partial 二輪審計 ✅（見 `GEMINI_REVIEW.md` §18–§21）  
-> **本輪**：v13 錨點（PA 可部署 · `adf54a8`）；下一輪用 **Partial** 或 §20.3 **新 scope**
+> **上一輪**：R12-C₃ INV-E targeting · R12-D₄ settlement teardown ✅（見 `GEMINI_REVIEW.md` §22）  
+> **本輪**：v14 錨點（PA 可部署 · `129b6b6`）；下一輪用 **Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
@@ -17,17 +17,17 @@
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§21 — 唔好重複報已落地項（含 §21 PA hotfix）
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§22 — 唔好重複報已落地項（含 §22 R12-C/D 第三輪）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
-### 0.1 Partial 審計狀態（`adf54a8` · 已審已修，回歸 only）
+### 0.1 Partial 審計狀態（`129b6b6` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
-| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 |
+| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 · §22 |
 | **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
 | **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
-| **R12-C** | Solo SOLO: scope · dice fallback · INV-E | ✅ §20 |
+| **R12-C** | failed_escape targeting · conn= pipeline · INV-E | ✅ §20 · §22 |
 | **R11** | GM sanitize · DICE_CONFIRM timeout · co-op CAS | ✅ §18–§20 |
 | **R13** | combat_start IDOR · rescue target · lazy import | ✅ §19 |
 
@@ -63,13 +63,13 @@
 
 ---
 
-## 3. 測試狀態（R14 · `adf54a8`）
+## 3. 測試狀態（R14 · `129b6b6`）
 
 ```bash
-npm run test:combat                                    # 23/23 pass
-./venv/bin/python3 scripts/test_combat_flow.py         # 280/280 pass
-./venv/bin/python3 scripts/test_db_hardening.py        # 12/12 pass
-./venv/bin/python3 scripts/test_combat_engine.py       # 17/17 pass
+npm run test:combat                                    # 24/24 pass
+./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
+./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
+./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 scripts/test_ending_flow.py                            # 23/23 pass
@@ -105,14 +105,14 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 | INV-A | Settlement 主觸發 `onSubmitSuccess`；co-op poll 例外 | `index.js` syncState |
 | INV-B | `settlement_id` 冪等，不重複開 modal | `settlement.js` deriveSettlementId |
 | INV-C | poll tick 被動，不主動製造 settlement | `state_machine.js` |
-| INV-D | HP≤0 搶占中斷所有 UI | `handleAnyDeath` |
-| INV-E | escape 失敗後仍顯示混合結算 | T8, `escape_result_view.js` |
+| INV-D | HP≤0 搶占中斷所有 UI（含 `HIDE_SETTLEMENT`） | `handleAnyDeath` · `terminalModalTeardownEffects` |
+| INV-E | escape 失敗後仍顯示混合結算；反擊優先 targeting | T8 · `select_enemy_counter_target` |
 
 ---
 
 ## 6. PR-6 結構（回歸）
 
-- `index.html` 4882 行 · `combat_flow.js` 已刪除
+- `index.html` 4897 行 · `combat_flow.js` 已刪除
 
 ---
 
@@ -138,12 +138,12 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 | 檔案 | 版本 | 說明 |
 |------|------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v13** | Combat V2 SSOT（首次 onboarding 貼全文） |
+| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v14** | Combat V2 SSOT（首次 onboarding 貼全文） |
 | **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D Partial |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§20 已修 R11–R14） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§22 已修 R11–R14 + R12-C/D 第三輪） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -157,7 +157,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 ### 局部審計規則
 
 1. **一次一個 scope** — 例如只審 `routes/gm.py` 嘅 `gm_override_trauma_ending_api`，或只審 `victory_view.js` `showFailed`。
-2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v13 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
+2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v14 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
 3. **戰鬥 V2** 前端已遷至 `static/js/combat/` — 審計 legacy `index.html` 戰鬥區前，先確認 `COMBAT_V2=1` 是否為現場配置。
 4. **Bug case** 仍用 `bash scripts/build_gemini_packet.sh` 生成**局部** packet（`GEMINI_PACKET.md`），唔與 v10 Bundle 混貼。
 
@@ -183,7 +183,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ```
 【審計模式】
-Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
 範圍：static/js/combat/views/victory_view.js — showFailed + GM 嵌入式面板
 焦點：gm_session 403、team_id 來源、COMBAT_RESET from COMBAT_FAILED
 請依 GEMINI_REVIEW.md §0.5 輸出。
@@ -318,6 +318,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT
     // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
     let pendingEncounterId = null;
     let currentCombatId = null;
+    let isSessionRestoringCombatLock = false;
     const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
     const COMBAT_V2_LOCK_KEY = 'OIKONOMIA_COMBAT_V2_LOCK';
 
@@ -407,6 +408,14 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
             if (route === 'dashboard' || route === 'combat-hub') {
+                if (typeof window.combatV2?.destroy === 'function') {
+                    window.combatV2.destroy();
+                } else {
+                    const app = window.combatV2?.getApp?.();
+                    if (app && typeof app.destroy === 'function') {
+                        app.destroy();
+                    }
+                }
                 clearActiveCombatBridge();
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
@@ -737,6 +746,9 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
+                    if (isSessionRestoringCombatLock) return true;
+                    isSessionRestoringCombatLock = true;
+
                     const combatId = data.current_combat_id;
                     console.log(`[Bridge] 偵測到重連進行中戰鬥 ${combatId}，強開權威引導渲染...`);
                     setActiveCombatBridge(combatId);
@@ -745,21 +757,24 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT
                     await new Promise((r) => setTimeout(r, 60));
 
                     const ready = await waitForCombatV2Ready();
-                    if (ready) {
-                        revealCombatV2Surface();
-                        await waitForCombatRepaint();
+                    if (
+                        ready
+                        && sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY) === String(combatId)
+                    ) {
                         await window.combatV2.onCombatStarted({ combat_id: combatId });
                     } else {
-                        console.warn('[Bridge] Combat V2 未能及時就緒，執行降級引導。');
+                        console.warn('[Bridge] Combat V2 未能及時就緒或目標已變更，執行降級引導。');
                         if (typeof loadCombatPage === 'function') {
                             await loadCombatPage(combatId);
                         }
                     }
+                    isSessionRestoringCombatLock = false;
                 } else {
                     clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {
+                isSessionRestoringCombatLock = false;
                 console.error('finishSessionRestore 遭遇競態崩潰:', e);
                 showLoginScreenAfterFailedRestore(loadLocalSession());
                 return false;
@@ -939,6 +954,8 @@ export class CombatApp {
     this.ctx = createInitialContext();
     this.invRecoveryCount = 0;
     this.hasTriggeredTimeoutDefense = false;
+    this._activeRafIds = new Set();
+    this._activeTimeoutIds = new Set();
 
     this.views = {
       hud: createHudView(rootEl),
@@ -987,6 +1004,20 @@ export class CombatApp {
           this.poller.destroy();
         }
       }
+
+      if (this._activeRafIds?.size > 0) {
+        for (const rafId of this._activeRafIds) {
+          cancelAnimationFrame(rafId);
+        }
+        this._activeRafIds.clear();
+      }
+      if (this._activeTimeoutIds?.size > 0) {
+        for (const timeoutId of this._activeTimeoutIds) {
+          clearTimeout(timeoutId);
+        }
+        this._activeTimeoutIds.clear();
+      }
+
       this.hideAllModals();
       this.views?.endgame?.hideAll();
       this.views?.items?.hide();
@@ -1003,6 +1034,24 @@ export class CombatApp {
 
   getState() {
     return this.ctx;
+  }
+
+  safeRequestAnimationFrame(callback) {
+    const id = requestAnimationFrame((ts) => {
+      this._activeRafIds.delete(id);
+      callback(ts);
+    });
+    this._activeRafIds.add(id);
+    return id;
+  }
+
+  safeSetTimeout(callback, delayMs) {
+    const id = setTimeout(() => {
+      this._activeTimeoutIds.delete(id);
+      callback();
+    }, delayMs);
+    this._activeTimeoutIds.add(id);
+    return id;
   }
 
   async onCombatStarted(data) {
@@ -1237,6 +1286,23 @@ export class CombatApp {
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
 
+    const myCurrentAction = this.ctx.hud?.me?.action_type;
+    if (myCurrentAction === 'failed_escape') {
+      console.warn(
+        '[FSM] Player is in failed_escape recovery — automatic defense suppressed.',
+      );
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
+
+    if (
+      this.ctx.phase === Phase.SUBMITTING
+      || this.ctx.phase === Phase.WAITING_FOR_PLAYERS
+    ) {
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
+
     if (this.ctx.phase === Phase.DICE_CONFIRM) {
       console.warn(
         '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
@@ -1271,7 +1337,12 @@ export class CombatApp {
   }
 
   async performActionDirectly(actionType) {
-    if (this.ctx.phase === Phase.SUBMITTING) return;
+    if (
+      this.ctx.phase === Phase.SUBMITTING
+      || this.ctx.phase === Phase.WAITING_FOR_PLAYERS
+    ) {
+      return;
+    }
 
     if (this.ctx.phase === Phase.IDLE) {
       this.ctx = {
@@ -1717,11 +1788,10 @@ export function handleAnyDeath(ctx, members) {
   };
   return {
     ctx: newCtx,
-    effects: [
-      { type: 'HIDE_ALL_MODALS' },
+    effects: terminalModalTeardownEffects([
       { type: 'SHOW_FAILED', members: dead },
       { type: 'STOP_POLL' },
-    ],
+    ]),
   };
 }
 
@@ -3580,6 +3650,7 @@ from models.protagonist import get_controllable_protagonist_squad_id, get_team_s
 from models.item import apply_near_death_item_rescue
 from models.squad import get_squad, get_team_members, is_near_death_active, update_squad
 from services.global_events import create_global_event
+from utils.decorators import require_player
 
 combat_bp = Blueprint("combat", __name__)
 
@@ -3599,10 +3670,8 @@ def combat_disable_http_cache(response):
 
 
 @combat_bp.route("/combat/start", methods=["POST"])
+@require_player(response_style="combat")
 def combat_start_api(encounter_id=None):
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else {}
     is_e2e_mode = os.environ.get("COMBAT_E2E", "").lower() in ("1", "true", "yes")
     if is_e2e_mode and body.get("squad_id"):
@@ -3701,10 +3770,8 @@ def combat_start_api(encounter_id=None):
     })
 
 @combat_bp.route("/combat/status")
+@require_player(response_style="combat")
 def combat_status_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     combat_id = request.args.get("combat_id", type=int)
     squad_id = request.args.get("squad_id") or session["squad_id"]
 
@@ -3822,10 +3889,8 @@ def combat_status_api():
     return jsonify(payload)
 
 @combat_bp.route("/combat/preview_action", methods=["POST"])
+@require_player(response_style="combat")
 def combat_preview_action_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form.to_dict()
     combat_id = body.get("combat_id")
     try:
@@ -3874,10 +3939,8 @@ def combat_preview_action_api():
 
 @combat_bp.route("/combat/submit_action", methods=["POST"])
 @combat_bp.route("/combat/action", methods=["POST"])
+@require_player(response_style="combat")
 def combat_submit_action_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form.to_dict()
     combat_id = body.get("combat_id")
     try:
@@ -4044,10 +4107,8 @@ def combat_submit_action_api():
     return jsonify(payload)
 
 @combat_bp.route("/combat/resolve_phase", methods=["POST"])
+@require_player(response_style="combat")
 def combat_resolve_phase_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form
     combat_id = body.get("combat_id")
     if not combat_id:
@@ -4082,10 +4143,8 @@ def combat_resolve_phase_api():
     return jsonify(payload)
 
 @combat_bp.route("/combat/rescue_near_death", methods=["POST"])
+@require_player(response_style="combat")
 def combat_rescue_near_death_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form
     combat_id = body.get("combat_id")
     rescue_type = (body.get("rescue_type") or "prayer").strip()
@@ -4185,11 +4244,9 @@ def combat_rescue_near_death_api():
 
 
 @combat_bp.route("/combat/summon_gm", methods=["POST"])
+@require_player()
 def combat_summon_gm_api():
     """Broadcast GM help request to global_events and combat log."""
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     body = request.json if request.is_json else {}
     combat_id = body.get("combat_id")
     if not combat_id:
@@ -4246,7 +4303,7 @@ import sqlite3
 import zipfile
 from datetime import datetime
 
-from flask import Blueprint, jsonify, redirect, render_template_string, request, send_file, session
+from flask import Blueprint, current_app, jsonify, redirect, render_template_string, request, send_file, session
 
 from models.combat import get_combat, resolve_player_phase
 from models.encounter import load_encounter
@@ -4914,13 +4971,17 @@ def gm_team_members(team_id):
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT * FROM squads WHERE team_id = ? ORDER BY display_name, squad_id",
+            "SELECT squad_id FROM squads WHERE team_id = ? ORDER BY display_name, squad_id",
             (team_id,),
         ).fetchall()
     finally:
         conn.close()
 
-    members = [get_squad(row["squad_id"]) for row in rows]
+    squad_ids = [row["squad_id"] for row in rows]
+    from models.squad import fetch_squads_by_ids
+
+    members_dict = fetch_squads_by_ids(squad_ids)
+    members = [members_dict[sid] for sid in squad_ids if members_dict.get(sid)]
     return jsonify({"team": team, "members": members})
 
 
@@ -5047,6 +5108,13 @@ def gm_override_trauma_ending_api():
     raw_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
     gm_operator = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_operator)
     if not gm_operator:
+        current_app.logger.error(
+            "CRITICAL PRIVILEGE VIOLATION: Anonymous or malformed GM operator "
+            "bypass attempted from IP %s at %s (raw=%r)",
+            request.remote_addr,
+            now,
+            raw_operator,
+        )
         return jsonify({
             "success": False,
             "error": "資安審計攔截：未能識別當前工作人員身分，操作已遭封鎖",
@@ -5166,16 +5234,15 @@ from models.item import (
     serialize_item_for_client,
 )
 from models.settings import settings
+from utils.decorators import require_player
 from utils.qr import build_item_qr_payload, resolve_item_from_qr_payload
 
 items_bp = Blueprint("items", __name__)
 
 
 @items_bp.route("/my_items")
+@require_player()
 def my_items():
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     squad_id = session["squad_id"]
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
@@ -5209,11 +5276,9 @@ def my_items():
 
 
 @items_bp.route("/api/inventory", methods=["GET"])
+@require_player()
 def get_combat_inventory_api():
     """Combat V2: uncached inventory slice for in-battle item picker."""
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     squad_id = session["squad_id"]
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
@@ -5242,10 +5307,8 @@ def get_combat_inventory_api():
 
 
 @items_bp.route("/add_item", methods=["POST"])
+@require_player()
 def add_item():
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     data = request.get_json(silent=True) or {}
     source = (data.get("source") or "story").strip().lower() or "story"
     item = None
@@ -5285,10 +5348,8 @@ def add_item():
 
 
 @items_bp.route("/discard_item", methods=["POST"])
+@require_player()
 def discard_item():
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     data = request.get_json(silent=True) or {}
     player_item_id = data.get("player_item_id")
     try:
@@ -5399,7 +5460,7 @@ from models.protagonist import (
     resolve_combat_protagonist_keys,
 )
 from models.team import get_team_by_id, get_team_protagonists, official_squad_route
-from utils.db_tx import immediate_transaction, with_db_retry
+from utils.db_tx import get_db_connection, immediate_transaction, with_db_retry
 from utils.helpers import normalize_team_id
 
 
@@ -5413,6 +5474,29 @@ class ActiveCombatExistsError(Exception):
 
 def _db():
     return settings.db_path
+
+
+def _combat_db_conn(*, row_factory=sqlite3.Row):
+    return get_db_connection(_db(), row_factory=row_factory)
+
+
+def _combat_is_finished_for_reconcile(combat):
+    """Avoid sealing combats while resolve/poll is in flight (session restore)."""
+    if not combat:
+        return False
+    status = combat.get("status")
+    if status == "ended":
+        return True
+    if status in (COMBAT_STATUS_RESOLVING, "enemy_phase"):
+        return False
+    return int(combat.get("enemy_hp") or 0) <= 0
+
+
+def _resolution_max_wait():
+    try:
+        return float(settings.combat_resolution_max_wait_seconds or 6.0)
+    except (TypeError, ValueError):
+        return 6.0
 
 
 COMBAT_ACTION_TYPES = settings.combat_action_types
@@ -5432,10 +5516,11 @@ def row_to_combat(row):
     return data
 
 def get_combat(combat_id):
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM combats WHERE id = ?", (combat_id,)).fetchone()
-    conn.close()
+    conn = _combat_db_conn()
+    try:
+        row = conn.execute("SELECT * FROM combats WHERE id = ?", (combat_id,)).fetchone()
+    finally:
+        conn.close()
     if not row:
         return None
     combat = row_to_combat(row)
@@ -5455,25 +5540,35 @@ def get_combat_by_squad(squad_id):
         combat = get_combat(combat_id)
         if combat and combat.get("status") not in ("ended",):
             return combat
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        """SELECT * FROM combats
-           WHERE squad_id = ? AND status NOT IN ('ended')
-           ORDER BY started_at DESC LIMIT 1""",
-        (squad_id,),
-    ).fetchone()
-    conn.close()
+    conn = _combat_db_conn()
+    try:
+        row = conn.execute(
+            """SELECT * FROM combats
+               WHERE squad_id = ? AND status NOT IN ('ended')
+               ORDER BY started_at DESC LIMIT 1""",
+            (squad_id,),
+        ).fetchone()
+    finally:
+        conn.close()
     return row_to_combat(row) if row else None
 
 def get_active_combat_for_team(team_id):
     if not team_id:
         return None
-    for member in get_team_members(team_id):
-        combat = get_combat_by_squad(member["squad_id"])
-        if combat:
-            return combat
-    return None
+
+    conn = _combat_db_conn()
+    try:
+        row = conn.execute(
+            """SELECT c.* FROM combats c
+               JOIN squads s ON c.squad_id = s.squad_id
+               WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?))
+                 AND c.status NOT IN ('ended')
+               ORDER BY c.started_at DESC LIMIT 1""",
+            (team_id,),
+        ).fetchone()
+        return row_to_combat(row) if row else None
+    finally:
+        conn.close()
 
 def save_combat(combat_id, **fields):
     allowed = {
@@ -5491,10 +5586,12 @@ def save_combat(combat_id, **fields):
     if not updates:
         return
     params.append(combat_id)
-    conn = sqlite3.connect(_db())
-    conn.execute(f"UPDATE combats SET {', '.join(updates)} WHERE id = ?", params)
-    conn.commit()
-    conn.close()
+    conn = _combat_db_conn(row_factory=None)
+    try:
+        conn.execute(f"UPDATE combats SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    finally:
+        conn.close()
 
 def set_team_combat_id(team_id, combat_id):
     for member in get_team_members(team_id):
@@ -5531,7 +5628,7 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
 
     combat_id = combat.get("id")
     enemy_hp = int(combat.get("enemy_hp") or 0)
-    is_finished = combat.get("status") == "ended" or enemy_hp <= 0
+    is_finished = _combat_is_finished_for_reconcile(combat)
 
     if not is_finished:
         return True, combat_id, combat.get("encounter_id")
@@ -5672,8 +5769,7 @@ def roll_combat_dice():
 
 
 def get_combat_phase_actions(combat_id, phase, json_fallback=None):
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
+    conn = _combat_db_conn()
     try:
         rows = conn.execute(
             """SELECT squad_id, action_type, dice_result, item_id
@@ -5696,7 +5792,7 @@ def get_combat_phase_actions(combat_id, phase, json_fallback=None):
 
 
 def combat_action_already_submitted(combat_id, squad_id, phase):
-    conn = sqlite3.connect(_db())
+    conn = _combat_db_conn(row_factory=None)
     try:
         row = conn.execute(
             """SELECT 1 FROM combat_actions
@@ -5710,7 +5806,7 @@ def combat_action_already_submitted(combat_id, squad_id, phase):
 
 def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, item_id=None):
     def _write():
-        conn = sqlite3.connect(_db())
+        conn = _combat_db_conn(row_factory=None)
         try:
             conn.execute(
                 """INSERT INTO combat_actions
@@ -5795,8 +5891,7 @@ def get_combat_participants(combat):
     if not starter_id:
         return []
 
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
+    conn = _combat_db_conn()
     try:
         rows = conn.execute("""
             WITH starter AS (
@@ -6120,7 +6215,9 @@ def _release_player_phase_resolution(combat_id):
         )
 
 
-def _wait_for_resolution_complete(combat_id, max_wait=6.0):
+def _wait_for_resolution_complete(combat_id, max_wait=None):
+    if max_wait is None:
+        max_wait = _resolution_max_wait()
     """Wait for another worker to finish resolve; avoids stale enemy HP snapshots."""
     deadline = time.time() + max_wait
     last = None
@@ -6261,7 +6358,9 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
     return combat, winner, round_just_resolved, participants
 
 
-def _wait_after_peer_resolve(combat_id, initial_phase, max_wait=6.0):
+def _wait_after_peer_resolve(combat_id, initial_phase, max_wait=None):
+    if max_wait is None:
+        max_wait = _resolution_max_wait()
     """
     Wait for in-flight resolve; if round already advanced, skip duplicate settlement.
     """
@@ -6365,6 +6464,7 @@ def _resolve_player_phase_body(combat_id):
         (a.get("action_type") or a.get("action")) == "escape"
         for a in actions.values()
     )
+    counter_target_actions = actions
     if escape_triggered:
         escape_rate = _escape_success_rate(combat_settings)
         if random.random() < escape_rate:
@@ -6385,6 +6485,7 @@ def _resolve_player_phase_body(combat_id):
             escape_triggered=True,
             escape_success=False,
         )
+        counter_target_actions = actions
 
     total_damage_to_enemy = 0
     berserk_players = []
@@ -6597,7 +6698,9 @@ def _resolve_player_phase_body(combat_id):
 
     fresh_participants = refresh_combat_participants(participants)
     target = (
-        select_enemy_counter_target(fresh_participants, actions, enemy_base_damage)
+        select_enemy_counter_target(
+            fresh_participants, counter_target_actions, enemy_base_damage,
+        )
         if escape_triggered
         else get_lowest_resilience_player(fresh_participants)
     )
@@ -7868,11 +7971,11 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
             tc = tx.cursor()
             if enforce_qr_once:
                 used = tc.execute(
-                    "SELECT squad_id FROM qr_code_uses WHERE item_id = ?",
-                    (item_id,),
+                    "SELECT squad_id FROM qr_code_uses WHERE item_id = ? AND squad_id = ?",
+                    (item_id, squad_id),
                 ).fetchone()
                 if used:
-                    return False, "此 QR Code 已經被使用", None
+                    return False, "你已經使用過此 QR Code", None
 
             existing = tc.execute(
                 "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",
@@ -8675,6 +8778,356 @@ def trauma_bad_ending_narrative(encounter):
     )
 
 
+===== FILE: services/combat_engine.py =====
+
+"""Pure combat calculation engine (no side effects, no DB, no trauma/ending).
+
+Extracted from models/combat.py calculation helpers for unit testing and
+future combat_flow orchestration. Trauma-adjusted stats must already be
+reflected on Combatant fields before calling these functions.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Mapping, Optional, Union
+
+# Defaults match app.py bootstrap (settings.dice_multipliers / combat_attack_base_damage).
+COMBAT_ATTACK_BASE_DAMAGE = 10
+DEFEND_TEAM_DAMAGE_FACTOR = 0.5
+DEFAULT_DICE_MULTIPLIERS: Dict[int, float] = {0: 0.0, 1: 1.0, 2: 1.5, 3: 2.0}
+
+
+@dataclass
+class Combatant:
+    """Simplified combat unit (player squad or enemy)."""
+
+    id: str
+    power: int
+    intellect: int
+    resilience: int
+    sanity: int = 100
+    item_bonus: int = 0
+
+
+@dataclass
+class RoundResult:
+    """Single-round calculation output (data only)."""
+
+    damage_dealt: int
+    damage_taken: int
+    is_critical: bool
+    dice_multiplier: float
+    defender_count: int
+    notes: List[str] = field(default_factory=list)
+
+
+def get_effective_attack_stat(combatant: Combatant) -> int:
+    """Attack stat used for damage (max of power and intellect)."""
+    return max(int(combatant.power), int(combatant.intellect))
+
+
+def calculate_attack_damage(
+    attacker: Combatant,
+    enemy_resilience: int,
+    multiplier: float = 1.0,
+    item_bonus: int = 0,
+    base_damage: int = COMBAT_ATTACK_BASE_DAMAGE,
+) -> int:
+    """Player (or ally) attack damage against an enemy."""
+    if multiplier <= 0:
+        return 0
+    attack_stat = get_effective_attack_stat(attacker)
+    bonus = item_bonus if item_bonus else int(attacker.item_bonus or 0)
+    raw = ((attack_stat * 1.5) + base_damage + bonus) * multiplier - (int(enemy_resilience) * 0.8)
+    return max(1, int(raw))
+
+
+def calculate_incoming_damage(
+    enemy_base_damage: int,
+    player_resilience: int,
+    defending: bool = False,
+    team_defend_multiplier: Optional[float] = None,
+    *,
+    min_damage_ratio: float = 0.1,
+) -> int:
+    """Enemy counter damage against a player (10% piercing floor by default)."""
+    base = int(enemy_base_damage)
+    reduction = math.floor(int(player_resilience) * 0.6)
+    damage = base - reduction
+    piercing = max(1, math.floor(base * min_damage_ratio))
+    damage = max(piercing, damage)
+
+    multiplier = team_defend_multiplier
+    if multiplier is None:
+        multiplier = DEFEND_TEAM_DAMAGE_FACTOR if defending else 1.0
+    if multiplier < 1.0:
+        damage = math.floor(damage * multiplier)
+    return max(piercing, damage)
+
+
+def dice_multiplier(
+    dice_result: Union[int, str, None],
+    dice_multipliers: Optional[Mapping[int, float]] = None,
+) -> float:
+    """Map server combat dice (0=miss, 1=normal, 2=strong, 3=crit) to multiplier."""
+    table = dict(dice_multipliers or DEFAULT_DICE_MULTIPLIERS)
+    try:
+        dice = int(dice_result)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        dice = 1
+    return float(table.get(max(0, min(3, dice)), 1.0))
+
+
+def count_team_defenders(actions: Optional[Dict[str, Any]]) -> int:
+    """Count players who chose defend this phase."""
+    if not actions:
+        return 0
+    return sum(
+        1
+        for action_data in actions.values()
+        if (action_data.get("action_type") or action_data.get("action")) == "defend"
+    )
+
+
+def team_defend_damage_multiplier(defender_count: int) -> float:
+    """Team-wide defend damage reduction factor."""
+    if defender_count > 0:
+        return DEFEND_TEAM_DAMAGE_FACTOR
+    return 1.0
+
+
+def _is_active_combat_participant(participant: Mapping[str, Any]) -> bool:
+    if int(participant.get("hp") or 0) <= 0:
+        return False
+    until = participant.get("near_death_until")
+    if until:
+        from datetime import datetime
+
+        try:
+            if datetime.now() < datetime.fromisoformat(until):
+                return False
+        except ValueError:
+            pass
+    return True
+
+
+def select_enemy_counter_target(
+    participants: List[Mapping[str, Any]],
+    actions: Mapping[str, Any],
+    enemy_base_damage: int,
+) -> Optional[Mapping[str, Any]]:
+    """
+    Enemy counter targeting (Greenfield Spec 1.1) — pure calculation, resolve once per round.
+    Priority: one-shot > escaping > HP<50% > trauma > protagonist last.
+    """
+    candidates = [p for p in participants if _is_active_combat_participant(p)]
+    if not candidates:
+        return None
+
+    def sort_key(member: Mapping[str, Any]):
+        hp = int(member.get("hp") or 0)
+        max_hp = max(1, int(member.get("max_hp") or hp or 1))
+        sid = member.get("squad_id")
+        act = actions.get(sid) or {}
+        action_type = act.get("action_type") or act.get("action") or ""
+        trauma = int(member.get("trauma_count") or 0)
+        can_oneshot = 1 if int(enemy_base_damage) >= hp else 0
+        is_escaping = 1 if action_type in ("escape", "failed_escape") else 0
+        low_hp = 1 if (hp / max_hp) < 0.5 else 0
+        has_trauma = 1 if trauma > 0 else 0
+        non_protagonist = 0 if member.get("is_protagonist") else 1
+        return (can_oneshot, is_escaping, low_hp, has_trauma, non_protagonist)
+
+    candidates.sort(key=sort_key, reverse=True)
+    return candidates[0]
+
+
+def resolve_round_calculation(
+    attacker: Combatant,
+    enemy: Combatant,
+    player_actions: Dict[str, Any],
+    enemy_base_damage: int,
+    dice_result: int,
+    dice_multipliers: Optional[Mapping[int, float]] = None,
+) -> RoundResult:
+    """Full single-attacker round calculation (no DB / trauma / ending)."""
+    mult = dice_multiplier(dice_result, dice_multipliers=dice_multipliers)
+    defender_count = count_team_defenders(player_actions)
+    team_mult = team_defend_damage_multiplier(defender_count)
+
+    damage_dealt = calculate_attack_damage(
+        attacker=attacker,
+        enemy_resilience=enemy.resilience,
+        multiplier=mult,
+        item_bonus=attacker.item_bonus,
+    )
+
+    damage_taken = calculate_incoming_damage(
+        enemy_base_damage=enemy_base_damage,
+        player_resilience=attacker.resilience,
+        defending=defender_count > 0,
+        team_defend_multiplier=team_mult,
+    )
+
+    is_critical = mult > 1.2
+
+    return RoundResult(
+        damage_dealt=damage_dealt,
+        damage_taken=damage_taken,
+        is_critical=is_critical,
+        dice_multiplier=mult,
+        defender_count=defender_count,
+        notes=[],
+    )
+
+
+===== FILE: services/combat_flow.py =====
+
+"""
+Step 4 orchestration — mixed-round action pipeline (INV-E).
+Delegates math to services.combat_engine; no DB writes here.
+"""
+from __future__ import annotations
+
+import random
+from copy import deepcopy
+from typing import Any, Dict, Mapping, Optional
+
+from services.combat_engine import (
+    Combatant,
+    RoundResult,
+    count_team_defenders,
+    resolve_round_calculation,
+)
+
+
+def normalize_failed_escape_actions(
+    player_actions: Mapping[str, Any],
+    *,
+    escape_triggered: bool,
+    escape_success: bool,
+) -> Dict[str, Any]:
+    """
+    INV-E: after team escape fails, mark escapers as failed_escape.
+    They remain in player_actions for defend denominator / targeting but deal no damage.
+    """
+    actions = dict(player_actions or {})
+    if not escape_triggered or escape_success:
+        return actions
+
+    for sid, act in list(actions.items()):
+        action_type = (act.get("action_type") or act.get("action") or "")
+        if action_type == "escape":
+            actions[sid] = {
+                **act,
+                "action_type": "failed_escape",
+                "defending": False,
+            }
+    return actions
+
+
+def _participant_to_combatant(participant: Mapping[str, Any]) -> Combatant:
+    return Combatant(
+        id=str(participant.get("squad_id") or ""),
+        power=int(participant.get("power") or 0),
+        intellect=int(participant.get("intellect") or 0),
+        resilience=int(participant.get("resilience") or 0),
+        sanity=int(participant.get("sanity") or 0),
+        item_bonus=int(participant.get("item_bonus") or 0),
+    )
+
+
+def process_mixed_round_actions(
+    active_combatants: Mapping[str, Mapping[str, Any]],
+    enemy_stats: Mapping[str, Any],
+    player_actions: Mapping[str, Any],
+    enemy_base_damage: int,
+    *,
+    escape_success_rate: float = 0.4,
+    rng: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    INV-E terminal orchestration: escape gate first, then per-attacker engine calls.
+    Returns a pure breakdown dict (caller persists to DB).
+    """
+    actions = deepcopy(dict(player_actions or {}))
+    round_breakdown: Dict[str, Any] = {
+        "actions_performed": [],
+        "failed_escape_squads": [],
+        "damages_dealt": {},
+        "damages_taken": {},
+        "team_escaped": False,
+        "defender_count": 0,
+    }
+
+    escape_intent = [
+        sid for sid, act in actions.items()
+        if (act.get("action_type") or act.get("action")) == "escape"
+    ]
+
+    if escape_intent:
+        roll = random.random() if rng is None else float(rng)
+        if roll < escape_success_rate:
+            round_breakdown["team_escaped"] = True
+            return round_breakdown
+
+        actions = normalize_failed_escape_actions(
+            actions,
+            escape_triggered=True,
+            escape_success=False,
+        )
+        round_breakdown["failed_escape_squads"] = list(escape_intent)
+
+    enemy = Combatant(
+        id="enemy",
+        power=int(enemy_stats.get("power") or 0),
+        intellect=int(enemy_stats.get("intellect") or 0),
+        resilience=int(enemy_stats.get("resilience") or 0),
+    )
+
+    round_breakdown["defender_count"] = count_team_defenders(actions)
+
+    for sid, participant in active_combatants.items():
+        if sid == "enemy":
+            continue
+
+        action_data = actions.get(sid, {"action_type": "pass"})
+        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
+        if action_type in ("failed_escape", "escape"):
+            round_breakdown["actions_performed"].append({
+                "squad_id": sid,
+                "action": action_type,
+                "damage_dealt": 0,
+                "damage_taken": 0,
+                "is_critical": False,
+            })
+            continue
+
+        combatant = _participant_to_combatant(participant)
+        dice_result = action_data.get("dice_result", action_data.get("dice", 1))
+        calc_result: RoundResult = resolve_round_calculation(
+            attacker=combatant,
+            enemy=enemy,
+            player_actions=actions,
+            enemy_base_damage=enemy_base_damage,
+            dice_result=dice_result,
+        )
+
+        round_breakdown["damages_dealt"][sid] = calc_result.damage_dealt
+        round_breakdown["damages_taken"][sid] = calc_result.damage_taken
+        round_breakdown["actions_performed"].append({
+            "squad_id": sid,
+            "action": action_type,
+            "damage_dealt": calc_result.damage_dealt,
+            "damage_taken": calc_result.damage_taken,
+            "is_critical": calc_result.is_critical,
+        })
+
+    return round_breakdown
+
+
 ===== FILE: services/combat_outcomes.py =====
 
 """Orchestrate post-combat rewards, trauma, and ending side effects."""
@@ -9008,6 +9461,7 @@ import random
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 from models.encounter import encounter_skips_progression, load_encounter
 from models.item import get_item_by_id, get_item_by_qr_code_value
@@ -9217,6 +9671,8 @@ def execute_post_combat_success_pipeline(
     team_id: str,
     encounter_id: str,
     starter_squad_id: str,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> StoryProgressionSnapshot:
     """
     權威戰後劇情解鎖管線：在單一 Atomic Transaction 內發放獎勵、解鎖故事階段、寫入遭遇完成誌。
@@ -9233,12 +9689,18 @@ def execute_post_combat_success_pipeline(
         raise ValueError(f"Encounter {encounter_id} not found")
 
     now = datetime.now().isoformat()
+
+    if conn is not None:
+        return _tx_body(
+            conn, clean_team, encounter, encounter_id, starter_squad_id, now,
+        )
+
     db_path = settings.db_path
 
     def _run():
-        with immediate_transaction(db_path) as conn:
+        with immediate_transaction(db_path) as new_conn:
             return _tx_body(
-                conn, clean_team, encounter, encounter_id, starter_squad_id, now,
+                new_conn, clean_team, encounter, encounter_id, starter_squad_id, now,
             )
 
     return with_db_retry(_run)
@@ -10457,6 +10919,31 @@ describe('Combat V2 state machine', () => {
     });
     assert.equal(next.hud.enemy.hp, 0);
     assert.equal(effects.length, 0);
+  });
+
+  it('R12-D: defeat poll during SETTLEMENT clears pending settlement (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(888),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 1,
+      pendingSettlement: { team_damage_dealt: 12 },
+      pendingSettlementId: '888:1',
+      hud: { enemy: { hp: 5, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'defeat',
+      winner: 'enemy',
+      combat_id: 888,
+      dead_squad_ids: ['s1'],
+      dead_squad_names: ['Alice'],
+      member_states: { s1: { display_name: 'Alice', hp: 50 } },
+      enemy: { hp: 5, max_hp: 200 },
+      my_state: { hp: 80 },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.equal(next.pendingSettlement, null);
+    assert.equal(next.pendingSettlementId, null);
+    assert.ok(effects.some((e) => e.type === 'HIDE_SETTLEMENT'));
   });
 
   it('R12-D: victory poll during SETTLEMENT does not skip to VICTORY', () => {
@@ -12959,6 +13446,45 @@ def test_near_death_rescue_security(client, leader_id, member_id):
     update_squad(member_id, near_death_until=None, hp=100)
 
 
+def test_qr_code_grant_scoped_per_squad_not_global(leader_id):
+    """QR one-time use is per squad_id, not global catalog item_id."""
+    import sqlite3
+
+    from models.item import grant_item_to_squad
+
+    qr_value = f"test-qr-per-squad-{os.getpid()}"
+    outsider_id = f"PLAYER-QROUT-{os.getpid()}"
+    db = os.path.join(TEST_DIR, "oikonomia.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """INSERT INTO items
+           (name, description, icon, qr_code_value, has_ability, effect_type, effect_value, is_active, is_one_time_use)
+           VALUES ('共享 QR 測試', 'test', '🎫', ?, 1, 'power_up', 5, 1, 1)""",
+        (qr_value,),
+    )
+    conn.execute(
+        """INSERT INTO squads (squad_id, hp, max_hp, display_name)
+           VALUES (?, 100, 100, 'QR Outsider')""",
+        (outsider_id,),
+    )
+    conn.commit()
+    item_id = conn.execute(
+        "SELECT id FROM items WHERE qr_code_value = ?", (qr_value,),
+    ).fetchone()[0]
+    conn.close()
+
+    ok1, msg1, _ = grant_item_to_squad(leader_id, item_id, source="qr")
+    ok("qr per squad: leader first scan", ok1, msg1)
+    ok2, msg2, _ = grant_item_to_squad(leader_id, item_id, source="qr")
+    ok(
+        "qr per squad: leader second scan blocked",
+        not ok2 and "你已經使用過此 QR Code" in (msg2 or ""),
+        msg2,
+    )
+    ok3, msg3, _ = grant_item_to_squad(outsider_id, item_id, source="qr")
+    ok("qr per squad: other player can scan same catalog item", ok3, msg3)
+
+
 def test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id):
     """Body squad_id must not override session (IDOR prevention)."""
     from datetime import datetime
@@ -13337,6 +13863,7 @@ def main():
     test_maybe_resolve_monotonic_phase_guard()
     test_solo_resolve_combat_outcome_idempotency()
     test_phase2_gm_override_gateway()
+    test_qr_code_grant_scoped_per_squad_not_global(leader_id)
     test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id)
     test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id)
 
@@ -13385,6 +13912,291 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+===== FILE: scripts/test_combat_engine.py =====
+
+#!/usr/bin/env python3
+"""Unit tests for services/combat_engine.py (pure calculation, no Flask/DB)."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services.combat_engine import (
+    Combatant,
+    calculate_attack_damage,
+    calculate_incoming_damage,
+    count_team_defenders,
+    dice_multiplier,
+    resolve_round_calculation,
+    select_enemy_counter_target,
+    team_defend_damage_multiplier,
+)
+
+PASS = 0
+FAIL = 0
+
+
+def ok(label):
+    global PASS
+    PASS += 1
+    print(f"  ✓ {label}")
+
+
+def fail(label, detail=""):
+    global FAIL
+    FAIL += 1
+    print(f"  ✗ {label}" + (f" — {detail}" if detail else ""))
+
+
+def test_calculate_attack_damage_basic():
+    attacker = Combatant(id="p1", power=60, intellect=40, resilience=50)
+    dmg = calculate_attack_damage(attacker, enemy_resilience=30, multiplier=1.0)
+    # ((60*1.5)+10)*1 - (30*0.8) = 100 - 24 = 76
+    if dmg == 76:
+        ok("calculate_attack_damage basic")
+    else:
+        fail("calculate_attack_damage basic", f"got {dmg}, expected 76")
+
+    miss = calculate_attack_damage(attacker, enemy_resilience=30, multiplier=0.0)
+    if miss == 0:
+        ok("calculate_attack_damage zero multiplier")
+    else:
+        fail("calculate_attack_damage zero multiplier", f"got {miss}")
+
+
+def test_dice_multiplier_edge_cases():
+    cases = [(0, 0.0), (1, 1.0), (2, 1.5), (3, 2.0), (99, 2.0), ("bad", 1.0)]
+    for dice, expected in cases:
+        got = dice_multiplier(dice)
+        if got == expected:
+            ok(f"dice_multiplier({dice!r})")
+        else:
+            fail(f"dice_multiplier({dice!r})", f"got {got}, expected {expected}")
+
+
+def test_resolve_round_calculation_with_defend():
+    attacker = Combatant(id="p1", power=50, intellect=50, resilience=40)
+    enemy = Combatant(id="e1", power=0, intellect=0, resilience=20)
+    actions = {
+        "s1": {"action_type": "defend"},
+        "s2": {"action_type": "attack"},
+    }
+    result = resolve_round_calculation(
+        attacker=attacker,
+        enemy=enemy,
+        player_actions=actions,
+        enemy_base_damage=50,
+        dice_result=2,
+    )
+    if result.defender_count == 1:
+        ok("resolve_round_calculation defender_count")
+    else:
+        fail("resolve_round_calculation defender_count", str(result.defender_count))
+
+    if result.dice_multiplier == 1.5:
+        ok("resolve_round_calculation dice_multiplier")
+    else:
+        fail("resolve_round_calculation dice_multiplier", str(result.dice_multiplier))
+
+    if result.damage_dealt > 0 and result.is_critical:
+        ok("resolve_round_calculation damage_dealt + critical")
+    else:
+        fail("resolve_round_calculation damage_dealt + critical")
+
+    expected_taken = calculate_incoming_damage(
+        50,
+        40,
+        defending=True,
+        team_defend_multiplier=team_defend_damage_multiplier(1),
+    )
+    if result.damage_taken == expected_taken:
+        ok("resolve_round_calculation damage_taken with defend")
+    else:
+        fail(
+            "resolve_round_calculation damage_taken with defend",
+            f"got {result.damage_taken}, expected {expected_taken}",
+        )
+
+
+def test_count_team_defenders():
+    if count_team_defenders(None) == 0:
+        ok("count_team_defenders empty")
+    else:
+        fail("count_team_defenders empty")
+    actions = {"a": {"action": "defend"}, "b": {"action_type": "attack"}}
+    if count_team_defenders(actions) == 1:
+        ok("count_team_defenders mixed")
+    else:
+        fail("count_team_defenders mixed")
+
+
+def test_incoming_damage_piercing_floor():
+    dmg = calculate_incoming_damage(50, 200, defending=False)
+    if dmg >= 5:
+        ok("incoming damage piercing floor (10% of base)")
+    else:
+        fail("incoming damage piercing floor", f"got {dmg}")
+
+
+def test_incoming_damage_extreme_team_defend():
+    """INV-D: 10% piercing floor survives extreme team-defend multipliers."""
+    base = 5
+    dmg = calculate_incoming_damage(
+        base, 0, team_defend_multiplier=0.001,
+    )
+    piercing = max(1, base // 10)
+    if dmg >= piercing and dmg > 0:
+        ok("incoming damage extreme defend cannot zero out piercing")
+    else:
+        fail("incoming damage extreme defend cannot zero out piercing", f"got {dmg}")
+
+
+def test_select_enemy_counter_target_engine():
+    participants = [
+        {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
+        {"squad_id": "B", "hp": 30, "max_hp": 100, "resilience": 3, "is_protagonist": False},
+    ]
+    actions = {"B": {"action_type": "escape"}}
+    target = select_enemy_counter_target(participants, actions, enemy_base_damage=50)
+    if target and target.get("squad_id") == "B":
+        ok("select_enemy_counter_target prefers escaper")
+    else:
+        fail("select_enemy_counter_target prefers escaper", str(target))
+
+
+def test_select_enemy_counter_target_failed_escape():
+    """INV-E: post-normalize failed_escape still counts as escape priority."""
+    participants = [
+        {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
+        {"squad_id": "B", "hp": 30, "max_hp": 100, "resilience": 3, "is_protagonist": False},
+    ]
+    actions = {"B": {"action_type": "failed_escape"}}
+    target = select_enemy_counter_target(participants, actions, enemy_base_damage=50)
+    if target and target.get("squad_id") == "B":
+        ok("select_enemy_counter_target prefers failed_escape escaper")
+    else:
+        fail("select_enemy_counter_target prefers failed_escape escaper", str(target))
+
+
+def main():
+    print("=== Combat engine unit tests ===\n")
+    test_calculate_attack_damage_basic()
+    test_dice_multiplier_edge_cases()
+    test_count_team_defenders()
+    test_resolve_round_calculation_with_defend()
+    test_incoming_damage_piercing_floor()
+    test_incoming_damage_extreme_team_defend()
+    test_select_enemy_counter_target_engine()
+    test_select_enemy_counter_target_failed_escape()
+    print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
+    return 0 if FAIL == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+===== FILE: scripts/test_combat_flow_orchestrator.py =====
+
+#!/usr/bin/env python3
+"""Unit tests for services/combat_flow.py (INV-E pure orchestration)."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services.combat_flow import (
+    normalize_failed_escape_actions,
+    process_mixed_round_actions,
+)
+
+PASS = 0
+FAIL = 0
+
+
+def ok(label):
+    global PASS
+    PASS += 1
+    print(f"  ✓ {label}")
+
+
+def fail(label, detail=""):
+    global FAIL
+    FAIL += 1
+    print(f"  ✗ {label}" + (f" — {detail}" if detail else ""))
+
+
+def test_normalize_failed_escape():
+    actions = {
+        "A": {"action_type": "escape", "dice_result": 1},
+        "B": {"action_type": "attack", "dice_result": 2},
+    }
+    out = normalize_failed_escape_actions(
+        actions, escape_triggered=True, escape_success=False,
+    )
+    if out["A"]["action_type"] == "failed_escape" and out["B"]["action_type"] == "attack":
+        ok("normalize_failed_escape marks escaper only")
+    else:
+        fail("normalize_failed_escape marks escaper only", str(out))
+
+
+def test_mixed_round_escape_fail_continues_attack():
+    participants = {
+        "A": {"squad_id": "A", "power": 40, "intellect": 10, "resilience": 10, "sanity": 50},
+        "B": {"squad_id": "B", "power": 50, "intellect": 10, "resilience": 10, "sanity": 50},
+    }
+    actions = {
+        "A": {"action_type": "escape", "dice_result": 1},
+        "B": {"action_type": "attack", "dice_result": 2},
+    }
+    breakdown = process_mixed_round_actions(
+        participants,
+        {"resilience": 5},
+        actions,
+        enemy_base_damage=20,
+        escape_success_rate=0.4,
+        rng=0.99,
+    )
+    if breakdown.get("team_escaped") is False and "A" in breakdown.get("failed_escape_squads", []):
+        ok("mixed round escape fail retains escaper in breakdown")
+    else:
+        fail("mixed round escape fail retains escaper", str(breakdown))
+
+    b_dealt = breakdown.get("damages_dealt", {}).get("B", 0)
+    a_dealt = breakdown.get("damages_dealt", {}).get("A", 0)
+    if b_dealt > 0 and a_dealt == 0:
+        ok("mixed round attacker damage while escaper deals zero")
+    else:
+        fail("mixed round attacker damage while escaper deals zero", str(breakdown))
+
+
+def test_victory_payload_settlement_id():
+    from services.combat_outcomes import build_victory_outcome_payload
+
+    payload = build_victory_outcome_payload(
+        {"success": {"narrative": "win"}},
+        combat_id=42,
+        current_round=3,
+    )
+    if payload.get("settlement_id") == "42:2" and payload.get("settled_round_index") == 2:
+        ok("victory payload includes settlement_id")
+    else:
+        fail("victory payload includes settlement_id", str(payload))
+
+
+def main():
+    print("=== Combat flow orchestrator tests ===\n")
+    test_normalize_failed_escape()
+    test_mixed_round_escape_fail_continues_attack()
+    test_victory_payload_settlement_id()
+    print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
+    return 0 if FAIL == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 ===== FILE: scripts/pre_deploy_checks.sh =====
@@ -13460,4 +14272,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v13 · 2026-07-01 · `adf54a8`*
+*End of COMBAT_V2_AUDIT_BUNDLE v14 · 2026-07-01 · `129b6b6`*
