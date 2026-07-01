@@ -60,6 +60,17 @@ def add_insight_fragments(team_id, amount):
             )
 
 
+SOLO_COMPLETION_PREFIX = "SOLO:"
+
+
+def solo_encounter_scope_id(squad_id):
+    """Normalized completion scope for solo victories (isolated from team SSOT keys)."""
+    clean = normalize_team_id(squad_id)
+    if not clean:
+        return None
+    return f"{SOLO_COMPLETION_PREFIX}{clean}"
+
+
 def encounter_already_completed(team_id, encounter_id):
     if not team_id:
         return False
@@ -71,6 +82,13 @@ def encounter_already_completed(team_id, encounter_id):
     ).fetchone()
     conn.close()
     return bool(row)
+
+
+def encounter_already_completed_solo(squad_id, encounter_id):
+    scope_id = solo_encounter_scope_id(squad_id)
+    if not scope_id:
+        return False
+    return encounter_already_completed(scope_id, encounter_id)
 
 
 def _serialize_rewards(rewards):
@@ -394,6 +412,7 @@ def apply_encounter_success_solo(squad_id, encounter):
     if encounter_skips_progression(encounter):
         return
     success = encounter.get("success", {})
+    scope_id = solo_encounter_scope_id(squad_id)
     squad = get_squad(squad_id)
     if squad:
         fragments = int(squad.get("insight_fragments") or 0) + int(success.get("insight_fragment", 0))
@@ -403,12 +422,30 @@ def apply_encounter_success_solo(squad_id, encounter):
             item = get_item_by_qr_code_value(reward.get("item_id"))
             if item:
                 grant_item_to_squad(squad_id, item["id"], source="encounter")
+    if scope_id:
+        record_encounter_completion(
+            scope_id,
+            encounter["encounter_id"],
+            "success",
+            narrative=success.get("narrative"),
+            rewards={"insight_fragments": int(success.get("insight_fragment", 0))},
+        )
 
 
 def apply_encounter_failure_solo(squad_id, encounter):
     if encounter_skips_progression(encounter):
         return
-    apply_failure_side_effects(squad_id, encounter.get("failure", {}))
+    failure = encounter.get("failure", {})
+    apply_failure_side_effects(squad_id, failure)
+    scope_id = solo_encounter_scope_id(squad_id)
+    if scope_id:
+        record_encounter_completion(
+            scope_id,
+            encounter["encounter_id"],
+            "failure",
+            narrative=failure.get("narrative"),
+            rewards=_failure_rewards_from_config(failure),
+        )
 
 
 def apply_trauma_bad_ending_victory(team_id, encounter):

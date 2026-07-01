@@ -248,6 +248,50 @@ def test_maybe_resolve_monotonic_phase_guard():
     )
 
 
+def test_solo_resolve_combat_outcome_idempotency():
+    """Solo victory uses SOLO:-scoped completion key; second resolve is idempotent."""
+    import sqlite3
+    from datetime import datetime
+
+    from models.encounter import load_encounter
+    from models.encounter_outcomes import solo_encounter_scope_id
+    from services.combat_outcomes import resolve_combat_outcome
+
+    squad_id = "PLAYER-SOLO-IDEM"
+    enc_id = "enc_iggy_01_leech"
+    now = datetime.now().isoformat()
+    scope_id = solo_encounter_scope_id(squad_id)
+
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM encounter_completions WHERE team_id = ?", (scope_id,))
+    conn.execute("DELETE FROM squads WHERE squad_id = ?", (squad_id,))
+    conn.execute(
+        """INSERT INTO squads
+           (squad_id, display_name, insight_fragments, last_update)
+           VALUES (?, 'Solo Idem', 0, ?)""",
+        (squad_id, now),
+    )
+    conn.commit()
+    conn.close()
+
+    encounter = load_encounter(enc_id)
+    first = resolve_combat_outcome("squad", None, encounter, squad_id)
+    second = resolve_combat_outcome("squad", None, encounter, squad_id)
+    ok("solo outcome first apply", first.get("applied_success") is True, str(first))
+    ok("solo outcome idempotent skip", second.get("applied_success") is False, str(second))
+
+    conn = sqlite3.connect(_test_db_path())
+    row = conn.execute(
+        "SELECT team_id FROM encounter_completions WHERE team_id = ? AND encounter_id = ?",
+        (scope_id, enc_id),
+    ).fetchone()
+    conn.execute("DELETE FROM encounter_completions WHERE team_id = ?", (scope_id,))
+    conn.execute("DELETE FROM squads WHERE squad_id = ?", (squad_id,))
+    conn.commit()
+    conn.close()
+    ok("solo completion stored under SOLO scope", row is not None, str(scope_id))
+
+
 def test_phase2_gm_override_gateway():
     """Phase 2 Backlog: 驗證 GM 權威特權覆蓋閘門與結局狀態重置一致性。"""
     import sqlite3
@@ -2090,6 +2134,7 @@ def main():
     test_phase2_narrative_orchestrator_pipeline()
     test_maybe_resolve_ready_claim_inside_tx()
     test_maybe_resolve_monotonic_phase_guard()
+    test_solo_resolve_combat_outcome_idempotency()
     test_phase2_gm_override_gateway()
     test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id)
     test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id)

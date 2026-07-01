@@ -49,7 +49,7 @@ def test_calculate_attack_damage_basic():
 
 
 def test_dice_multiplier_edge_cases():
-    cases = [(0, 0.0), (1, 1.0), (2, 1.5), (3, 2.0), (99, 2.0), ("bad", 1.5)]
+    cases = [(0, 0.0), (1, 1.0), (2, 1.5), (3, 2.0), (99, 2.0), ("bad", 1.0)]
     for dice, expected in cases:
         got = dice_multiplier(dice)
         if got == expected:

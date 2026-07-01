@@ -3,12 +3,20 @@ from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
 
 
-def _outcome_already_recorded(team_id, encounter_id):
+def _outcome_already_recorded_team(team_id, encounter_id):
     if not team_id or not encounter_id:
         return False
     from models.encounter_outcomes import encounter_already_completed
 
     return encounter_already_completed(team_id, encounter_id)
+
+
+def _outcome_already_recorded_solo(starter_id, encounter_id):
+    if not starter_id or not encounter_id:
+        return False
+    from models.encounter_outcomes import encounter_already_completed_solo
+
+    return encounter_already_completed_solo(starter_id, encounter_id)
 
 
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
@@ -50,7 +58,7 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         trauma_total = int(ending.get("protagonist_trauma_total") or 0)
 
         if team_id and ending.get("should_apply_bad_ending_victory"):
-            if not _outcome_already_recorded(team_id, encounter_id):
+            if not _outcome_already_recorded_team(team_id, encounter_id):
                 apply_trauma_bad_ending_victory(team_id, encounter)
                 result["applied_success"] = True
             result["trauma_bad_ending"] = True
@@ -76,20 +84,18 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                     "message": f"劇情推進管線觸發等冪保護: {exc}",
                     "log_type": "idempotent_blocked",
                 })
-        elif starter_id and not _outcome_already_recorded(starter_id, encounter_id):
+        elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
             apply_encounter_success_solo(starter_id, encounter)
             result["applied_success"] = True
         return result
 
     if winner == "enemy":
-        id_key = team_id or starter_id
-        if id_key and not _outcome_already_recorded(id_key, encounter_id):
-            if team_id:
-                apply_encounter_failure(team_id, encounter)
-                result["applied_failure"] = True
-            elif starter_id:
-                apply_encounter_failure_solo(starter_id, encounter)
-                result["applied_failure"] = True
+        if team_id and not _outcome_already_recorded_team(team_id, encounter_id):
+            apply_encounter_failure(team_id, encounter)
+            result["applied_failure"] = True
+        elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
+            apply_encounter_failure_solo(starter_id, encounter)
+            result["applied_failure"] = True
         if team_id:
             result["ending"] = judge_ending(team_id)
         return result

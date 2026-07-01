@@ -94,7 +94,7 @@ def dice_multiplier(
     try:
         dice = int(dice_result)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        dice = 2
+        dice = 1
     return float(table.get(max(0, min(3, dice)), 1.0))
 
 
