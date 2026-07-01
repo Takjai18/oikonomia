@@ -1014,6 +1014,215 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
     return combat, winner
 
 
+def _buffered_participant_hp(participant, squad_updates, protagonist_updates):
+    sid = participant.get("squad_id")
+    if is_protagonist_participant(sid):
+        key, team_id = parse_protagonist_squad_id(sid)
+        if team_id and key:
+            buf = protagonist_updates.get((team_id, key), {})
+            if "hp" in buf:
+                return int(buf["hp"])
+    else:
+        buf = squad_updates.get(sid, {})
+        if "hp" in buf:
+            return int(buf["hp"])
+    return int(participant.get("hp") or 0)
+
+
+def _buffer_set_hp(squad_id, new_hp, squad_updates, protagonist_updates):
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if team_id and key:
+            protagonist_updates.setdefault((team_id, key), {})["hp"] = int(new_hp)
+    else:
+        squad_updates.setdefault(squad_id, {})["hp"] = int(new_hp)
+
+
+def _buffer_set_sanity(squad_id, new_san, squad_updates, protagonist_updates):
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if team_id and key:
+            protagonist_updates.setdefault((team_id, key), {})["sanity"] = int(new_san)
+    else:
+        squad_updates.setdefault(squad_id, {})["sanity"] = int(new_san)
+
+
+def _buffer_apply_damage(squad_id, damage, participant, squad_updates, protagonist_updates, trauma_events):
+    participant = participant or {}
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if not key or not team_id:
+            return int(participant.get("hp") or 0)
+        buf = protagonist_updates.setdefault((team_id, key), {})
+        curr = buf.get("hp", int(participant.get("hp") or 0))
+        new_hp = max(0, curr - int(damage))
+        buf["hp"] = new_hp
+        if new_hp <= 0:
+            buf["near_death_until"] = (
+                datetime.now() + timedelta(minutes=settings.near_death_minutes)
+            ).isoformat()
+            prev_trauma = buf.get("trauma_count", int(participant.get("trauma_count") or 0))
+            buf["trauma_count"] = prev_trauma + 1
+            trauma_events.append((team_id, key, 1, "near_death_damage"))
+        return new_hp
+
+    buf = squad_updates.setdefault(squad_id, {})
+    curr = buf.get("hp", int(participant.get("hp") or 0))
+    new_hp = max(0, curr - int(damage))
+    buf["hp"] = new_hp
+    if new_hp <= 0 and not participant.get("near_death_until"):
+        buf["near_death_until"] = (
+            datetime.now() + timedelta(minutes=settings.near_death_minutes)
+        ).isoformat()
+    return new_hp
+
+
+def _participants_with_buffers(participants, squad_updates, protagonist_updates):
+    merged = []
+    for p in participants:
+        row = dict(p)
+        sid = row.get("squad_id")
+        if is_protagonist_participant(sid):
+            key, team_id = parse_protagonist_squad_id(sid)
+            buf = protagonist_updates.get((team_id, key), {}) if team_id and key else {}
+        else:
+            buf = squad_updates.get(sid, {})
+        for field, val in buf.items():
+            row[field] = val
+        merged.append(row)
+    return merged
+
+
+def _team_defeated_from_participants(participants):
+    alive = 0
+    for p in participants:
+        if int(p.get("hp") or 0) > 0:
+            alive += 1
+            continue
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
+                    alive += 1
+            except ValueError:
+                pass
+    return alive == 0
+
+
+def _apply_resolve_phase_writes(
+    conn,
+    *,
+    items_to_delete,
+    squad_updates,
+    protagonist_updates,
+    trauma_events,
+):
+    for squad_id, item_id in items_to_delete:
+        deleted = conn.execute(
+            "DELETE FROM player_items WHERE squad_id = ? AND item_id = ?",
+            (squad_id, item_id),
+        )
+        if deleted.rowcount != 1:
+            raise RuntimeError(f"item consume failed: {squad_id}/{item_id}")
+
+    for squad_id, fields in squad_updates.items():
+        if "hp" in fields:
+            conn.execute(
+                "UPDATE squads SET hp = ? WHERE squad_id = ?",
+                (fields["hp"], squad_id),
+            )
+        if "sanity" in fields:
+            conn.execute(
+                "UPDATE squads SET sanity = ? WHERE squad_id = ?",
+                (fields["sanity"], squad_id),
+            )
+        if "near_death_until" in fields:
+            nd = fields["near_death_until"]
+            if nd is None:
+                conn.execute(
+                    "UPDATE squads SET near_death_until = NULL WHERE squad_id = ?",
+                    (squad_id,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE squads SET near_death_until = ? WHERE squad_id = ?",
+                    (nd, squad_id),
+                )
+
+    for (team_id, protagonist_key), fields in protagonist_updates.items():
+        updates = []
+        params = []
+        for col in ("hp", "max_hp", "sanity", "trauma_count"):
+            if col in fields:
+                updates.append(f"{col} = ?")
+                params.append(fields[col])
+        if "near_death_until" in fields:
+            nd = fields["near_death_until"]
+            if nd is None:
+                updates.append("near_death_until = NULL")
+            else:
+                updates.append("near_death_until = ?")
+                params.append(nd)
+        if updates:
+            updates.append("last_updated = ?")
+            params.append(datetime.now().isoformat())
+            params.extend([team_id, protagonist_key])
+            conn.execute(
+                f"UPDATE protagonist_states SET {', '.join(updates)} "
+                "WHERE team_id = ? AND protagonist = ?",
+                params,
+            )
+
+    now = datetime.now().isoformat()
+    for team_id, protagonist_key, delta, reason in trauma_events:
+        conn.execute(
+            """INSERT INTO protagonist_trauma_log
+               (team_id, protagonist, delta, reason, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (team_id, protagonist_key, int(delta), reason, now),
+        )
+
+
+def _commit_resolve_phase_state(
+    combat_id,
+    *,
+    items_to_delete,
+    squad_updates,
+    protagonist_updates,
+    trauma_events,
+    combat_fields,
+):
+    logs_json = json.dumps(combat_fields.get("logs") or [], ensure_ascii=False)
+    with immediate_transaction(settings.db_path) as conn:
+        _apply_resolve_phase_writes(
+            conn,
+            items_to_delete=items_to_delete,
+            squad_updates=squad_updates,
+            protagonist_updates=protagonist_updates,
+            trauma_events=trauma_events,
+        )
+        allowed = {
+            "status", "current_phase", "enemy_hp", "phase_actions", "logs",
+            "phase_started_at", "phase_deadline",
+        }
+        updates = []
+        params = []
+        for key, val in combat_fields.items():
+            if key not in allowed:
+                continue
+            if key == "logs":
+                val = logs_json
+            elif key == "phase_actions":
+                val = json.dumps(val or {}, ensure_ascii=False)
+            updates.append(f"{key} = ?")
+            params.append(val)
+        if updates:
+            params.append(combat_id)
+            conn.execute(
+                f"UPDATE combats SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+
+
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != COMBAT_STATUS_RESOLVING:
@@ -1039,6 +1248,10 @@ def _resolve_player_phase_body(combat_id):
         player_control_ids,
     )
     item_consume_batch = build_combat_item_consume_batch(actions)
+    items_to_delete = []
+    squad_updates = {}
+    protagonist_updates = {}
+    trauma_events = []
 
     enemy_hp = int(combat.get("enemy_hp") or 0)
     enemy_resilience = int(combat.get("enemy_resilience") or 0)
@@ -1074,7 +1287,6 @@ def _resolve_player_phase_body(combat_id):
         counter_target_actions = actions
 
     total_damage_to_enemy = 0
-    berserk_players = []
 
     for player_squad_id, action_data in actions.items():
         player = participant_by_id.get(player_squad_id)
@@ -1101,10 +1313,13 @@ def _resolve_player_phase_body(combat_id):
             continue
 
         if is_berserk(sanity):
-            berserk_players.append(player_squad_id)
             if random.random() < 0.30:
                 self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
-                apply_damage_to_combat_participant(player_squad_id, self_dmg, participant=player)
+                _buffer_apply_damage(
+                    player_squad_id, self_dmg, player,
+                    squad_updates, protagonist_updates, trauma_events,
+                )
+                player["hp"] = _buffered_participant_hp(player, squad_updates, protagonist_updates)
                 combat = append_combat_log(
                     combat,
                     f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
@@ -1126,7 +1341,7 @@ def _resolve_player_phase_body(combat_id):
         item_effect_value = 0
 
         if action_type == "use_item" and action_data.get("item_id"):
-            ok, item, err = item_consume_batch.consume(
+            ok, item, err = item_consume_batch.consume_dry_run(
                 player_squad_id, action_data["item_id"],
             )
             if not ok:
@@ -1142,12 +1357,13 @@ def _resolve_player_phase_body(combat_id):
                 item_effect_value = int(item.get("effect_value") or 0)
             except (TypeError, ValueError):
                 item_effect_value = 0
+            items_to_delete.append((player_squad_id, action_data["item_id"]))
 
             if item_effect_type == "hp_up" and item_effect_value > 0:
-                curr_hp = int(player.get("hp") or 0)
+                curr_hp = _buffered_participant_hp(player, squad_updates, protagonist_updates)
                 max_hp = int(player.get("max_hp") or 100)
                 new_hp = min(max_hp, curr_hp + item_effect_value)
-                update_squad(player_squad_id, hp=new_hp)
+                _buffer_set_hp(player_squad_id, new_hp, squad_updates, protagonist_updates)
                 player["hp"] = new_hp
                 combat = append_combat_log(
                     combat,
@@ -1157,7 +1373,7 @@ def _resolve_player_phase_body(combat_id):
             elif item_effect_type == "sanity_up":
                 curr_san = int(player.get("sanity") or 0)
                 new_san = max(0, min(100, curr_san + item_effect_value))
-                update_squad(player_squad_id, sanity=new_san)
+                _buffer_set_sanity(player_squad_id, new_san, squad_updates, protagonist_updates)
                 player["sanity"] = new_san
                 san_label = "回復" if item_effect_value >= 0 else "扣除"
                 combat = append_combat_log(
@@ -1263,26 +1479,26 @@ def _resolve_player_phase_body(combat_id):
 
     combat["enemy_hp"] = new_enemy_hp
     combat["phase_actions"] = {}
+    write_buffers = dict(
+        items_to_delete=items_to_delete,
+        squad_updates=squad_updates,
+        protagonist_updates=protagonist_updates,
+        trauma_events=trauma_events,
+    )
 
     if new_enemy_hp <= 0:
-        save_combat(
+        _commit_resolve_phase_state(
             combat_id,
-            enemy_hp=new_enemy_hp,
-            logs=combat.get("logs"),
-            phase_actions={},
+            **write_buffers,
+            combat_fields={
+                "enemy_hp": new_enemy_hp,
+                "logs": combat.get("logs"),
+                "phase_actions": {},
+            },
         )
         return _end_combat(combat_id, "squad", encounter), "squad"
 
-    save_combat(
-        combat_id,
-        enemy_hp=new_enemy_hp,
-        logs=combat.get("logs"),
-        status="enemy_phase",
-        phase_actions={},
-    )
-    combat["status"] = "enemy_phase"
-
-    fresh_participants = refresh_combat_participants(participants)
+    fresh_participants = _participants_with_buffers(participants, squad_updates, protagonist_updates)
     target = (
         select_enemy_counter_target(
             fresh_participants, counter_target_actions, enemy_base_damage,
@@ -1300,9 +1516,10 @@ def _resolve_player_phase_body(combat_id):
             team_defend_multiplier=team_defend_mult,
         )
         if incoming > 0:
-            apply_damage_to_combat_participant(target_id, incoming, participant=target)
-            refreshed_list = refresh_combat_participants([target])
-            refreshed = refreshed_list[0] if refreshed_list else target
+            _buffer_apply_damage(
+                target_id, incoming, target,
+                squad_updates, protagonist_updates, trauma_events,
+            )
             defend_note = ""
             if defender_count > 0:
                 defend_note = (
@@ -1318,10 +1535,11 @@ def _resolve_player_phase_body(combat_id):
                 + pro_note,
                 log_type="enemy_attack",
             )
-            if refreshed and refreshed.get("near_death_until"):
+            merged_target = _participants_with_buffers([target], squad_updates, protagonist_updates)[0]
+            if merged_target.get("near_death_until"):
                 trauma_note = ""
-                if target.get("is_protagonist") and int(refreshed.get("trauma_count") or 0) > 0:
-                    trauma_note = f"（心理創傷 +1，累計 {refreshed.get('trauma_count')}）"
+                if target.get("is_protagonist") and int(merged_target.get("trauma_count") or 0) > 0:
+                    trauma_note = f"（心理創傷 +1，累計 {merged_target.get('trauma_count')}）"
                 combat = append_combat_log(
                     combat,
                     f"{target.get('display_name', target_id)} 陷入瀕死！"
@@ -1329,20 +1547,35 @@ def _resolve_player_phase_body(combat_id):
                     log_type="near_death",
                 )
 
-    if _team_combat_defeated(combat):
-        save_combat(combat_id, logs=combat.get("logs"))
+    write_buffers = dict(
+        items_to_delete=items_to_delete,
+        squad_updates=squad_updates,
+        protagonist_updates=protagonist_updates,
+        trauma_events=trauma_events,
+    )
+    defeated_participants = _participants_with_buffers(participants, squad_updates, protagonist_updates)
+    if _team_defeated_from_participants(defeated_participants):
+        _commit_resolve_phase_state(
+            combat_id,
+            **write_buffers,
+            combat_fields={"logs": combat.get("logs")},
+        )
         return _end_combat(combat_id, "enemy", encounter), "enemy"
 
     now = datetime.now().isoformat()
     limit = combat_settings.get("phase_time_limit_seconds", 180)
-    save_combat(
+    _commit_resolve_phase_state(
         combat_id,
-        status="player_phase",
-        current_phase=int(combat.get("current_phase") or 0) + 1,
-        logs=combat.get("logs"),
-        phase_started_at=now,
-        phase_deadline=combat_phase_deadline(now, limit),
-        phase_actions={},
+        **write_buffers,
+        combat_fields={
+            "status": "player_phase",
+            "current_phase": int(combat.get("current_phase") or 0) + 1,
+            "enemy_hp": new_enemy_hp,
+            "logs": combat.get("logs"),
+            "phase_started_at": now,
+            "phase_deadline": combat_phase_deadline(now, limit),
+            "phase_actions": {},
+        },
     )
     return get_combat(combat_id), None
 

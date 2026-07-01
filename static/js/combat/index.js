@@ -399,6 +399,7 @@ export class CombatApp {
         '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
       );
       this.hasTriggeredTimeoutDefense = true;
+      this.views?.dice?.setConfirmDisabled?.(true);
       this.ctx = {
         ...this.ctx,
         dice: { ...this.ctx.dice, action: 'defend', value: null, cosmetic: false },

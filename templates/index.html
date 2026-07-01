@@ -1377,7 +1377,11 @@
         const deadline = Date.now() + maxMs;
         while (Date.now() < deadline) {
             if (window.combatV2?.isEnabled?.()) return true;
-            if (window.combatV2 && typeof window.combatV2.isEnabled === 'function' && !window.combatV2.isEnabled()) {
+            if (
+                window.combatV2?.isInitComplete?.()
+                && typeof window.combatV2.isEnabled === 'function'
+                && !window.combatV2.isEnabled()
+            ) {
                 return false;
             }
             await new Promise((r) => setTimeout(r, 50));

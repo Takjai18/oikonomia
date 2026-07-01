@@ -62,11 +62,15 @@ export function createDiceModalView(rootEl) {
         confirmBtn.textContent = isItem ? '確認使用並結束回合' : '確認並結束本回合';
       }
     },
+    setConfirmDisabled(disabled) {
+      if (confirmBtn) confirmBtn.disabled = !!disabled;
+    },
     hide() {
       if (modal) {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
       }
+      if (confirmBtn) confirmBtn.disabled = false;
       rolling = false;
     },
     onConfirm(handler) {

@@ -70,6 +70,25 @@ def test_mixed_round_escape_fail_continues_attack():
         fail("mixed round attacker damage while escaper deals zero", str(breakdown))
 
 
+def test_consume_dry_run_defers_delete():
+    from models.item import CombatItemConsumeBatch
+
+    class FakeBatch(CombatItemConsumeBatch):
+        def __init__(self):
+            self._catalog = {9: {"id": 9, "name": "Test", "has_ability": True, "effect_type": "power_up", "effect_value": 5}}
+            self._owned = {("s1", 9)}
+            self._consumed = set()
+            self._pending = set()
+
+    batch = FakeBatch()
+    ok1, item1, err1 = batch.consume_dry_run("s1", 9)
+    ok2, _, err2 = batch.consume_dry_run("s1", 9)
+    if ok1 and item1 and not ok2 and err2:
+        ok("consume_dry_run validates without DB write")
+    else:
+        fail("consume_dry_run validates without DB write", f"{ok1},{ok2},{err1},{err2}")
+
+
 def test_victory_payload_settlement_id():
     from services.combat_outcomes import build_victory_outcome_payload
 
@@ -88,6 +107,7 @@ def main():
     print("=== Combat flow orchestrator tests ===\n")
     test_normalize_failed_escape()
     test_mixed_round_escape_fail_continues_attack()
+    test_consume_dry_run_defers_delete()
     test_victory_payload_settlement_id()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1

@@ -306,6 +306,7 @@ class CombatItemConsumeBatch:
         self._catalog = {}
         self._owned = set()
         self._consumed = set()
+        self._pending = set()
         pairs = []
         for squad_id, action_data in (actions or {}).items():
             action_type = action_data.get("action_type") or action_data.get("action")
@@ -334,6 +335,28 @@ class CombatItemConsumeBatch:
             self._owned = {(row[0], int(row[1])) for row in rows}
         finally:
             conn.close()
+
+    def consume_dry_run(self, squad_id, catalog_item_id):
+        """Validate ownership without DB write (deferred to resolve-phase transaction)."""
+        try:
+            catalog_item_id = int(catalog_item_id)
+        except (TypeError, ValueError):
+            return False, None, "無效的物品"
+
+        key = (squad_id, catalog_item_id)
+        if key in self._consumed or key in self._pending:
+            return False, None, "物品消耗失敗"
+
+        item = self._catalog.get(catalog_item_id)
+        if not item:
+            return False, None, "物品不存在或已停用"
+        if not _item_combat_usable(item):
+            return False, None, "此物品無法在戰鬥中使用"
+        if key not in self._owned:
+            return False, None, "你沒有這件物品"
+
+        self._pending.add(key)
+        return True, item, ""
 
     def consume(self, squad_id, catalog_item_id):
         try:
