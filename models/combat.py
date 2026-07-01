@@ -16,6 +16,7 @@ from services.combat_engine import (
     calculate_incoming_damage as _engine_calculate_incoming_damage,
     count_team_defenders,
     dice_multiplier as _engine_dice_multiplier,
+    select_enemy_counter_target,
     team_defend_damage_multiplier,
 )
 from services.combat_outcomes import (
@@ -509,6 +510,30 @@ def get_active_combat_member_ids(participants):
     return active
 
 
+def get_phase_active_member_ids(combat, participants):
+    """
+    INV-E: members active for current phase resolution.
+    Escape submitters remain eligible until the round fully resolves.
+    """
+    active_ids = set(get_active_combat_member_ids(participants))
+    if not combat or not combat.get("id"):
+        return list(active_ids)
+
+    phase = int(combat.get("current_phase") or 0)
+    actions = get_combat_phase_actions(combat["id"], phase)
+    if not actions:
+        actions = (combat.get("phase_actions") or {})
+
+    for sid, action in actions.items():
+        action_type = (action.get("action_type") or action.get("action") or "")
+        if action_type != "escape":
+            continue
+        participant = next((p for p in participants if p.get("squad_id") == sid), None)
+        if participant and int(participant.get("hp") or 0) > 0:
+            active_ids.add(sid)
+    return list(active_ids)
+
+
 def get_active_combat_members(participants):
     ids = set(get_active_combat_member_ids(participants))
     return [p for p in participants if p["squad_id"] in ids]
@@ -516,7 +541,7 @@ def get_active_combat_members(participants):
 
 def _phase_player_control_context(combat, participants):
     """Split active combatants for player-controlled protagonist submit rules."""
-    active = get_active_combat_member_ids(participants)
+    active = get_phase_active_member_ids(combat, participants)
     team_id = _combat_team_id(combat, participants)
     encounter = load_encounter(combat.get("encounter_id")) if combat else None
     story_stage = get_team_story_stage(team_id) if team_id else 0
@@ -742,44 +767,6 @@ def get_lowest_resilience_player(participants):
             best_res = eff
             best = p
     return best or (participants[0] if participants else None)
-
-
-def _is_active_combat_participant(participant):
-    if int(participant.get("hp") or 0) <= 0:
-        return False
-    if participant.get("near_death_until"):
-        try:
-            if datetime.now() < datetime.fromisoformat(participant["near_death_until"]):
-                return False
-        except ValueError:
-            pass
-    return True
-
-
-def select_enemy_counter_target(participants, actions, enemy_base_damage):
-    """
-    Enemy counter targeting priority (Greenfield Spec 1.1):
-    1. can one-shot  2. escaping  3. HP < 50%  4. trauma  5. protagonist last
-    """
-    candidates = [p for p in participants if _is_active_combat_participant(p)]
-    if not candidates:
-        return None
-
-    def sort_key(member):
-        hp = int(member.get("hp") or 0)
-        max_hp = max(1, int(member.get("max_hp") or hp or 1))
-        sid = member.get("squad_id")
-        action_type = (actions.get(sid) or {}).get("action_type") or ""
-        trauma = int(member.get("trauma_count") or 0)
-        can_oneshot = 1 if int(enemy_base_damage) >= hp else 0
-        is_escaping = 1 if action_type == "escape" else 0
-        low_hp = 1 if (hp / max_hp) < 0.5 else 0
-        has_trauma = 1 if trauma > 0 else 0
-        non_protagonist = 0 if member.get("is_protagonist") else 1
-        return (can_oneshot, is_escaping, low_hp, has_trauma, non_protagonist)
-
-    candidates.sort(key=sort_key, reverse=True)
-    return candidates[0]
 
 
 def _escape_success_rate(combat_settings):
@@ -1793,11 +1780,15 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
     }
 
 
-def _combat_outcome_json(winner, encounter, team_id=None):
+def _combat_outcome_json(winner, encounter, team_id=None, participants=None):
     if winner == "squad":
         return build_victory_outcome_payload(encounter, team_id=team_id)
     if winner == "enemy":
-        return build_defeat_outcome_payload(encounter)
+        return build_defeat_outcome_payload(
+            encounter,
+            participants=participants,
+            team_id=team_id,
+        )
     if winner == "escaped":
         escape_block = (encounter or {}).get("escape") or {}
         return {
@@ -1866,7 +1857,13 @@ def combat_outcome_if_finished(combat, encounter, team_id=None, squad_id=None):
             return build_victory_outcome_response(combat, encounter, squad_id, team_id=team_id)
         if winner == "escaped" and squad_id:
             return build_escape_outcome_response(combat, encounter, squad_id, team_id=team_id)
-        return _combat_outcome_json(winner, encounter, team_id=team_id)
+        participants = get_combat_participants(combat) if combat else None
+        return _combat_outcome_json(
+            winner,
+            encounter,
+            team_id=team_id,
+            participants=participants,
+        )
     if int(combat.get("enemy_hp") or 0) <= 0:
         combat_id = combat.get("id")
         if combat_id:

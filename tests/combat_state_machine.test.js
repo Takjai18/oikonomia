@@ -11,6 +11,7 @@ import {
   canDispatch,
   handleAnyDeath,
   syncState,
+  determineSettlementRoute,
 } from '../static/js/combat/state_machine.js';
 import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
 
@@ -147,6 +148,34 @@ describe('Combat V2 state machine', () => {
     });
     assert.equal(next.phase, Phase.SETTLEMENT);
     assert.ok(effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('monotonic guard skips stale settlement index', () => {
+    const ctx = { ...createInitialContext(1), settledRoundIndex: 3, shownSettlementIds: new Set() };
+    const route = determineSettlementRoute(
+      ctx,
+      { settled_round_index: 1, combat_id: 1 },
+      { team_damage_dealt: 5 },
+      '1:1',
+    );
+    assert.equal(route.skipModal, true);
+    assert.equal(route.settledRoundIndex, 3);
+  });
+
+  it('defeat payload with dead_squad_names → COMBAT_FAILED', () => {
+    const ctx = createInitialContext(1);
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      outcome: 'defeat',
+      winner: 'enemy',
+      dead_squad_names: ['Alice'],
+      dead_squad_ids: ['A'],
+      member_states: { A: { display_name: 'Alice', hp: 0 } },
+      my_state: { hp: 80, submitted: false },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.deepEqual(next.failedMembers, ['Alice']);
+    assert.ok(effects.some((e) => e.type === 'SHOW_FAILED'));
   });
 
   it('IDLE + ACTION_USE_ZOO → DICE_ROLLING (P2-2)', () => {

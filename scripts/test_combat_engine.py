@@ -12,6 +12,7 @@ from services.combat_engine import (
     count_team_defenders,
     dice_multiplier,
     resolve_round_calculation,
+    select_enemy_counter_target,
     team_defend_damage_multiplier,
 )
 
@@ -113,12 +114,26 @@ def test_count_team_defenders():
         fail("count_team_defenders mixed")
 
 
+def test_select_enemy_counter_target_engine():
+    participants = [
+        {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
+        {"squad_id": "B", "hp": 30, "max_hp": 100, "resilience": 3, "is_protagonist": False},
+    ]
+    actions = {"B": {"action_type": "escape"}}
+    target = select_enemy_counter_target(participants, actions, enemy_base_damage=50)
+    if target and target.get("squad_id") == "B":
+        ok("select_enemy_counter_target prefers escaper")
+    else:
+        fail("select_enemy_counter_target prefers escaper", str(target))
+
+
 def main():
     print("=== Combat engine unit tests ===\n")
     test_calculate_attack_damage_basic()
     test_dice_multiplier_edge_cases()
     test_count_team_defenders()
     test_resolve_round_calculation_with_defend()
+    test_select_enemy_counter_target_engine()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1
 

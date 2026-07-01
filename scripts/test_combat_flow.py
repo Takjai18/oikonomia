@@ -838,6 +838,20 @@ def test_escape_action_type_allowed():
     ok("escape in COMBAT_ACTION_TYPES", "escape" in COMBAT_ACTION_TYPES)
 
 
+def test_defeat_outcome_includes_dead_roster():
+    from services.combat_outcomes import build_defeat_outcome_payload
+
+    participants = [
+        {"squad_id": "A", "display_name": "Alice", "hp": 0, "max_hp": 100},
+        {"squad_id": "B", "display_name": "Bob", "hp": 80, "max_hp": 100},
+    ]
+    payload = build_defeat_outcome_payload({"failure": {"narrative": "fail"}}, participants=participants)
+    ok("defeat outcome_type COMBAT_FAILED", payload.get("outcome_type") == "COMBAT_FAILED", str(payload))
+    ok("defeat dead_squad_ids", payload.get("dead_squad_ids") == ["A"], str(payload))
+    ok("defeat dead_squad_names", payload.get("dead_squad_names") == ["Alice"], str(payload))
+    ok("defeat requires_gm", payload.get("requires_gm") is True, str(payload))
+
+
 def test_select_enemy_counter_target_priority():
     from models.combat import select_enemy_counter_target
 
@@ -1876,6 +1890,7 @@ def main():
     test_solo_killing_blow_returns_victory(client, client2, team_id)
     test_solo_killing_blow_practice_quick()
     test_escape_action_type_allowed()
+    test_defeat_outcome_includes_dead_roster()
     test_select_enemy_counter_target_priority()
     test_escape_fail_mixed_settlement()
     test_use_item_combat_consumes_and_resolves()

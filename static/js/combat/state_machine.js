@@ -212,6 +212,28 @@ export function syncState(ctx, snapshot) {
   }
 
   if (snapshot.outcome === 'defeat' || snapshot.winner === 'enemy') {
+    const deadNames = snapshot.dead_squad_names?.length
+      ? snapshot.dead_squad_names
+      : (snapshot.dead_squad_ids || []).map(
+        (id) => snapshot.member_states?.[id]?.display_name || id,
+      );
+    if (deadNames.length > 0) {
+      return {
+        ctx: {
+          ...newCtx,
+          phase: Phase.COMBAT_FAILED,
+          failedMembers: deadNames,
+          pollPaused: true,
+          pendingSettlement: null,
+          pendingSettlementId: null,
+        },
+        effects: [
+          { type: 'HIDE_ALL_MODALS' },
+          { type: 'SHOW_FAILED', members: deadNames },
+          { type: 'STOP_POLL' },
+        ],
+      };
+    }
     newCtx = { ...newCtx, phase: Phase.DEFEAT, pollPaused: true };
     effects.push({ type: 'HIDE_ALL_MODALS' }, { type: 'SHOW_DEFEAT', data: snapshot }, { type: 'STOP_POLL' });
     return { ctx: newCtx, effects };
@@ -605,6 +627,18 @@ function deriveIdx(ctx) {
 }
 
 export function determineSettlementRoute(ctx, apiData, settlement, settlementId) {
+  const apiIdx = parseInt(apiData.settled_round_index, 10);
+  if (
+    Number.isFinite(apiIdx)
+    && ctx.settledRoundIndex >= 0
+    && apiIdx < ctx.settledRoundIndex
+  ) {
+    return {
+      roundResolved: true,
+      skipModal: true,
+      settledRoundIndex: ctx.settledRoundIndex,
+    };
+  }
   if (ctx.shownSettlementIds.has(settlementId)) {
     return { roundResolved: true, skipModal: true, settledRoundIndex: apiData.settled_round_index };
   }

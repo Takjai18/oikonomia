@@ -201,13 +201,13 @@ def combat_status_api():
             )
             return jsonify(payload)
         if winner == "enemy":
-            return jsonify({
-                "success": True,
-                "active": False,
-                "winner": winner,
-                "outcome": "defeat",
-                "narrative": (encounter or {}).get("failure", {}).get("narrative"),
-            })
+            ended_participants = get_combat_participants(combat) if combat else None
+            return jsonify(_combat_outcome_json(
+                "enemy",
+                encounter,
+                team_id=team_id,
+                participants=ended_participants,
+            ))
         return jsonify({"success": True, "active": False, "winner": winner})
 
     encounter = load_encounter(combat["encounter_id"])
@@ -230,7 +230,16 @@ def combat_status_api():
                 combat, encounter, session["squad_id"], team_id=actor_team_id,
             ))
         if winner == "enemy":
-            return jsonify({**_combat_outcome_json("enemy", encounter), "active": False})
+            defeat_participants = get_combat_participants(combat) if combat else None
+            return jsonify({
+                **_combat_outcome_json(
+                    "enemy",
+                    encounter,
+                    team_id=actor_team_id,
+                    participants=defeat_participants,
+                ),
+                "active": False,
+            })
         if combat:
             finished = combat_outcome_if_finished(
                 combat,

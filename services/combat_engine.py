@@ -110,6 +110,51 @@ def team_defend_damage_multiplier(defender_count: int) -> float:
     return 1.0
 
 
+def _is_active_combat_participant(participant: Mapping[str, Any]) -> bool:
+    if int(participant.get("hp") or 0) <= 0:
+        return False
+    until = participant.get("near_death_until")
+    if until:
+        from datetime import datetime
+
+        try:
+            if datetime.now() < datetime.fromisoformat(until):
+                return False
+        except ValueError:
+            pass
+    return True
+
+
+def select_enemy_counter_target(
+    participants: List[Mapping[str, Any]],
+    actions: Mapping[str, Any],
+    enemy_base_damage: int,
+) -> Optional[Mapping[str, Any]]:
+    """
+    Enemy counter targeting (Greenfield Spec 1.1) — pure calculation, resolve once per round.
+    Priority: one-shot > escaping > HP<50% > trauma > protagonist last.
+    """
+    candidates = [p for p in participants if _is_active_combat_participant(p)]
+    if not candidates:
+        return None
+
+    def sort_key(member: Mapping[str, Any]):
+        hp = int(member.get("hp") or 0)
+        max_hp = max(1, int(member.get("max_hp") or hp or 1))
+        sid = member.get("squad_id")
+        action_type = (actions.get(sid) or {}).get("action_type") or ""
+        trauma = int(member.get("trauma_count") or 0)
+        can_oneshot = 1 if int(enemy_base_damage) >= hp else 0
+        is_escaping = 1 if action_type == "escape" else 0
+        low_hp = 1 if (hp / max_hp) < 0.5 else 0
+        has_trauma = 1 if trauma > 0 else 0
+        non_protagonist = 0 if member.get("is_protagonist") else 1
+        return (can_oneshot, is_escaping, low_hp, has_trauma, non_protagonist)
+
+    candidates.sort(key=sort_key, reverse=True)
+    return candidates[0]
+
+
 def resolve_round_calculation(
     attacker: Combatant,
     enemy: Combatant,

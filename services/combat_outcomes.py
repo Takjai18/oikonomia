@@ -1,21 +1,21 @@
 """Orchestrate post-combat rewards, trauma, and ending side effects."""
-from models.encounter_outcomes import (
-    apply_encounter_failure,
-    apply_encounter_failure_solo,
-    apply_encounter_success,
-    apply_encounter_success_solo,
-    apply_trauma_bad_ending_victory,
-)
 from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
 
 
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
     """
-    Unified post-combat pipeline. Returns dict with flags for combat log / API.
-
-    winner: 'squad' | 'enemy' | None
+    已重構：跨模組編排層管線 (INV-B/E 最終保障)
+    透過中央原子 Transaction 鎖保護發放劇情獎勵與能帶更新。
     """
+    from models.encounter_outcomes import (
+        apply_encounter_failure,
+        apply_encounter_failure_solo,
+        apply_encounter_success_solo,
+        apply_trauma_bad_ending_victory,
+    )
+    from services.narrative_orchestrator import execute_post_combat_success_pipeline
+
     result = {
         "winner": winner,
         "trauma_bad_ending": False,
@@ -25,6 +25,15 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         "applied_failure": False,
     }
     if not encounter or not winner:
+        return result
+
+    encounter_id = encounter.get("encounter_id")
+
+    if winner == "escaped":
+        result["log_messages"].append({
+            "message": "全隊成功逃離戰場",
+            "log_type": "escape_success",
+        })
         return result
 
     if winner == "squad":
@@ -42,12 +51,19 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                 ),
                 "log_type": "trauma_ending",
             })
-        elif team_id:
-            apply_encounter_success(team_id, encounter, starter_id)
-            result["applied_success"] = True
-        elif starter_id:
-            apply_encounter_success_solo(starter_id, encounter)
-            result["applied_success"] = True
+        else:
+            if team_id:
+                snap = execute_post_combat_success_pipeline(
+                    team_id, encounter_id, starter_id,
+                )
+                result["applied_success"] = "拒絕重複" not in snap.log_message
+                result["log_messages"].append({
+                    "message": snap.log_message,
+                    "log_type": "story_progression",
+                })
+            elif starter_id:
+                apply_encounter_success_solo(starter_id, encounter)
+                result["applied_success"] = True
 
     elif winner == "enemy":
         if team_id:
@@ -87,11 +103,46 @@ def build_victory_outcome_payload(encounter, team_id=None):
     return payload
 
 
-def build_defeat_outcome_payload(encounter):
+def get_collapsed_combat_members(participants):
+    """Squads that triggered INV-D (HP≤0 or active near-death)."""
+    from models.squad import is_near_death_active
+
+    collapsed = []
+    for p in participants or []:
+        if not p:
+            continue
+        if int(p.get("hp") or 0) <= 0 or is_near_death_active(p):
+            collapsed.append(p)
+    return collapsed
+
+
+def build_defeat_outcome_payload(encounter, participants=None, team_id=None):
+    dead = get_collapsed_combat_members(participants)
+    if not dead and team_id:
+        from models.squad import get_team_members
+
+        dead = get_collapsed_combat_members(get_team_members(team_id))
+
+    dead_ids = [m.get("squad_id") for m in dead if m.get("squad_id")]
+    dead_names = [
+        m.get("display_name") or m.get("squad_id")
+        for m in dead
+        if m.get("squad_id")
+    ]
+    failure = (encounter or {}).get("failure") or {}
+
     return {
         "success": True,
         "status": "ended",
         "outcome": "defeat",
+        "outcome_type": "COMBAT_FAILED",
         "winner": "enemy",
-        "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+        "narrative": failure.get("narrative"),
+        "narrative_failure": failure.get("narrative")
+        or failure.get("description")
+        or "隊伍在西貢叢林中倒下了…",
+        "requires_gm": True,
+        "dead_squad_ids": dead_ids,
+        "dead_squad_names": dead_names,
+        "active": False,
     }
