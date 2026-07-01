@@ -386,6 +386,14 @@ export class CombatApp {
       return;
     }
 
+    if (
+      this.ctx.phase === Phase.SUBMITTING
+      || this.ctx.phase === Phase.WAITING_FOR_PLAYERS
+    ) {
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
+
     if (this.ctx.phase === Phase.DICE_CONFIRM) {
       console.warn(
         '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
@@ -420,7 +428,12 @@ export class CombatApp {
   }
 
   async performActionDirectly(actionType) {
-    if (this.ctx.phase === Phase.SUBMITTING) return;
+    if (
+      this.ctx.phase === Phase.SUBMITTING
+      || this.ctx.phase === Phase.WAITING_FOR_PLAYERS
+    ) {
+      return;
+    }
 
     if (this.ctx.phase === Phase.IDLE) {
       this.ctx = {

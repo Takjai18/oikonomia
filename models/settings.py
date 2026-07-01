@@ -26,6 +26,7 @@ class ModelSettings:
     item_effect_labels = None
     encounter_cache = None
     near_death_minutes = 15
+    combat_resolution_max_wait_seconds = 6.0
     combat_action_types = None
     attack_action_types = None
     dice_multipliers = None

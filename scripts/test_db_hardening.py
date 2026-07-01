@@ -194,6 +194,68 @@ def test_purge_combat_actions_on_end():
         os.unlink(path)
 
 
+def test_reconcile_does_not_seal_live_player_phase_at_zero_hp():
+    import sqlite3
+    from datetime import datetime
+
+    from models.combat import reconcile_finished_active_combat
+    from models.settings import settings
+    from utils.db_tx import configure_sqlite_connection
+
+    path = _temp_db()
+    old_path = settings.db_path
+    settings.db_path = path
+    try:
+        from database import configure_database, init_db
+
+        configure_database(
+            db_path=path,
+            data_dir=os.path.dirname(path),
+            upload_folder=os.path.join(os.path.dirname(path), "uploads"),
+            legacy_upload_folder=os.path.join(os.path.dirname(path), "legacy_uploads"),
+            sample_items=[],
+        )
+        init_db()
+
+        conn = sqlite3.connect(path)
+        configure_sqlite_connection(conn)
+        now = datetime.now().isoformat()
+        conn.execute(
+            "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
+            ("T-ZERO", "Zero HP Team", "iggy", now),
+        )
+        conn.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, team_id, is_team_leader, last_update)
+               VALUES ('pz1', 'Player', 'T-ZERO', 1, ?)""",
+            (now,),
+        )
+        cur = conn.execute(
+            """INSERT INTO combats
+               (squad_id, encounter_id, status, enemy_hp, current_phase, started_at)
+               VALUES ('pz1', 'enc_test', 'resolving', 0, 1, ?)""",
+            (now,),
+        )
+        combat_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+
+        combat = {
+            "id": combat_id,
+            "status": "resolving",
+            "enemy_hp": 0,
+            "encounter_id": "enc_test",
+        }
+        is_live, live_id, _ = reconcile_finished_active_combat(combat, team_id="T-ZERO")
+        ok(
+            "reconcile keeps resolving combat live during peer resolve",
+            is_live and live_id == combat_id,
+            f"{is_live} {live_id}",
+        )
+    finally:
+        settings.db_path = old_path
+
+
 def test_session_restore_includes_active_combat():
     import sqlite3
     from datetime import datetime

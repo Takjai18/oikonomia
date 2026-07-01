@@ -46,7 +46,7 @@ from models.protagonist import (
     resolve_combat_protagonist_keys,
 )
 from models.team import get_team_by_id, get_team_protagonists, official_squad_route
-from utils.db_tx import immediate_transaction, with_db_retry
+from utils.db_tx import get_db_connection, immediate_transaction, with_db_retry
 from utils.helpers import normalize_team_id
 
 
@@ -60,6 +60,29 @@ class ActiveCombatExistsError(Exception):
 
 def _db():
     return settings.db_path
+
+
+def _combat_db_conn(*, row_factory=sqlite3.Row):
+    return get_db_connection(_db(), row_factory=row_factory)
+
+
+def _combat_is_finished_for_reconcile(combat):
+    """Avoid sealing combats while resolve/poll is in flight (session restore)."""
+    if not combat:
+        return False
+    status = combat.get("status")
+    if status == "ended":
+        return True
+    if status in (COMBAT_STATUS_RESOLVING, "enemy_phase"):
+        return False
+    return int(combat.get("enemy_hp") or 0) <= 0
+
+
+def _resolution_max_wait():
+    try:
+        return float(settings.combat_resolution_max_wait_seconds or 6.0)
+    except (TypeError, ValueError):
+        return 6.0
 
 
 COMBAT_ACTION_TYPES = settings.combat_action_types
@@ -79,10 +102,11 @@ def row_to_combat(row):
     return data
 
 def get_combat(combat_id):
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM combats WHERE id = ?", (combat_id,)).fetchone()
-    conn.close()
+    conn = _combat_db_conn()
+    try:
+        row = conn.execute("SELECT * FROM combats WHERE id = ?", (combat_id,)).fetchone()
+    finally:
+        conn.close()
     if not row:
         return None
     combat = row_to_combat(row)
@@ -102,23 +126,23 @@ def get_combat_by_squad(squad_id):
         combat = get_combat(combat_id)
         if combat and combat.get("status") not in ("ended",):
             return combat
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        """SELECT * FROM combats
-           WHERE squad_id = ? AND status NOT IN ('ended')
-           ORDER BY started_at DESC LIMIT 1""",
-        (squad_id,),
-    ).fetchone()
-    conn.close()
+    conn = _combat_db_conn()
+    try:
+        row = conn.execute(
+            """SELECT * FROM combats
+               WHERE squad_id = ? AND status NOT IN ('ended')
+               ORDER BY started_at DESC LIMIT 1""",
+            (squad_id,),
+        ).fetchone()
+    finally:
+        conn.close()
     return row_to_combat(row) if row else None
 
 def get_active_combat_for_team(team_id):
     if not team_id:
         return None
 
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
+    conn = _combat_db_conn()
     try:
         row = conn.execute(
             """SELECT c.* FROM combats c
@@ -148,10 +172,12 @@ def save_combat(combat_id, **fields):
     if not updates:
         return
     params.append(combat_id)
-    conn = sqlite3.connect(_db())
-    conn.execute(f"UPDATE combats SET {', '.join(updates)} WHERE id = ?", params)
-    conn.commit()
-    conn.close()
+    conn = _combat_db_conn(row_factory=None)
+    try:
+        conn.execute(f"UPDATE combats SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    finally:
+        conn.close()
 
 def set_team_combat_id(team_id, combat_id):
     for member in get_team_members(team_id):
@@ -188,7 +214,7 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
 
     combat_id = combat.get("id")
     enemy_hp = int(combat.get("enemy_hp") or 0)
-    is_finished = combat.get("status") == "ended" or enemy_hp <= 0
+    is_finished = _combat_is_finished_for_reconcile(combat)
 
     if not is_finished:
         return True, combat_id, combat.get("encounter_id")
@@ -329,8 +355,7 @@ def roll_combat_dice():
 
 
 def get_combat_phase_actions(combat_id, phase, json_fallback=None):
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
+    conn = _combat_db_conn()
     try:
         rows = conn.execute(
             """SELECT squad_id, action_type, dice_result, item_id
@@ -353,7 +378,7 @@ def get_combat_phase_actions(combat_id, phase, json_fallback=None):
 
 
 def combat_action_already_submitted(combat_id, squad_id, phase):
-    conn = sqlite3.connect(_db())
+    conn = _combat_db_conn(row_factory=None)
     try:
         row = conn.execute(
             """SELECT 1 FROM combat_actions
@@ -367,7 +392,7 @@ def combat_action_already_submitted(combat_id, squad_id, phase):
 
 def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, item_id=None):
     def _write():
-        conn = sqlite3.connect(_db())
+        conn = _combat_db_conn(row_factory=None)
         try:
             conn.execute(
                 """INSERT INTO combat_actions
@@ -452,8 +477,7 @@ def get_combat_participants(combat):
     if not starter_id:
         return []
 
-    conn = sqlite3.connect(_db())
-    conn.row_factory = sqlite3.Row
+    conn = _combat_db_conn()
     try:
         rows = conn.execute("""
             WITH starter AS (
@@ -777,7 +801,9 @@ def _release_player_phase_resolution(combat_id):
         )
 
 
-def _wait_for_resolution_complete(combat_id, max_wait=6.0):
+def _wait_for_resolution_complete(combat_id, max_wait=None):
+    if max_wait is None:
+        max_wait = _resolution_max_wait()
     """Wait for another worker to finish resolve; avoids stale enemy HP snapshots."""
     deadline = time.time() + max_wait
     last = None
@@ -918,7 +944,9 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
     return combat, winner, round_just_resolved, participants
 
 
-def _wait_after_peer_resolve(combat_id, initial_phase, max_wait=6.0):
+def _wait_after_peer_resolve(combat_id, initial_phase, max_wait=None):
+    if max_wait is None:
+        max_wait = _resolution_max_wait()
     """
     Wait for in-flight resolve; if round already advanced, skip duplicate settlement.
     """

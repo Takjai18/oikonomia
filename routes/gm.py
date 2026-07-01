@@ -7,7 +7,7 @@ import sqlite3
 import zipfile
 from datetime import datetime
 
-from flask import Blueprint, jsonify, redirect, render_template_string, request, send_file, session
+from flask import Blueprint, current_app, jsonify, redirect, render_template_string, request, send_file, session
 
 from models.combat import get_combat, resolve_player_phase
 from models.encounter import load_encounter
@@ -812,6 +812,13 @@ def gm_override_trauma_ending_api():
     raw_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
     gm_operator = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_operator)
     if not gm_operator:
+        current_app.logger.error(
+            "CRITICAL PRIVILEGE VIOLATION: Anonymous or malformed GM operator "
+            "bypass attempted from IP %s at %s (raw=%r)",
+            request.remote_addr,
+            now,
+            raw_operator,
+        )
         return jsonify({
             "success": False,
             "error": "資安審計攔截：未能識別當前工作人員身分，操作已遭封鎖",

@@ -1333,6 +1333,7 @@
     // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
     let pendingEncounterId = null;
     let currentCombatId = null;
+    let isSessionRestoringCombatLock = false;
     const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
     const COMBAT_V2_LOCK_KEY = 'OIKONOMIA_COMBAT_V2_LOCK';
 
@@ -1422,6 +1423,14 @@
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
             if (route === 'dashboard' || route === 'combat-hub') {
+                if (typeof window.combatV2?.destroy === 'function') {
+                    window.combatV2.destroy();
+                } else {
+                    const app = window.combatV2?.getApp?.();
+                    if (app && typeof app.destroy === 'function') {
+                        app.destroy();
+                    }
+                }
                 clearActiveCombatBridge();
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
@@ -3507,6 +3516,9 @@
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
+                    if (isSessionRestoringCombatLock) return true;
+                    isSessionRestoringCombatLock = true;
+
                     const combatId = data.current_combat_id;
                     console.log(`[Bridge] 偵測到重連進行中戰鬥 ${combatId}，強開權威引導渲染...`);
                     setActiveCombatBridge(combatId);
@@ -3515,21 +3527,24 @@
                     await new Promise((r) => setTimeout(r, 60));
 
                     const ready = await waitForCombatV2Ready();
-                    if (ready) {
-                        revealCombatV2Surface();
-                        await waitForCombatRepaint();
+                    if (
+                        ready
+                        && sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY) === String(combatId)
+                    ) {
                         await window.combatV2.onCombatStarted({ combat_id: combatId });
                     } else {
-                        console.warn('[Bridge] Combat V2 未能及時就緒，執行降級引導。');
+                        console.warn('[Bridge] Combat V2 未能及時就緒或目標已變更，執行降級引導。');
                         if (typeof loadCombatPage === 'function') {
                             await loadCombatPage(combatId);
                         }
                     }
+                    isSessionRestoringCombatLock = false;
                 } else {
                     clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {
+                isSessionRestoringCombatLock = false;
                 console.error('finishSessionRestore 遭遇競態崩潰:', e);
                 showLoginScreenAfterFailedRestore(loadLocalSession());
                 return false;
