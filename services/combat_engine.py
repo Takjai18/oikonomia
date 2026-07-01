@@ -81,8 +81,8 @@ def calculate_incoming_damage(
     if multiplier is None:
         multiplier = DEFEND_TEAM_DAMAGE_FACTOR if defending else 1.0
     if multiplier < 1.0:
-        damage = max(piercing, math.floor(damage * multiplier))
-    return damage
+        damage = math.floor(damage * multiplier)
+    return max(piercing, damage)
 
 
 def dice_multiplier(

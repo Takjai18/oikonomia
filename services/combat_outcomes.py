@@ -1,7 +1,6 @@
 """Orchestrate post-combat rewards, trauma, and ending side effects."""
 from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
-from utils.db_tx import with_db_retry
 
 
 def _outcome_already_recorded(team_id, encounter_id):
@@ -14,8 +13,8 @@ def _outcome_already_recorded(team_id, encounter_id):
 
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
     """
-    已重構：跨模組編排層管線 (INV-B/E 最終保障)
-    透過中央原子 Transaction 鎖保護發放劇情獎勵與能帶更新。
+    Post-combat orchestration — idempotency enforced by encounter_completions SSOT.
+    No outer with_db_retry: pipeline / completion checks must not race on dirty snapshots.
     """
     from models.encounter_outcomes import (
         apply_encounter_failure,
@@ -46,56 +45,54 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         return result
 
     if winner == "squad":
+        ending = judge_ending(team_id) if team_id else {}
+        result["ending"] = ending
+        trauma_total = int(ending.get("protagonist_trauma_total") or 0)
 
-        def _apply_squad_outcome():
-            squad_result = dict(result)
-            ending = judge_ending(team_id) if team_id else {}
-            squad_result["ending"] = ending
-            trauma_total = int(ending.get("protagonist_trauma_total") or 0)
-            already = _outcome_already_recorded(team_id, encounter_id)
-
-            if team_id and ending.get("should_apply_bad_ending_victory"):
-                if not already:
-                    apply_trauma_bad_ending_victory(team_id, encounter)
-                squad_result["trauma_bad_ending"] = True
-                squad_result["log_messages"] = squad_result["log_messages"] + [{
-                    "message": (
-                        f"主角心理創傷過深（累計 {trauma_total}）——"
-                        "勝利無法帶來真正救贖"
-                    ),
-                    "log_type": "trauma_ending",
-                }]
-            elif team_id:
+        if team_id and ending.get("should_apply_bad_ending_victory"):
+            if not _outcome_already_recorded(team_id, encounter_id):
+                apply_trauma_bad_ending_victory(team_id, encounter)
+                result["applied_success"] = True
+            result["trauma_bad_ending"] = True
+            result["log_messages"].append({
+                "message": (
+                    f"主角心理創傷過深（累計 {trauma_total}）——"
+                    "勝利無法帶來真正救贖"
+                ),
+                "log_type": "trauma_ending",
+            })
+        elif team_id:
+            try:
                 snap = execute_post_combat_success_pipeline(
                     team_id, encounter_id, starter_id,
                 )
-                squad_result["applied_success"] = "拒絕重複" not in snap.log_message
-                squad_result["log_messages"] = squad_result["log_messages"] + [{
+                result["applied_success"] = "拒絕重複" not in snap.log_message
+                result["log_messages"].append({
                     "message": snap.log_message,
                     "log_type": "story_progression",
-                }]
-            elif starter_id and not already:
-                apply_encounter_success_solo(starter_id, encounter)
-                squad_result["applied_success"] = True
-            return squad_result
-
-        return with_db_retry(_apply_squad_outcome)
+                })
+            except Exception as exc:
+                result["log_messages"].append({
+                    "message": f"劇情推進管線觸發等冪保護: {exc}",
+                    "log_type": "idempotent_blocked",
+                })
+        elif starter_id and not _outcome_already_recorded(starter_id, encounter_id):
+            apply_encounter_success_solo(starter_id, encounter)
+            result["applied_success"] = True
+        return result
 
     if winner == "enemy":
-
-        def _apply_enemy_outcome():
-            fail_result = dict(result)
-            if team_id and not _outcome_already_recorded(team_id, encounter_id):
+        id_key = team_id or starter_id
+        if id_key and not _outcome_already_recorded(id_key, encounter_id):
+            if team_id:
                 apply_encounter_failure(team_id, encounter)
-                fail_result["applied_failure"] = True
+                result["applied_failure"] = True
             elif starter_id:
                 apply_encounter_failure_solo(starter_id, encounter)
-                fail_result["applied_failure"] = True
-            if team_id:
-                fail_result["ending"] = judge_ending(team_id)
-            return fail_result
-
-        return with_db_retry(_apply_enemy_outcome)
+                result["applied_failure"] = True
+        if team_id:
+            result["ending"] = judge_ending(team_id)
+        return result
 
     return result
 
@@ -111,10 +108,7 @@ def build_victory_outcome_payload(
     trauma_bad = bool(ending.get("trauma_bad_ending"))
     safe_combat_id = int(combat_id) if combat_id is not None else 0
     round_idx = max(0, int(current_round or 0))
-    if round_idx > 0:
-        settled_round_index = round_idx - 1
-    else:
-        settled_round_index = 0
+    settled_round_index = max(0, round_idx - 1)
 
     payload = {
         "success": True,

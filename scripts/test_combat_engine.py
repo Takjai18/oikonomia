@@ -122,6 +122,19 @@ def test_incoming_damage_piercing_floor():
         fail("incoming damage piercing floor", f"got {dmg}")
 
 
+def test_incoming_damage_extreme_team_defend():
+    """INV-D: 10% piercing floor survives extreme team-defend multipliers."""
+    base = 5
+    dmg = calculate_incoming_damage(
+        base, 0, team_defend_multiplier=0.001,
+    )
+    piercing = max(1, base // 10)
+    if dmg >= piercing and dmg > 0:
+        ok("incoming damage extreme defend cannot zero out piercing")
+    else:
+        fail("incoming damage extreme defend cannot zero out piercing", f"got {dmg}")
+
+
 def test_select_enemy_counter_target_engine():
     participants = [
         {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
@@ -142,6 +155,7 @@ def main():
     test_count_team_defenders()
     test_resolve_round_calculation_with_defend()
     test_incoming_damage_piercing_floor()
+    test_incoming_damage_extreme_team_defend()
     test_select_enemy_counter_target_engine()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1

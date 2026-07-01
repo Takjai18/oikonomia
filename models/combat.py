@@ -1049,6 +1049,15 @@ def _resolve_player_phase_body(combat_id):
             )
             continue
 
+        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
+        if action_type == "failed_escape":
+            combat = append_combat_log(
+                combat,
+                f"{display} 由於逃跑失敗，本回合陷入破防僵直，無法輸出任何傷害。",
+                log_type="failed_escape_stuck",
+            )
+            continue
+
         if is_berserk(sanity):
             berserk_players.append(player_squad_id)
             if random.random() < 0.30:
@@ -1067,7 +1076,6 @@ def _resolve_player_phase_body(combat_id):
                 )
             continue
 
-        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
         dice = action_data.get("dice_result", action_data.get("dice", 1))
         multiplier = dice_multiplier(dice)
         item_bonus = int(action_data.get("item_bonus") or 0)
@@ -1176,16 +1184,15 @@ def _resolve_player_phase_body(combat_id):
                 f"{display} 選擇觀望{pro_tag}",
                 log_type="pass",
             )
-        elif action_type in ("escape", "failed_escape"):
+        elif action_type == "escape":
             pro_tag = "（主角·自動）" if (
                 player.get("is_protagonist")
                 and player_squad_id not in (combat.get("phase_actions") or {})
             ) else ""
-            label = "逃跑失敗（仍參與本回合結算）" if action_type == "failed_escape" else "選擇逃跑"
             combat = append_combat_log(
                 combat,
-                f"{display} {label}{pro_tag}",
-                log_type="escape_failed" if action_type == "failed_escape" else "escape",
+                f"{display} 選擇逃跑{pro_tag}",
+                log_type="escape",
             )
             continue
         elif action_type == "use_item":
