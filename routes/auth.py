@@ -6,6 +6,7 @@ import time
 
 from flask import Blueprint, jsonify, request, session
 
+from models.combat import get_active_combat_for_team, reconcile_finished_active_combat
 from models.settings import settings
 from models.squad import get_squad, update_squad
 from services.player_status import build_player_status
@@ -104,6 +105,18 @@ def session_restore():
     establish_player_session(squad_id)
     status = build_player_status(squad)
     attach_restore_token(status, squad_id)
+
+    team_id = squad.get("team_id")
+    if team_id:
+        active_combat = get_active_combat_for_team(team_id)
+        if active_combat:
+            is_live, combat_id, _enc_id = reconcile_finished_active_combat(
+                active_combat, team_id=team_id,
+            )
+            if is_live and combat_id:
+                status["current_combat_id"] = combat_id
+                status["combat_status_interrupted"] = active_combat.get("status")
+
     return jsonify(status)
 
 

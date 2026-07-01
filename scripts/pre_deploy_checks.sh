@@ -32,6 +32,7 @@ run_test scripts/test_combat_flow_orchestrator.py "Combat flow orchestrator (INV
 run_test scripts/test_combat_flow.py "Combat flow (API + HP sync + practice)"
 run_test scripts/test_combat_audit.py "Combat audit (settlement + solo + protagonist)"
 run_test scripts/test_combat_concurrency.py "Combat concurrency smoke"
+run_test scripts/test_db_hardening.py "DB hardening (WAL, SSOT, purge, restore)"
 run_test scripts/test_ending_flow.py "Ending orchestrator regression"
 
 if ! test -f static/js/combat/index.js; then

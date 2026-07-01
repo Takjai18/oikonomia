@@ -1,4 +1,3 @@
-import json
 import sqlite3
 from datetime import datetime
 
@@ -161,6 +160,12 @@ def get_team_by_id(team_id):
 
 
 def get_team_protagonists(team_id):
+    """
+    SSOT: protagonist HP/sanity/trauma from protagonist_states;
+    static combat stats from PROTAGONIST_PROFILES (not squads.protagonist_stats JSON).
+    """
+    from models.protagonist import PROTAGONIST_PROFILES, get_protagonist_state
+
     clean_team_id = normalize_team_id(team_id)
     default = default_protagonist_template()
     if not clean_team_id:
@@ -173,10 +178,11 @@ def get_team_protagonists(team_id):
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
     team_row = conn.execute(
-        "SELECT route, leader_squad_id FROM teams WHERE team_id = ?", (clean_team_id,)
+        "SELECT route FROM teams WHERE team_id = ?", (clean_team_id,)
     ).fetchone()
+    conn.close()
+
     if not team_row:
-        conn.close()
         return {
             "iggy": default.copy(),
             "marah": default.copy(),
@@ -184,36 +190,34 @@ def get_team_protagonists(team_id):
         }
 
     route = team_row["route"]
-    leader_id = team_row["leader_squad_id"]
-    if leader_id:
-        squad_row = conn.execute(
-            "SELECT protagonist_stats FROM squads WHERE squad_id = ?", (leader_id,)
-        ).fetchone()
-    else:
-        squad_row = conn.execute(
-            "SELECT protagonist_stats FROM squads WHERE team_id = ? LIMIT 1",
-            (clean_team_id,),
-        ).fetchone()
-    conn.close()
+    result = {
+        "iggy": default.copy(),
+        "marah": default.copy(),
+        "active_route": route,
+    }
 
-    protagonist = default.copy()
-    if squad_row and squad_row["protagonist_stats"]:
-        try:
-            protagonist = json.loads(squad_row["protagonist_stats"])
-        except (json.JSONDecodeError, TypeError):
-            pass
+    for key in ("iggy", "marah"):
+        profile = PROTAGONIST_PROFILES.get(key, {})
+        state = get_protagonist_state(clean_team_id, key, create=True)
+        entry = {
+            **default.copy(),
+            "name": profile.get("display_name", key.title()),
+            "avatar": profile.get("avatar"),
+            "power": int(profile.get("power", default.get("power", 100))),
+            "intellect": int(profile.get("intellect", default.get("intellect", 100))),
+            "resilience": int(profile.get("resilience", default.get("resilience", 100))),
+        }
+        if state:
+            entry.update({
+                "hp": int(state.get("hp", 100)),
+                "max_hp": int(state.get("max_hp", 100)),
+                "sanity": int(state.get("sanity", 100)),
+                "trauma_count": int(state.get("trauma_count", 0)),
+                "near_death_until": state.get("near_death_until"),
+            })
+        result[key] = entry
 
-    iggy = default.copy()
-    marah = default.copy()
-    if route == "iggy":
-        iggy = protagonist
-    elif route == "marah":
-        marah = protagonist
-
-    result = {"iggy": iggy, "marah": marah, "active_route": route}
-    from models.protagonist import enrich_protagonists_dict
-
-    return enrich_protagonists_dict(clean_team_id, result)
+    return result
 
 
 def join_squad_to_team(squad_id, team_id, route):

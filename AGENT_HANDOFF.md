@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-07-01 · local/GitHub/PA：`223f8c6`（待 PA deploy）· BUG-2026-001 **resolved**
+> 最後更新：2026-07-01 · local/GitHub/PA：見 `git rev-parse --short HEAD` · BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -58,6 +58,7 @@
 | Scope | 最低驗證 |
 |-------|----------|
 | Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py` |
+| DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py` |
 | Combat 前端 | `npm run test:combat` + `npm run test:e2e:v2` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |
@@ -187,6 +188,7 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 | `ee9a691` | INV-D defeat roster、INV-E escape、monotonic FSM、engine targeting |
 | `15f2c37` | `services/combat_flow.py`、victory `settlement_id`、piercing damage、outcome 冪等 |
 | `223f8c6` | `index.html` V2 橋接：`isPlayerInActiveCombatV2()` 隔離 3s poll；`exitCombatScreen({fromV2})`；HP bar `transition:none` |
+| *latest* | P0 DB hardening：SQLite WAL、`purge_combat_actions`、session restore fast-forward、protagonist SSOT |
 
 **架構**：
 

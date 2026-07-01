@@ -158,6 +158,22 @@ def clear_team_combat_id(team_id):
         update_squad(member["squad_id"], current_combat_id=None)
 
 
+def purge_combat_actions(combat_id, *, conn=None):
+    """Remove orphaned phase submissions when a combat room closes."""
+    if not combat_id:
+        return 0
+    if conn is not None:
+        cur = conn.execute(
+            "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
+        )
+        return cur.rowcount
+    with immediate_transaction() as tx:
+        cur = tx.execute(
+            "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
+        )
+        return cur.rowcount
+
+
 def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     """Drop stale active markers when combat is already finished (SSOT heal)."""
     if not combat:
@@ -182,6 +198,8 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
         clear_team_combat_id(team_id)
     elif squad_id:
         update_squad(squad_id, current_combat_id=None)
+
+    purge_combat_actions(combat_id)
 
     return False, None, None
 
@@ -1259,6 +1277,7 @@ def _end_combat(combat_id, winner, encounter):
         end_fields["enemy_hp"] = 0
     save_combat(combat_id, **end_fields)
     starter_id = combat.get("squad_id")
+    purge_combat_actions(combat_id)
     if team_id:
         clear_team_combat_id(team_id)
     elif starter_id:
