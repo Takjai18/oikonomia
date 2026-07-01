@@ -16,6 +16,7 @@ from models.protagonist import build_protagonist_participant
 from models.settings import settings
 from services.announcements import list_announcements
 from utils.app_state import DB_INIT_ERROR
+from utils.combat_v2_flag import combat_v2_active, combat_v2_module_present
 from utils.deploy import player_template_text, read_deploy_version
 from utils.helpers import list_image_files, resolve_upload_disk_path
 from utils.qr import sign_qr_token
@@ -26,8 +27,7 @@ misc_bp = Blueprint("misc", __name__)
 
 @misc_bp.route("/")
 def index():
-    combat_v2_enabled = os.environ.get("COMBAT_V2", "").lower() in ("1", "true", "yes")
-    return render_template("index.html", combat_v2_enabled=combat_v2_enabled)
+    return render_template("index.html", combat_v2_enabled=combat_v2_active())
 
 
 @misc_bp.route("/__e2e__/combat-v2")
@@ -48,14 +48,12 @@ def api_version():
     avatar_dir = settings.avatar_dir
     portrait_dir = settings.portrait_dir
     template_text = player_template_text()
-    combat_v2_flag = os.environ.get("COMBAT_V2", "").lower() in ("1", "true", "yes")
-    combat_v2_js = os.path.isfile(
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "js", "combat", "index.js")
-    )
+    combat_v2_on = combat_v2_active()
+    combat_v2_js = combat_v2_module_present()
     return jsonify({
         "success": DB_INIT_ERROR is None,
         "version": read_deploy_version(),
-        "combat_v2": combat_v2_flag and combat_v2_js,
+        "combat_v2": combat_v2_on,
         "db_init_error": DB_INIT_ERROR,
         "markers": {
             "iggy_card": "iggy-card",
@@ -155,7 +153,7 @@ def api_version():
             "combat_flow_js": os.path.isfile(
                 os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "js", "combat_flow.js")
             ),
-            "combat_v2": combat_v2_flag and combat_v2_js,
+            "combat_v2": combat_v2_on,
             "combat_v2_module": combat_v2_js,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,

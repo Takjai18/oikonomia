@@ -91,6 +91,7 @@
 | `DATA_DIR` | PA | 預設應指向 `~/oikonomia/data`；錯路徑會搵錯 DB | `pa-update.sh` 會 set；WSGI 要與磁碟一致 |
 | Deploy 後未 Reload | PA Web tab | `git pull` 成功但 running code 仍舊；`/api/version` 可能仍舊或 500 | **必須** Web → Reload；用 `curl /api/version` 核對 `version` + `markers` |
 | `FORCE=1` | `pa-update.sh` | 一般 `git pull` 因 `.deploy-version` 等本地檔失敗 | PA 上一律 `FORCE=1 bash ~/oikonomia/deploy/pa-update.sh` |
+| `COMBAT_V2` | env / `data/.combat_v2` | **預設開啟**；GM 後台「戰鬥監控」可關閉；`COMBAT_V2=0` env 強制關 | 營會正常應 `combat_v2: true`；關閉只顯示維護提示 |
 | `OIKONOMIA_SHOW_TEST_ENCOUNTERS` | env | `1` 時非 GM 都見到測試 encounter | Production **唔好**設；僅開發／GM 測試用 |
 | `OIKONOMIA_ENDING_ENABLED` | env | `0` 停用 ending orchestrator 副作用 | 測試用；production 預設 `1` |
 | `OIKONOMIA_SKIP_DB_BOOTSTRAP` | env | `1` 跳過 DB bootstrap | 僅特殊測試；唔好喺 PA 亂開 |

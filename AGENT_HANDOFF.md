@@ -242,7 +242,7 @@ static/js/combat/
 | `resolve_combat_outcome` | Pipeline 內建 `immediate_transaction` 冪等；**無**外層 `with_db_retry` race |
 | `_end_combat` | 單一 `immediate_transaction`：ended + purge actions + clear squad locks |
 
-**Feature flag**：`COMBAT_V2=1`（env）→ `/api/version` → `markers.combat_v2`；`bootstrap.js` 掛載 `CombatApp`。
+**戰鬥 V2**：預設開啟（`utils/combat_v2_flag.py` · `data/.combat_v2`）；GM `/gm/api/combat_v2` 開關；`/api/version` → `combat_v2`。
 
 **Henry 實機待驗**（V2 啟用後）：
 

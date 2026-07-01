@@ -7,7 +7,7 @@ Oikonomia 青年營會 ARG（另類實境遊戲）Web App。雙主角路線（Ig
 - 玩家 Dashboard（HP / 神智 / 力量 / 智力 / 韌性、隊伍、物品、故事）
 - GPS 定位驗證、影相上傳（PIL 驗證、8MB 上限）
 - Team 協作、任務提交、故事階段解鎖
-- Encounter 遭遇戰（precheck、多回合 player phase、瀕死救援）
+- Encounter 遭遇戰（**Combat V2** 預設開啟；GM 可關閉維護、precheck、多回合 player phase、瀕死救援）
 - GM 後台（隊伍管理、戰鬥監控、公告、重置 PIN、下載隊伍圖片）
 
 ## 專案結構（重構後）
@@ -63,7 +63,7 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 
 | Baseline（只讀引用，唔貼全文） | 用途 |
 |-------------------------------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md` v14** | Combat V2 SSOT（首次 onboarding）· commit `d41f23a` |
+| **`COMBAT_V2_AUDIT_BUNDLE.md` v15** | Combat V2 SSOT（首次 onboarding） |
 | **`COMBAT_V2_PARTIAL_INDEX.md`** | 選 R11 / R12-A～D Partial Bundle |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | 營會現場高風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | 大廳橋接 / DB / 編排 / INV 局部審計 |
@@ -142,6 +142,18 @@ macOS 預設 5000 port 常被佔用，本地預設用 **5001**（`PORT=5002 pyth
 
 Production 必須設定環境變數：`SECRET_KEY`、`GM_PIN`。
 
+### 戰鬥系統 V2（預設開啟）
+
+| 項目 | 說明 |
+|------|------|
+| **預設** | **開啟** — 玩家進入遭遇戰頁會載入 Greenfield 戰鬥 UI |
+| **GM 開關** | GM 後台 → **戰鬥監控** 分頁 →「開啟／關閉戰鬥系統」 |
+| **持久化** | `data/.combat_v2`（`1` 開、`0` 關）；`pa-update.sh` 首次會建立 `1` |
+| **緊急覆寫** | 環境變數 `COMBAT_V2=0` 可強制關閉（優先於檔案） |
+| **驗證** | `curl -s …/api/version` → `"combat_v2": true` |
+
+關閉時玩家端戰鬥區顯示維護提示（唔影響登入、任務、劇情等其他功能）。
+
 ## 正式環境（PythonAnywhere）
 
 | 用途 | 網址 |
@@ -165,7 +177,7 @@ FORCE=1 bash ~/oikonomia/deploy/pa-update.sh
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ```
 
-確認 `success: true`，`version` 與 GitHub 最新 commit 一致，且 `markers` 含 `protagonist_combat`、`trauma_ending` 等（代表 running code 已重載）。
+確認 `success: true`，`version` 與 GitHub 最新 commit 一致，`combat_v2: true`，且 `markers` 含 `protagonist_combat`、`trauma_ending` 等（代表 running code 已重載）。
 
 ## 測試
 

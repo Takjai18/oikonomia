@@ -157,7 +157,7 @@ static/js/combat/
 
 ## 8. 遷移與部署
 
-- 使用 feature flag `COMBAT_V2`（預設 off）
+- 戰鬥 V2 **預設開啟**；GM 後台「戰鬥監控」可關閉（`data/.combat_v2`）；緊急可用 env `COMBAT_V2=0`
 - 保留舊版作為 rollback 方案
 - 建議 PR 順序：後端 API 欄位升級 → 狀態機核心 → View 重寫 → 測試 → 上線
 

@@ -24,6 +24,7 @@ from services.teams_overview import (
     get_all_teams_with_stats,
 )
 from services.gm_auth import clear_gm_session, establish_gm_session, gm_session_valid
+from utils.combat_v2_flag import combat_v2_active, is_combat_v2_enabled, set_combat_v2_enabled
 from utils.db_tx import immediate_transaction, with_db_retry
 from utils.env import is_production_env
 from utils.helpers import (
@@ -644,6 +645,46 @@ def gm_clear_all_images():
         "message": f"已成功刪除 {deleted_count} 張圖片（清空 {cleared_count} 筆提交記錄中的圖片欄位）",
         "deleted_files": deleted_count,
         "cleared_records": cleared_count,
+    })
+
+
+@gm_bp.route("/api/combat_v2", methods=["GET"])
+def gm_combat_v2_status():
+    denied = _require_gm()
+    if denied:
+        return denied
+    enabled = is_combat_v2_enabled()
+    return jsonify({
+        "success": True,
+        "enabled": enabled,
+        "active": combat_v2_active(),
+        "message": "戰鬥系統 V2 已開啟" if enabled else "戰鬥系統 V2 已關閉（玩家端顯示維護提示）",
+    })
+
+
+@gm_bp.route("/api/combat_v2", methods=["POST"])
+def gm_set_combat_v2():
+    denied = _require_gm()
+    if denied:
+        return denied
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get("enabled")
+    if raw is None:
+        raw = request.form.get("enabled")
+    if isinstance(raw, str):
+        raw = raw.strip().lower() in ("1", "true", "yes", "on")
+    elif raw is not None:
+        raw = bool(raw)
+    else:
+        return jsonify({"success": False, "error": "請提供 enabled（true/false）"}), 400
+
+    set_combat_v2_enabled(raw)
+    return jsonify({
+        "success": True,
+        "enabled": raw,
+        "active": combat_v2_active(),
+        "message": "已開啟戰鬥系統 V2" if raw else "已關閉戰鬥系統 V2",
     })
 
 

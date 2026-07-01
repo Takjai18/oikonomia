@@ -449,6 +449,19 @@ GM_DASHBOARD_HTML = """
         </div>
 
         <div id="gm-combat-tab" class="hidden">
+        <div class="bg-zinc-900 rounded-3xl p-6 mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-semibold">戰鬥系統 V2</h2>
+                    <p id="combat-v2-status-text" class="text-sm text-zinc-400 mt-1">載入中…</p>
+                </div>
+                <button type="button" id="combat-v2-toggle-btn"
+                        onclick="toggleCombatV2()"
+                        class="px-5 py-2.5 rounded-2xl text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-zinc-950">
+                    切換狀態
+                </button>
+            </div>
+        </div>
         <div class="bg-zinc-900 rounded-3xl p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-semibold">進行中戰鬥</h2>
@@ -1129,6 +1142,53 @@ GM_DASHBOARD_HTML = """
             }
         }
 
+        let combatV2Enabled = true;
+
+        async function loadCombatV2Setting() {
+            const statusEl = document.getElementById('combat-v2-status-text');
+            const btn = document.getElementById('combat-v2-toggle-btn');
+            if (!statusEl || !btn) return;
+            try {
+                const res = await fetch('/gm/api/combat_v2', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    statusEl.textContent = '無法讀取戰鬥系統狀態';
+                    return;
+                }
+                combatV2Enabled = !!data.enabled;
+                statusEl.textContent = data.message || (combatV2Enabled ? '已開啟' : '已關閉');
+                btn.textContent = combatV2Enabled ? '關閉戰鬥系統' : '開啟戰鬥系統';
+                btn.className = combatV2Enabled
+                    ? 'px-5 py-2.5 rounded-2xl text-sm font-semibold bg-red-600 hover:bg-red-700 text-white'
+                    : 'px-5 py-2.5 rounded-2xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white';
+            } catch (e) {
+                statusEl.textContent = '載入失敗';
+            }
+        }
+
+        async function toggleCombatV2() {
+            const next = !combatV2Enabled;
+            const action = next ? '開啟' : '關閉';
+            if (!confirm(`確定要${action}玩家端戰鬥系統 V2？\\n關閉後玩家進入戰鬥頁會見到維護提示。`)) return;
+            try {
+                const res = await fetch('/gm/api/combat_v2', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ enabled: next }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    showGmToast(data.error || '設定失敗', 'error');
+                    return;
+                }
+                showGmToast(data.message || '已更新', 'success');
+                await loadCombatV2Setting();
+            } catch (e) {
+                showGmToast('設定失敗', 'error');
+            }
+        }
+
         async function loadActiveCombats() {
             const container = document.getElementById('gm-combat-content');
             container.innerHTML = '<div class="text-zinc-400 text-center py-8">載入中...</div>';
@@ -1238,6 +1298,7 @@ GM_DASHBOARD_HTML = """
             } else if (tab === 'combat') {
                 combatTab.classList.remove('hidden');
                 btnCombat.classList.add('active', 'bg-amber-500', 'text-zinc-950');
+                loadCombatV2Setting();
                 loadActiveCombats();
             } else {
                 squadsTab.classList.remove('hidden');

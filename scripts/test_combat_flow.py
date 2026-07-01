@@ -682,6 +682,36 @@ def test_player_max_hp(leader_id):
     ok("squad_max_hp helper", squad_max_hp(squad) == 125)
 
 
+def test_combat_v2_flag_default_and_toggle(tmp_path=None):
+    """Combat V2 defaults ON; GM file toggle persists."""
+    import os
+    import tempfile
+    from utils import combat_v2_flag as cv2
+
+    with tempfile.TemporaryDirectory() as td:
+        old_data = os.environ.get("DATA_DIR")
+        old_env = os.environ.get("COMBAT_V2")
+        try:
+            os.environ["DATA_DIR"] = td
+            os.environ.pop("COMBAT_V2", None)
+            ok("combat_v2 default on (no file)", cv2.is_combat_v2_enabled() is True)
+            cv2.set_combat_v2_enabled(False)
+            ok("combat_v2 file off", cv2.is_combat_v2_enabled() is False)
+            cv2.set_combat_v2_enabled(True)
+            ok("combat_v2 file on", cv2.is_combat_v2_enabled() is True)
+            os.environ["COMBAT_V2"] = "0"
+            ok("combat_v2 env off overrides file", cv2.is_combat_v2_enabled() is False)
+        finally:
+            if old_data is None:
+                os.environ.pop("DATA_DIR", None)
+            else:
+                os.environ["DATA_DIR"] = old_data
+            if old_env is None:
+                os.environ.pop("COMBAT_V2", None)
+            else:
+                os.environ["COMBAT_V2"] = old_env
+
+
 def test_zoo_bonus_multiplier_boundaries():
     """Zoo tier boundaries: >=70/80/90/100 (Final v1.1)."""
     from models.combat import zoo_bonus_multiplier
@@ -2131,6 +2161,7 @@ def main():
     join_data = r2.get_json()
     ok("玩家2 加入隊伍", join_data.get("success"), str(join_data))
 
+    test_combat_v2_flag_default_and_toggle()
     test_zoo_bonus_multiplier_boundaries()
     test_defend_team_buff_helpers()
     test_trauma_ending_thresholds()
