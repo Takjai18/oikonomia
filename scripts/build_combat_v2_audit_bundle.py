@@ -132,13 +132,13 @@ def main():
         ref = ROOT / ".git" / "refs" / "heads" / "main"
         head = ref.read_text(encoding="utf-8").strip()[:7] if ref.exists() else "unknown"
 
-    header = f"""# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · R12-C/D 第三輪錨點）
+    header = f"""# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
 > **日期**：{today} · **commit**：`{head}`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R12-C₃ INV-E targeting · R12-D₄ settlement teardown ✅（見 `GEMINI_REVIEW.md` §22）  
+> **上一輪**：原子 resolve-phase · bootstrap 重連 skeleton · PA deploy 硬化 ✅（見 `GEMINI_REVIEW.md` §23）  
 > **本輪**：v14 錨點（PA 可部署 · `{head}`）；下一輪用 **Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
@@ -151,7 +151,7 @@ def main():
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§22 — 唔好重複報已落地項（含 §22 R12-C/D 第三輪）
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§23 — 唔好重複報已落地項（含 §23 全棧審計落地）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
 ### 0.1 Partial 審計狀態（`{head}` · 已審已修，回歸 only）
@@ -161,7 +161,7 @@ def main():
 | **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 · §22 |
 | **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
 | **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
-| **R12-C** | failed_escape targeting · conn= pipeline · INV-E | ✅ §20 · §22 |
+| **R12-C** | failed_escape targeting · atomic resolve-phase · INV-E | ✅ §20 · §22 · §23 |
 | **R11** | GM sanitize · DICE_CONFIRM timeout · co-op CAS | ✅ §18–§20 |
 | **R13** | combat_start IDOR · rescue target · lazy import | ✅ §19 |
 
@@ -204,7 +204,7 @@ npm run test:combat                                    # 24/24 pass
 ./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
 ./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
-./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5 pass
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 scripts/test_ending_flow.py                            # 23/23 pass
 npm run test:e2e:v2                                    # T8–T14

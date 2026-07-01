@@ -1,11 +1,11 @@
-# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · R12-C/D 第三輪錨點）
+# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-01 · **commit**：`129b6b6`  
+> **日期**：2026-07-01 · **commit**：`28601b3`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R12-C₃ INV-E targeting · R12-D₄ settlement teardown ✅（見 `GEMINI_REVIEW.md` §22）  
-> **本輪**：v14 錨點（PA 可部署 · `129b6b6`）；下一輪用 **Partial** 或 §20.3 **新 scope**
+> **上一輪**：原子 resolve-phase · bootstrap 重連 skeleton · PA deploy 硬化 ✅（見 `GEMINI_REVIEW.md` §23）  
+> **本輪**：v14 錨點（PA 可部署 · `28601b3`）；下一輪用 **Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
@@ -17,17 +17,17 @@
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§22 — 唔好重複報已落地項（含 §22 R12-C/D 第三輪）
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§23 — 唔好重複報已落地項（含 §23 全棧審計落地）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
-### 0.1 Partial 審計狀態（`129b6b6` · 已審已修，回歸 only）
+### 0.1 Partial 審計狀態（`28601b3` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
 | **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 · §22 |
 | **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
 | **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
-| **R12-C** | failed_escape targeting · conn= pipeline · INV-E | ✅ §20 · §22 |
+| **R12-C** | failed_escape targeting · atomic resolve-phase · INV-E | ✅ §20 · §22 · §23 |
 | **R11** | GM sanitize · DICE_CONFIRM timeout · co-op CAS | ✅ §18–§20 |
 | **R13** | combat_start IDOR · rescue target · lazy import | ✅ §19 |
 
@@ -63,14 +63,14 @@
 
 ---
 
-## 3. 測試狀態（R14 · `129b6b6`）
+## 3. 測試狀態（R14 · `28601b3`）
 
 ```bash
 npm run test:combat                                    # 24/24 pass
 ./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
 ./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
-./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5 pass
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 scripts/test_ending_flow.py                            # 23/23 pass
 npm run test:e2e:v2                                    # T8–T14
@@ -112,7 +112,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ## 6. PR-6 結構（回歸）
 
-- `index.html` 4897 行 · `combat_flow.js` 已刪除
+- `index.html` 4901 行 · `combat_flow.js` 已刪除
 
 ---
 
@@ -143,7 +143,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§22 已修 R11–R14 + R12-C/D 第三輪） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§23 已修 R11–R14 + 全棧審計落地） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -362,7 +362,11 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）· 或貼 COMBAT
         const deadline = Date.now() + maxMs;
         while (Date.now() < deadline) {
             if (window.combatV2?.isEnabled?.()) return true;
-            if (window.combatV2 && typeof window.combatV2.isEnabled === 'function' && !window.combatV2.isEnabled()) {
+            if (
+                window.combatV2?.isInitComplete?.()
+                && typeof window.combatV2.isEnabled === 'function'
+                && !window.combatV2.isEnabled()
+            ) {
                 return false;
             }
             await new Promise((r) => setTimeout(r, 50));
@@ -804,22 +808,36 @@ ATTACK_ACTION_TYPES = frozenset({
 
 /**
  * @file static/js/combat/bootstrap.js
- * @description COMBAT_V2 綠地架構啟動器 - 已完全移除 Legacy 熔斷保險絲
+ * @description COMBAT_V2 綠地架構啟動器 — 同步 skeleton 防止弱網重連競態
  */
 
 import { CombatApp } from './index.js';
 
 let app = null;
-let enabled = false;
+let enabled = null;
+let initPromise = null;
+let initComplete = false;
 
-/**
- * 安全檢測後端 Feature Flag 狀態
- */
+const handlers = {
+  async onCombatStarted() {},
+  async performAction() {},
+  exitToLobby() {},
+  summonGm() {},
+  executeGmOverride() {},
+  pollTick() {},
+  onSubmitSuccess() {},
+};
+
+const root = () => document.getElementById('combat-root-v2');
+
 async function detectCombatV2() {
   if (window.__OIKONOMIA_COMBAT_V2__ === true) return true;
   if (window.__OIKONOMIA_COMBAT_V2__ === false) return false;
   try {
-    const res = await fetch('/api/version', { credentials: 'same-origin' });
+    const res = await fetch('/api/version', {
+      credentials: 'same-origin',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     const data = await res.json();
     return !!(data.combat_v2 || data.markers?.combat_v2);
   } catch (_) {
@@ -827,68 +845,109 @@ async function detectCombatV2() {
   }
 }
 
-function getRoot() {
-  return document.getElementById('combat-root-v2');
+async function ensureInitialized() {
+  if (!initPromise) {
+    initPromise = init();
+  }
+  await initPromise;
 }
 
-/**
- * 綠地初始化生命週期
- */
-async function init() {
-  enabled = await detectCombatV2();
-  const root = getRoot();
+function mountDisabledStub() {
+  enabled = false;
+  Object.assign(handlers, {
+    async onCombatStarted() {},
+    async performAction() {},
+    exitToLobby() {},
+    summonGm() {},
+    executeGmOverride() {},
+    pollTick() {},
+    onSubmitSuccess() {},
+  });
+}
 
-  if (!enabled || !root) {
-    window.combatV2 = { isEnabled: () => false };
-    return;
-  }
-
-  app = CombatApp.mount(root);
-
-  window.combatV2 = {
-    isEnabled: () => true,
-
-    async onCombatStarted(data) {
-      console.log(`[Greenfield] 接收到戰鬥啟動訊號，戰鬥ID: ${data.combat_id}`);
-      if (data.combat_id) {
-        sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
-        sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
-      }
-      root.classList.remove('hidden');
-      await app.onCombatStarted(data);
-    },
-
-    async performAction(type) {
-      return app.performAction(type);
-    },
-
-    exitToLobby: () => app.exitToLobby(),
-    summonGm: () => app.summonGm(),
-    executeGmOverride: (opts) => app.executeGmOverride(opts),
-    getState: () => app.getState(),
-    pollTick: (data) => app.pollTick(data),
-    onSubmitSuccess: (data) => app.onSubmitSuccess(data),
-    getApp: () => app,
-    destroy: () => {
-      if (app) {
-        app.destroy();
-        app = null;
-      }
-    },
+function bindLiveHandlers(combatRoot) {
+  handlers.onCombatStarted = async (data) => {
+    console.log(`[Greenfield] 接收到戰鬥啟動訊號，戰鬥ID: ${data.combat_id}`);
+    if (data.combat_id) {
+      sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
+      sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
+    }
+    combatRoot.classList.remove('hidden');
+    await app.onCombatStarted(data);
   };
+  handlers.performAction = (type) => app.performAction(type);
+  handlers.exitToLobby = () => app.exitToLobby();
+  handlers.summonGm = () => app.summonGm();
+  handlers.executeGmOverride = (opts) => app.executeGmOverride(opts);
+  handlers.pollTick = (data) => app.pollTick(data);
+  handlers.onSubmitSuccess = (data) => app.onSubmitSuccess(data);
+}
 
-  window.CombatV2App = window.combatV2;
+window.combatV2 = {
+  isEnabled: () => enabled === true,
+  isInitComplete: () => initComplete,
+  async onCombatStarted(data) {
+    await ensureInitialized();
+    return handlers.onCombatStarted(data);
+  },
+  async performAction(type) {
+    await ensureInitialized();
+    return handlers.performAction(type);
+  },
+  exitToLobby: () => {
+    void ensureInitialized().then(() => handlers.exitToLobby());
+  },
+  summonGm: () => {
+    void ensureInitialized().then(() => handlers.summonGm());
+  },
+  executeGmOverride: (opts) => {
+    void ensureInitialized().then(() => handlers.executeGmOverride(opts));
+  },
+  getState: () => app?.getState() ?? null,
+  pollTick: (data) => {
+    if (app) return handlers.pollTick(data);
+    void ensureInitialized();
+  },
+  onSubmitSuccess: (data) => {
+    if (app) return handlers.onSubmitSuccess(data);
+    void ensureInitialized();
+  },
+  getApp: () => app,
+  destroy: () => {
+    if (app) {
+      app.destroy();
+      app = null;
+    }
+  },
+};
+window.CombatV2App = window.combatV2;
 
-  console.log(
+async function init() {
+  try {
+    enabled = await detectCombatV2();
+    const combatRoot = root();
+
+    if (!enabled || !combatRoot) {
+      mountDisabledStub();
+      return;
+    }
+
+    app = CombatApp.mount(combatRoot);
+    bindLiveHandlers(combatRoot);
+
+    console.log(
     '%c[Greenfield] Oikonomia Combat V2 核心已成功獨立掛載，Legacy 代碼完全清理完成。',
     'color: #10b981; font-weight: bold;',
-  );
+    );
+  } finally {
+    initComplete = true;
+  }
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => { void ensureInitialized(); });
 } else {
-  init();
+  void ensureInitialized();
 }
 
 
@@ -1308,6 +1367,7 @@ export class CombatApp {
         '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
       );
       this.hasTriggeredTimeoutDefense = true;
+      this.views?.dice?.setConfirmDisabled?.(true);
       this.ctx = {
         ...this.ctx,
         dice: { ...this.ctx.dice, action: 'defend', value: null, cosmetic: false },
@@ -3044,11 +3104,15 @@ export function createDiceModalView(rootEl) {
         confirmBtn.textContent = isItem ? '確認使用並結束回合' : '確認並結束本回合';
       }
     },
+    setConfirmDisabled(disabled) {
+      if (confirmBtn) confirmBtn.disabled = !!disabled;
+    },
     hide() {
       if (modal) {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
       }
+      if (confirmBtn) confirmBtn.disabled = false;
       rolling = false;
     },
     onConfirm(handler) {
@@ -6428,6 +6492,215 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
     return combat, winner
 
 
+def _buffered_participant_hp(participant, squad_updates, protagonist_updates):
+    sid = participant.get("squad_id")
+    if is_protagonist_participant(sid):
+        key, team_id = parse_protagonist_squad_id(sid)
+        if team_id and key:
+            buf = protagonist_updates.get((team_id, key), {})
+            if "hp" in buf:
+                return int(buf["hp"])
+    else:
+        buf = squad_updates.get(sid, {})
+        if "hp" in buf:
+            return int(buf["hp"])
+    return int(participant.get("hp") or 0)
+
+
+def _buffer_set_hp(squad_id, new_hp, squad_updates, protagonist_updates):
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if team_id and key:
+            protagonist_updates.setdefault((team_id, key), {})["hp"] = int(new_hp)
+    else:
+        squad_updates.setdefault(squad_id, {})["hp"] = int(new_hp)
+
+
+def _buffer_set_sanity(squad_id, new_san, squad_updates, protagonist_updates):
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if team_id and key:
+            protagonist_updates.setdefault((team_id, key), {})["sanity"] = int(new_san)
+    else:
+        squad_updates.setdefault(squad_id, {})["sanity"] = int(new_san)
+
+
+def _buffer_apply_damage(squad_id, damage, participant, squad_updates, protagonist_updates, trauma_events):
+    participant = participant or {}
+    if is_protagonist_participant(squad_id):
+        key, team_id = parse_protagonist_squad_id(squad_id)
+        if not key or not team_id:
+            return int(participant.get("hp") or 0)
+        buf = protagonist_updates.setdefault((team_id, key), {})
+        curr = buf.get("hp", int(participant.get("hp") or 0))
+        new_hp = max(0, curr - int(damage))
+        buf["hp"] = new_hp
+        if new_hp <= 0:
+            buf["near_death_until"] = (
+                datetime.now() + timedelta(minutes=settings.near_death_minutes)
+            ).isoformat()
+            prev_trauma = buf.get("trauma_count", int(participant.get("trauma_count") or 0))
+            buf["trauma_count"] = prev_trauma + 1
+            trauma_events.append((team_id, key, 1, "near_death_damage"))
+        return new_hp
+
+    buf = squad_updates.setdefault(squad_id, {})
+    curr = buf.get("hp", int(participant.get("hp") or 0))
+    new_hp = max(0, curr - int(damage))
+    buf["hp"] = new_hp
+    if new_hp <= 0 and not participant.get("near_death_until"):
+        buf["near_death_until"] = (
+            datetime.now() + timedelta(minutes=settings.near_death_minutes)
+        ).isoformat()
+    return new_hp
+
+
+def _participants_with_buffers(participants, squad_updates, protagonist_updates):
+    merged = []
+    for p in participants:
+        row = dict(p)
+        sid = row.get("squad_id")
+        if is_protagonist_participant(sid):
+            key, team_id = parse_protagonist_squad_id(sid)
+            buf = protagonist_updates.get((team_id, key), {}) if team_id and key else {}
+        else:
+            buf = squad_updates.get(sid, {})
+        for field, val in buf.items():
+            row[field] = val
+        merged.append(row)
+    return merged
+
+
+def _team_defeated_from_participants(participants):
+    alive = 0
+    for p in participants:
+        if int(p.get("hp") or 0) > 0:
+            alive += 1
+            continue
+        if p.get("near_death_until"):
+            try:
+                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
+                    alive += 1
+            except ValueError:
+                pass
+    return alive == 0
+
+
+def _apply_resolve_phase_writes(
+    conn,
+    *,
+    items_to_delete,
+    squad_updates,
+    protagonist_updates,
+    trauma_events,
+):
+    for squad_id, item_id in items_to_delete:
+        deleted = conn.execute(
+            "DELETE FROM player_items WHERE squad_id = ? AND item_id = ?",
+            (squad_id, item_id),
+        )
+        if deleted.rowcount != 1:
+            raise RuntimeError(f"item consume failed: {squad_id}/{item_id}")
+
+    for squad_id, fields in squad_updates.items():
+        if "hp" in fields:
+            conn.execute(
+                "UPDATE squads SET hp = ? WHERE squad_id = ?",
+                (fields["hp"], squad_id),
+            )
+        if "sanity" in fields:
+            conn.execute(
+                "UPDATE squads SET sanity = ? WHERE squad_id = ?",
+                (fields["sanity"], squad_id),
+            )
+        if "near_death_until" in fields:
+            nd = fields["near_death_until"]
+            if nd is None:
+                conn.execute(
+                    "UPDATE squads SET near_death_until = NULL WHERE squad_id = ?",
+                    (squad_id,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE squads SET near_death_until = ? WHERE squad_id = ?",
+                    (nd, squad_id),
+                )
+
+    for (team_id, protagonist_key), fields in protagonist_updates.items():
+        updates = []
+        params = []
+        for col in ("hp", "max_hp", "sanity", "trauma_count"):
+            if col in fields:
+                updates.append(f"{col} = ?")
+                params.append(fields[col])
+        if "near_death_until" in fields:
+            nd = fields["near_death_until"]
+            if nd is None:
+                updates.append("near_death_until = NULL")
+            else:
+                updates.append("near_death_until = ?")
+                params.append(nd)
+        if updates:
+            updates.append("last_updated = ?")
+            params.append(datetime.now().isoformat())
+            params.extend([team_id, protagonist_key])
+            conn.execute(
+                f"UPDATE protagonist_states SET {', '.join(updates)} "
+                "WHERE team_id = ? AND protagonist = ?",
+                params,
+            )
+
+    now = datetime.now().isoformat()
+    for team_id, protagonist_key, delta, reason in trauma_events:
+        conn.execute(
+            """INSERT INTO protagonist_trauma_log
+               (team_id, protagonist, delta, reason, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (team_id, protagonist_key, int(delta), reason, now),
+        )
+
+
+def _commit_resolve_phase_state(
+    combat_id,
+    *,
+    items_to_delete,
+    squad_updates,
+    protagonist_updates,
+    trauma_events,
+    combat_fields,
+):
+    logs_json = json.dumps(combat_fields.get("logs") or [], ensure_ascii=False)
+    with immediate_transaction(settings.db_path) as conn:
+        _apply_resolve_phase_writes(
+            conn,
+            items_to_delete=items_to_delete,
+            squad_updates=squad_updates,
+            protagonist_updates=protagonist_updates,
+            trauma_events=trauma_events,
+        )
+        allowed = {
+            "status", "current_phase", "enemy_hp", "phase_actions", "logs",
+            "phase_started_at", "phase_deadline",
+        }
+        updates = []
+        params = []
+        for key, val in combat_fields.items():
+            if key not in allowed:
+                continue
+            if key == "logs":
+                val = logs_json
+            elif key == "phase_actions":
+                val = json.dumps(val or {}, ensure_ascii=False)
+            updates.append(f"{key} = ?")
+            params.append(val)
+        if updates:
+            params.append(combat_id)
+            conn.execute(
+                f"UPDATE combats SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+
+
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != COMBAT_STATUS_RESOLVING:
@@ -6453,6 +6726,10 @@ def _resolve_player_phase_body(combat_id):
         player_control_ids,
     )
     item_consume_batch = build_combat_item_consume_batch(actions)
+    items_to_delete = []
+    squad_updates = {}
+    protagonist_updates = {}
+    trauma_events = []
 
     enemy_hp = int(combat.get("enemy_hp") or 0)
     enemy_resilience = int(combat.get("enemy_resilience") or 0)
@@ -6488,7 +6765,6 @@ def _resolve_player_phase_body(combat_id):
         counter_target_actions = actions
 
     total_damage_to_enemy = 0
-    berserk_players = []
 
     for player_squad_id, action_data in actions.items():
         player = participant_by_id.get(player_squad_id)
@@ -6515,10 +6791,13 @@ def _resolve_player_phase_body(combat_id):
             continue
 
         if is_berserk(sanity):
-            berserk_players.append(player_squad_id)
             if random.random() < 0.30:
                 self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
-                apply_damage_to_combat_participant(player_squad_id, self_dmg, participant=player)
+                _buffer_apply_damage(
+                    player_squad_id, self_dmg, player,
+                    squad_updates, protagonist_updates, trauma_events,
+                )
+                player["hp"] = _buffered_participant_hp(player, squad_updates, protagonist_updates)
                 combat = append_combat_log(
                     combat,
                     f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
@@ -6540,7 +6819,7 @@ def _resolve_player_phase_body(combat_id):
         item_effect_value = 0
 
         if action_type == "use_item" and action_data.get("item_id"):
-            ok, item, err = item_consume_batch.consume(
+            ok, item, err = item_consume_batch.consume_dry_run(
                 player_squad_id, action_data["item_id"],
             )
             if not ok:
@@ -6556,12 +6835,13 @@ def _resolve_player_phase_body(combat_id):
                 item_effect_value = int(item.get("effect_value") or 0)
             except (TypeError, ValueError):
                 item_effect_value = 0
+            items_to_delete.append((player_squad_id, action_data["item_id"]))
 
             if item_effect_type == "hp_up" and item_effect_value > 0:
-                curr_hp = int(player.get("hp") or 0)
+                curr_hp = _buffered_participant_hp(player, squad_updates, protagonist_updates)
                 max_hp = int(player.get("max_hp") or 100)
                 new_hp = min(max_hp, curr_hp + item_effect_value)
-                update_squad(player_squad_id, hp=new_hp)
+                _buffer_set_hp(player_squad_id, new_hp, squad_updates, protagonist_updates)
                 player["hp"] = new_hp
                 combat = append_combat_log(
                     combat,
@@ -6571,7 +6851,7 @@ def _resolve_player_phase_body(combat_id):
             elif item_effect_type == "sanity_up":
                 curr_san = int(player.get("sanity") or 0)
                 new_san = max(0, min(100, curr_san + item_effect_value))
-                update_squad(player_squad_id, sanity=new_san)
+                _buffer_set_sanity(player_squad_id, new_san, squad_updates, protagonist_updates)
                 player["sanity"] = new_san
                 san_label = "回復" if item_effect_value >= 0 else "扣除"
                 combat = append_combat_log(
@@ -6677,26 +6957,26 @@ def _resolve_player_phase_body(combat_id):
 
     combat["enemy_hp"] = new_enemy_hp
     combat["phase_actions"] = {}
+    write_buffers = dict(
+        items_to_delete=items_to_delete,
+        squad_updates=squad_updates,
+        protagonist_updates=protagonist_updates,
+        trauma_events=trauma_events,
+    )
 
     if new_enemy_hp <= 0:
-        save_combat(
+        _commit_resolve_phase_state(
             combat_id,
-            enemy_hp=new_enemy_hp,
-            logs=combat.get("logs"),
-            phase_actions={},
+            **write_buffers,
+            combat_fields={
+                "enemy_hp": new_enemy_hp,
+                "logs": combat.get("logs"),
+                "phase_actions": {},
+            },
         )
         return _end_combat(combat_id, "squad", encounter), "squad"
 
-    save_combat(
-        combat_id,
-        enemy_hp=new_enemy_hp,
-        logs=combat.get("logs"),
-        status="enemy_phase",
-        phase_actions={},
-    )
-    combat["status"] = "enemy_phase"
-
-    fresh_participants = refresh_combat_participants(participants)
+    fresh_participants = _participants_with_buffers(participants, squad_updates, protagonist_updates)
     target = (
         select_enemy_counter_target(
             fresh_participants, counter_target_actions, enemy_base_damage,
@@ -6714,9 +6994,10 @@ def _resolve_player_phase_body(combat_id):
             team_defend_multiplier=team_defend_mult,
         )
         if incoming > 0:
-            apply_damage_to_combat_participant(target_id, incoming, participant=target)
-            refreshed_list = refresh_combat_participants([target])
-            refreshed = refreshed_list[0] if refreshed_list else target
+            _buffer_apply_damage(
+                target_id, incoming, target,
+                squad_updates, protagonist_updates, trauma_events,
+            )
             defend_note = ""
             if defender_count > 0:
                 defend_note = (
@@ -6732,10 +7013,11 @@ def _resolve_player_phase_body(combat_id):
                 + pro_note,
                 log_type="enemy_attack",
             )
-            if refreshed and refreshed.get("near_death_until"):
+            merged_target = _participants_with_buffers([target], squad_updates, protagonist_updates)[0]
+            if merged_target.get("near_death_until"):
                 trauma_note = ""
-                if target.get("is_protagonist") and int(refreshed.get("trauma_count") or 0) > 0:
-                    trauma_note = f"（心理創傷 +1，累計 {refreshed.get('trauma_count')}）"
+                if target.get("is_protagonist") and int(merged_target.get("trauma_count") or 0) > 0:
+                    trauma_note = f"（心理創傷 +1，累計 {merged_target.get('trauma_count')}）"
                 combat = append_combat_log(
                     combat,
                     f"{target.get('display_name', target_id)} 陷入瀕死！"
@@ -6743,20 +7025,35 @@ def _resolve_player_phase_body(combat_id):
                     log_type="near_death",
                 )
 
-    if _team_combat_defeated(combat):
-        save_combat(combat_id, logs=combat.get("logs"))
+    write_buffers = dict(
+        items_to_delete=items_to_delete,
+        squad_updates=squad_updates,
+        protagonist_updates=protagonist_updates,
+        trauma_events=trauma_events,
+    )
+    defeated_participants = _participants_with_buffers(participants, squad_updates, protagonist_updates)
+    if _team_defeated_from_participants(defeated_participants):
+        _commit_resolve_phase_state(
+            combat_id,
+            **write_buffers,
+            combat_fields={"logs": combat.get("logs")},
+        )
         return _end_combat(combat_id, "enemy", encounter), "enemy"
 
     now = datetime.now().isoformat()
     limit = combat_settings.get("phase_time_limit_seconds", 180)
-    save_combat(
+    _commit_resolve_phase_state(
         combat_id,
-        status="player_phase",
-        current_phase=int(combat.get("current_phase") or 0) + 1,
-        logs=combat.get("logs"),
-        phase_started_at=now,
-        phase_deadline=combat_phase_deadline(now, limit),
-        phase_actions={},
+        **write_buffers,
+        combat_fields={
+            "status": "player_phase",
+            "current_phase": int(combat.get("current_phase") or 0) + 1,
+            "enemy_hp": new_enemy_hp,
+            "logs": combat.get("logs"),
+            "phase_started_at": now,
+            "phase_deadline": combat_phase_deadline(now, limit),
+            "phase_actions": {},
+        },
     )
     return get_combat(combat_id), None
 
@@ -8076,6 +8373,7 @@ class CombatItemConsumeBatch:
         self._catalog = {}
         self._owned = set()
         self._consumed = set()
+        self._pending = set()
         pairs = []
         for squad_id, action_data in (actions or {}).items():
             action_type = action_data.get("action_type") or action_data.get("action")
@@ -8104,6 +8402,28 @@ class CombatItemConsumeBatch:
             self._owned = {(row[0], int(row[1])) for row in rows}
         finally:
             conn.close()
+
+    def consume_dry_run(self, squad_id, catalog_item_id):
+        """Validate ownership without DB write (deferred to resolve-phase transaction)."""
+        try:
+            catalog_item_id = int(catalog_item_id)
+        except (TypeError, ValueError):
+            return False, None, "無效的物品"
+
+        key = (squad_id, catalog_item_id)
+        if key in self._consumed or key in self._pending:
+            return False, None, "物品消耗失敗"
+
+        item = self._catalog.get(catalog_item_id)
+        if not item:
+            return False, None, "物品不存在或已停用"
+        if not _item_combat_usable(item):
+            return False, None, "此物品無法在戰鬥中使用"
+        if key not in self._owned:
+            return False, None, "你沒有這件物品"
+
+        self._pending.add(key)
+        return True, item, ""
 
     def consume(self, squad_id, catalog_item_id):
         try:
@@ -8533,29 +8853,25 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
             return None
 
         base = default_protagonist_template()
-        profile = PROTAGONIST_PROFILES.get(protagonist_key, {})
         now = datetime.now().isoformat()
         hp = int(base.get("hp", 100))
         max_hp = int(base.get("hp", DEFAULT_MAX_HP))
         sanity = int(base.get("sanity", 100))
         conn.execute(
-            """INSERT INTO protagonist_states
+            """INSERT OR IGNORE INTO protagonist_states
                (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
                VALUES (?, ?, ?, ?, ?, 0, 1, ?)""",
             (clean_team, protagonist_key, hp, max_hp, sanity, now),
         )
         conn.commit()
-        return {
-            "team_id": clean_team,
-            "protagonist": protagonist_key,
-            "hp": hp,
-            "max_hp": max_hp,
-            "sanity": sanity,
-            "trauma_count": 0,
-            "is_active": 1,
-            "near_death_until": None,
-            "last_updated": now,
-        }
+        row = conn.execute(
+            """SELECT team_id, protagonist, hp, max_hp, sanity, trauma_count,
+                      is_active, near_death_until, last_updated
+               FROM protagonist_states
+               WHERE team_id = ? AND protagonist = ?""",
+            (clean_team, protagonist_key),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
@@ -10466,7 +10782,11 @@ def api_version():
             "show_only_protagonist": "showOnlyProtagonistCard",
             "combat_system": callable(resolve_player_phase),
             "combat_preview": callable(build_combat_round_preview),
-            "combat_modal": "combat-action-modal" in template_text,
+            "combat_modal": (
+                "combat-action-modal" in template_text
+                or "combat-root-v2" in template_text
+            ),
+            "combat_v2_module": "combat-root-v2" in template_text,
             "session_restore_v2": "tryLoginWithStoredSquad" in template_text,
             "settings_modal": "openSettingsModal" in template_text,
             "settings_js_safe": "resetAllSettings" in template_text and ".join('\\n')" in template_text,
@@ -14172,6 +14492,25 @@ def test_mixed_round_escape_fail_continues_attack():
         fail("mixed round attacker damage while escaper deals zero", str(breakdown))
 
 
+def test_consume_dry_run_defers_delete():
+    from models.item import CombatItemConsumeBatch
+
+    class FakeBatch(CombatItemConsumeBatch):
+        def __init__(self):
+            self._catalog = {9: {"id": 9, "name": "Test", "has_ability": True, "effect_type": "power_up", "effect_value": 5}}
+            self._owned = {("s1", 9)}
+            self._consumed = set()
+            self._pending = set()
+
+    batch = FakeBatch()
+    ok1, item1, err1 = batch.consume_dry_run("s1", 9)
+    ok2, _, err2 = batch.consume_dry_run("s1", 9)
+    if ok1 and item1 and not ok2 and err2:
+        ok("consume_dry_run validates without DB write")
+    else:
+        fail("consume_dry_run validates without DB write", f"{ok1},{ok2},{err1},{err2}")
+
+
 def test_victory_payload_settlement_id():
     from services.combat_outcomes import build_victory_outcome_payload
 
@@ -14190,6 +14529,7 @@ def main():
     print("=== Combat flow orchestrator tests ===\n")
     test_normalize_failed_escape()
     test_mixed_round_escape_fail_continues_attack()
+    test_consume_dry_run_defers_delete()
     test_victory_payload_settlement_id()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1
@@ -14272,4 +14612,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v14 · 2026-07-01 · `129b6b6`*
+*End of COMBAT_V2_AUDIT_BUNDLE v14 · 2026-07-01 · `28601b3`*

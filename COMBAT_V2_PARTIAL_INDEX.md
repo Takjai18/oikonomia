@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-01 · **commit**：`129b6b6`  
+> **日期**：2026-07-01 · **commit**：`28601b3`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -37,17 +37,17 @@
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
 | 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `129b6b6` §22 |
+| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `28601b3` §23 |
 
 ---
 
-## 測試基線（2026-07-01 · `129b6b6`）
+## 測試基線（2026-07-01 · `28601b3`）
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
 ./venv/bin/python3 scripts/test_db_hardening.py     # 13/13
 ./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
-./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 npm run test:combat                                 # 24/24
 npm run test:e2e:v2                               # T8–T14

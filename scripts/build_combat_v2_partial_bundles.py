@@ -169,7 +169,7 @@ def build_index(today: str, head: str) -> str:
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
 | 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `{head}` §22 |
+| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `{head}` §23 |
 
 ---
 
@@ -179,7 +179,7 @@ def build_index(today: str, head: str) -> str:
 ./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
 ./venv/bin/python3 scripts/test_db_hardening.py     # 13/13
 ./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
-./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 npm run test:combat                                 # 24/24
 npm run test:e2e:v2                               # T8–T14
@@ -297,7 +297,7 @@ def build_r12_c_step4_orchestration(today: str, head: str) -> str:
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**（§22 已修：`failed_escape` targeting · `conn=` pipeline — 回歸 only）：
+**焦點問題**（§22–§23 已修：targeting · atomic resolve-phase · `consume_dry_run` — 回歸 only）：
 1. 逃跑失敗後防禦分母與攻擊結算是否滿足 INV-E？（`normalize_failed_escape_actions` vs `_resolve_player_phase_body`）
 2. `select_enemy_counter_target` 是否同時相容 `escape` 與 `failed_escape` 優先級？
 3. `execute_post_combat_success_pipeline(conn=)` 是否杜絕巢狀 transaction？

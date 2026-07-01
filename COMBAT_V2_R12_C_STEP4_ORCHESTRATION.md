@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_C_STEP4_ORCHESTRATION（局部審計 · 純計算層與戰後編排）
 
 > **目的**：審計 **Greenfield Step 4** — `combat_engine` 純函式、`combat_flow` INV-E 混合結算、`combat_outcomes` 冪等與 `settlement_id`  
-> **日期**：2026-07-01 · **commit**：`129b6b6`  
+> **日期**：2026-07-01 · **commit**：`28601b3`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` + `combat_greenfield_final.md` §1.1 INV-E  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -9,7 +9,7 @@
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**（§22 已修：`failed_escape` targeting · `conn=` pipeline — 回歸 only）：
+**焦點問題**（§22–§23 已修：targeting · atomic resolve-phase · `consume_dry_run` — 回歸 only）：
 1. 逃跑失敗後防禦分母與攻擊結算是否滿足 INV-E？（`normalize_failed_escape_actions` vs `_resolve_player_phase_body`）
 2. `select_enemy_counter_target` 是否同時相容 `escape` 與 `failed_escape` 優先級？
 3. `execute_post_combat_success_pipeline(conn=)` 是否杜絕巢狀 transaction？
@@ -370,7 +370,7 @@ def process_mixed_round_actions(
 
 ## 3. 生產路徑 escape 接入
 
-# models/combat.py (L1017–L1106)
+# models/combat.py (L1226–L1315)
 
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
@@ -397,6 +397,10 @@ def _resolve_player_phase_body(combat_id):
         player_control_ids,
     )
     item_consume_batch = build_combat_item_consume_batch(actions)
+    items_to_delete = []
+    squad_updates = {}
+    protagonist_updates = {}
+    trauma_events = []
 
     enemy_hp = int(combat.get("enemy_hp") or 0)
     enemy_resilience = int(combat.get("enemy_resilience") or 0)
@@ -432,7 +436,6 @@ def _resolve_player_phase_body(combat_id):
         counter_target_actions = actions
 
     total_damage_to_enemy = 0
-    berserk_players = []
 
     for player_squad_id, action_data in actions.items():
         player = participant_by_id.get(player_squad_id)
@@ -459,9 +462,6 @@ def _resolve_player_phase_body(combat_id):
             continue
 
         if is_berserk(sanity):
-            berserk_players.append(player_squad_id)
-            if random.random() < 0.30:
-                self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
 
 ## 4. 戰後編排與 settlement_id
 
@@ -725,6 +725,25 @@ def test_mixed_round_escape_fail_continues_attack():
         fail("mixed round attacker damage while escaper deals zero", str(breakdown))
 
 
+def test_consume_dry_run_defers_delete():
+    from models.item import CombatItemConsumeBatch
+
+    class FakeBatch(CombatItemConsumeBatch):
+        def __init__(self):
+            self._catalog = {9: {"id": 9, "name": "Test", "has_ability": True, "effect_type": "power_up", "effect_value": 5}}
+            self._owned = {("s1", 9)}
+            self._consumed = set()
+            self._pending = set()
+
+    batch = FakeBatch()
+    ok1, item1, err1 = batch.consume_dry_run("s1", 9)
+    ok2, _, err2 = batch.consume_dry_run("s1", 9)
+    if ok1 and item1 and not ok2 and err2:
+        ok("consume_dry_run validates without DB write")
+    else:
+        fail("consume_dry_run validates without DB write", f"{ok1},{ok2},{err1},{err2}")
+
+
 def test_victory_payload_settlement_id():
     from services.combat_outcomes import build_victory_outcome_payload
 
@@ -743,6 +762,7 @@ def main():
     print("=== Combat flow orchestrator tests ===\n")
     test_normalize_failed_escape()
     test_mixed_round_escape_fail_continues_attack()
+    test_consume_dry_run_defers_delete()
     test_victory_payload_settlement_id()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1

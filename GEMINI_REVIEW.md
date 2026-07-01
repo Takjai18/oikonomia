@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-01 · **基準 commit `eb4f1e2`**（R12-C/D 第三輪 · PA 可部署 · 已修對照 §18–§22）
+> **最後更新**：2026-07-01 · **基準 commit `28601b3`**（全棧審計落地 · PA 可部署 · 已修對照 §18–§23）
 
 ---
 
@@ -50,7 +50,7 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§22 已修 R11–R14 + R12-C/D 第三輪） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§23 已修 R11–R14 + 全棧審計落地） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -955,7 +955,49 @@ bash scripts/pre_deploy_checks.sh
 
 Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
 已修對照：GEMINI_REVIEW.md §18–§22（唔重複報）
-基準 commit：129b6b6
+基準 commit：28601b3
+本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 23. 全棧戰鬥審計落地（2026-07-01 · `28601b3`）
+
+> **性質**：Gemini v14 全棧 onboarding（8.8/10）High/Medium 痛點 + PA deploy 硬化；下一輪 **唔好重複報** 以下項。
+
+### 23.1 已修對照表
+
+| 輪次 | 議題 | 狀態 | commit / 檔案 |
+|------|------|------|----------------|
+| **R15** | resolve-phase 道具 TOCTOU（`consume_dry_run` + 單一 TX） | ✅ | `28601b3` `models/combat.py` · `models/item.py` |
+| **R15** | 弱網重連 `bootstrap.js` 同步 skeleton + `isInitComplete` | ✅ | `28601b3` `bootstrap.js` · `index.html` |
+| **R15** | `protagonist_states` 併發 create 競態 (INSERT OR IGNORE) | ✅ | `a1e9de4` `models/protagonist.py` |
+| **R15** | PA deploy `COMBAT_V2` marker / `combat-root-v2` 辨識 | ✅ | `a1e9de4` `deploy/pa-update.sh` |
+| **Low** | DICE_CONFIRM 超時 disable confirm 鈕 | ✅ | `28601b3` `dice_modal_view.js` |
+| **Low** | combat logs 獨立表 | ⛔ 刻意不做 | 20 人規模足夠 |
+
+### 23.2 測試基線（`28601b3`）
+
+```bash
+./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
+./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5
+./venv/bin/python3 scripts/test_db_hardening.py     # 13/13
+./venv/bin/python3 scripts/test_combat_concurrency.py
+npm run test:combat                                 # 24/24
+bash scripts/pre_deploy_checks.sh
+```
+
+### 23.3 Copy-paste 開場白（全棧審計後下一輪）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
+已修對照：GEMINI_REVIEW.md §18–§23（唔重複報）
+基準 commit：28601b3
 本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10

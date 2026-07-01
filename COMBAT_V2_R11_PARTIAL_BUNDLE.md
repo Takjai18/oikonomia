@@ -267,7 +267,7 @@ export function createVictoryView(rootEl) {
 
 ===== EXCERPT: static/js/combat/index.js — executeGmOverride =====
 
-# static/js/combat/index.js (L668–L686)
+# static/js/combat/index.js (L669–L687)
 
   async executeGmOverride(opts) {
     try {
@@ -500,7 +500,7 @@ def gm_override_trauma_ending_api():
       this.hasTriggeredTimeoutDefense = true;
       return;
     }
-# static/js/combat/index.js (L472–L483)
+# static/js/combat/index.js (L473–L484)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;

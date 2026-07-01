@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_B_DB_HARDENING（局部審計 · SQLite 併發與資料 SSOT）
 
 > **目的**：審計 **20 人西貢戶外** 資料層 — WAL 模式、orphan `combat_actions`、主角狀態單一真相源、斷線重連後端握手  
-> **日期**：2026-07-01 · **commit**：`129b6b6`  
+> **日期**：2026-07-01 · **commit**：`28601b3`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -148,7 +148,7 @@ def purge_combat_actions(combat_id, *, conn=None):
         return cur.rowcount
 
 
-# models/combat.py (L1364–L1403)
+# models/combat.py (L1597–L1636)
 
 def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)
@@ -744,10 +744,80 @@ def test_reconcile_finished_combat_purges_actions():
         os.unlink(path)
 
 
+def test_protagonist_state_create_race():
+    import sqlite3
+    import threading
+    from datetime import datetime
+
+    from database import configure_database, init_db
+    from models.protagonist import get_protagonist_state
+    from models.settings import settings
+
+    path = _temp_db()
+    old_path = settings.db_path
+    settings.db_path = path
+    try:
+        configure_database(
+            db_path=path,
+            data_dir=os.path.dirname(path),
+            upload_folder=os.path.join(os.path.dirname(path), "uploads"),
+            legacy_upload_folder=os.path.join(os.path.dirname(path), "legacy_uploads"),
+            sample_items=[],
+        )
+        init_db()
+        now = datetime.now().isoformat()
+        conn = sqlite3.connect(path)
+        conn.execute(
+            "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
+            ("T-RACE", "Race Team", "iggy", now),
+        )
+        conn.commit()
+        conn.close()
+
+        results = []
+        errors = []
+
+        def worker():
+            try:
+                state = get_protagonist_state("T-RACE", "iggy", create=True)
+                results.append(state)
+            except Exception as exc:
+                errors.append(str(exc))
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        if errors:
+            fail("protagonist_state concurrent create has no exceptions", "; ".join(errors))
+            return
+
+        conn = sqlite3.connect(path)
+        row_count = conn.execute(
+            "SELECT COUNT(*) FROM protagonist_states WHERE team_id = ? AND protagonist = 'iggy'",
+            ("T-RACE",),
+        ).fetchone()[0]
+        conn.close()
+
+        if row_count == 1 and len(results) == 8 and all(r and r.get("hp") for r in results):
+            ok("protagonist_state concurrent create is idempotent (INSERT OR IGNORE)")
+        else:
+            fail(
+                "protagonist_state concurrent create is idempotent (INSERT OR IGNORE)",
+                f"rows={row_count} results={len(results)}",
+            )
+    finally:
+        settings.db_path = old_path
+        os.unlink(path)
+
+
 def main():
     print("=== DB hardening tests ===\n")
     test_wal_mode_enabled()
     test_protagonist_ssot_from_states_table()
+    test_protagonist_state_create_race()
     test_purge_combat_actions_on_end()
     test_reconcile_finished_combat_purges_actions()
     test_session_restore_includes_active_combat()
