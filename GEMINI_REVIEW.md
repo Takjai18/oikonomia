@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-01 · **基準 commit `adf54a8`**（R14 審計封頂 · PA 可部署 · 已修對照 §18–§21）
+> **最後更新**：2026-07-01 · **基準 commit `eb4f1e2`**（R12-C/D 第三輪 · PA 可部署 · 已修對照 §18–§22）
 
 ---
 
@@ -916,6 +916,46 @@ bash scripts/pre_deploy_checks.sh
 Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）
 已修對照：GEMINI_REVIEW.md §18–§21（唔重複報漏 ship hotfix）
 基準 commit：adf54a8（PA 可部署）
+本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 22. R12-C/D 第三輪審計落地（2026-07-01 · `eb4f1e2`）
+
+> **性質**：Gemini R12-C Step4（INV-E / 戰後編排）+ R12-D（INV-A 終端轉移）第三輪 findings；下一輪 **唔好重複報** 以下項。
+
+### 22.1 已修對照表
+
+| 輪次 | 議題 | 狀態 | commit / 檔案 |
+|------|------|------|----------------|
+| **R12-C₃** | `failed_escape` 破壞敵方反擊 targeting 優先級 (INV-E) | ✅ | `eb4f1e2` `combat_engine.py` · `models/combat.py` |
+| **R12-C₃** | `execute_post_combat_success_pipeline` 巢狀 TX 防禦 (`conn=` 參數) | ✅ | `eb4f1e2` `narrative_orchestrator.py` |
+| **R12-D₄** | `handleAnyDeath` → `terminalModalTeardownEffects`（含 `HIDE_SETTLEMENT`） | ✅ | `eb4f1e2` `state_machine.js` |
+| **R12-D₄** | SETTLEMENT 期 defeat poll → `pendingSettlement/Id` 清零 | ✅ | 早前已有 · `eb4f1e2` 測試補強 |
+| **Low** | `calculate_incoming_damage` piercing 順序微擾 | ⛔ 刻意不做 | 非安全 · 單測已綠 |
+| **Low** | `parseCombatHp` 字串容錯 | ⛔ 刻意不做 | 現行 `parseInt` 足夠 |
+
+### 22.2 測試基線（`eb4f1e2`）
+
+```bash
+./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
+./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
+npm run test:combat                                 # 24/24
+bash scripts/pre_deploy_checks.sh
+```
+
+### 22.3 Copy-paste 開場白（R12-C/D 後下一輪）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）
+已修對照：GEMINI_REVIEW.md §18–§22（唔重複報）
+基準 commit：eb4f1e2
 本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
