@@ -67,15 +67,21 @@ def calculate_incoming_damage(
     player_resilience: int,
     defending: bool = False,
     team_defend_multiplier: Optional[float] = None,
+    *,
+    min_damage_ratio: float = 0.1,
 ) -> int:
-    """Enemy counter damage against a player."""
+    """Enemy counter damage against a player (10% piercing floor by default)."""
+    base = int(enemy_base_damage)
     reduction = math.floor(int(player_resilience) * 0.6)
-    damage = max(0, int(enemy_base_damage) - reduction)
+    damage = base - reduction
+    piercing = max(1, math.floor(base * min_damage_ratio))
+    damage = max(piercing, damage)
+
     multiplier = team_defend_multiplier
     if multiplier is None:
         multiplier = DEFEND_TEAM_DAMAGE_FACTOR if defending else 1.0
     if multiplier < 1.0:
-        damage = max(0, math.floor(damage * multiplier))
+        damage = max(piercing, math.floor(damage * multiplier))
     return damage
 
 

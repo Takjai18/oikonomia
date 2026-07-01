@@ -114,6 +114,14 @@ def test_count_team_defenders():
         fail("count_team_defenders mixed")
 
 
+def test_incoming_damage_piercing_floor():
+    dmg = calculate_incoming_damage(50, 200, defending=False)
+    if dmg >= 5:
+        ok("incoming damage piercing floor (10% of base)")
+    else:
+        fail("incoming damage piercing floor", f"got {dmg}")
+
+
 def test_select_enemy_counter_target_engine():
     participants = [
         {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
@@ -133,6 +141,7 @@ def main():
     test_dice_multiplier_edge_cases()
     test_count_team_defenders()
     test_resolve_round_calculation_with_defend()
+    test_incoming_damage_piercing_floor()
     test_select_enemy_counter_target_engine()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1

@@ -19,6 +19,7 @@ from services.combat_engine import (
     select_enemy_counter_target,
     team_defend_damage_multiplier,
 )
+from services.combat_flow import normalize_failed_escape_actions
 from services.combat_outcomes import (
     build_defeat_outcome_payload,
     build_victory_outcome_payload,
@@ -959,6 +960,11 @@ def _resolve_player_phase_body(combat_id):
             "全隊逃跑失敗，將繼續結算戰鬥行動",
             log_type="escape_failed",
         )
+        actions = normalize_failed_escape_actions(
+            actions,
+            escape_triggered=True,
+            escape_success=False,
+        )
 
     total_damage_to_enemy = 0
     berserk_players = []
@@ -1105,16 +1111,18 @@ def _resolve_player_phase_body(combat_id):
                 f"{display} 選擇觀望{pro_tag}",
                 log_type="pass",
             )
-        elif action_type == "escape":
+        elif action_type in ("escape", "failed_escape"):
             pro_tag = "（主角·自動）" if (
                 player.get("is_protagonist")
                 and player_squad_id not in (combat.get("phase_actions") or {})
             ) else ""
+            label = "逃跑失敗（仍參與本回合結算）" if action_type == "failed_escape" else "選擇逃跑"
             combat = append_combat_log(
                 combat,
-                f"{display} 選擇逃跑{pro_tag}",
-                log_type="escape",
+                f"{display} {label}{pro_tag}",
+                log_type="escape_failed" if action_type == "failed_escape" else "escape",
             )
+            continue
         elif action_type == "use_item":
             if item_effect_type in ("hp_up", "sanity_up"):
                 continue
@@ -1827,9 +1835,19 @@ def build_victory_outcome_response(combat, encounter, squad_id, team_id=None):
     Used on killing-blow so the client can sync HP and show the settlement modal before victory.
     """
     if not combat or not squad_id:
-        return build_victory_outcome_payload(encounter, team_id=team_id)
+        return build_victory_outcome_payload(
+            encounter,
+            team_id=team_id,
+            combat_id=(combat or {}).get("id"),
+            current_round=(combat or {}).get("current_phase"),
+        )
     round_payload = _build_round_resolved_response(combat, encounter, squad_id)
-    meta = build_victory_outcome_payload(encounter, team_id=team_id)
+    meta = build_victory_outcome_payload(
+        encounter,
+        team_id=team_id,
+        combat_id=combat.get("id"),
+        current_round=combat.get("current_phase"),
+    )
     payload = {**round_payload, **meta}
     payload["outcome"] = "victory"
     payload["winner"] = "squad"
