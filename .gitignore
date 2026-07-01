@@ -17,6 +17,7 @@ local_data/
 instance/
 data/.secret_key
 data/.gm_pin
+data/.combat_v2
 
 # IDE / OS
 .DS_Store

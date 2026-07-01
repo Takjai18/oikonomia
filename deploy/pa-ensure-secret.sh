@@ -7,6 +7,7 @@ set -e
 REPO="${HOME}/oikonomia"
 SECRET_FILE="$REPO/data/.secret_key"
 GM_PIN_FILE="$REPO/data/.gm_pin"
+COMBAT_V2_FILE="$REPO/data/.combat_v2"
 
 mkdir -p "$REPO/data"
 
@@ -24,6 +25,14 @@ else
     echo "${GM_PIN:-gm2026}" > "$GM_PIN_FILE"
     chmod 600 "$GM_PIN_FILE"
     echo "Created $GM_PIN_FILE (override with Web tab GM_PIN env or edit file)"
+fi
+
+if [ -f "$COMBAT_V2_FILE" ] && grep -qE '^(1|true|yes|on)$' "$COMBAT_V2_FILE" 2>/dev/null; then
+    echo "OK: $COMBAT_V2_FILE enables COMBAT_V2"
+else
+    echo "1" > "$COMBAT_V2_FILE"
+    chmod 644 "$COMBAT_V2_FILE"
+    echo "Created $COMBAT_V2_FILE (COMBAT_V2=1 for Web workers)"
 fi
 
 cd "$REPO"

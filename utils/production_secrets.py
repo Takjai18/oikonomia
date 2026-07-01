@@ -35,3 +35,14 @@ def load_production_secrets(project_dir=None):
                     os.environ[env_key] = value
         except OSError:
             continue
+
+    # COMBAT_V2: Web tab env OR data/.combat_v2 (PA workers don't inherit shell export)
+    if not os.environ.get("COMBAT_V2", "").strip():
+        flag_path = os.path.join(data_dir, ".combat_v2")
+        if os.path.isfile(flag_path):
+            try:
+                with open(flag_path, encoding="utf-8") as fh:
+                    if fh.read().strip().lower() in ("1", "true", "yes", "on"):
+                        os.environ["COMBAT_V2"] = "1"
+            except OSError:
+                pass
