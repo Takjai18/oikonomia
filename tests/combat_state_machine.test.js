@@ -232,6 +232,38 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.settledRoundIndex, 3);
   });
 
+  it('SETTLEMENT poll defeat exits to DEFEAT with settlement teardown (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(1),
+      phase: Phase.SETTLEMENT,
+      pendingSettlementId: '1:0',
+      pendingSettlement: { team_damage_dealt: 8 },
+      isKillingBlow: false,
+    };
+    const { ctx: next, effects } = transition(ctx, 'POLL_TICK', {
+      snapshot: {
+        combat_id: 1,
+        outcome: 'defeat',
+        winner: 'enemy',
+        my_state: { hp: 80 },
+        member_states: { s1: { hp: 80 } },
+      },
+    });
+    assert.equal(next.phase, Phase.DEFEAT);
+    assert.equal(next.pendingSettlement, null);
+    assert.ok(effects.some((e) => e.type === 'HIDE_SETTLEMENT'));
+    assert.ok(effects.some((e) => e.type === 'SHOW_DEFEAT'));
+  });
+
+  it('near_death_until triggers isMemberCollapsed (INV-D)', () => {
+    assert.equal(isMemberCollapsed({ hp: 50, near_death_until: '2099-01-01T00:00:00' }), true);
+    const ctx = createInitialContext(1);
+    const { ctx: failed } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 'n/a', near_death_until: '2099-01-01T00:00:00' },
+    });
+    assert.equal(failed.phase, Phase.COMBAT_FAILED);
+  });
+
   it('defeat with dead_squad_names from DICE_CONFIRM clears modals (INV-D)', () => {
     const ctx = { ...createInitialContext(1), phase: Phase.DICE_CONFIRM };
     const { ctx: next, effects } = syncState(ctx, {

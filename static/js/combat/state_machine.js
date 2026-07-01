@@ -42,6 +42,24 @@ const ABSORBING = new Set([
 
 const DICE_BUSY = new Set([Phase.DICE_ROLLING, Phase.DICE_CONFIRM]);
 
+/** Phases that must exit SETTLEMENT without pinning poll handler */
+const SETTLEMENT_EXIT_PHASES = new Set([
+  Phase.VICTORY,
+  Phase.DEFEAT,
+  Phase.COMBAT_FAILED,
+  Phase.ESCAPED,
+]);
+
+function terminalModalTeardownEffects(effects) {
+  return [
+    { type: 'HIDE_SETTLEMENT' },
+    { type: 'HIDE_ALL_MODALS' },
+    ...effects.filter(
+      (e) => e.type !== 'HIDE_ALL_MODALS' && e.type !== 'HIDE_SETTLEMENT',
+    ),
+  ];
+}
+
 /**
  * @returns {import('./state_machine.js').CombatContext}
  */
@@ -242,16 +260,27 @@ export function syncState(ctx, snapshot) {
           pendingSettlement: null,
           pendingSettlementId: null,
         },
-        effects: [
-          { type: 'HIDE_ALL_MODALS' },
+        effects: terminalModalTeardownEffects([
           { type: 'SHOW_FAILED', members: deadNames },
           { type: 'STOP_POLL' },
-        ],
+        ]),
       };
     }
-    newCtx = { ...newCtx, phase: Phase.DEFEAT, pollPaused: true };
-    effects.push({ type: 'HIDE_ALL_MODALS' }, { type: 'SHOW_DEFEAT', data: snapshot }, { type: 'STOP_POLL' });
-    return { ctx: newCtx, effects };
+    newCtx = {
+      ...newCtx,
+      phase: Phase.DEFEAT,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+    };
+    return {
+      ctx: newCtx,
+      effects: terminalModalTeardownEffects([
+        { type: 'SHOW_DEFEAT', data: snapshot },
+        { type: 'STOP_POLL' },
+      ]),
+    };
   }
 
   if (snapshot.outcome === 'victory' || snapshot.winner === 'squad') {
@@ -286,14 +315,20 @@ export function syncState(ctx, snapshot) {
       return { ctx: newCtx, effects };
     }
 
-    newCtx = { ...newCtx, phase: Phase.VICTORY, pollPaused: true };
+    newCtx = {
+      ...newCtx,
+      phase: Phase.VICTORY,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+    };
     return {
       ctx: newCtx,
-      effects: [
-        { type: 'HIDE_ALL_MODALS' },
+      effects: terminalModalTeardownEffects([
         { type: 'SHOW_VICTORY', data: snapshot },
         { type: 'STOP_POLL' },
-      ],
+      ]),
     };
   }
 
@@ -354,10 +389,15 @@ export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
   return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
 }
 
-/** INV-D: only finite hp ≤ 0 counts as collapsed (malformed hp → not dead). */
+/** INV-D: hp ≤ 0 or active near-death marker counts as collapsed. */
 export function isMemberCollapsed(member) {
-  const hp = parseInt(member?.hp, 10);
-  return Number.isFinite(hp) && hp <= 0;
+  if (!member) return false;
+  if (member.near_death_until) return true;
+  const hp = parseInt(member.hp, 10);
+  if (Number.isFinite(hp)) {
+    return hp <= 0;
+  }
+  return false;
 }
 
 export function isEnemyDefeated(enemy) {
@@ -600,10 +640,26 @@ const TRANSITIONS = {
     },
     ACTION_ATTACK: { reduce: (c) => c, effects: () => [{ type: 'TOAST', message: '請先關閉當前結算彈窗' }] },
     POLL_TICK: {
-      reduce: (ctx, meta) => ({ ...syncState(ctx, meta.snapshot).ctx, phase: Phase.SETTLEMENT }),
-      effects: (ctx, meta) => syncState(ctx, meta.snapshot).effects.map((e) =>
-        e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e,
-      ),
+      reduce: (ctx, meta) => {
+        const { ctx: synced } = syncState(ctx, meta.snapshot);
+        if (SETTLEMENT_EXIT_PHASES.has(synced.phase)) {
+          return synced;
+        }
+        return { ...synced, phase: Phase.SETTLEMENT };
+      },
+      effects: (ctx, meta) => {
+        // reduce may have advanced phase; replay sync from SETTLEMENT for effect list
+        const sourceCtx = SETTLEMENT_EXIT_PHASES.has(ctx.phase)
+          ? { ...ctx, phase: Phase.SETTLEMENT }
+          : ctx;
+        const { ctx: synced, effects } = syncState(sourceCtx, meta.snapshot);
+        if (SETTLEMENT_EXIT_PHASES.has(synced.phase)) {
+          return terminalModalTeardownEffects(effects);
+        }
+        return effects.map((e) =>
+          (e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e),
+        );
+      },
     },
     INV_RECOVERY: {
       reduce: (ctx) => ({ ...ctx, phase: Phase.IDLE, pollPaused: false }),
