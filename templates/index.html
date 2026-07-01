@@ -368,6 +368,15 @@
         #combat-berserk-bar { background: linear-gradient(90deg, #9a3412, #ea580c); }
         #combat-berserk-bar.berserk-critical { background: linear-gradient(90deg, #7f1d1d, #dc2626); animation: combat-pulse 1s ease-in-out infinite; }
         #combat-near-death-overlay { background: rgba(69, 10, 10, 0.92); backdrop-filter: blur(4px); }
+        /* combat_instant_settlement: HP bars sync with damage numbers (no CSS lag) */
+        #combat-v2-enemy-hp-bar,
+        #combat-v2-player-hp-bar {
+            transition: none !important;
+            -webkit-transition: none !important;
+        }
+        #combat-v2-actions button {
+            touch-action: manipulation !important;
+        }
         #combat-precheck-modal { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(6px); }
         #combat-berserk-overlay { background: rgba(127, 29, 29, 0.55); backdrop-filter: blur(2px); pointer-events: none; }
         /* Fallback（Tailwind CDN 載入失敗時仍可用） */
@@ -1325,6 +1334,13 @@
     let pendingEncounterId = null;
     let currentCombatId = null;
 
+    /** INV-C: pause global /status poll while V2 combat root is visible */
+    function isPlayerInActiveCombatV2() {
+        if (!window.combatV2?.isEnabled?.()) return false;
+        const combatRootV2 = document.getElementById('combat-root-v2');
+        return combatRootV2 && !combatRootV2.classList.contains('hidden');
+    }
+
     window.AppRouter = {
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
@@ -1365,15 +1381,13 @@
         }
     }
 
-    function exitCombatScreen() {
-        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
-
-        if (window.combatV2?.isEnabled?.()) {
-            const app = window.combatV2.getApp?.();
-            app?.views?.endgame?.hideAll?.();
-            app?.poller?.stop();
-            app?.unmount?.();
+    function exitCombatScreen(options = {}) {
+        if (!options.fromV2 && window.combatV2?.isEnabled?.()) {
+            window.combatV2.exitToLobby();
+            return;
         }
+
+        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
 
         setVisible(document.getElementById('combat-result-panel'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
@@ -1599,6 +1613,10 @@
     }
 
     async function rescueNearDeath() {
+        if (isPlayerInActiveCombatV2()) {
+            showToast('瀕死救援請在戰鬥畫面操作', 'info');
+            return;
+        }
         const agreed = await showConfirmModal({
             title: '禱告救援',
             message: '為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）',
@@ -4020,6 +4038,9 @@
 
         // 每 3 秒自動更新狀態（GM 調整後玩家介面可近乎即時反映）
         setInterval(() => {
+            if (isPlayerInActiveCombatV2()) {
+                return;
+            }
             if (currentSquad) {
                 fetchNoCache('/status')
                     .then(r => r.ok ? r.json() : null)

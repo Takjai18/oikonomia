@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-06-30 · local/GitHub/PA：`12e1edd` · BUG-2026-001 **resolved**
+> 最後更新：2026-07-01 · local/GitHub：`15f2c37`+（Combat V2 橋接隔離）· PA：待核對 · BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -11,6 +11,59 @@
 | **Gemini** | `GEMINI_REVIEW.md` | 第三方 review / debug（唔改 repo） |
 
 **本檔副本**：`Documents/oikonomia/AGENT_HANDOFF.md` 與 Google Drive `My Drive/oikonomia/AGENT_HANDOFF.md` 應保持同步。
+
+---
+
+## Context 管理協議（Grok Build 必守 · 2026-06-30）
+
+> **目的**：防 context 溢出、代碼腰斬、幻覺。長對話**唔使**開新 Chat，但必須嚴格局部交付。
+
+### Baseline（只引用，唔貼全文）
+
+| 檔案 | 版本 | 生成 |
+|------|------|------|
+| `COMBAT_V2_AUDIT_BUNDLE.md` | **v11**（SSOT · Context 協議） | `python3 scripts/build_combat_v2_audit_bundle.py` |
+| `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計 A/B/C | `python3 scripts/build_combat_v2_r11_partial_bundle.py` |
+| `combat_greenfield_final.md` | 綠地規格 | repo 內建 |
+
+新功能（遭遇戰 JSON、GPS 任務路由、物品發放等）開發時：**假設 Baseline 已讀**，只貼本次改動嘅**單一檔案或單一函數**。
+
+### 進門對齊模式（訊息最開頭）
+
+用戶會標 **【開發模式】** 或 **【審計模式】**。未標時，預設 **【開發模式】**。
+
+| 模式 | Grok Build 回應 |
+|------|-----------------|
+| **【開發模式】** | **零前言** → 100% 完整、可 Copy-and-Paste 的生產級代碼 + 專項單元測試（唔擴散無關檔案） |
+| **【審計模式】** | **【Critical】→【High/Medium】→【Low】→ 健康度總評**（1–10）；唔輸出大段代碼除非指出具體行號 |
+
+### 局部交付規則
+
+1. **一次一個 scope**：一個 `routes/*.py` 函數、一個 `services/*.py` 模組、或一個 `static/js/combat/views/*.js`。
+2. **唔貼** `COMBAT_V2_AUDIT_BUNDLE.md` 全文、`index.html` 全文、`models/combat.py` 全文。
+3. **改完必跑** 與 scope 對應嘅測試（見下方測試速查）；全量 regression 僅在 Phase 封頂或 deploy 前。
+4. **引用 Baseline** 用檔名＋符號名，例如：`api_client.overrideTraumaEnding`、`routes/gm.py` `gm_override_trauma_ending_api`。
+
+### 建議用戶提交範本
+
+```
+【開發模式】
+目標：新增 enc_marah_02 JSON 並接上 precheck
+檔案：encounters/enc_marah_02_*.json + models/encounter.py（load 驗證）
+約束：唔改 combat FSM；test_encounter_catalog 必過
+```
+
+### 測試速查（按 scope）
+
+| Scope | 最低驗證 |
+|-------|----------|
+| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py` |
+| Combat 前端 | `npm run test:combat` + `npm run test:e2e:v2` |
+| GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
+| Encounter JSON | `test_encounter_catalog()` |
+| Deploy 前 | `bash scripts/pre_deploy_checks.sh` |
+
+---
 
 ### Bug Log（難解 bug — Drive SSOT）
 
@@ -31,9 +84,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `12e1edd` | ✅ |
-| **GitHub `main`** | `12e1edd` | ✅ |
-| **PythonAnywhere** | `12e1edd` | ✅（`combat_flow_v7`、`settlement_breakdown_v1`、`enemy_hp_sync_v7`） |
+| **Local** | `15f2c37`+ | ✅（含 Combat V2 模組 + Step 4 後端） |
+| **GitHub `main`** | 核對 `git rev-parse --short HEAD` | 應 ≥ `15f2c37` |
+| **PythonAnywhere** | 核對 `/api/version` | 可能仍為 `12e1edd`；deploy 後應含 `combat_v2` marker |
 
 ```bash
 # 本地
@@ -122,9 +175,65 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ---
 
-## 本輪已完成（2026-06-30 最新 — BUG-2026-001 **resolved**）
+## 本輪已完成（2026-07-01 最新 — Combat V2 Greenfield + BUG-2026-001 **resolved**）
 
-### 戰鬥流程重構（`387c89b` → `12e1edd`）
+### Combat V2 前端模組化（`7029bfd` → `15f2c37`+）
+
+| Commit | 摘要 |
+|--------|------|
+| `7029bfd` | Entry sync monotonic align — `entrySyncPending` 防幽靈 settlement modal |
+| `bf490f6` | Lobby reconcile ended combat + `fetchNoCache`；修 `current_combat_id=NULL` |
+| `f267cec` | Atomic start gate、`advance_combat_from_poll`、rescuer validation |
+| `ee9a691` | INV-D defeat roster、INV-E escape、monotonic FSM、engine targeting |
+| `15f2c37` | `services/combat_flow.py`、victory `settlement_id`、piercing damage、outcome 冪等 |
+| *pending* | `index.html` V2 橋接：`isPlayerInActiveCombatV2()` 隔離 3s poll；`exitCombatScreen({fromV2})`；HP bar `transition:none` |
+
+**架構**：
+
+```
+templates/index.html          # 大廳橋接（startEncounter / exitCombatScreen / loadEncounters）
+templates/combat_screen.html  # V2 DOM 骨架（combat-v2-* ID）
+static/js/combat/
+  bootstrap.js                # COMBAT_V2 feature flag → window.combatV2
+  index.js                    # CombatApp + ResilientPollingManager
+  state_machine.js            # Phase FSM + INV-A/C/D/E
+  settlement.js               # settlement_id / monotonic guard
+  api_client.js               # Passive poll（IDLE 1200ms / WAITING 800ms）
+  views/*.js                  # escape_result / failed_panel / settlement / victory
+```
+
+**關鍵前端符號**（`static/js/combat/`）：
+
+| 符號 | 用途 |
+|------|------|
+| `entrySyncPending` | 進入戰鬥首輪 poll 吸收殘留 settlement（INV-C） |
+| `determineSettlementRoute` | Monotonic guard — 拒絕 stale `settled_round_index` |
+| `deriveSettlementId` | `{combat_id}:{settled_round_index}` |
+| `ResilientPollingManager` | 動態 poll；取代舊 inline 3s timer（戰鬥中） |
+| `isPlayerInActiveCombatV2()` | `index.html` — V2 可見時暫停全局 `/status` poll |
+| `exitCombatScreen({ fromV2 })` | 橋接退出；`fromV2:true` 防與 `exitToLobby` 遞迴 |
+
+**後端 Step 4**（`services/combat_flow.py` + `combat_outcomes.py`）：
+
+| 符號 | 用途 |
+|------|------|
+| `normalize_failed_escape_actions` | INV-E — 逃跑失敗者留分母、零輸出 |
+| `process_mixed_round_actions` | 純編排（單元測試）；生產路徑仍用 `models/combat.py` resolve body |
+| `build_victory_outcome_payload` | 含 `settlement_id` + `settled_round_index` |
+| `resolve_combat_outcome` | `encounter_already_completed` 冪等 + `with_db_retry` |
+
+**Feature flag**：`COMBAT_V2=1`（env）→ `/api/version` → `markers.combat_v2`；`bootstrap.js` 掛載 `CombatApp`。
+
+**Henry 實機待驗**（V2 啟用後）：
+
+| 場景 | 預期 |
+|------|------|
+| 弱網重連 | 唔重複彈 settlement modal（INV-C） |
+| A 逃跑失敗 + B 攻擊 | B 傷害正常結算（INV-E） |
+| 勝利後回大廳 | 遭遇列表唔顯示「進行中的戰鬥」 |
+| COMBAT_FAILED | `failed_panel.js` 獨佔；舊 `#combat-near-death-overlay` 唔疊加 |
+
+### 戰鬥流程重構（`387c89b` → `12e1edd` · legacy inline）
 
 | Commit | Marker | 摘要 |
 |--------|--------|------|
@@ -179,11 +288,16 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 **通過標準**：HP 即時 · modal <1.5s · 無 flicker/race · 體感「打完有反應」
 
-### Phase 1.5 Step 1 — `services/combat_engine.py`（線 B · ✅ 已實作）
+### Phase 1.5 — Pure Domain Math + Step 4 編排（線 B · ✅ Step 1 + 4 已實作）
 
-**狀態**：`services/combat_engine.py` 已建立；`models/combat.py` 計算函數委派至 engine；`scripts/test_combat_engine.py`（14 項）+ `pre_deploy_checks.sh`。
+| Step | 狀態 | 說明 |
+|------|------|------|
+| 1 `combat_engine.py` | ✅ | 純計算；piercing 10% 保底傷害 |
+| 2 `trauma_service.py` | ⏳ | 營會後 |
+| 3 `narrative_orchestrator.py` | ✅ | post-combat pipeline |
+| 4 `combat_flow.py` | ✅ | INV-E 純編排；`normalize_failed_escape_actions` 已接入 resolve body |
 
-**下一步**：Step 2 `trauma_service.py`（營會後）；Step 4 `combat_flow.py` 將呼叫 `resolve_round_calculation`。
+**下一步**：將 `_resolve_player_phase_body` 傷害 loop 漸進委派 `process_mixed_round_actions`；PA deploy V2。
 
 ---
 
@@ -342,13 +456,18 @@ Zoo：神智 ≥70/80/90/100 → ×1.3/1.4/1.5/1.8
 GM stat：>100 唔被全營事件/item cap 壓返 100
 ```
 
-### 前端戰鬥 UI（`templates/index.html`）
+### 前端戰鬥 UI
 
-- `#combat-screen` / `#player-panel` / `#enemy-panel`
-- `#combat-round-settlement-modal` — 回合傷害結算（`settlement_breakdown_v1`）
-- `combat-hp-value`、`syncEnemyHpDisplay`、`applyPendingSettlementHp`
-- `setStatBar()` — Dashboard + 戰鬥共用
-- 輪詢：正常 3s／等待隊友 4s／resolving 1s（`COMBAT_POLL_INTERVAL_*`）
+**V2（`COMBAT_V2=1`）** — `static/js/combat/` + `templates/combat_screen.html`：
+
+- `#combat-root-v2` — V2 根節點；`combat-v2-*` ID 與舊大廳隔離
+- Poll：`ResilientPollingManager`（IDLE 1200ms / WAITING 800ms）
+- 全局 `/status` 3s poll 在 V2 戰鬥中**暫停**（`isPlayerInActiveCombatV2`）
+
+**Legacy inline（`12e1edd` · 已移除主路徑）** — `templates/index.html` 仍保留大廳橋接：
+
+- `#combat-lobby` / `#combat-result-panel` / `#combat-near-death-overlay`（V2 時隱藏）
+- `startEncounter` / `exitCombatScreen` / `loadEncounters` — 橋接至 `window.combatV2`
 
 ---
 
@@ -399,11 +518,9 @@ curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 
 `combat_system`, `server_combat_dice`, `defend_team_buff`, `combat_round_continue`, `player_max_hp`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `upload_path_hardened`, `encounter_logs`, `qr_signed_v2`
 
-**BUG-2026-001 戰鬥 UX（2026-06-30 · resolved）** — deploy 後應為 `true`：
+**BUG-2026-001 戰鬥 UX（2026-06-30 · resolved）** — legacy markers：`enemy_hp_sync_v7`, `combat_flow_v7`, `settlement_breakdown_v1`
 
-`enemy_hp_sync_v7`, `combat_flow_v7`, `settlement_breakdown_v1`
-
-（`combat_flow_v2`–`v5` marker 字串已被 v7 取代；instant settlement 為行為，無獨立 marker 字串）
+**Combat V2** — deploy 後核對 `markers.combat_v2`（需 `COMBAT_V2=1` on PA）
 
 Reload Web worker 後 markers 先會更新（`version` 可能已新但 markers 仍舊）。
 
@@ -472,26 +589,26 @@ python3 app.py                    # → :5001
 | `routes/combat.py` → `roll_combat_dice()` | 伺服器擲骰 |
 | `utils/db_tx.py` → `immediate_transaction()` | BEGIN IMMEDIATE 事務 |
 | `utils/helpers.py` → `clamped_stat_delta_expr()` | GM-boosted stat cap 邏輯 |
-| `templates/index.html` → `updateCombatPlayerStats()` | 戰鬥玩家卡片 UI |
-| `templates/index.html` → `syncStoryViewsFromServer()` | 劇情已讀 server 同步 |
-| `templates/index.html` → `finishCombatVictoryFromPayload()` | 勝利 + 擊殺結算路由 |
-| `templates/index.html` → `isVictoryFlowLocked()` | 勝利後防重複結算 |
-| `models/combat.py` → `_round_settlement_from_logs()` | 回合 settlement + `breakdown` |
+| `static/js/combat/bootstrap.js` → `window.combatV2` | V2 feature flag 掛載 |
+| `static/js/combat/state_machine.js` → `determineSettlementRoute` | INV-C monotonic guard |
+| `static/js/combat/index.js` → `exitToLobby` | V2 退出 → `exitCombatScreen({fromV2})` |
+| `templates/index.html` → `isPlayerInActiveCombatV2` | 隔離全局 3s poll |
+| `templates/index.html` → `fetchNoCache` / `loadEncounters` | 大廳 cache-bust |
+| `services/combat_flow.py` → `normalize_failed_escape_actions` | INV-E |
+| `services/combat_outcomes.py` → `build_victory_outcome_payload` | settlement_id |
+| `models/combat.py` → `advance_combat_from_poll` | poll 觸發結算 CAS |
 
 ---
 
 ## 近期 commit（參考）
 
 ```
-12e1edd combat_flow_v7: stop poll on victory settlement, fix post-confirm duplicate
-ebe49ff combat_flow_v6: always show settlement modal on one-shot kills
-cc5671d combat_flow_v5: fix duplicate settlement after victory confirm
-c621354 settlement_breakdown_v1: role-based damage detail in round modal
-46cc3a5 combat_flow_v4: fix duplicate victory settlement and stuck next round
-03cf917 combat_flow_v3: remove redundant round damage preview step
-387c89b combat_flow_v2: slim settlement, HP on confirm only
-d061aa2 combat_instant_settlement: remove artificial animation delays
-66f70c6 enemy_hp_sync_v7: practice fast settlement + instant HP sync
+15f2c37 feat(combat): Step 4 flow orchestrator, piercing damage, victory settlement_id
+ee9a691 feat(combat): Greenfield corner cases — INV-D/E, monotonic FSM
+f267cec fix(combat): atomic start gate, poll CAS resolve, rescuer validation
+bf490f6 fix(lobby): reconcile ended combat + cache-bust encounters on exit
+7029bfd fix(combat): entry sync monotonic align — block ghost settlement modal
+12e1edd combat_flow_v7: stop poll on victory settlement (legacy inline)
 3cdb207 fix(security): Gemini review — combat locks, QR, GM auth
 ```
 
@@ -502,7 +619,11 @@ d061aa2 combat_instant_settlement: remove artificial animation delays
 ### 通用模板
 
 ```
-請讀 @AGENT_HANDOFF.md，繼續開發 Oikonomia（/Users/mingtakyau/Documents/oikonomia）。
+請讀 @AGENT_HANDOFF.md（含 Context 管理協議），繼續開發 Oikonomia（/Users/mingtakyau/Documents/oikonomia）。
+
+Baseline：v11 SSOT 已在 repo，唔貼全文；日常審計貼 R11_PARTIAL；本次只處理局部 scope。
+
+【開發模式】  ← 或 【審計模式】
 
 你的責任：
 1. 自己執行（改 code、測試、commit、push），唔好只出 instruction
@@ -511,7 +632,7 @@ d061aa2 combat_instant_settlement: remove artificial animation delays
 開工前先核對版本：
 - local: cd /Users/mingtakyau/Documents/oikonomia && git rev-parse --short HEAD
 - PA: curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
-  確認 version 與 local 相同；markers 含 combat_flow_v7、settlement_breakdown_v1、enemy_hp_sync_v7
+  確認 version 與 local 相同；markers 含 combat_v2（V2 啟用時）、combat_flow_v7（legacy）
 
 PA 若落後：我會喺 PA Bash 跑 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh + Web Reload，你再 curl 確認。
 

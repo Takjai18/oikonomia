@@ -484,7 +484,7 @@ export class CombatApp {
 
     if (typeof window.exitCombatScreen === 'function') {
       showToast('已安全退出戰場', 'info');
-      window.exitCombatScreen();
+      window.exitCombatScreen({ fromV2: true });
       return;
     }
 
