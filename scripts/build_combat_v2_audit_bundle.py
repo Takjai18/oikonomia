@@ -134,8 +134,8 @@ def main():
 > **日期**：{today} · **commit**：`{head}`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R11～R13 + R12 Partial 二輪審計 ✅（見 `GEMINI_REVIEW.md` §18–§20）  
-> **本輪**：v13 錨點；下一輪用 **Partial** 或 §20.3 **新 scope**  
+> **上一輪**：R11～R13 + R12 Partial 二輪審計 ✅（見 `GEMINI_REVIEW.md` §18–§21）  
+> **本輪**：v13 錨點（PA 可部署 · `adf54a8`）；下一輪用 **Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
@@ -147,7 +147,7 @@ def main():
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§20 — 唔好重複報已落地項
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§21 — 唔好重複報已落地項（含 §21 PA hotfix）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
 ### 0.1 Partial 審計狀態（`{head}` · 已審已修，回歸 only）

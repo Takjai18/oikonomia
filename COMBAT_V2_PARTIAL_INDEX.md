@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-01 · **commit**：`5ea4cf8`  
+> **日期**：2026-07-01 · **commit**：`adf54a8`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -37,11 +37,11 @@
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
 | 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 |
+| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · PA 基準 `adf54a8` §21 |
 
 ---
 
-## 測試基線（2026-07-01 · `5ea4cf8`）
+## 測試基線（2026-07-01 · `adf54a8`）
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py      # 280/280

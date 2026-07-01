@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-01 · **基準 commit `5ea4cf8`**（R14 審計封頂 · 已修對照 §18–§20）
+> **最後更新**：2026-07-01 · **基準 commit `adf54a8`**（R14 審計封頂 · PA 可部署 · 已修對照 §18–§21）
 
 ---
 
@@ -50,7 +50,7 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§20 已修 R11–R14） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§21 已修 R11–R14 + PA hotfix） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -847,7 +847,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）
 | **R13** | `combat_start` IDOR · `purge` db_path · `target_squad_id` | ✅ | `52f7753` / `a861773` |
 | **Low** | 主角 key 常數 `combat/constants.js` | ✅ | `649526a` |
 
-### 20.2 測試基線（`5ea4cf8`）
+### 20.2 測試基線（`adf54a8` · PA 驗證通過）
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py      # 280/280
@@ -873,9 +873,50 @@ bash scripts/pre_deploy_checks.sh
 你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
 
 Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）
-已修對照：GEMINI_REVIEW.md §18–§20（唔重複報）
+已修對照：GEMINI_REVIEW.md §18–§21（唔重複報）
 本次範圍：<貼 COMBAT_V2_PARTIAL_INDEX 單一 Partial 或 §20.3 新 scope>
-基準 commit：5ea4cf8
+基準 commit：adf54a8
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 21. PA 部署 hotfix — 漏 ship 補齊（2026-07-01 · `adf54a8`）
+
+> **性質**：v13 bundle 生成時本機已有完整碼，但 `5ea4cf8` 未 push 至 main，導致 PA pre-deploy 500。  
+> **唔係** 新安全議題；Gemini **唔好重複報**「缺模組」，只可做回歸確認。
+
+### 21.1 已修對照表
+
+| commit | 議題 | 狀態 | 檔案 |
+|--------|------|------|------|
+| **e675244** | `build_combat_item_consume_batch` 等未在 main | ✅ | `models/item.py` |
+| **e675244** | 戰鬥物品 picker `/api/inventory` | ✅ | `routes/items.py` |
+| **e675244** | `escape` 加入 `COMBAT_ACTION_TYPES` | ✅ | `app.py` |
+| **e675244** | `combat_v2` version markers | ✅ | `routes/misc.py` |
+| **adf54a8** | `services.narrative_orchestrator` 未 commit | ✅ | `services/narrative_orchestrator.py` |
+| **adf54a8** | `services.trauma_service` 未 commit | ✅ | `services/trauma_service.py` |
+
+### 21.2 測試基線（`adf54a8` · PA pre-deploy）
+
+```bash
+./venv/bin/python3 scripts/test_combat_flow.py      # 280/280
+./venv/bin/python3 scripts/test_db_hardening.py     # 12/12
+./venv/bin/python3 scripts/test_combat_engine.py    # 17/17
+npm run test:combat                                 # 23/23
+bash scripts/pre_deploy_checks.sh
+```
+
+### 21.3 Copy-paste 開場白（PA 部署後審計）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）
+已修對照：GEMINI_REVIEW.md §18–§21（唔重複報漏 ship hotfix）
+基準 commit：adf54a8（PA 可部署）
+本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
 ```
