@@ -65,7 +65,12 @@ async function init() {
     pollTick: (data) => app.pollTick(data),
     onSubmitSuccess: (data) => app.onSubmitSuccess(data),
     getApp: () => app,
-    destroy: () => app.destroy(),
+    destroy: () => {
+      if (app) {
+        app.destroy();
+        app = null;
+      }
+    },
   };
 
   window.CombatV2App = window.combatV2;

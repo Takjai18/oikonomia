@@ -85,6 +85,7 @@ export class CombatApp {
   }
 
   destroy() {
+    console.log('[CombatV2] 接收到大廳橋接解構訊號，實施原子化銷毀程序...');
     try {
       if (this.poller) {
         this.poller.stop();
@@ -97,8 +98,10 @@ export class CombatApp {
       this.views?.items?.hide();
       if (this.rootEl) {
         this.rootEl.classList.add('hidden');
+        delete this.rootEl.__combat_app_instance__;
       }
       this.hasTriggeredTimeoutDefense = false;
+      console.log('[CombatV2] 本地狀態機環境已完全釋放。');
     } catch (err) {
       console.error('[CombatV2] destroy failed', err);
     }

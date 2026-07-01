@@ -103,9 +103,8 @@ def extract_index_bridge() -> str:
                     break
         chunks.append("\n".join(lines[start:end]))
 
-    grab("// ── Combat lobby bridge", "async function rescueNearDeath")
-    grab("function isPlayerInActiveCombatV2", "window.AppRouter")
-    grab("function exitCombatScreen", "async function loadCombatPage")
+    grab("// ── Combat lobby bridge", "function isPlayerInActiveCombatV2")
+    grab("function isPlayerInActiveCombatV2", "async function rescueNearDeath")
     grab("async function finishSessionRestore", "async function fallbackToNormalSession")
     grab("setInterval(() => {", None, 25)
     return "\n\n".join(chunks)

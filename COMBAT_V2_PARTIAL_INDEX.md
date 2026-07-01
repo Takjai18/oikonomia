@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-01 · **commit**：`0e2fa93`  
+> **日期**：2026-07-01 · **commit**：`649526a`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -40,7 +40,7 @@
 
 ---
 
-## 測試基線（2026-07-01 · `0e2fa93`）
+## 測試基線（2026-07-01 · `649526a`）
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py      # 267/267
