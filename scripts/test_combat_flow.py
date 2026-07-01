@@ -1521,6 +1521,27 @@ def test_near_death_rescue_security(client, leader_id, member_id):
     update_squad(member_id, near_death_until=until, hp=0)
 
     login(client, leader_id)
+    rescuer_until = (datetime.now() + timedelta(minutes=15)).isoformat()
+    update_squad(leader_id, near_death_until=rescuer_until, hp=0)
+    r = client.post("/combat/rescue_near_death", json={"rescue_type": "prayer"})
+    blocked = r.get_json() or {}
+    ok(
+        "rescuer near_death blocked",
+        r.status_code == 400 and not blocked.get("success"),
+        str(blocked),
+    )
+    update_squad(leader_id, near_death_until=None, hp=100)
+
+    update_squad(leader_id, sanity=0)
+    r = client.post("/combat/rescue_near_death", json={"rescue_type": "prayer"})
+    sanity_blocked = r.get_json() or {}
+    ok(
+        "rescuer sanity collapse blocked",
+        r.status_code == 400 and not sanity_blocked.get("success"),
+        str(sanity_blocked),
+    )
+    update_squad(leader_id, sanity=50)
+
     r = client.post(
         "/combat/rescue_near_death",
         json={"rescue_type": "item", "item_id": 99999},

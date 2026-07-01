@@ -842,6 +842,48 @@ def resolve_player_phase(combat_id):
         raise
 
 
+def advance_combat_from_poll(combat_id, combat_settings=None):
+    """
+    Poll-side resolve gate — delegates to maybe_resolve_player_phase (CAS + TX).
+    Returns (combat, winner, round_just_resolved).
+    """
+    combat = get_combat(combat_id)
+    if not combat:
+        return None, None, False
+
+    if combat.get("status") == COMBAT_STATUS_RESOLVING:
+        combat, winner = _wait_for_resolution_complete(combat_id)
+        resolved = bool(
+            winner
+            or (combat and combat.get("status") == "ended")
+        )
+        return combat, winner, resolved
+
+    if combat.get("status") != "player_phase":
+        return combat, None, False
+
+    settings = combat_settings or {}
+    participants = get_combat_participants(combat) or []
+    phase = int(combat.get("current_phase") or 0)
+    fresh = dict(combat)
+    fresh["phase_actions"] = get_combat_phase_actions(combat_id, phase)
+    if not (
+        all_phase_actions_submitted(fresh, participants)
+        or combat_phase_expired(fresh, settings)
+    ):
+        return combat, None, False
+
+    prev_phase = phase
+    prev_log_len = len(combat.get("logs") or [])
+    combat, winner = maybe_resolve_player_phase(combat_id, settings)
+    combat = get_combat(combat_id) or combat
+    round_just_resolved = (
+        int(combat.get("current_phase") or 0) > prev_phase
+        or len(combat.get("logs") or []) > prev_log_len
+    )
+    return combat, winner, round_just_resolved
+
+
 def maybe_resolve_player_phase(combat_id, combat_settings=None):
     """
     Authoritative resolve gate for routes: re-read DB snapshot, resolve at most once.

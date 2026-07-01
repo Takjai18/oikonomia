@@ -112,5 +112,85 @@ def main():
     return 0
 
 
+def _seed_team_for_start():
+    """Team with route set, no active combat."""
+    db_path = oikonomia.DB_PATH
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) "
+        "VALUES ('T2', 'StartRace', 'iggy', ?, 'sA')",
+        (now,),
+    )
+    conn.execute(
+        """INSERT INTO squads
+           (squad_id, display_name, team_id, hp, max_hp, sanity, power, intellect,
+            resilience, is_team_leader, route, zoo_skills, last_update)
+           VALUES ('sA', 'Leader', 'T2', 100, 100, 50, 30, 20, 20, 1, 'iggy', '[]', ?)""",
+        (now,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_concurrent_combat_start():
+    """Parallel POST /combat/start must create at most one active combat per team."""
+    _seed_team_for_start()
+    client = oikonomia.app.test_client()
+    with client.session_transaction() as sess:
+        sess["squad_id"] = "sA"
+
+    results = []
+    errors = []
+
+    def start_worker():
+        try:
+            r = client.post(
+                "/combat/start",
+                json={"encounter_id": "practice_iggy_01_quick"},
+                content_type="application/json",
+            )
+            results.append((r.status_code, (r.get_json() or {}).get("combat_id")))
+        except Exception as exc:
+            errors.append(str(exc))
+
+    threads = [threading.Thread(target=start_worker) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    if errors:
+        print("FAIL start race errors:", errors)
+        return 1
+
+    success_ids = [cid for code, cid in results if code == 200 and cid]
+    conflict_codes = [code for code, _ in results if code in (400, 409)]
+    if len(success_ids) != 1:
+        print("FAIL: expected exactly one successful start", results)
+        return 1
+    if len(set(success_ids)) != 1:
+        print("FAIL: multiple distinct combat_ids", success_ids)
+        return 1
+    if not conflict_codes and len(results) > 1:
+        print("note: no explicit conflicts returned;", results)
+
+    db_path = oikonomia.DB_PATH
+    conn = sqlite3.connect(db_path)
+    active_rows = conn.execute(
+        """
+        SELECT COUNT(*) FROM combats c
+        INNER JOIN squads s ON c.squad_id = s.squad_id
+        WHERE UPPER(TRIM(s.team_id)) = 'T2' AND c.status NOT IN ('ended')
+        """
+    ).fetchone()[0]
+    conn.close()
+    if active_rows != 1:
+        print("FAIL: DB has", active_rows, "active combats for team T2")
+        return 1
+    print("OK: concurrent combat/start produced single active combat")
+    return 0
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(test_concurrent_combat_start() or main())

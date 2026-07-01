@@ -6,8 +6,8 @@ from flask import Blueprint, jsonify, request, session
 
 from models.combat import (
     COMBAT_ACTION_TYPES,
+    COMBAT_STATUS_RESOLVING,
     ActiveCombatExistsError,
-    all_phase_actions_submitted,
     append_combat_log,
     build_combat_round_preview,
     build_combat_status_response,
@@ -16,7 +16,6 @@ from models.combat import (
     clear_team_combat_id,
     combat_action_already_submitted,
     combat_phase_deadline,
-    combat_phase_expired,
     create_combat_record,
     get_active_combat_for_team,
     get_active_combat_member_ids,
@@ -25,6 +24,8 @@ from models.combat import (
     get_combat_participants,
     get_combat_phase_actions,
     get_phase_submit_required_ids,
+    advance_combat_from_poll,
+    maybe_resolve_player_phase,
     resolve_player_phase,
     roll_combat_dice,
     save_combat,
@@ -33,6 +34,8 @@ from models.combat import (
     _build_round_resolved_response,
     _combat_outcome_json,
     _attach_round_settlement,
+    _enrich_settlement_meta,
+    build_escape_outcome_response,
     build_victory_outcome_response,
     combat_outcome_if_finished,
 )
@@ -49,7 +52,8 @@ from models.encounter_outcomes import (
 )
 from models.protagonist import get_controllable_protagonist_squad_id, get_team_story_stage
 from models.item import apply_near_death_item_rescue
-from models.squad import get_squad, get_team_members, update_squad
+from models.squad import get_squad, get_team_members, is_near_death_active, update_squad
+from services.global_events import create_global_event
 
 combat_bp = Blueprint("combat", __name__)
 
@@ -103,13 +107,6 @@ def combat_start_api(encounter_id=None):
     ):
         return jsonify({"success": False, "error": "此 Encounter 已完成"}), 400
 
-    existing = get_active_combat_for_team(team_id)
-    if existing:
-        if existing.get("status") == "precheck" and confirm in ("skip", "fight"):
-            pass
-        else:
-            return jsonify({"success": False, "error": "已有進行中的戰鬥", "combat_id": existing["id"]}), 400
-
     route = squad.get("route")
     if not encounter_route_matches(encounter.get("route"), route):
         return jsonify({"success": False, "error": "此 Encounter 不屬於你嘅路線"}), 400
@@ -119,18 +116,19 @@ def combat_start_api(encounter_id=None):
         precheck.get("condition") and evaluate_precheck_condition(precheck["condition"], team_id)
     )
 
-    if existing and existing.get("status") == "precheck":
-        combat = existing
-    else:
-        status = "precheck" if precheck_passed else "player_phase"
-        try:
-            combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
-        except ActiveCombatExistsError as exc:
+    status = "precheck" if precheck_passed else "player_phase"
+    try:
+        combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
+    except ActiveCombatExistsError as exc:
+        existing = get_combat(exc.combat_id)
+        if existing and existing.get("status") == "precheck":
+            combat = existing
+        else:
             return jsonify({
                 "success": False,
                 "error": "已有進行中的戰鬥",
                 "combat_id": exc.combat_id,
-            }), 409
+            }), 409 if existing else 400
 
     if confirm == "skip" and precheck_passed:
         apply_precheck_skip(team_id, encounter)
@@ -217,26 +215,23 @@ def combat_status_api():
 
     round_just_resolved = False
     participants = None
-    if combat.get("status") == "player_phase":
-        participants = get_combat_participants(combat)
-        should_resolve = (
-            all_phase_actions_submitted(combat, participants)
-            or combat_phase_expired(combat, settings)
-        )
-        if should_resolve:
-            prev_phase = int(combat.get("current_phase") or 0)
-            prev_log_len = len(combat.get("logs") or [])
-            combat, winner = resolve_player_phase(combat["id"])
-            actor = get_squad(session["squad_id"])
-            actor_team_id = actor.get("team_id") if actor else None
-            if winner == "squad":
-                combat = get_combat(combat["id"]) or combat
-                return jsonify(build_victory_outcome_response(
-                    combat, encounter, session["squad_id"], team_id=actor_team_id,
-                ))
-            if winner == "enemy":
-                return jsonify({**_combat_outcome_json("enemy", encounter), "active": False})
+    if combat.get("status") in ("player_phase", COMBAT_STATUS_RESOLVING):
+        combat, winner, round_just_resolved = advance_combat_from_poll(combat["id"], settings)
+        actor = get_squad(session["squad_id"])
+        actor_team_id = actor.get("team_id") if actor else None
+        if winner == "squad":
             combat = get_combat(combat["id"]) or combat
+            return jsonify(build_victory_outcome_response(
+                combat, encounter, session["squad_id"], team_id=actor_team_id,
+            ))
+        if winner == "escaped":
+            combat = get_combat(combat["id"]) or combat
+            return jsonify(build_escape_outcome_response(
+                combat, encounter, session["squad_id"], team_id=actor_team_id,
+            ))
+        if winner == "enemy":
+            return jsonify({**_combat_outcome_json("enemy", encounter), "active": False})
+        if combat:
             finished = combat_outcome_if_finished(
                 combat,
                 encounter,
@@ -245,11 +240,8 @@ def combat_status_api():
             )
             if finished:
                 return jsonify({**finished, "active": False})
+        if round_just_resolved:
             participants = None
-            round_just_resolved = (
-                int(combat.get("current_phase") or 0) > prev_phase
-                or len(combat.get("logs") or []) > prev_log_len
-            )
 
     payload = build_combat_status_response(
         combat, encounter, session["squad_id"], participants=participants,
@@ -263,6 +255,7 @@ def combat_status_api():
     if round_just_resolved:
         payload["status"] = "round_resolved"
         payload["round_resolved"] = True
+        _enrich_settlement_meta(payload, combat=combat)
         payload["full_preview"] = _build_full_preview_from_status(payload)
     elif combat.get("status") == "player_phase":
         if participants is None:
@@ -384,11 +377,19 @@ def combat_submit_action_api():
     story_stage = get_team_story_stage(squad["team_id"]) if squad.get("team_id") else 0
     as_protagonist = bool(body.get("as_protagonist"))
     if as_protagonist:
+        if not bool(squad.get("is_team_leader")):
+            return jsonify({
+                "success": False,
+                "error": "只有隊長特權才能啟動主角代打模式",
+            }), 403
         acting_id = get_controllable_protagonist_squad_id(
             squad["team_id"], squad.get("route"), encounter, story_stage,
         )
         if not acting_id:
-            return jsonify({"success": False, "error": "此階段不可代替主角行動"}), 400
+            return jsonify({
+                "success": False,
+                "error": "此階段或此關卡不可代替主角行動",
+            }), 400
     else:
         acting_id = session["squad_id"]
 
@@ -398,13 +399,16 @@ def combat_submit_action_api():
         squad if acting_id == session["squad_id"] else None,
     )
     if not actor_state:
-        return jsonify({"success": False, "error": "找不到行動者"}), 400
+        return jsonify({"success": False, "error": "找不到行動者或該主角未參戰"}), 400
 
     if actor_state.get("near_death_until"):
         try:
             if datetime.now() < datetime.fromisoformat(actor_state["near_death_until"]):
-                label = "主角" if as_protagonist else "你"
-                return jsonify({"success": False, "error": f"{label}已陷入瀕死，等待救援"}), 400
+                label = "AI 主角" if as_protagonist else "你"
+                return jsonify({
+                    "success": False,
+                    "error": f"{label}已陷入瀕死，無法執行任何行動",
+                }), 400
         except ValueError:
             pass
 
@@ -426,18 +430,26 @@ def combat_submit_action_api():
         item_id,
     )
     phase_actions = get_combat_phase_actions(combat_id, current_phase)
-    combat["phase_actions"] = phase_actions
     save_combat(combat_id, phase_actions=phase_actions)
 
+    combat, winner = maybe_resolve_player_phase(combat_id, settings)
+    combat = get_combat(combat_id) or combat
     participants = get_combat_participants(combat) or []
     required_ids = get_phase_submit_required_ids(combat, participants)
-    winner = None
-    if all_phase_actions_submitted(combat, participants) or combat_phase_expired(combat, settings):
-        combat, winner = resolve_player_phase(combat_id)
+    resolved_phase = int(combat.get("current_phase") or current_phase)
+    round_resolved_this_submit = resolved_phase > current_phase
+    phase_actions = get_combat_phase_actions(combat_id, resolved_phase)
 
     if winner == "squad":
         combat = get_combat(combat_id) or combat
         payload = build_victory_outcome_response(
+            combat, encounter, session["squad_id"], team_id=squad.get("team_id"),
+        )
+        payload["dice_result"] = dice_result
+        return jsonify(payload)
+    if winner == "escaped":
+        combat = get_combat(combat_id) or combat
+        payload = build_escape_outcome_response(
             combat, encounter, session["squad_id"], team_id=squad.get("team_id"),
         )
         payload["dice_result"] = dice_result
@@ -455,7 +467,11 @@ def combat_submit_action_api():
     if finished:
         return jsonify(finished)
 
-    if len(required_ids) > 1 and len(phase_actions) < len(required_ids):
+    if (
+        not round_resolved_this_submit
+        and len(required_ids) > 1
+        and len(phase_actions) < len(required_ids)
+    ):
         me = next(
             (p for p in participants if p["squad_id"] == session["squad_id"]),
             None,
@@ -510,6 +526,13 @@ def combat_resolve_phase_api():
             "narrative": (encounter or {}).get("success", {}).get("narrative"),
             "reflection_prompt": (encounter or {}).get("reflection_prompt"),
         })
+    if winner == "escaped":
+        escape_block = (encounter or {}).get("escape") or {}
+        return jsonify({
+            "success": True,
+            "outcome": "escaped",
+            "narrative": escape_block.get("narrative") or "全隊成功脫離戰鬥。",
+        })
     if winner == "enemy":
         return jsonify({
             "success": True,
@@ -533,6 +556,17 @@ def combat_rescue_near_death_api():
     squad = get_squad(session["squad_id"])
     if not squad or not squad.get("team_id"):
         return jsonify({"success": False, "error": "請先加入 Team"}), 400
+
+    if is_near_death_active(squad):
+        return jsonify({
+            "success": False,
+            "error": "你自身已陷入瀕死，無法救援隊友",
+        }), 400
+    if int(squad.get("sanity") or 0) <= 0:
+        return jsonify({
+            "success": False,
+            "error": "你的神智已崩潰，無法救援隊友",
+        }), 400
 
     participants = get_team_members(squad["team_id"])
     target = None
@@ -593,5 +627,56 @@ def combat_rescue_near_death_api():
         "rescued": rescued,
         "message": message,
         "target": target_name,
+    })
+
+
+@combat_bp.route("/combat/summon_gm", methods=["POST"])
+def combat_summon_gm_api():
+    """Broadcast GM help request to global_events and combat log."""
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+
+    body = request.json if request.is_json else {}
+    combat_id = body.get("combat_id")
+    if not combat_id:
+        return jsonify({"success": False, "error": "缺少戰鬥編號"}), 400
+
+    squad_id = session["squad_id"]
+    squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({"success": False, "error": "找不到隊伍"}), 404
+
+    combat = get_combat(int(combat_id))
+    if not combat:
+        return jsonify({"success": False, "error": "無效的戰鬥編號"}), 404
+
+    participants = get_combat_participants(combat)
+    if squad_id not in {p.get("squad_id") for p in participants}:
+        return jsonify({"success": False, "error": "你不在這場戰鬥中"}), 403
+
+    display_name = squad.get("display_name") or squad_id
+    team_id = squad.get("team_id") or "獨立隊員"
+
+    create_global_event(
+        title=f"🚨 戰場救援訊號：{display_name}",
+        description=(
+            f"Team [{team_id}] 在戰鬥 #{combat_id} 請求 GM 介入瀕死/崩潰狀態，"
+            "需要工作人員手動重置或復活。"
+        ),
+        effect_type="announcement",
+        effect_value=int(combat_id),
+        created_by=squad_id,
+    )
+
+    combat = append_combat_log(
+        combat,
+        f"⚠️ [求助] {display_name} 已向 GM 發出緊急界線重建請求。",
+        log_type="gm_alert",
+    )
+    save_combat(combat["id"], logs=combat.get("logs"))
+
+    return jsonify({
+        "success": True,
+        "message": "GM 通訊網已建立，工作人員正在趕往現場。",
     })
 
