@@ -480,6 +480,13 @@ export class CombatApp {
     this.poller.stop();
     this.unmount();
     this.rootEl.classList.add('hidden');
+    this.views.endgame.hideAll();
+
+    if (typeof window.exitCombatScreen === 'function') {
+      showToast('已安全退出戰場', 'info');
+      window.exitCombatScreen();
+      return;
+    }
 
     if (window.AppRouter && typeof window.AppRouter.navigateTo === 'function') {
       window.AppRouter.navigateTo('dashboard');

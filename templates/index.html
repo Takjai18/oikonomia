@@ -256,7 +256,6 @@
         .combat-accent-oikos { --combat-accent: #be123c; --combat-accent-soft: rgba(190, 18, 60, 0.22); }
         .combat-accent-polis { --combat-accent: #2563eb; --combat-accent-soft: rgba(37, 99, 235, 0.22); }
         .combat-accent-default { --combat-accent: #d97706; --combat-accent-soft: rgba(217, 119, 6, 0.2); }
-        #combat-screen .combat-title { color: var(--combat-accent, #f59e0b); }
         .action-btn.selected { border-color: var(--combat-accent, #f59e0b) !important; background: var(--combat-accent-soft, rgba(245, 158, 11, 0.15)); }
         .dice-btn.selected { border-color: #f59e0b !important; background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
         .team-card-me { box-shadow: 0 0 0 2px var(--combat-accent, #f59e0b); }
@@ -270,11 +269,6 @@
             cursor: pointer;
         }
         @media (max-width: 1023px) {
-            #combat-screen .combat-action-btn { padding-top: 0.55rem; padding-bottom: 0.55rem; font-size: 0.75rem; }
-            #combat-log { max-height: 4.5rem; }
-            #combat-item-list { max-height: 6rem; overflow-y: auto; }
-            #combat-screen .combat-title { font-size: 1rem; }
-            #combat-screen #phase-timer { font-size: 1.25rem; }
             #combat-team-strip { display: none; }
         }
         #settings-modal .settings-sheet {
@@ -866,221 +860,15 @@
                     <div id="encounter-list" class="space-y-4 mb-8"></div>
                 </div>
 
-                <!-- 戰鬥主畫面（手機：敵人置頂 + compact；桌面：雙欄） -->
-                <div id="combat-screen" class="hidden max-w-md lg:max-w-6xl mx-auto combat-accent-default relative px-1 sm:px-0">
-                    <button onclick="exitCombatScreen()" class="mb-2 lg:mb-3 text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1">
-                        <i class="fa-solid fa-arrow-left"></i> 返回遭遇列表
-                    </button>
-
-                    <div class="flex justify-between items-center mb-3 lg:mb-4 gap-2">
-                        <div class="min-w-0">
-                            <h1 id="combat-title" class="combat-title text-lg lg:text-3xl font-bold truncate">戰鬥中</h1>
-                            <p id="combat-subtitle" class="text-xs lg:text-sm text-zinc-400">第 1 回合</p>
+                <!-- COMBAT V2 — Greenfield mount (PR-6) -->
+                <div id="combat-module-container" class="w-full min-h-screen bg-zinc-950 text-white">
+                    {% if combat_v2_enabled %}
+                        {% include 'combat_screen.html' %}
+                    {% else %}
+                        <div id="combat-v1-deprecated-fallback" class="p-6 text-center text-zinc-500">
+                            <p>戰鬥系統正在升級中，請聯繫 GM 開啟 COMBAT_V2 特性標記。</p>
                         </div>
-                        <div class="text-right shrink-0">
-                            <div id="phase-timer" class="text-2xl lg:text-4xl font-mono font-bold text-emerald-400">--:--</div>
-                            <div id="phase-status-label" class="text-xs text-emerald-400">Player Phase</div>
-                        </div>
-                    </div>
-
-                    <div id="combat-berserk-bar" class="hidden mb-3 lg:mb-4 px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl text-xs lg:text-sm text-orange-100 font-medium">
-                        ⚠️ <span id="combat-berserk-bar-text">神智偏低，暴走風險上升</span>
-                    </div>
-
-                    <!-- combat_mobile_hud_v2: 手機左我右敵雙頭像 HUD + 行動區置底 -->
-                    <div class="grid grid-cols-2 gap-2 lg:grid lg:grid-cols-2 lg:gap-6">
-                        <div id="enemy-panel" class="order-2 lg:order-2 bg-zinc-900/90 border border-red-500/40 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
-                            <div class="flex items-center gap-x-2 lg:gap-x-3 mb-1 lg:mb-3">
-                                <img id="combat-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
-                                     class="w-8 h-8 lg:w-20 lg:h-20 rounded-lg lg:rounded-2xl border-2 border-red-500 object-cover bg-zinc-950 shrink-0" alt="敵人">
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center justify-between gap-1">
-                                        <div id="enemy-name" class="font-semibold text-sm lg:text-xl text-red-400 truncate">敵人</div>
-                                        <div class="font-mono text-xs lg:text-sm text-red-400 whitespace-nowrap shrink-0">
-                                            <span id="enemy-hp-current">0</span>/<span id="enemy-hp-max">0</span>
-                                        </div>
-                                    </div>
-                                    <div class="hidden lg:block text-sm text-zinc-400">Enemy</div>
-                                    <div class="h-2 lg:h-2.5 bg-zinc-800 rounded-full overflow-hidden mt-1">
-                                        <div id="enemy-hp-bar" class="h-full lg:h-2.5 bg-gradient-to-r from-red-700 to-red-400 transition-all duration-300" style="width:100%"></div>
-                                    </div>
-                                    <div id="enemy-round-damage" class="hidden text-[10px] lg:text-xs text-amber-400 font-mono mt-0.5"></div>
-                                    <div id="enemy-hp-hint" class="hidden text-[10px] text-amber-400/90 mt-0.5 leading-snug"></div>
-                                </div>
-                            </div>
-                            <div class="flex justify-between lg:grid lg:grid-cols-5 gap-1 text-center text-[10px] lg:text-xs mt-1.5 lg:mt-0">
-                                <div class="hidden lg:block">
-                                    <div class="text-red-400">生命值</div>
-                                    <div id="enemy-stat-hp" class="font-mono text-sm lg:text-lg text-red-400">—</div>
-                                </div>
-                                <div>
-                                    <div class="text-purple-400 lg:block hidden">神智</div>
-                                    <span class="lg:hidden">🧠</span><span id="enemy-stat-sanity" class="font-mono text-sm lg:text-lg text-purple-400">—</span>
-                                </div>
-                                <div>
-                                    <div class="text-orange-400 lg:block hidden">力量</div>
-                                    <span class="lg:hidden">💪</span><span id="enemy-stat-power" class="font-mono text-sm lg:text-lg text-orange-400">—</span>
-                                </div>
-                                <div>
-                                    <div class="text-blue-400 lg:block hidden">智力</div>
-                                    <span class="lg:hidden">📘</span><span id="enemy-stat-intellect" class="font-mono text-sm lg:text-lg text-blue-400">—</span>
-                                </div>
-                                <div class="hidden lg:block">
-                                    <div class="text-emerald-400">韌性</div>
-                                    <div id="enemy-stat-resilience" class="font-mono text-lg text-emerald-400">—</div>
-                                </div>
-                            </div>
-                            <div id="enemy-quote" class="hidden lg:block text-sm text-zinc-300 leading-relaxed mt-4"></div>
-                        </div>
-
-                        <div id="player-panel" class="order-1 lg:order-1 bg-zinc-900/90 border border-amber-500/30 lg:border-zinc-700 rounded-xl lg:rounded-3xl p-2.5 lg:p-6 relative overflow-hidden">
-                            <div id="combat-berserk-overlay" class="hidden absolute inset-0 z-10 rounded-xl lg:rounded-3xl flex items-center justify-center bg-zinc-950/80">
-                                <div class="text-center text-red-200 font-bold text-base lg:text-lg px-4">神智不清，能力失控</div>
-                            </div>
-                            <div class="lg:hidden">
-                                <div class="flex items-center gap-x-1.5">
-                                    <img id="combat-player-avatar-mobile" src="/static/avatars/default.png"
-                                         class="w-8 h-8 rounded-full border-2 border-amber-500 object-cover shrink-0" alt="玩家">
-                                    <div class="flex-1 min-w-0">
-                                <div class="flex items-center justify-between gap-1">
-                                    <div id="combat-player-name" class="font-semibold text-sm text-amber-400 truncate">你</div>
-                                    <div class="font-mono text-xs text-amber-400 whitespace-nowrap shrink-0">
-                                        <span id="combat-player-hp">—</span><span class="text-[10px] text-zinc-500">/HP</span>
-                                    </div>
-                                </div>
-                                <div class="h-2 bg-zinc-800 rounded-full overflow-hidden mt-1">
-                                    <div id="combat-hp-bar-mobile" class="h-full bg-amber-500 transition-all duration-300" style="width:0%"></div>
-                                </div>
-                                <div class="flex justify-between text-[10px] text-zinc-400 mt-1.5 font-mono">
-                                    <span>🧠<span id="combat-player-sanity">—</span></span>
-                                    <span>💪<span id="combat-m-power">—</span></span>
-                                    <span>📘<span id="combat-m-intellect">—</span></span>
-                                </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="hidden lg:block">
-                            <div class="flex items-center gap-x-4 mb-5">
-                                <img id="combat-player-avatar" src="/static/avatars/default.png"
-                                     class="w-20 h-20 rounded-2xl border-2 border-amber-500 object-cover shrink-0" alt="玩家">
-                                <div class="min-w-0">
-                                    <div class="font-semibold text-xl truncate combat-player-name-lg">你</div>
-                                    <div id="combat-player-team" class="text-sm text-zinc-400 truncate">—</div>
-                                </div>
-                            </div>
-                            <div class="space-y-3.5">
-                                <div>
-                                    <div class="flex justify-between text-sm mb-1">
-                                        <span class="flex items-center gap-2"><span>❤️</span><span class="font-medium text-zinc-200">生命值</span></span>
-                                        <span class="font-mono text-red-400">
-                                            <span id="combat-hp-value">— / 100</span>
-                                            <span id="combat-hp-pct" class="text-xs text-zinc-500 ml-1">(—)</span>
-                                        </span>
-                                    </div>
-                                    <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div id="combat-hp-bar" class="h-2.5 bg-red-500 rounded-full transition-all duration-500" style="width:0%"></div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="flex justify-between text-sm mb-1">
-                                        <span class="flex items-center gap-2"><span>🧠</span><span class="font-medium text-zinc-200">神智</span></span>
-                                        <span class="font-mono text-purple-400">
-                                            <span id="combat-sanity-value">— / 100</span>
-                                            <span id="combat-sanity-pct" class="text-xs text-zinc-500 ml-1">(—)</span>
-                                        </span>
-                                    </div>
-                                    <div class="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div id="combat-sanity-bar" class="h-2.5 bg-purple-500 rounded-full transition-all duration-500" style="width:0%"></div>
-                                    </div>
-                                </div>
-                                <div class="flex justify-between items-center py-1.5 border-t border-zinc-800/80 mt-1 pt-3">
-                                    <span class="flex items-center gap-2 text-sm"><span>💪</span><span class="font-medium text-zinc-200">力量</span></span>
-                                    <span id="combat-power-value" class="font-mono text-lg font-bold text-orange-400">—</span>
-                                </div>
-                                <div class="flex justify-between items-center py-1.5">
-                                    <span class="flex items-center gap-2 text-sm"><span>📘</span><span class="font-medium text-zinc-200">智力</span></span>
-                                    <span id="combat-intellect-value" class="font-mono text-lg font-bold text-blue-400">—</span>
-                                </div>
-                                <div class="flex justify-between items-center py-1.5">
-                                    <span class="flex items-center gap-2 text-sm"><span>🛡️</span><span class="font-medium text-zinc-200">韌性</span></span>
-                                    <span id="combat-resilience-value" class="font-mono text-lg font-bold text-emerald-400">—</span>
-                                </div>
-                            </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="combat-action-area" class="mt-2 lg:mt-0 bg-zinc-900/80 lg:bg-transparent border border-zinc-800 lg:border-0 rounded-xl lg:rounded-none p-2.5 lg:p-0">
-                            <div id="protagonist-control-bar" class="hidden mb-3 p-3 rounded-xl border border-amber-700/40 bg-amber-950/20">
-                                <button type="button" id="protagonist-control-toggle" onclick="toggleProtagonistControl()"
-                                        class="w-full py-2 text-xs font-medium text-amber-200 bg-amber-900/40 hover:bg-amber-900/60 rounded-lg border border-amber-700/50">
-                                    切換：控制主角行動
-                                </button>
-                                <p id="protagonist-control-hint" class="text-[10px] text-zinc-500 mt-2 text-center">
-                                    普通戰鬥：主角自動行動；最終階段可代替主角出招
-                                </p>
-                            </div>
-                            <div class="text-xs text-zinc-400 mb-2 px-0.5 lg:hidden">選擇行動</div>
-                            <div class="grid grid-cols-2 lg:grid-cols-1 gap-2 lg:gap-3" id="combat-action-buttons">
-                                <button type="button" data-action="attack" id="attack-action-btn"
-                                        class="combat-action-btn py-2.5 lg:py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl lg:rounded-2xl flex items-center justify-center gap-x-2 lg:gap-x-3">
-                                    <span class="text-lg lg:text-xl">⚔️</span>
-                                    <span class="flex flex-col items-start leading-tight">
-                                        <span>攻擊</span>
-                                        <span id="attack-stat-hint" class="hidden lg:inline text-[10px] text-amber-400 font-normal">自動取力量／智力較高者</span>
-                                    </span>
-                                </button>
-                                <button type="button" data-action="defend"
-                                        class="combat-action-btn py-2.5 lg:py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl lg:rounded-2xl flex items-center justify-center gap-x-2">
-                                    <span>🛡️</span><span class="lg:hidden">防禦</span><span class="hidden lg:inline">Defend（堅守界線）</span>
-                                </button>
-                                <button type="button" data-action="use_zoo" id="zoo-action-btn"
-                                        class="combat-action-btn py-2.5 lg:py-3 bg-orange-900/30 hover:bg-orange-900/50 border border-orange-700 rounded-xl lg:rounded-2xl flex flex-col items-center justify-center gap-y-0.5">
-                                    <span class="flex items-center gap-x-2"><span>🔥</span><span class="lg:hidden">Zoo</span><span class="hidden lg:inline">Use Zoo（高神智有加成）</span></span>
-                                    <span id="zoo-hint" class="text-[10px] text-orange-400">神智 ≥70 有加成</span>
-                                </button>
-                                <button type="button" data-action="pass"
-                                        class="combat-action-btn py-2.5 lg:py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-400 flex items-center justify-center gap-x-2">
-                                    <span>⏭️</span><span>觀望</span>
-                                </button>
-                                <div class="col-span-2 lg:col-span-1">
-                                    <div class="text-xs text-zinc-400 mb-1 px-1">可用物品</div>
-                                    <div id="combat-item-list" class="space-y-1.5 lg:space-y-2">
-                                        <div class="text-xs text-zinc-500 py-2 text-center">載入物品中…</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mt-3 lg:mt-4 flex justify-end">
-                                <button type="button" onclick="rescueNearDeath()"
-                                        class="text-[10px] lg:text-xs px-3 lg:px-4 py-1.5 lg:py-2 bg-emerald-900/50 hover:bg-emerald-800 border border-emerald-700 rounded-xl">
-                                    🤝 禱告救援瀕死隊友
-                                </button>
-                            </div>
-                    </div>
-
-                    <!-- 隊友 + 主角（水平 scroll） -->
-                    <div id="combat-team-strip" class="mt-3 lg:mt-4 bg-zinc-900 border border-zinc-700 rounded-2xl lg:rounded-3xl p-3">
-                        <div class="text-xs text-zinc-400 mb-2 px-1">隊友與主角狀態</div>
-                        <div id="team-status-row" class="flex gap-x-4 overflow-x-auto combat-team-scroll pb-1"></div>
-                    </div>
-
-                    <div id="combat-waiting-panel" class="hidden mt-4 cartoon-box p-5 text-center border border-amber-600/30 bg-amber-950/20">
-                        <div class="text-sm text-amber-300 mb-1">等待隊友行動中…</div>
-                        <div id="combat-waiting-count" class="text-3xl font-bold text-amber-400">0 / 0</div>
-                        <div class="text-xs text-zinc-400 mt-1">已行動 / 存活隊員</div>
-                        <p class="text-[10px] text-zinc-500 mt-3">全隊提交後將顯示完整傷害結算</p>
-                    </div>
-
-                    <div id="combat-resolving-panel" class="hidden mt-4 cartoon-box p-5 text-center border border-sky-600/30 bg-sky-950/20">
-                        <div class="inline-block w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-3" aria-hidden="true"></div>
-                        <div class="text-sm text-sky-300 mb-1">回合結算中…</div>
-                        <p class="text-[10px] text-zinc-500">請稍候，敵方 HP 將於結算完成後更新</p>
-                    </div>
-
-                    <p id="combat-submit-hint" class="text-[10px] lg:text-xs text-zinc-500 text-center mt-3 lg:mt-4"></p>
-
-                    <div class="mt-3 lg:mt-6 bg-zinc-950 border border-zinc-800 rounded-2xl lg:rounded-3xl p-3 lg:p-4 max-h-48 overflow-y-auto text-xs lg:text-sm text-zinc-300" id="combat-log"></div>
-                    <span id="max-phase" class="hidden"></span>
+                    {% endif %}
                 </div>
 
                 <!-- 瀕死全屏 -->
@@ -1200,7 +988,6 @@
         </div>
     </div>
 
-    <script src="/static/js/combat_flow.js"></script>
     <script>
         let currentSquad = null;
 
@@ -1245,50 +1032,6 @@
             } catch (_) {
                 return {};
             }
-        }
-
-        // combat_flow_fsm_v2: PR#2 production FSM (static/js/combat_flow.js)
-        if (typeof ensureCombatFlow === 'function') {
-            ensureCombatFlow({ shadowMode: true });
-        }
-
-        // combat_flow_v15: dice animation restored; confirm hides dice; early victory lock
-        // combat_flow_v16: force settlement on round_resolved; zero-breakdown enrich; victory panel guard; mobile enemy sticky
-        // combat_flow_v17: skip phase guard when round_resolved; FSM submit recovery; mobile avatars restored
-        // combat_flow_v18: settlementRoundKey via logR; enforceSettlementInvariant; Safari touch-action
-        const DICE_ROLL_PRESETS = {
-            fast: { intervalMs: 40, maxRolls: 6, pauseMs: 0 },
-            normal: { intervalMs: 55, maxRolls: 8, pauseMs: 0 },
-            slow: { intervalMs: 75, maxRolls: 10, pauseMs: 0 },
-        };
-
-        function syncHpOnlyFromPoll(data) {
-            if (!data?.enemy || pendingSettlementHpPayload) return;
-            syncEnemyHpDisplay(applySettlementEnemyHp(data));
-        }
-
-        /** 確認結算後即刻扣血（無 delay）；主畫面結算期間保持舊 HP */
-        function applyPendingSettlementHp() {
-            const data = pendingSettlementHpPayload;
-            pendingSettlementHpPayload = null;
-            if (!data?.enemy) return;
-            const enriched = applySettlementEnemyHp(data);
-            const settlement = getRoundSettlement(enriched);
-            const teamDealt = Number(settlement.team_damage_dealt) || 0;
-            const enemyDealt = Number(settlement.enemy_damage_dealt) || 0;
-            if (teamDealt > 0) showDamageNumber('enemy-panel', teamDealt, false);
-            if (enemyDealt > 0) showDamageNumber('player-panel', enemyDealt, false);
-            syncEnemyHpDisplay(enriched);
-            const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl && teamDealt > 0) {
-                roundDmgEl.textContent = `本回合對敵 -${teamDealt.toLocaleString('zh-Hant')}`;
-                setVisible(roundDmgEl, true);
-            }
-        }
-
-        function getDiceRollConfig() {
-            const preset = getGameSettings().diceRollSpeed || 'normal';
-            return DICE_ROLL_PRESETS[preset] || DICE_ROLL_PRESETS.normal;
         }
 
         function loadSettings() {
@@ -1578,2693 +1321,304 @@
             }
         }
 
-        let combatPollTimer = null;
-        let combatPhaseTimer = null;
-        let currentCombatId = null;
-        let pendingEncounterId = null;
-        let selectedAction = 'attack';
-        let controllingProtagonist = false;
-        let selectedItemId = null;
-        let selectedDice = null;
-        let actionModalRolling = false;
-        let actionModalRollTimer = null;
-        let actionModalPauseTimer = null;
-
-
-        const DICE_RESULT_DESCRIPTIONS = {
-            0: '失手 (0%)',
-            1: '普通攻擊 (100%)',
-            2: '強力攻擊 (150%)',
-            3: '爆擊！(200%)',
-        };
-        let combatItemsLoaded = false;
-        let lastDicePhase = 0;
-        let lastCombatLogCount = 0;
-        let combatWaitingForRound = false;
-        let combatSubmittedPhase = 0;
-        let lastShownSettlementPhase = 0;
-        let lastSettlementDisplayKey = '';
-        let victorySettlementModalCombatId = null;
-        // combat_flow_fsm_v2: settlement idempotency via FSM (static/js/combat_flow.js)
-        let currentSettlementRound = null;
-        let settlementCombatId = null;
-        let pendingSettlementHpPayload = null;
-        let lastCombatStatus = null;
-        let combatEnemyHpSeen = null;
-        let lastAnimatedEnemyHp = null;
-        let pendingVictoryAfterSettlement = null;
-        let victorySettlementAcknowledgedCombatId = null;
-
-        function isCombatFsmSettlement() {
-            return getCombatUiPhase() === CombatUiPhase.SETTLEMENT;
-        }
-
-        function isCombatFsmSubmitting() {
-            return getCombatUiPhase() === CombatUiPhase.SUBMITTING;
-        }
-
-        function isCombatFsmEndgame() {
-            const p = getCombatUiPhase();
-            return p === CombatUiPhase.VICTORY || p === CombatUiPhase.DEFEAT;
-        }
-
-        function isCombatEndgameFinalizing() {
-            return getCombatFlow().finalizingEndgame;
-        }
-
-        function isCombatFsmBlockingActions() {
-            return isCombatFsmSettlement() || isCombatFsmSubmitting() || isCombatFsmEndgame()
-                || isCombatEndgameFinalizing();
-        }
-        // combat_flow_v12: blocks poll/UI from re-opening settlement after victory sequence
-        let combatVictorySequenceCompleteId = null;
-        let combatPhaseLocked = false;
-        let combatPhaseLockedRound = 0;
-        let lastCombatUiSnapshotKey = '';
-        let lastCombatStatusJson = '';
-        const COMBAT_POLL_INTERVAL_NORMAL = 3000;
-        const COMBAT_POLL_INTERVAL_WAITING = 4000;
-        const COMBAT_POLL_INTERVAL_RESOLVING = 1000;
-
-        function appendCacheBust(url) {
-            const sep = url.includes('?') ? '&' : '?';
-            return `${url}${sep}t=${Date.now()}`;
-        }
-
-        const FETCH_NO_CACHE_HEADERS = {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Requested-With': 'XMLHttpRequest',
-        };
-
-        function fetchNoCache(url, options = {}) {
-            return fetch(appendCacheBust(url), {
-                credentials: 'same-origin',
-                ...options,
-                headers: { ...FETCH_NO_CACHE_HEADERS, ...(options.headers || {}) },
-            });
-        }
-
-        /** Backend uses round_resolved for settlement payload; combat is already in player_phase. */
-        function effectiveCombatStatus(data) {
-            if (!data) return null;
-            if ((data.status === 'round_resolved' || data.round_resolved) && data.active !== false) {
-                return 'player_phase';
-            }
-            return data.status;
-        }
-
-        function normalizeCombatStatusData(data) {
-            if (!data) return data;
-            const uiStatus = effectiveCombatStatus(data);
-            if (!uiStatus || uiStatus === data.status) return data;
-            return { ...data, status: uiStatus, round_resolved: false };
-        }
-
-        function combatUiSnapshotKey(data) {
-            if (!data) return '';
-            const enemy = data.enemy || {};
-            const me = data.my_state || {};
-            return [
-                data.combat_id,
-                data.status,
-                data.current_phase,
-                enemy.hp,
-                enemy.max_hp,
-                me.hp,
-                me.submitted,
-                me.action_type,
-                data.round_resolved,
-                data.outcome,
-            ].join('|');
-        }
-
-        function isCombatVictoryPayload(data) {
-            if (!data) return false;
-            return !!(data.outcome || data.status === 'ended' || data.winner);
-        }
-
-        function isCombatResultPanelVisible() {
-            const panel = document.getElementById('combat-result-panel');
-            return !!(panel && !panel.classList.contains('hidden'));
-        }
-
-        function isCombatVictorySequenceComplete(combatId) {
-            const cid = combatId || currentCombatId;
-            return !!(combatVictorySequenceCompleteId && cid === combatVictorySequenceCompleteId);
-        }
-
-        function markCombatVictorySequenceComplete(combatId) {
-            const cid = combatId || currentCombatId;
-            if (cid) combatVictorySequenceCompleteId = cid;
-        }
-
-        function queueVictoryDuringSettlement(data) {
-            if (isCombatVictoryPayload(data)) {
-                pendingVictoryAfterSettlement = data;
-                return true;
-            }
-            if (shouldFinishCombatVictory(data)) {
-                pendingVictoryAfterSettlement = {
-                    ...data,
-                    outcome: data.winner === 'enemy' ? 'defeat' : 'victory',
-                };
-                return true;
-            }
-            return false;
-        }
-        const COMBAT_ACTION_LABELS = {
-            attack: '攻擊',
-            attack_physical: '攻擊',
-            attack_nonphysical: '攻擊',
-            defend: '堅守界線',
-            use_zoo: 'Zoo 能力',
-            use_item: '使用物品',
-            pass: '觀望',
-        };
-        const ROUTE_SUBTITLES = { iggy: 'Iggy 線', marah: 'Marah 線' };
-        const COMBAT_DICE_ACTIONS = new Set(['attack', 'use_zoo']);
-        const COMBAT_ATTACK_BASE_DAMAGE = 10;
-        const COMBAT_DICE_MULTIPLIERS = {0: 0, 1: 1, 2: 1.5, 3: 2};
-
-        function stopCombatPolling() {
-            if (combatPollTimer) {
-                clearInterval(combatPollTimer);
-                combatPollTimer = null;
-            }
-            if (combatPhaseTimer) {
-                clearInterval(combatPhaseTimer);
-                combatPhaseTimer = null;
-            }
-        }
-
-        function getCombatPollInterval(data) {
-            if (!data) return COMBAT_POLL_INTERVAL_NORMAL;
-            if (data.status === 'resolving') return COMBAT_POLL_INTERVAL_RESOLVING;
-            if (data.waiting_for_teammates || combatWaitingForRound) return COMBAT_POLL_INTERVAL_WAITING;
-            return COMBAT_POLL_INTERVAL_NORMAL;
-        }
-
-        function startCombatPolling(intervalMs = COMBAT_POLL_INTERVAL_NORMAL) {
-            stopCombatPolling();
-            combatPollTimer = setInterval(() => loadCombatStatus(false), intervalMs);
-        }
-
-        function showCombatResolvingPanel(show) {
-            setVisible(document.getElementById('combat-resolving-panel'), !!show);
-        }
-
-        function setCombatPhaseLock(locked, data) {
-            combatPhaseLocked = !!locked;
-            if (locked && data) {
-                combatPhaseLockedRound = data.current_phase || combatPhaseLockedRound || 0;
-            }
-            if (!locked) {
-                combatPhaseLockedRound = 0;
-            }
-            showCombatResolvingPanel(locked);
-            if (locked) {
-                hideCombatWaitingPanel();
-                hideCombatModal();
-                document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                    el.disabled = true;
-                });
-                const panel = document.getElementById('player-panel');
-                if (panel) panel.style.opacity = '0.45';
-            }
-        }
-
-        function parseLocaleInt(text) {
-            if (text == null || text === '') return NaN;
-            const n = parseInt(String(text).replace(/[,，\s]/g, ''), 10);
-            return Number.isFinite(n) ? n : NaN;
-        }
-
-        function showCombatWaitingPanel(submitted, total) {
-            const panel = document.getElementById('combat-waiting-panel');
-            const countEl = document.getElementById('combat-waiting-count');
-            if (countEl) countEl.textContent = `${submitted} / ${total}`;
-            setVisible(panel, true);
-        }
-
-        function hideCombatWaitingPanel() {
-            setVisible(document.getElementById('combat-waiting-panel'), false);
-        }
-
-        function showSinglePlayerResultModal(preview) {
-            if (!preview) return;
-            const modal = document.getElementById('combat-single-result-modal');
-            const diceLabels = ['失手', '普通', '良好', '爆擊'];
-            const diceLabel = diceLabels[preview.dice_result] ?? '';
-            document.getElementById('single-result-title').textContent =
-                `${preview.player_name || '你'} · ${preview.action_label || ''}（骰 ${preview.dice_result} ${diceLabel}）`;
-            document.getElementById('single-result-summary').textContent = preview.summary || '';
-            document.getElementById('single-result-dealt').textContent = String(preview.damage_dealt ?? 0);
-
-            const takenPending = preview.damage_taken_pending;
-            const takenWrap = document.getElementById('single-result-taken-wrap');
-            const takenEl = document.getElementById('single-result-taken');
-            const takenPendingEl = document.getElementById('single-result-taken-pending');
-            if (takenPending) {
-                if (takenEl) takenEl.textContent = String(preview.estimated_counter_damage ?? '?');
-                setVisible(takenPendingEl, true);
-            } else {
-                if (takenEl) takenEl.textContent = String(preview.damage_taken ?? 0);
-                setVisible(takenPendingEl, false);
-            }
-
-            const risksEl = document.getElementById('single-result-risks');
-            if (risksEl) {
-                if (preview.risks?.length) {
-                    risksEl.innerHTML = preview.risks.map(r =>
-                        `<div class="text-orange-300 px-2 py-1 bg-orange-900/20 rounded-lg">⚠️ ${r.message}</div>`
-                    ).join('');
-                } else {
-                    risksEl.innerHTML = '';
-                }
-            }
-            setVisible(modal, true);
-            modal.classList.add('flex');
-        }
-
-        function hideSinglePlayerResultModal() {
-            const modal = document.getElementById('combat-single-result-modal');
-            if (!modal) return;
-            modal.classList.remove('flex');
-            setVisible(modal, false);
-        }
-
-        function parseEnemyRemainingHpFromLogs(logEntries, logLines) {
-            for (let i = (logEntries || []).length - 1; i >= 0; i--) {
-                const e = logEntries[i];
-                if (e?.type !== 'summary') continue;
-                const m = (e.message || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (m) return parseInt(m[1], 10);
-            }
-            for (let i = (logLines || []).length - 1; i >= 0; i--) {
-                const m = String(logLines[i] || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (m) return parseInt(m[1], 10);
-            }
-            return null;
-        }
-
-        function parseEnemyRemainingHpFromStatus(data) {
-            return parseEnemyRemainingHpFromLogs(data?.log_entries || [], data?.log || []);
-        }
-
-        function isCombatModalBusy() {
-            return actionModalRolling || actionModalPauseTimer !== null;
-        }
-
-        function resolveAuthoritativeEnemyHp(data) {
-            if (!data) return null;
-            const settlement = getRoundSettlement(data);
-            const fromSettlement = Number(settlement.enemy_hp_after);
-            const fromEnemy = Number(data.enemy?.hp);
-            const fromLog = parseEnemyRemainingHpFromStatus(data);
-            const candidates = [];
-            if (Number.isFinite(fromEnemy)) candidates.push(fromEnemy);
-            if (Number.isFinite(fromSettlement)) candidates.push(fromSettlement);
-            if (fromLog != null) candidates.push(fromLog);
-            if (!candidates.length) return null;
-            // Never show inflated HP when settlement snapshot lags behind enemy.hp
-            return Math.min(...candidates);
-        }
-
-        function syncEnemyHpDisplay(data, options = {}) {
-            if (options && typeof options === 'object' && options.hp != null
-                && options.enemyOverride === undefined) {
-                options = { enemyOverride: options };
-            }
-            const enemyOverride = options.enemyOverride ?? null;
-            const ctx = enemyOverride
-                ? { ...data, enemy: { ...(data?.enemy || {}), ...enemyOverride } }
-                : data;
-            let hp = resolveAuthoritativeEnemyHp(ctx);
-            if (!Number.isFinite(hp)) return;
-            const combatId = ctx?.combat_id || currentCombatId;
-            const sameCombat = !combatId || combatId === currentCombatId;
-            if (sameCombat && Number.isFinite(lastAnimatedEnemyHp) && hp > lastAnimatedEnemyHp) {
-                hp = lastAnimatedEnemyHp;
-            }
-            const maxHp = Number(ctx?.enemy?.max_hp || ctx?.enemy?.hp) || 1;
-            const prevHpRaw = Number.isFinite(lastAnimatedEnemyHp)
-                ? lastAnimatedEnemyHp
-                : resolveAuthoritativeEnemyHp(lastCombatStatus);
-            const prevHp = Number.isFinite(prevHpRaw) ? prevHpRaw : hp;
-            const fmt = (n) => Number(n).toLocaleString('zh-Hant');
-            safeSetText('enemy-hp-max', fmt(maxHp));
-            safeSetText('enemy-hp-current', fmt(hp));
-            const bar = document.getElementById('enemy-hp-bar');
-            const targetPct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100)));
-            if (bar) {
-                bar.style.width = `${targetPct}%`;
-                if (Number.isFinite(prevHp) && hp < prevHp) flashEnemyHpBar();
-            }
-            combatEnemyHpSeen = hp;
-            lastAnimatedEnemyHp = hp;
-            safeSetText('enemy-stat-hp', fmt(hp));
-            const roundDmgEl = document.getElementById('enemy-round-damage');
-            if (roundDmgEl && Number.isFinite(prevHp) && hp < prevHp) {
-                const delta = prevHp - hp;
-                roundDmgEl.textContent = `敵人剩餘 ${fmt(hp)}（本回合 -${fmt(delta)}）`;
-                setVisible(roundDmgEl, true);
-            }
-        }
-
-        function applySettlementEnemyHp(data) {
-            if (!data?.enemy) return data;
-            const settlement = getRoundSettlement(data);
-            let remaining = Number.isFinite(Number(settlement.enemy_hp_after))
-                ? Number(settlement.enemy_hp_after)
-                : parseEnemyRemainingHpFromStatus(data);
-            const current = Number(data.enemy.hp);
-            if (remaining == null && !Number.isFinite(current)) return data;
-            const candidates = [];
-            if (Number.isFinite(current)) candidates.push(current);
-            if (remaining != null) candidates.push(remaining);
-            if (!candidates.length) return data;
-            return { ...data, enemy: { ...data.enemy, hp: Math.min(...candidates) } };
-        }
-
-        // combat_flow_v13: slice logs by settled round — avoid marathon cross-round pollution
-        function getSettledRoundNumber(data) {
-            const phase = Number(data?.current_phase) || 0;
-            if (!phase) return 1;
-            const resolved = !!(data?.round_resolved || data?.status === 'round_resolved' || data?.outcome);
-            if (resolved && phase > 1) return phase - 1;
-            if (resolved) return 1;
-            return Math.max(1, phase);
-        }
-
-        function sliceLogsForSettledRound(logEntries, data) {
-            const entries = logEntries || [];
-            if (!data) return entries;
-            const targetRound = getSettledRoundNumber(data);
-            let summaryCount = 0;
-            let targetSummaryIdx = -1;
-            let prevSummaryIdx = -1;
-            for (let i = 0; i < entries.length; i++) {
-                const e = entries[i];
-                if (e?.type === 'summary' && (e.message || '').includes('受到共')) {
-                    summaryCount += 1;
-                    if (summaryCount === targetRound) {
-                        targetSummaryIdx = i;
-                        break;
-                    }
-                    prevSummaryIdx = i;
-                }
-            }
-            const roundStart = prevSummaryIdx >= 0 ? prevSummaryIdx + 1 : 0;
-            if (targetSummaryIdx >= 0) {
-                let endIdx = targetSummaryIdx + 1;
-                while (endIdx < entries.length && entries[endIdx]?.type === 'enemy_attack') {
-                    endIdx += 1;
-                }
-                return entries.slice(roundStart, endIdx);
-            }
-            return entries.slice(roundStart);
-        }
-
-        function normalizeCombatLogEntries(logs) {
-            if (!Array.isArray(logs) || !logs.length) return [];
-            return logs[0]?.type
-                ? logs
-                : logs.map((line) => ({ type: 'event', message: String(line) }));
-        }
-
-        function buildClientRoundSettlement(logEntries, data) {
-            const entries = data
-                ? sliceLogsForSettledRound(logEntries || [], data)
-                : (logEntries || []);
-            let summaryIdx = -1;
-            for (let i = entries.length - 1; i >= 0; i--) {
-                const e = entries[i];
-                if (e?.type === 'summary' && (e.message || '').includes('受到共')) {
-                    summaryIdx = i;
-                    break;
-                }
-            }
-            let teamDealt = 0;
-            let enemyDealt = 0;
-            const playerHits = [];
-            const counterHits = [];
-            if (summaryIdx >= 0) {
-                const m = (entries[summaryIdx].message || '').match(/受到共\s*(\d+)\s*點傷害/);
-                if (m) teamDealt = parseInt(m[1], 10);
-                for (let i = summaryIdx - 1; i >= 0; i--) {
-                    const e = entries[i];
-                    if (e?.type !== 'damage') break;
-                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
-                    const pm = (e.message || '').match(/^(.+?)\s+(?:攻擊|Zoo 能力)/);
-                    if (dm) {
-                        const playerName = pm ? pm[1].trim() : '隊友';
-                        playerHits.unshift({ player: playerName, damage: parseInt(dm[1], 10) });
-                    }
-                }
-                for (let i = summaryIdx + 1; i < entries.length; i++) {
-                    const e = entries[i];
-                    if (e?.type !== 'enemy_attack') break;
-                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
-                    const tm = (e.message || '').match(/反擊\s*([^，]+)/);
-                    if (dm) {
-                        const dmg = parseInt(dm[1], 10);
-                        enemyDealt += dmg;
-                        counterHits.push({ target: tm ? tm[1].trim() : '?', damage: dmg });
-                    }
-                }
-            } else {
-                entries.forEach((e) => {
-                    if (e?.type !== 'damage') return;
-                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
-                    const pm = (e.message || '').match(/^(.+?)\s+(?:攻擊|Zoo 能力)/);
-                    if (!dm) return;
-                    const dmg = parseInt(dm[1], 10);
-                    teamDealt += dmg;
-                    playerHits.push({ player: pm ? pm[1].trim() : '隊友', damage: dmg });
-                });
-                entries.forEach((e) => {
-                    if (e?.type !== 'enemy_attack') return;
-                    const dm = (e.message || '').match(/造成\s*(\d+)\s*點傷害/);
-                    const tm = (e.message || '').match(/反擊\s*([^，]+)/);
-                    if (!dm) return;
-                    const dmg = parseInt(dm[1], 10);
-                    enemyDealt += dmg;
-                    counterHits.push({ target: tm ? tm[1].trim() : '?', damage: dmg });
-                });
-            }
-            const lookup = buildCombatParticipantLookup(lastCombatStatus);
-            playerHits.forEach((hit) => {
-                hit.role = resolveHitRole(hit.player, lookup);
-            });
-            counterHits.forEach((hit) => {
-                hit.role = resolveHitRole(hit.target, lookup);
-            });
-            let enemyHpAfter = null;
-            if (summaryIdx >= 0) {
-                const hm = (entries[summaryIdx].message || '').match(/剩餘\s*HP\s*(\d+)/);
-                if (hm) enemyHpAfter = parseInt(hm[1], 10);
-            }
-            const settlement = {
-                team_damage_dealt: teamDealt,
-                enemy_damage_dealt: enemyDealt,
-                player_hits: playerHits,
-                counter_hits: counterHits,
-                enemy_hp_after: enemyHpAfter,
-            };
-            settlement.breakdown = buildSettlementBreakdown(lastCombatStatus, settlement);
-            return settlement;
-        }
-
-        function buildCombatParticipantLookup(data) {
-            const members = data?.member_states || lastCombatStatus?.member_states || {};
-            const myId = data?.my_squad_id || lastCombatStatus?.my_squad_id || currentSquad?.squad_id;
-            const byName = {};
-            Object.entries(members).forEach(([sid, m]) => {
-                const name = (m.display_name || sid).trim();
-                let role = 'teammate';
-                if (m.is_protagonist) role = 'protagonist';
-                else if (sid === myId) role = 'player';
-                byName[name] = { sid, role, display_name: name };
-            });
-            const me = data?.my_state || lastCombatStatus?.my_state;
-            if (me && myId) {
-                const name = (me.display_name || myId).trim();
-                byName[name] = {
-                    sid: myId,
-                    role: me.is_protagonist ? 'protagonist' : 'player',
-                    display_name: name,
-                };
-            }
-            return { byName, myId };
-        }
-
-        function resolveHitRole(name, lookup) {
-            const key = (name || '').trim();
-            if (lookup.byName[key]) return lookup.byName[key].role;
-            return 'teammate';
-        }
-
-        function settlementHasDamageNumbers(settlement) {
-            if (!settlement) return false;
-            if (Number(settlement.team_damage_dealt) > 0) return true;
-            if (Number(settlement.enemy_damage_dealt) > 0) return true;
-            return (settlement.player_hits || []).some(h => Number(h.damage) > 0)
-                || (settlement.counter_hits || []).some(h => Number(h.damage) > 0);
-        }
-
-        function enrichRoundSettlementData(data) {
-            if (!data) return data;
-            let settlement = getRoundSettlement(data);
-            const tryBuildFromLogs = () => {
-                const normalized = normalizeCombatLogEntries(data.log_entries || data.log || []);
-                if (!normalized.length) return null;
-                const built = buildClientRoundSettlement(normalized, data);
-                return settlementHasDamageNumbers(built) ? built : null;
-            };
-            if (settlementHasDamageNumbers(settlement)) {
-                const bd = settlement.breakdown;
-                const bdTotal = Number(bd?.dealt?.total) || 0;
-                const teamDealt = Number(settlement.team_damage_dealt) || 0;
-                if (bd && bdTotal === 0 && teamDealt > 0) {
-                    settlement = { ...settlement, breakdown: undefined };
-                } else if (!bd || bdTotal > 0) {
-                    return { ...data, round_settlement: settlement };
-                } else {
-                    settlement = { ...settlement, breakdown: undefined };
-                }
-            }
-            const built = tryBuildFromLogs();
-            if (built) {
-                return {
-                    ...data,
-                    round_settlement: built,
-                    round_resolved: data.round_resolved ?? data.status === 'round_resolved',
-                    round_enemy_damage: built.team_damage_dealt,
-                    round_player_damage: built.enemy_damage_dealt,
-                };
-            }
-            if (settlementHasDamageNumbers(settlement)) {
-                return { ...data, round_settlement: settlement };
-            }
-            return data;
-        }
-
-        function buildSettlementBreakdown(data, settlement) {
-            const teamDealt = Number(settlement?.team_damage_dealt) || 0;
-            if (settlement?.breakdown) {
-                const bdTotal = Number(settlement.breakdown?.dealt?.total) || 0;
-                // teamDealt > 0 but breakdown total 0 → stale breakdown, force recompute
-                if (teamDealt === 0 || bdTotal > 0) return settlement.breakdown;
-            }
-            const lookup = buildCombatParticipantLookup(data);
-            const dealt = { player: 0, protagonist: 0, teammate: 0 };
-            const taken = { player: 0, protagonist: 0, teammate: 0 };
-            const dealtNames = { player: [], protagonist: [], teammate: [] };
-            const takenNames = { player: [], protagonist: [], teammate: [] };
-            (settlement?.player_hits || []).forEach((hit) => {
-                const role = hit.role || resolveHitRole(hit.player, lookup);
-                const dmg = Number(hit.damage) || 0;
-                if (!dealt[role]) dealt[role] = 0;
-                dealt[role] += dmg;
-                if (dmg > 0 && hit.player) dealtNames[role].push(`${hit.player} -${dmg}`);
-            });
-            (settlement?.counter_hits || []).forEach((hit) => {
-                const role = hit.role || resolveHitRole(hit.target, lookup);
-                const dmg = Number(hit.damage) || 0;
-                if (!taken[role]) taken[role] = 0;
-                taken[role] += dmg;
-                if (dmg > 0 && hit.target) takenNames[role].push(`${hit.target} -${dmg}`);
-            });
-            const enemyDealt = Number(settlement?.enemy_damage_dealt) || 0;
-            return {
-                dealt: {
-                    ...dealt,
-                    total: teamDealt || dealt.player + dealt.protagonist + dealt.teammate,
-                    details: dealtNames,
-                },
-                taken: {
-                    ...taken,
-                    total: enemyDealt || taken.player + taken.protagonist + taken.teammate,
-                    details: takenNames,
-                },
-                enemy: {
-                    damage_taken: teamDealt || dealt.player + dealt.protagonist + dealt.teammate,
-                    damage_dealt: enemyDealt || taken.player + taken.protagonist + taken.teammate,
-                },
-            };
-        }
-
-        function fmtSettlementDamage(value) {
-            const n = Number(value) || 0;
-            return n > 0 ? `-${n.toLocaleString('zh-Hant')}` : '0';
-        }
-
-        function renderSettlementBreakdown(data, settlement) {
-            const breakdown = buildSettlementBreakdown(data, settlement);
-            const roles = [
-                ['player', 'Player'],
-                ['protagonist', '主角'],
-                ['teammate', '隊友'],
-            ];
-            const dealtEl = document.getElementById('round-settlement-dealt-rows');
-            const takenEl = document.getElementById('round-settlement-taken-rows');
-            if (dealtEl) {
-                dealtEl.innerHTML = roles.map(([key, label]) => {
-                    const amount = breakdown.dealt[key] || 0;
-                    const details = (breakdown.dealt.details?.[key] || []).join(' · ');
-                    const note = details ? `<div class="text-[10px] text-zinc-500 pl-2">${escapeHtml(details)}</div>` : '';
-                    return `<div class="flex justify-between gap-3"><span class="text-zinc-400">${label}</span><span class="text-emerald-400 font-mono font-semibold">${fmtSettlementDamage(amount)}</span></div>${note}`;
-                }).join('');
-            }
-            if (takenEl) {
-                takenEl.innerHTML = roles.map(([key, label]) => {
-                    const amount = breakdown.taken[key] || 0;
-                    const details = (breakdown.taken.details?.[key] || []).join(' · ');
-                    const note = details ? `<div class="text-[10px] text-zinc-500 pl-2">${escapeHtml(details)}</div>` : '';
-                    return `<div class="flex justify-between gap-3"><span class="text-zinc-400">${label}</span><span class="text-red-400 font-mono font-semibold">${fmtSettlementDamage(amount)}</span></div>${note}`;
-                }).join('');
-            }
-            safeSetText('round-settlement-dealt-total', fmtSettlementDamage(breakdown.dealt.total));
-            safeSetText('round-settlement-taken-total', fmtSettlementDamage(breakdown.taken.total));
-            safeSetText('round-settlement-enemy-taken', fmtSettlementDamage(breakdown.enemy.damage_taken));
-            safeSetText('round-settlement-enemy-dealt', fmtSettlementDamage(breakdown.enemy.damage_dealt));
-        }
-
-        function getRoundSettlement(data) {
-            const preview = data?.full_preview || {};
-            return data?.round_settlement
-                || preview.round_settlement
-                || {
-                    team_damage_dealt: parseInt(data?.round_enemy_damage, 10) || 0,
-                    enemy_damage_dealt: parseInt(data?.round_player_damage, 10) || 0,
-                    counter_hits: [],
-                    player_hits: [],
-                };
-        }
-
-        function countResolvedRoundsInLog(data) {
-            const logs = normalizeCombatLogEntries(data?.log_entries || data?.log || []);
-            return logs.filter((e) => e?.type === 'summary' && (e.message || '').includes('受到共')).length;
-        }
-
-        function settlementRoundKey(data) {
-            const cid = data?.combat_id || currentCombatId || '';
-            const logRounds = countResolvedRoundsInLog(data);
-            if (logRounds > 0) return `${cid}:logR${logRounds}`;
-            const settled = getSettledRoundNumber(data);
-            const phase = Number(data?.current_phase) || 0;
-            const resolved = !!(data?.round_resolved || data?.status === 'round_resolved');
-            if (resolved) return `${cid}:settled${settled}`;
-            return `${cid}:p${phase || data?.round || 'unknown'}`;
-        }
-
-        function enforceSettlementInvariant(data) {
-            if (getCombatUiPhase() !== CombatUiPhase.SETTLEMENT) return;
-            if (isRoundSettlementModalVisible()) return;
-            console.warn('[Combat FSM] invariant: SETTLEMENT without visible modal — recovering');
-            const payload = pendingSettlementHpPayload || data || lastCombatStatus;
-            const canRetry = payload && (
-                payload.round_resolved
-                || payload.status === 'round_resolved'
-                || payload.round_settlement
-            );
-            if (canRetry) {
-                const enriched = enrichRoundSettlementData(applySettlementEnemyHp({
-                    ...payload,
-                    round_resolved: true,
-                }));
-                lastSettlementDisplayKey = '';
-                getCombatFlow().clearSettlementRound();
-                showFullRoundSettlement(enriched);
-                return;
-            }
-            combatFsmHook('onSettlementConfirm', { combatId: currentCombatId, recovery: true });
-            clearLocalCombatSubmittedState();
-        }
-
-        function clearSettlementModalGuard() {
-            currentSettlementRound = null;
-            combatFsmHook('clearSettlementRound');
-        }
-
-        function markSettlementModalShown(data) {
-            const key = settlementRoundKey(data);
-            currentSettlementRound = key;
-            combatFsmHook('markSettlementShown', key);
-        }
-
-        function isRoundSettlementModalVisible() {
-            const modal = document.getElementById('combat-round-settlement-modal');
-            return !!(modal && modal.classList.contains('flex'));
-        }
-
-        function settlementDisplayKey(data) {
-            const victory = !!(data?.outcome || pendingVictoryAfterSettlement);
-            return `${settlementRoundKey(data)}:v${victory ? 1 : 0}`;
-        }
-
-        function shouldShowRoundSettlement(data) {
-            if (getCombatFlow().shouldBlockPoll()) return false;
-            const phase = Number(data?.current_phase) || 0;
-            const resolved = !!(data?.round_resolved || data?.status === 'round_resolved');
-            const advancedWhileWaiting = combatWaitingForRound
-                && phase > (Number(combatSubmittedPhase) || 0);
-            if (!resolved && !advancedWhileWaiting) return false;
-            if (resolved) return phase > lastShownSettlementPhase;
-            return phase > lastShownSettlementPhase;
-        }
-
-        function resetCombatSettlementState() {
-            pendingSettlementHpPayload = null;
-            pendingVictoryAfterSettlement = null;
-            lastShownSettlementPhase = 0;
-            lastSettlementDisplayKey = '';
-            victorySettlementModalCombatId = null;
-            clearSettlementModalGuard();
-            lastCombatStatusJson = '';
-            settlementCombatId = null;
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = null;
-        }
-
-        function resetCombatVictoryFlowState(options = {}) {
-            getCombatFlow().setFinalizingEndgame(false);
-            if (!options.keepVictoryLock) {
-                victorySettlementAcknowledgedCombatId = null;
-                victorySettlementModalCombatId = null;
-                combatVictorySequenceCompleteId = null;
-            }
-        }
-
-        function resetCombatSessionState(options = {}) {
-            stopCombatPolling();
-            resetCombatSettlementState();
-            resetCombatVictoryFlowState(options);
-            if (!options.keepVictoryLock) {
-                combatFsmHook('onCombatReset', { combatId: null });
-            }
-            combatWaitingForRound = false;
-            combatSubmittedPhase = 0;
-            setCombatPhaseLock(false);
-            hideRoundSettlementModal();
-            hideSinglePlayerResultModal();
-            hideCombatModal();
-            resetCombatDiceUi();
-            lastDicePhase = 0;
-            lastCombatUiSnapshotKey = '';
-            selectedAction = null;
-            selectedDice = null;
-            selectedItemId = null;
-        }
-
-        function lockCombatActionsForSettlement() {
-            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                el.disabled = true;
-            });
-            const panel = document.getElementById('player-panel');
-            const actionArea = document.getElementById('combat-action-area');
-            if (panel) panel.style.opacity = '0.45';
-            if (actionArea) actionArea.style.opacity = '0.45';
-            const hintEl = document.getElementById('combat-submit-hint');
-            if (hintEl) hintEl.textContent = '請確認傷害結算';
-        }
-
-        function showRoundSettlementModal(data) {
-            const modal = document.getElementById('combat-round-settlement-modal');
-            const preview = data.full_preview || {};
-            const settlement = getRoundSettlement(data);
-            const phase = Number(data.current_phase) || 0;
-
-            safeSetText('round-settlement-phase', phase > 1 ? `第 ${phase - 1} 回合` : '第 1 回合');
-            renderSettlementBreakdown(data, settlement);
-
-            const enemy = data.enemy || preview.enemy || lastCombatStatus?.enemy || {};
-            const enemyHp = Number(enemy.hp);
-            const enemyMax = Number(enemy.max_hp || enemy.hp);
-            const fmtHp = (n) => (Number.isFinite(n) ? Number(n).toLocaleString('zh-Hant') : '—');
-            safeSetText('round-settlement-enemy-hp', fmtHp(enemyHp));
-            safeSetText('round-settlement-enemy-hp-max', Number.isFinite(enemyMax) ? ` / ${fmtHp(enemyMax)}` : '');
-
-            hideCombatModal();
-            setVisible(modal, true);
-            modal.classList.add('flex');
-            const continueBtn = document.getElementById('round-settlement-confirm-btn');
-            if (continueBtn) {
-                continueBtn.textContent = pendingVictoryAfterSettlement ? '確定，查看勝利' : '確定';
-            }
-        }
-
-        function hideRoundSettlementModal() {
-            const modal = document.getElementById('combat-round-settlement-modal');
-            if (!modal) return;
-            modal.classList.remove('flex');
-            setVisible(modal, false);
-        }
-
-        function continueCombatAfterRound() {
-            applyPendingSettlementHp();
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = null;
-            hideRoundSettlementModal();
-            hideSinglePlayerResultModal();
-            combatWaitingForRound = false;
-            resetCombatDiceUi();
-            selectedDice = null;
-            const panel = document.getElementById('player-panel');
-            const actionArea = document.getElementById('combat-action-area');
-            if (panel) panel.style.opacity = '1';
-            if (actionArea) actionArea.style.opacity = '1';
-            if (pendingVictoryAfterSettlement) {
-                const victoryPayload = pendingVictoryAfterSettlement;
-                const combatId = victoryPayload.combat_id || currentCombatId;
-                combatFsmHook('onSettlementConfirm', { pendingVictory: true, combatId });
-                pendingVictoryAfterSettlement = null;
-                stopCombatPolling();
-                markCombatVictorySequenceComplete(combatId);
-                victorySettlementAcknowledgedCombatId = combatId;
-                clearSettlementModalGuard();
-                void finalizeCombatVictoryFromPayload(victoryPayload);
-                return;
-            }
-            const resumeData = pendingSettlementHpPayload || lastCombatStatus;
-            if (isFinalHitOrVictory(resumeData)) {
-                const victoryPayload = buildVictoryTransitionPayload(resumeData);
-                const combatId = victoryPayload.combat_id || currentCombatId;
-                combatFsmHook('onSettlementConfirm', { pendingVictory: true, combatId });
-                clearSettlementModalGuard();
-                pendingVictoryAfterSettlement = null;
-                stopCombatPolling();
-                markCombatVictorySequenceComplete(combatId);
-                victorySettlementAcknowledgedCombatId = combatId;
-                void finalizeCombatVictoryFromPayload(victoryPayload);
-                return;
-            }
-            clearSettlementModalGuard();
-            lastCombatStatusJson = '';
-            lastCombatUiSnapshotKey = '';
-            clearLocalCombatSubmittedState();
-            if (lastCombatStatus?.my_state) {
-                lastCombatStatus.my_state.submitted = false;
-            }
-            combatFsmHook('onSettlementConfirm', { combatId: currentCombatId });
-            if (lastCombatStatus) {
-                updateCombatUI(lastCombatStatus, { forceRefresh: true });
-            }
-            const phase = lastCombatStatus?.current_phase || 0;
-            if (phase) lastDicePhase = phase;
-            loadCombatStatus(false);
-        }
-
-        // combat_instant_settlement: 零人工 delay；HP + 傷害結算 modal 即時
-        // combat_flow_v7: v6 + 勝利結算唔 poll、modal 即時、確認後唔重彈
-        // combat_flow_v8: settlementDisplayKey 防重複；mustShow 強制出 modal
-        // combat_flow_fsm_v2: FSM settlement idempotency via settlementRoundKey
-        // combat_flow_v10: final hit → pendingVictoryAfterSettlement before modal
-        // combat_flow_v11: instant modal (no setTimeout); HP sync with modal; soften victory guard
-        // combat_flow_v12: victory sequence lock; enrich settlement from logs when API zeros
-        // combat_flow_v13: sliceLogsForSettledRound; endgame lock on defeat too
-        // combat_flow_v16: block settlement after victory screen; force enrich on zero breakdown
-        function showFullRoundSettlement(data) {
-            const combatId = data?.combat_id || currentCombatId;
-            if (isCombatVictorySequenceComplete(combatId) || isCombatResultPanelVisible()) return;
-            data = enrichRoundSettlementData(data);
-            const phase = Number(data?.current_phase) || 0;
-            const roundKey = settlementRoundKey(data);
-            const displayKey = settlementDisplayKey(data);
-            combatFsmHook('onSettlementShown', data, {
-                pendingVictory: !!pendingVictoryAfterSettlement || isFinalHitOrVictory(data),
-                roundKey,
-            });
-            if (getCombatFlow().hasShownSettlementFor(roundKey) && currentSettlementRound === roundKey) {
-                if (isFinalHitOrVictory(data) && !isRoundSettlementModalVisible()) {
-                    showRoundSettlementModal(applySettlementEnemyHp(data));
-                    lockCombatActionsForSettlement();
-                }
-                return;
-            }
-            if (isCombatEndgameFinalizing()) return;
-            if (victorySettlementAcknowledgedCombatId
-                && combatId === victorySettlementAcknowledgedCombatId) return;
-            if (lastSettlementDisplayKey === displayKey) return;
-            if (isCombatFsmSettlement() && isRoundSettlementModalVisible()) {
-                return;
-            }
-            const roundResolved = !!(data?.round_resolved || data?.status === 'round_resolved');
-            if (!roundResolved && phase > 0 && phase <= lastShownSettlementPhase
-                && (!combatId || combatId === settlementCombatId || combatId === currentCombatId)) {
-                return;
-            }
-            data = applySettlementEnemyHp(data);
-            if (isFinalHitOrVictory(data) && !pendingVictoryAfterSettlement) {
-                pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
-            }
-            const isVictorySettlement = !!pendingVictoryAfterSettlement
-                || !!data?.outcome
-                || isFinalHitOrVictory(data);
-            pendingSettlementHpPayload = data;
-            const settledRound = getSettledRoundNumber(data);
-            const logRounds = countResolvedRoundsInLog(data);
-            const trackRound = logRounds > 0 ? logRounds : settledRound;
-            if (trackRound > lastShownSettlementPhase) {
-                lastShownSettlementPhase = trackRound;
-            }
-            if (combatId) settlementCombatId = combatId;
-            combatWaitingForRound = false;
-            hideCombatWaitingPanel();
-            hideSinglePlayerResultModal();
-            resetCombatDiceUi();
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = null;
-            lockCombatActionsForSettlement();
-            lastSettlementDisplayKey = displayKey;
-            markSettlementModalShown(data);
-            if (isVictorySettlement && combatId) {
-                victorySettlementModalCombatId = combatId;
-            }
-            showRoundSettlementModal(data);
-            const hpSynced = applySettlementEnemyHp(data);
-            updateCombatUI(hpSynced, {
-                damageDelay: 0,
-                skipActionEnable: true,
-                deferEnemyHp: false,
-            });
-            syncEnemyHpDisplay(hpSynced);
-            if (isVictorySettlement) {
-                stopCombatPolling();
-            } else {
-                startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-            }
-        }
-
-        function victoryPayloadHasSettlement(data) {
-            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
-            if (data?.outcome && data?.round_settlement) return true;
-            if (!roundResolved) return false;
-            const settlement = getRoundSettlement(data);
-            if (Number(settlement.team_damage_dealt) > 0) return true;
-            return (data.log_entries || []).some(e => e?.type === 'damage');
-        }
-
-        function isVictoryFlowLocked(combatId) {
-            const cid = combatId || currentCombatId;
-            return isCombatEndgameFinalizing()
-                || isCombatFsmEndgame()
-                || (victorySettlementAcknowledgedCombatId && cid === victorySettlementAcknowledgedCombatId);
-        }
-
-        function ensureVictorySettlementPayload(data) {
-            if (!data) return data;
-            if (victoryPayloadHasSettlement(data)) return data;
-            const logs = data.log_entries || data.log || [];
-            if (!logs.length) return data;
-            const built = buildClientRoundSettlement(normalizeCombatLogEntries(logs), data);
-            if (Number(built.team_damage_dealt) > 0 || (built.player_hits || []).length) {
-                return {
-                    ...data,
-                    round_settlement: built,
-                    round_resolved: true,
-                    round_enemy_damage: built.team_damage_dealt,
-                };
-            }
-            return data;
-        }
-
-        function victorySettlementAlreadyShown(combatId, phase) {
-            if (!(phase > 0) || phase > lastShownSettlementPhase) return false;
-            const cid = combatId || currentCombatId;
-            return !cid || cid === settlementCombatId || cid === currentCombatId;
-        }
-
-        async function finishCombatVictoryFromPayload(data) {
-            if (isCombatEndgameFinalizing()) return;
-            const combatId = data?.combat_id || currentCombatId;
-            if (isCombatVictorySequenceComplete(combatId)) return;
-            data = ensureVictorySettlementPayload(enrichRoundSettlementData(data));
-
-            if (isCombatFsmSettlement() && isFinalHitOrVictory(data)) {
-                if (isRoundSettlementModalVisible()) {
-                    if (!pendingVictoryAfterSettlement) {
-                        pendingVictoryAfterSettlement = buildVictoryTransitionPayload(data);
-                    }
-                    return;
-                }
-                victorySettlementModalCombatId = null;
-                clearSettlementModalGuard();
-            }
-
-            if (victorySettlementAcknowledgedCombatId
-                && combatId === victorySettlementAcknowledgedCombatId) {
-                if (!isCombatFsmSettlement() && !isCombatEndgameFinalizing()) {
-                    await finalizeCombatVictoryFromPayload(data);
-                }
-                return;
-            }
-            if (isCombatFsmEndgame()) return;
-
-            if (isCombatFsmSettlement()) {
-                if (!pendingVictoryAfterSettlement) {
-                    pendingVictoryAfterSettlement = data;
-                }
-                return;
-            }
-
-            const roundResolved = data?.round_resolved || data?.status === 'round_resolved';
-            const phase = Number(data?.current_phase) || 0;
-            const hasSettlementUi = victoryPayloadHasSettlement(data) && (roundResolved || data?.outcome);
-
-            if (hasSettlementUi) {
-                if (isCombatFsmSettlement() && pendingVictoryAfterSettlement) return;
-                if (victorySettlementModalCombatId === combatId && isRoundSettlementModalVisible()) {
-                    return;
-                }
-                if (victorySettlementAlreadyShown(combatId, phase)) {
-                    if (!isCombatFsmSettlement()) {
-                        pendingVictoryAfterSettlement = data;
-                    }
-                    return;
-                }
-                pendingVictoryAfterSettlement = data;
-                const enriched = applySettlementEnemyHp({
-                    ...data,
-                    enemy: { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
-                    round_resolved: true,
-                    active: true,
-                });
-                showFullRoundSettlement(enriched);
-                return;
-            }
-            await finalizeCombatVictoryFromPayload(data);
-        }
-
-        async function finalizeCombatVictoryFromPayload(data) {
-            if (isCombatEndgameFinalizing()) return;
-            const combatId = data?.combat_id || currentCombatId;
-            if (combatId) markCombatVictorySequenceComplete(combatId);
-            getCombatFlow().setFinalizingEndgame(true);
-            stopCombatPolling();
-            resetCombatDiceUi();
-            pendingSettlementHpPayload = null;
-            pendingVictoryAfterSettlement = null;
-            clearSettlementModalGuard();
-            clearTimeout(showFullRoundSettlement._modalTimer);
-            showFullRoundSettlement._modalTimer = null;
-            combatWaitingForRound = false;
-            hideCombatWaitingPanel();
-            hideRoundSettlementModal();
-            hideSinglePlayerResultModal();
-            hideCombatModal();
-            try {
-                if (data?.log_entries?.length) {
-                    processCombatDamageAnimations(data, 0);
-                }
-                resetCombatEnemyHpTracking(0);
-                updateEnemyCombatStats(
-                    { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: 0 },
-                    data.enemy_description || lastCombatStatus?.enemy_description || '',
-                );
-                let payload = data;
-                if (!payload.outcome) {
-                    try {
-                        const url = currentCombatId
-                            ? `/combat/status?combat_id=${currentCombatId}`
-                            : '/combat/status';
-                        const res = await fetchNoCache(url);
-                        const fresh = await res.json();
-                        if (fresh.outcome) payload = { ...payload, ...fresh };
-                    } catch (_) { /* use local payload */ }
-                }
-                const outcome = payload.outcome
-                    || (payload.winner === 'enemy' ? 'defeat' : 'victory');
-                markCombatVictorySequenceComplete(payload.combat_id || currentCombatId);
-                combatFsmHook('onVictoryShown', payload, { outcome });
-                showCombatResult({
-                    ...payload,
-                    outcome,
-                    active: false,
-                }, { fromVictoryFinalize: true });
-                const statusRes = await fetchNoCache('/status');
-                updateDashboard(await statusRes.json());
-                combatItemsLoaded = false;
-            } finally {
-                getCombatFlow().setFinalizingEndgame(false);
-            }
-        }
-
-        // combat_flow_v10: final hit uses round_settlement.enemy_hp_after (not only enemy.hp)
-        function resolveEnemyHpAfter(data) {
-            if (!data) return null;
-            const settlement = getRoundSettlement(data);
-            const fromSettlement = Number(settlement.enemy_hp_after);
-            if (Number.isFinite(fromSettlement)) return fromSettlement;
-            const hp = Number(data.enemy?.hp);
-            if (Number.isFinite(hp)) return hp;
-            return null;
-        }
-
-        function isFinalHitOrVictory(data) {
-            if (!data) return false;
-            if (data.outcome) return true;
-            if (data.status === 'ended' || data.winner) return true;
-            const hpAfter = resolveEnemyHpAfter(data);
-            return hpAfter !== null && hpAfter <= 0;
-        }
-
-        function shouldFinishCombatVictory(data) {
-            return isFinalHitOrVictory(data);
-        }
-
-        function buildVictoryTransitionPayload(data) {
-            const hpAfter = resolveEnemyHpAfter(data);
-            const enemyHp = Number.isFinite(hpAfter) ? Math.max(0, hpAfter) : 0;
-            return {
-                ...data,
-                outcome: data.outcome || (data.winner === 'enemy' ? 'defeat' : 'victory'),
-                enemy: { ...(data.enemy || lastCombatStatus?.enemy || {}), hp: enemyHp },
-                round_resolved: true,
-            };
-        }
-
-        function handleCombatRoundResolved(data) {
-            if (!data) return;
-            if (isCombatVictorySequenceComplete(data?.combat_id)) return;
-            data = enrichRoundSettlementData(data);
-            if (isVictoryFlowLocked(data?.combat_id)) return;
-            if (isCombatEndgameFinalizing() || isCombatFsmEndgame()) return;
-            if (isCombatFsmSettlement() && isRoundSettlementModalVisible()) return;
-            enforceSettlementInvariant(data);
-            if (shouldFinishCombatVictory(data)) {
-                finishCombatVictoryFromPayload(data);
-                return;
-            }
-            setCombatPhaseLock(false);
-            hideCombatModal();
-            const settled = applySettlementEnemyHp(data);
-            if (isFinalHitOrVictory(settled)) {
-                finishCombatVictoryFromPayload(buildVictoryTransitionPayload(settled));
-                return;
-            }
-            const roundResolved = !!(settled.round_resolved || settled.status === 'round_resolved');
-            if (roundResolved) {
-                showFullRoundSettlement(settled);
-                return;
-            }
-            if (shouldShowRoundSettlement(settled)) {
-                showFullRoundSettlement(settled);
-                return;
-            }
-            combatWaitingForRound = false;
-            hideCombatWaitingPanel();
-            updateCombatUI(settled, { damageDelay: 0 });
-            syncEnemyHpDisplay(settled);
-            startCombatPolling(COMBAT_POLL_INTERVAL_NORMAL);
-        }
-
-        function formatTimerDisplay(totalSeconds) {
-            const s = Math.max(0, totalSeconds);
-            const m = Math.floor(s / 60);
-            const sec = s % 60;
-            return `${m}:${String(sec).padStart(2, '0')}`;
-        }
-
-        function startPhaseCountdown(deadlineIso) {
-            if (combatPhaseTimer) clearInterval(combatPhaseTimer);
-            const timerEl = document.getElementById('phase-timer');
-            if (!deadlineIso || !timerEl) return;
-            const tick = () => {
-                const remaining = Math.max(0, Math.floor((new Date(deadlineIso) - Date.now()) / 1000));
-                timerEl.textContent = formatTimerDisplay(remaining);
-                if (remaining <= 0 && combatPhaseTimer) {
-                    clearInterval(combatPhaseTimer);
-                    combatPhaseTimer = null;
-                    timerEl.textContent = '0:00';
-                    timerEl.classList.add('text-amber-400');
-                }
-            };
-            tick();
-            combatPhaseTimer = setInterval(tick, 1000);
-        }
-
-        function applyCombatAccent(route) {
-            const screen = document.getElementById('combat-screen');
-            if (!screen) return;
-            screen.classList.remove('combat-accent-oikos', 'combat-accent-polis', 'combat-accent-default');
-            if (route === 'iggy') screen.classList.add('combat-accent-oikos');
-            else if (route === 'marah') screen.classList.add('combat-accent-polis');
-            else screen.classList.add('combat-accent-default');
-        }
-
-        function showDamageNumber(targetId, amount, isCrit = false) {
-            const target = document.getElementById(targetId);
-            if (!target || !amount) return;
-
-            const rect = target.getBoundingClientRect();
-            if (!rect.width && !rect.height) return;
-
-            const damageEl = document.createElement('div');
-            damageEl.className = `damage-number${isCrit ? ' crit' : ''}`;
-            damageEl.textContent = `-${Number(amount).toLocaleString('zh-Hant')}`;
-
-            const offsetX = Math.random() * 40 - 20;
-            damageEl.style.left = `${rect.left + rect.width / 2 + offsetX}px`;
-            damageEl.style.top = `${rect.top + rect.height * 0.28}px`;
-
-            document.body.appendChild(damageEl);
-            setTimeout(() => damageEl.remove(), isCrit ? 1300 : 1100);
-        }
-
-        function parseLogDamageEvent(entry, myDisplayName) {
-            const msg = entry.message || '';
-            const type = entry.type || 'event';
-            const dmgMatch = msg.match(/造成\s*(\d+)\s*點傷害/);
-            if (!dmgMatch) return null;
-            const amount = parseInt(dmgMatch[1], 10);
-            const crit = /骰\s*3[）)]/.test(msg);
-
-            if (type === 'damage') {
-                return { target: 'enemy-panel', amount, crit };
-            }
-            if (type === 'summary' && msg.includes('受到共')) {
-                return { target: 'enemy-panel', amount, crit: false, total: true };
-            }
-            if (type === 'enemy_attack' && myDisplayName && msg.includes(myDisplayName)) {
-                return { target: 'player-panel', amount, crit: false };
-            }
-            if (type === 'berserk' && msg.includes('攻擊自己')) {
-                return { target: 'player-panel', amount, crit: false };
-            }
-            return null;
-        }
-
-        function processCombatDamageAnimations(data, delayMs = 300, initOnly = false) {
-            const entries = data.log_entries || [];
-            if (entries.length < lastCombatLogCount) lastCombatLogCount = 0;
-            if (initOnly) {
-                lastCombatLogCount = entries.length;
-                return;
-            }
-            const newEntries = entries.slice(lastCombatLogCount);
-            lastCombatLogCount = entries.length;
-            if (!newEntries.length) return;
-
-            const myName = currentSquad?.display_name || data.my_state?.display_name || '';
-            const hasDamageLine = newEntries.some(e => e.type === 'damage');
-
-            newEntries.forEach((entry) => {
-                const hit = parseLogDamageEvent(entry, myName);
-                if (!hit) return;
-                if (hit.total && hasDamageLine) return;
-                if (delayMs > 0) {
-                    setTimeout(() => showDamageNumber(hit.target, hit.amount, hit.crit), delayMs);
-                } else {
-                    showDamageNumber(hit.target, hit.amount, hit.crit);
-                }
-            });
-        }
-
-        function flashEnemyHpBar() {
-            const bar = document.getElementById('enemy-hp-bar');
-            if (!bar) return;
-            bar.classList.add('brightness-150');
-            setTimeout(() => bar.classList.remove('brightness-150'), 400);
-        }
-
-        function highlightCombatAction(action, opts = {}) {
-            document.querySelectorAll('.combat-action-btn').forEach(btn => {
-                const match = btn.dataset.action === action
-                    && (action !== 'use_item' || String(btn.dataset.itemId) === String(opts.item_id));
-                btn.classList.toggle('selected', match);
-            });
-            document.querySelectorAll('.combat-item-btn').forEach(btn => {
-                btn.classList.toggle('selected', String(btn.dataset.itemId) === String(opts.item_id));
-            });
-        }
-
-        function getActionDisplayName(type) {
-            return COMBAT_ACTION_LABELS[type] || type;
-        }
-
-        function getEffectiveAttackStatFromUi() {
-            const power = parseStatText('combat-power-value', currentSquad?.power);
-            const intellect = parseStatText('combat-intellect-value', currentSquad?.intellect);
-            return { power, intellect, value: Math.max(power, intellect) };
-        }
-
-        function describeAttackStatFromUi() {
-            const { power, intellect, value } = getEffectiveAttackStatFromUi();
-            if (power > intellect) return { label: '力量', value, stat: 'power' };
-            if (intellect > power) return { label: '智力', value, stat: 'intellect' };
-            return { label: '力量/智力', value, stat: 'power' };
-        }
-
-        function updateAttackButtonHint() {
-            const hint = document.getElementById('attack-stat-hint');
-            if (!hint) return;
-            const info = describeAttackStatFromUi();
-            hint.textContent = `使用${info.label} ${info.value}（自動取較高屬性）`;
-        }
-
-        function isCombatModalOpen() {
-            const modal = document.getElementById('combat-action-modal');
-            return modal && !modal.classList.contains('hidden');
-        }
-
-        function clearActionModalRollTimer() {
-            if (actionModalRollTimer) {
-                clearInterval(actionModalRollTimer);
-                actionModalRollTimer = null;
-            }
-            if (actionModalPauseTimer) {
-                clearTimeout(actionModalPauseTimer);
-                actionModalPauseTimer = null;
-            }
-        }
-
-        function setCombatModalControlsLocked(locked) {
-            ['modal-close-btn', 'modal-cancel-btn'].forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.toggleAttribute('disabled', locked);
-                el.classList.toggle('opacity-40', locked);
-                el.classList.toggle('pointer-events-none', locked);
-            });
-        }
-
-        function showCombatModalPanel(id, visible) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.classList.toggle('hidden', !visible);
-            el.style.display = visible ? '' : 'none';
-        }
-
-        function resetCombatModalUi() {
-            clearActionModalRollTimer();
-            actionModalRolling = false;
-            setCombatModalControlsLocked(false);
-            showCombatModalPanel('modal-dice-area', true);
-            showCombatModalPanel('modal-confirm-btn', false);
-            const diceValue = document.getElementById('modal-dice-value');
-            const diceBox = document.getElementById('modal-dice-box');
-            if (diceValue) diceValue.textContent = '?';
-            if (diceBox) {
-                diceBox.style.transform = 'scale(1)';
-                diceBox.classList.remove('animate-pulse', 'dice-crit');
-            }
-            document.getElementById('modal-dice-final')?.classList.add('hidden');
-            const diceDesc = document.getElementById('modal-dice-desc');
-            if (diceDesc) {
-                diceDesc.textContent = '';
-                diceDesc.classList.remove('text-yellow-400', 'font-bold');
-            }
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            if (confirmBtn) {
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = '確認並結束本回合';
-            }
-        }
-
-        function restoreCombatConfirmBtn() {
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            if (confirmBtn) {
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = '確認並結束本回合';
-            }
-            const hint = document.getElementById('modal-status-hint');
-            if (hint && isCombatModalOpen()) {
-                hint.textContent = '請確認並結束本回合';
-            }
-        }
-
-        function clearLocalCombatSubmittedState() {
-            if (!lastCombatStatus) return;
-            const myId = lastCombatStatus.my_squad_id || currentSquad?.squad_id;
-            const next = { ...lastCombatStatus };
-            if (next.my_state) {
-                next.my_state = {
-                    ...next.my_state,
-                    submitted: false,
-                    action_type: null,
-                    dice_result: null,
-                };
-            }
-            if (myId && next.member_states?.[myId]) {
-                next.member_states = {
-                    ...next.member_states,
-                    [myId]: {
-                        ...next.member_states[myId],
-                        submitted: false,
-                        action_type: null,
-                        dice_result: null,
-                    },
-                };
-            }
-            lastCombatStatus = next;
-            setCombatPhaseLock(false);
-        }
-
-        function openCombatModal() {
-            const modal = document.getElementById('combat-action-modal');
-            if (!modal) return;
-            resetCombatModalUi();
-            modal.classList.remove('hidden');
-            modal.classList.add('flex', 'items-center', 'justify-center');
-            document.getElementById('modal-action-title').textContent = getActionDisplayName(selectedAction);
-            document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
-        }
-
-        function hideCombatModal() {
-            const modal = document.getElementById('combat-action-modal');
-            if (!modal) return;
-            modal.classList.add('hidden');
-            modal.classList.remove('flex', 'items-center', 'justify-center');
-        }
-
-        function resetCombatDiceUi() {
-            selectedDice = null;
-            hideCombatModal();
-            resetCombatModalUi();
-        }
-
-        function closeCombatModal() {
-            if (actionModalRolling) return;
-            hideCombatModal();
-            resetCombatModalUi();
-            selectedDice = null;
-        }
-
-        function rollDiceInModal() {
-            if (actionModalRolling) return;
-            const diceBox = document.getElementById('modal-dice-box');
-            const diceValue = document.getElementById('modal-dice-value');
-            const finalContainer = document.getElementById('modal-dice-final');
-            const diceNumber = document.getElementById('modal-dice-number');
-            const diceDesc = document.getElementById('modal-dice-desc');
-            if (!diceBox || !diceValue) return;
-
-            actionModalRolling = true;
-            setCombatModalControlsLocked(true);
-            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => { el.disabled = true; });
-
-            diceBox.classList.remove('dice-crit');
-            diceBox.classList.add('animate-pulse');
-            finalContainer?.classList.add('hidden');
-            if (diceDesc) {
-                diceDesc.textContent = '';
-                diceDesc.classList.remove('text-yellow-400', 'font-bold');
-            }
-            document.getElementById('modal-status-hint').textContent = '系統正在擲骰…';
-
-            const diceCfg = getDiceRollConfig();
-            const revealDiceResult = () => {
-                const result = Math.floor(Math.random() * 4);
-                selectedDice = result;
-                diceValue.textContent = String(result);
-                diceBox.style.transform = 'scale(1)';
-                diceBox.classList.remove('animate-pulse', 'dice-crit');
-
-                const description = DICE_RESULT_DESCRIPTIONS[result] || '';
-                const isCrit = result === 3;
-                if (isCrit) diceBox.classList.add('dice-crit');
-                if (diceNumber) diceNumber.textContent = String(result);
-                if (diceDesc) {
-                    diceDesc.textContent = description;
-                    diceDesc.classList.toggle('text-yellow-400', isCrit);
-                    diceDesc.classList.toggle('font-bold', isCrit);
-                }
-                finalContainer?.classList.remove('hidden');
-
-                document.getElementById('modal-status-hint').textContent =
-                    `擲出 ${result} — ${description} · 請確認並結束本回合`;
-
-                combatFsmHook('onDiceAnimationComplete', { dice: result });
-                actionModalRolling = false;
-                setCombatModalControlsLocked(false);
-                document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                    const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
-                        && !lastCombatStatus?.my_state?.submitted
-                        && !isCombatFsmBlockingActions()
-                        && !combatPhaseLocked;
-                    el.disabled = !canAct;
-                });
-
-                const revealConfirm = () => showCombatConfirmStep();
-                if (diceCfg.pauseMs > 0) {
-                    actionModalPauseTimer = setTimeout(() => {
-                        actionModalPauseTimer = null;
-                        revealConfirm();
-                    }, diceCfg.pauseMs);
-                } else {
-                    revealConfirm();
-                }
-            };
-
-            clearActionModalRollTimer();
-            if (diceCfg.intervalMs === 0 && diceCfg.maxRolls <= 1) {
-                revealDiceResult();
-                return;
-            }
-
-            let rollCount = 0;
-            const maxRolls = diceCfg.maxRolls;
-            actionModalRollTimer = setInterval(() => {
-                diceValue.textContent = String(Math.floor(Math.random() * 4));
-                diceBox.style.transform = `scale(${0.95 + Math.random() * 0.1})`;
-                rollCount += 1;
-                if (rollCount < maxRolls) return;
-
-                clearInterval(actionModalRollTimer);
-                actionModalRollTimer = null;
-                revealDiceResult();
-            }, diceCfg.intervalMs);
-        }
-
-        function parseStatText(id, fallback) {
-            const raw = document.getElementById(id)?.textContent;
-            const n = parseInt(raw, 10);
-            return Number.isFinite(n) ? n : (fallback ?? 0);
-        }
-
-        function showCombatConfirmStep() {
-            showCombatModalPanel('modal-confirm-btn', true);
-            const hint = document.getElementById('combat-submit-hint');
-            if (hint) hint.textContent = '請於彈窗內確認並結束本回合';
-        }
-
-        function showCombatSubmitLoadingShell() {
-            showCombatModalPanel('modal-dice-area', false);
-            showCombatModalPanel('modal-confirm-btn', false);
-            document.getElementById('modal-dice-final')?.classList.add('hidden');
-            const diceBox = document.getElementById('modal-dice-box');
-            if (diceBox) diceBox.classList.remove('animate-pulse', 'dice-crit');
-            const hint = document.getElementById('modal-status-hint');
-            if (hint) hint.textContent = '伺服器結算中…';
-        }
-
-        function confirmRound() {
-            const btn = document.getElementById('modal-confirm-btn');
-            if (btn?.disabled || actionModalRolling) return;
-            btn.disabled = true;
-            btn.textContent = '結算中…';
-            showCombatSubmitLoadingShell();
-            combatFsmHook('onConfirmSubmit', { action: selectedAction });
-            submitAction();
-        }
-
-        function performAction(action, opts = {}) {
-            const fsmGate = combatFsmCanPerformAction(action);
-            if (!fsmGate.ok) {
-                const toastType = getCombatUiPhase() === CombatUiPhase.SETTLEMENT ? 'error' : 'info';
-                showToast(fsmGate.message, toastType);
-                return;
-            }
-            if (actionModalRolling) {
-                showToast('系統擲骰中', 'info');
-                return;
-            }
-            if (isCombatModalOpen()) {
-                showToast('請先完成當前行動', 'info');
-                return;
-            }
-            if (controllingProtagonist && action === 'use_item') {
-                showToast('主角模式不可使用玩家物品', 'error');
-                return;
-            }
-            const me = buildCombatMyState(lastCombatStatus || {});
-            const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
-            if (inNearDeath) {
-                showToast('你已瀕死，等待救援', 'error');
-                return;
-            }
-            if (me.submitted) {
-                showToast('你已提交本回合行動，等待隊友中…', 'info');
-                return;
-            }
-            if (effectiveCombatStatus(lastCombatStatus) !== 'player_phase') {
-                showToast('非玩家回合', 'error');
-                return;
-            }
-
-            selectedAction = action;
-            if (action === 'use_item') {
-                selectedItemId = opts.item_id != null ? opts.item_id : null;
-                if (!selectedItemId) {
-                    highlightCombatAction(action, opts);
-                    return;
-                }
-            } else {
-                selectedItemId = null;
-            }
-            highlightCombatAction(action, opts);
-            combatFsmHook('onActionStart', action, {
-                combatId: currentCombatId,
-            });
-            openCombatModal();
-
-            if (action === 'use_zoo') {
-                const zooBtn = document.getElementById('zoo-action-btn');
-                zooBtn?.classList.add('zoo-flash');
-                setTimeout(() => zooBtn?.classList.remove('zoo-flash'), 600);
-            }
-
-            if (COMBAT_DICE_ACTIONS.has(action)) {
-                rollDiceInModal();
-                return;
-            }
-
-            selectedDice = 1;
-            document.getElementById('modal-status-hint').textContent = '請確認並結束本回合';
-            showCombatModalPanel('modal-dice-area', false);
-            showCombatConfirmStep();
-        }
-
-        async function loadCombatItems() {
-            const listEl = document.getElementById('combat-item-list');
-            if (!listEl) return;
-            try {
-                const res = await fetch('/my_items', { credentials: 'same-origin' });
-                const data = await res.json();
-                if (!data.success || !data.items || data.items.length === 0) {
-                    listEl.innerHTML = '<div class="text-xs text-zinc-500 py-2 text-center">暫無可用物品</div>';
-                    return;
-                }
-                listEl.innerHTML = data.items.map(item => `
-                    <button type="button"
-                            class="combat-item-btn combat-action-btn w-full py-2.5 bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700 rounded-2xl text-sm text-left px-4 flex items-center gap-3"
-                            data-action="use_item"
-                            data-item-id="${item.item_id}"
-                            onclick="performAction('use_item', {item_id: ${item.item_id}})">
-                        <img src="${item.image_path || '/static/images/default-item.svg'}" class="w-8 h-8 rounded-lg object-cover shrink-0" alt="">
-                        <span>使用「${escapeHtml(item.name)}」${item.effect_text ? `<span class="text-zinc-500 text-xs">（${escapeHtml(item.effect_text)}）</span>` : ''}</span>
-                    </button>
-                `).join('');
-                combatItemsLoaded = true;
-            } catch (e) {
-                listEl.innerHTML = '<div class="text-xs text-red-400 py-2 text-center">物品載入失敗</div>';
-            }
-        }
-
-        function exitCombatScreen() {
-            setVisible(document.getElementById('combat-screen'), false);
-            setVisible(document.getElementById('combat-result-panel'), false);
-            setVisible(document.getElementById('combat-precheck-modal'), false);
-            setVisible(document.getElementById('combat-near-death-overlay'), false);
-            setVisible(document.getElementById('combat-lobby'), true);
-            resetCombatSessionState();
-            lastCombatLogCount = 0;
-            loadEncounters();
-        }
-
-        async function showCombatScreen() {
-            setVisible(document.getElementById('combat-lobby'), false);
-            setVisible(document.getElementById('combat-screen'), true);
-            setVisible(document.getElementById('combat-result-panel'), false);
-            try {
-                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-            } catch (_) {
-                window.scrollTo(0, 0);
-            }
-            const combatScreen = document.getElementById('combat-screen');
-            if (combatScreen) {
-                combatScreen.scrollIntoView({ block: 'start', behavior: 'instant' });
-            }
-            document.querySelectorAll('.combat-action-btn[data-action]').forEach(btn => {
-                if (btn.dataset.action !== 'use_item') {
-                    btn.onclick = () => performAction(btn.dataset.action);
-                }
-            });
-            if (!combatItemsLoaded) void loadCombatItems();
-            resetCombatDiceUi();
-            const me = lastCombatStatus?.my_state;
-            const canAct = effectiveCombatStatus(lastCombatStatus) === 'player_phase'
-                && !(me?.near_death_until && new Date(me.near_death_until) > new Date())
-                && !me?.submitted;
-            const hint = document.getElementById('combat-submit-hint');
-            if (hint) {
-                hint.textContent = canAct ? '選擇行動後將彈出戰況預覽' : '';
-            }
-        }
-
-        async function ensureCurrentSquadProfile() {
-            const fresh = await refreshSquadFromServer();
-            if (fresh) {
-                initPlayerAvatar();
-                updateDashboard(fresh);
-            }
-        }
-
-        function combatStatValue(...candidates) {
-            for (const raw of candidates) {
-                if (raw !== null && raw !== undefined && raw !== '') {
-                    const n = Number(raw);
-                    if (!Number.isNaN(n)) return n;
-                }
-            }
-            return null;
-        }
-
-        function getProtagonistControlContext(data) {
-            const status = data || lastCombatStatus || {};
-            const proId = status.controllable_protagonist_id;
-            const active = !!(controllingProtagonist && status.protagonist_player_control && proId);
-            return {
-                active,
-                proId,
-                proState: active && proId ? status.member_states?.[proId] : null,
-            };
-        }
-
-        function buildCombatMyState(data) {
-            const squad = currentSquad || {};
-            const ms = data?.my_state || {};
-            const members = data?.member_states || {};
-            const myId = data?.my_squad_id || squad.squad_id;
-            const member = myId ? members[myId] : null;
-            const ctx = getProtagonistControlContext(data);
-            const source = ctx.proState || member || ms;
-            const base = {
-                ...ms,
-                display_name: source?.display_name || ms.display_name || squad.display_name || squad.squad_id || '你',
-                avatar: source?.avatar ?? ms.avatar ?? member?.avatar ?? squad.avatar,
-                hp: combatStatValue(source?.hp, ms.hp, member?.hp, squad.hp),
-                sanity: combatStatValue(source?.sanity, ms.sanity, member?.sanity, squad.sanity),
-                power: combatStatValue(source?.power, ms.power, member?.power, squad.power),
-                intellect: combatStatValue(source?.intellect, ms.intellect, member?.intellect, squad.intellect),
-                resilience: combatStatValue(source?.resilience, ms.resilience, member?.resilience, squad.resilience),
-                near_death_until: source?.near_death_until ?? ms.near_death_until ?? member?.near_death_until ?? squad.near_death_until,
-                max_hp: combatStatValue(source?.max_hp, ms.max_hp, member?.max_hp, squad.max_hp) ?? DEFAULT_PLAYER_MAX_HP,
-                submitted: ctx.proState ? ctx.proState.submitted : (ms.submitted ?? member?.submitted),
-                action_type: ctx.proState ? ctx.proState.action_type : (ms.action_type ?? member?.action_type),
-                dice_result: ctx.proState ? ctx.proState.dice_result : (ms.dice_result ?? member?.dice_result),
-                is_protagonist_control: ctx.active,
-            };
-            if (ctx.active && ctx.proState) {
-                base.display_name = `${ctx.proState.display_name || '主角'}（你操作中）`;
-            }
-            return base;
-        }
-
-        async function loadCombatPage(combatId) {
-            if (combatId) currentCombatId = combatId;
-            stopCombatPolling();
-            resetCombatSettlementState();
-            combatWaitingForRound = false;
-            resetCombatEnemyHpTracking(null);
-            setVisible(document.getElementById('combat-lobby'), true);
-            setVisible(document.getElementById('combat-screen'), false);
-            await ensureCurrentSquadProfile();
+    // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
+    let pendingEncounterId = null;
+    let currentCombatId = null;
+
+    window.AppRouter = {
+        navigateTo(route) {
+            console.log(`[Router] 路由跳轉至: ${route}`);
+            if (route === 'dashboard' || route === 'combat-hub') {
+                const lobby = document.getElementById('combat-lobby');
+                if (lobby) lobby.classList.remove('hidden');
+                document.getElementById('combat-root-v2')?.classList.add('hidden');
+            }
+        },
+    };
+
+    function appendCacheBust(url) {
+        const sep = url.includes('?') ? '&' : '?';
+        return `${url}${sep}_cb=${Date.now()}`;
+    }
+
+    const FETCH_NO_CACHE_HEADERS = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+
+    function fetchNoCache(url, options = {}) {
+        return fetch(appendCacheBust(url), {
+            credentials: 'same-origin',
+            ...options,
+            headers: { ...FETCH_NO_CACHE_HEADERS, ...(options.headers || {}) },
+        });
+    }
+
+    async function onLegacyEncounterTrigger(data) {
+        if (window.combatV2?.isEnabled?.()) {
+            const lobby = document.getElementById('combat-lobby');
+            if (lobby) lobby.classList.add('hidden');
+            if (data.combat_id) currentCombatId = data.combat_id;
+            await window.combatV2.onCombatStarted(data);
+        }
+    }
+
+    function exitCombatScreen() {
+        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
+
+        if (window.combatV2?.isEnabled?.()) {
+            const app = window.combatV2.getApp?.();
+            app?.views?.endgame?.hideAll?.();
+            app?.poller?.stop();
+            app?.unmount?.();
+        }
+
+        setVisible(document.getElementById('combat-result-panel'), false);
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        setVisible(document.getElementById('combat-lobby'), true);
+        document.getElementById('combat-root-v2')?.classList.add('hidden');
+
+        currentCombatId = null;
+        pendingEncounterId = null;
+
+        setTimeout(async () => {
             await loadEncounters();
-            await loadCombatStatus(true);
-        }
+        }, 150);
+    }
+    window.exitCombatScreen = exitCombatScreen;
 
-        function persistRestoreToken(data) {
-            if (!data?.restore_token) return;
-            try {
-                localStorage.setItem('oikonomia_restore_token', data.restore_token);
-            } catch (e) {
-                console.warn('restore_token save failed', e);
-            }
-        }
-
-        let pinModalResolver = null;
-
-        function showPinModal({ title, desc, skippable = true }) {
-            return new Promise(resolve => {
-                pinModalResolver = resolve;
-                const modal = document.getElementById('pin-modal');
-                document.getElementById('pin-modal-title').textContent = title || '輸入 PIN';
-                document.getElementById('pin-modal-desc').textContent = desc || '請輸入 4 位數字 PIN';
-                const cancelBtn = document.getElementById('pin-modal-cancel');
-                if (cancelBtn) cancelBtn.style.display = skippable ? '' : 'none';
-                const input = document.getElementById('pin-modal-input');
-                if (input) {
-                    input.value = '';
-                    input.onkeydown = (e) => {
-                        if (e.key === 'Enter') confirmPinModal();
-                    };
-                }
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                setTimeout(() => input?.focus(), 120);
-            });
-        }
-
-        function hidePinModal() {
-            const modal = document.getElementById('pin-modal');
-            if (modal) {
-                modal.classList.remove('flex');
-                modal.classList.add('hidden');
-            }
-            if (pinModalResolver) {
-                const done = pinModalResolver;
-                pinModalResolver = null;
-                done(null);
-            }
-        }
-
-        function confirmPinModal() {
-            const input = document.getElementById('pin-modal-input');
-            const val = normalizeLoginPin(input?.value || '');
-            const modal = document.getElementById('pin-modal');
-            if (modal) {
-                modal.classList.remove('flex');
-                modal.classList.add('hidden');
-            }
-            if (pinModalResolver) {
-                const done = pinModalResolver;
-                pinModalResolver = null;
-                done(val);
-            }
-        }
-
-        const STAT_ALLOC_BASE = 10;
-        const STAT_ALLOC_FREE = 30;
-        const STAT_ALLOC_MAX = 40;
-        let allocStats = { power: 10, intellect: 10, resilience: 10 };
-        let selectedAllocAvatar = null;
-
-        function readAllocStatsFromSliders() {
-            return {
-                power: parseInt(document.getElementById('alloc-power')?.value || '10', 10),
-                intellect: parseInt(document.getElementById('alloc-intellect')?.value || '10', 10),
-                resilience: parseInt(document.getElementById('alloc-resilience')?.value || '10', 10),
-            };
-        }
-
-        function writeAllocStatsToSliders(stats) {
-            ['power', 'intellect', 'resilience'].forEach(stat => {
-                const slider = document.getElementById(`alloc-${stat}`);
-                if (slider) slider.value = stats[stat];
-            });
-        }
-
-        function resetAllocStats() {
-            allocStats = { power: 10, intellect: 10, resilience: 10 };
-            selectedAllocAvatar = null;
-            writeAllocStatsToSliders(allocStats);
-            updateAllocUi();
-        }
-
-        function onAllocSliderInput(changedStat) {
-            allocStats = readAllocStatsFromSliders();
-            let used = (allocStats.power - STAT_ALLOC_BASE)
-                + (allocStats.intellect - STAT_ALLOC_BASE)
-                + (allocStats.resilience - STAT_ALLOC_BASE);
-            if (used > STAT_ALLOC_FREE) {
-                const excess = used - STAT_ALLOC_FREE;
-                allocStats[changedStat] = Math.max(STAT_ALLOC_BASE, allocStats[changedStat] - excess);
-                writeAllocStatsToSliders(allocStats);
-            }
-            updateAllocUi();
-        }
-
-        function updateAllocUi() {
-            allocStats = readAllocStatsFromSliders();
-            ['power', 'intellect', 'resilience'].forEach(stat => {
-                const el = document.getElementById(`alloc-${stat}-value`);
-                if (el) el.textContent = allocStats[stat];
-            });
-            const used = (allocStats.power - STAT_ALLOC_BASE)
-                + (allocStats.intellect - STAT_ALLOC_BASE)
-                + (allocStats.resilience - STAT_ALLOC_BASE);
-            const remaining = STAT_ALLOC_FREE - used;
-            const remEl = document.getElementById('alloc-remaining');
-            if (remEl) {
-                remEl.textContent = remaining;
-                remEl.classList.toggle('text-red-400', remaining < 0);
-                remEl.classList.toggle('text-amber-400', remaining >= 0);
-            }
-            const btn = document.getElementById('alloc-submit-btn');
-            if (btn) btn.disabled = remaining !== 0 || !selectedAllocAvatar;
-        }
-
-        function selectAllocAvatar(filename, element) {
-            selectedAllocAvatar = filename;
-            document.querySelectorAll('#alloc-avatar-grid > div[data-avatar]').forEach(el => {
-                el.classList.remove('border-amber-500', 'ring-2', 'ring-amber-500/40');
-                el.classList.add('border-transparent');
-            });
-            if (element) {
-                element.classList.remove('border-transparent');
-                element.classList.add('border-amber-500', 'ring-2', 'ring-amber-500/40');
-            }
-            updateAllocUi();
-        }
-
-        async function initAllocAvatarSelection() {
-            const grid = document.getElementById('alloc-avatar-grid');
-            if (!grid) return;
-            grid.innerHTML = '<div class="col-span-full text-center text-zinc-500 text-sm py-4">載入頭像中…</div>';
-            try {
-                const res = await fetch('/available_avatars', { credentials: 'same-origin' });
-                const data = await res.json();
-                grid.innerHTML = '';
-                if (!data.avatars?.length) {
-                    grid.innerHTML = '<div class="col-span-full text-center text-zinc-400 py-4">暫無可用頭像</div>';
-                    return;
-                }
-                data.avatars.forEach(filename => {
-                    const div = document.createElement('div');
-                    div.dataset.avatar = filename;
-                    div.className = 'aspect-square rounded-2xl overflow-hidden border-2 border-transparent cursor-pointer transition-all';
-                    div.innerHTML = `<img src="${avatarSrc(filename)}" class="w-full h-full object-cover" alt="">`;
-                    div.onclick = () => selectAllocAvatar(filename, div);
-                    grid.appendChild(div);
-                });
-            } catch (e) {
-                grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-4">載入頭像失敗</div>';
-            }
-        }
-
-        function showStatsAllocationScreen() {
-            setVisible(document.getElementById('login-screen'), false);
-            setVisible(document.getElementById('game-content'), false);
-            setVisible(document.getElementById('stats-allocation-screen'), true);
-            resetAllocStats();
-            initAllocAvatarSelection();
-        }
-
-        async function submitStatAllocation() {
-            if (!selectedAllocAvatar) {
-                showToast('請先選擇頭像', 'error');
-                return;
-            }
-            const used = (allocStats.power - STAT_ALLOC_BASE)
-                + (allocStats.intellect - STAT_ALLOC_BASE)
-                + (allocStats.resilience - STAT_ALLOC_BASE);
-            if (STAT_ALLOC_FREE - used !== 0) {
-                showToast('請分配完所有 30 點', 'error');
-                return;
-            }
-            try {
-                const res = await fetch('/allocate_stats', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...allocStats, avatar: selectedAllocAvatar }),
-                });
-                const data = await res.json();
-                if (!data.success) {
-                    showToast(data.error || '分配失敗', 'error');
-                    return;
-                }
-                persistRestoreToken(data);
-                currentSquad = data;
-                saveLocalSession(data);
-                await enterDashboardAfterOnboarding({ skip_team_prompt: false });
-            } catch (e) {
-                console.error('allocate_stats failed', e);
-                showToast('分配失敗，請稍後再試', 'error');
-            }
-        }
-
-        async function enterDashboardAfterOnboarding(data = {}) {
-            setVisible(document.getElementById('stats-allocation-screen'), false);
-            setVisible(document.getElementById('game-content'), true);
-            showSection('dashboard');
-            updateDashboard(currentSquad);
+    async function loadCombatPage(combatId) {
+        if (combatId) currentCombatId = combatId;
+        setVisible(document.getElementById('combat-lobby'), true);
+        setVisible(document.getElementById('combat-result-panel'), false);
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        document.getElementById('combat-root-v2')?.classList.add('hidden');
+        const fresh = await refreshSquadFromServer();
+        if (fresh) {
             initPlayerAvatar();
-            loadMyItems();
-            loadAnnouncements();
-
-            setTimeout(() => {
-                const picker = document.getElementById('route-picker');
-                if (!picker) return;
-                if (currentSquad.route) {
-                    setVisible(picker, false);
-                } else if (currentSquad.is_team_leader !== 1) {
-                    setVisible(picker, false);
-                }
-            }, 400);
-
-            if (!data.skip_team_prompt) {
-                try {
-                    const teamRes = await fetchNoCache('/my_team');
-                    const teamData = await teamRes.json();
-                    if (!teamData.has_team) {
-                        setTimeout(async () => {
-                            const goTeam = await showConfirmModal({
-                                title: '加入隊伍',
-                                message: '你尚未加入任何 Team。是否立即建立或加入一個 Team？',
-                                confirmLabel: '前往隊伍頁',
-                            });
-                            if (goTeam) showSection('team');
-                        }, 1200);
-                    }
-                } catch (teamErr) {
-                    console.error('team check failed', teamErr);
-                }
-            }
+            updateDashboard(fresh);
         }
-
-        async function loadEncounters() {
-            const container = document.getElementById('encounter-list');
-            if (!container) return;
-            container.innerHTML = '<div class="text-zinc-400">載入 Encounter...</div>';
-
-            try {
-                const res = await fetch('/encounters', { credentials: 'same-origin' });
-                const data = await res.json();
-                if (!data.success) {
-                    container.innerHTML = '<div class="text-red-400">載入失敗</div>';
-                    return;
-                }
-
-                container.innerHTML = '';
-                if (data.progress_hint) {
-                    const hint = document.createElement('div');
-                    hint.className = 'text-xs text-zinc-400 cartoon-box p-3 mb-3 leading-relaxed';
-                    hint.textContent = data.progress_hint;
-                    container.appendChild(hint);
-                }
-
-                if (!data.encounters || data.encounters.length === 0) {
-                    const empty = document.createElement('div');
-                    empty.className = 'text-zinc-400 cartoon-box p-6 text-center';
-                    empty.textContent = '暫無可用遭遇戰';
-                    container.appendChild(empty);
-                    return;
-                }
-
-                data.encounters.forEach(enc => {
-                    const card = document.createElement('div');
-                    card.className = 'cartoon-box p-5';
-                    const badges = [];
-                    if (enc.is_practice || enc.replayable) {
-                        badges.push('<span class="text-xs px-2 py-1 bg-sky-900/50 text-sky-300 rounded-full shrink-0">可重複練習</span>');
-                    } else if (enc.completed) {
-                        badges.push('<span class="text-xs px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded-full shrink-0">已完成</span>');
-                    }
-                    const canStart = enc.replayable || !enc.completed;
-                    const btnLabel = enc.replayable && enc.completed ? '再練一次' : '開始 Encounter';
-                    const btn = canStart
-                        ? `<button onclick="startEncounter('${enc.encounter_id}')" class="mt-3 px-4 py-2 theme-btn-primary rounded-xl text-sm font-medium">${btnLabel}</button>`
-                        : '';
-                    const hpHint = enc.enemy_hp
-                        ? `<div class="text-xs text-zinc-500 mt-1">敵人 HP：${Number(enc.enemy_hp).toLocaleString('zh-Hant')}</div>`
-                        : '';
-                    card.innerHTML = `
-                        <div class="flex items-start justify-between gap-2 mb-2 flex-wrap">
-                            <div class="font-bold text-lg">${enc.title || enc.encounter_id}</div>
-                            <div class="flex flex-wrap gap-1">${badges.join('')}</div>
-                        </div>
-                        <div class="text-xs text-zinc-500 mb-2">${enc.location_hint || ''}</div>
-                        <p class="text-sm text-zinc-300">${enc.description || ''}</p>
-                        ${enc.enemy_name ? `<div class="text-xs text-red-400/80 mt-2">敵人：${enc.enemy_name}</div>` : ''}
-                        ${hpHint}
-                        ${btn}
-                    `;
-                    container.appendChild(card);
-                });
-
-                if (data.active_combat) {
-                    const hint = document.createElement('div');
-                    hint.className = 'text-sm text-amber-400 cartoon-box p-4 cursor-pointer';
-                    hint.innerHTML = '⚔️ 進行中的戰鬥 — <span class="underline">點擊繼續</span>';
-                    hint.onclick = () => { showCombatScreen(); loadCombatStatus(true); };
-                    container.prepend(hint);
-                }
-            } catch (e) {
-                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
-            }
-        }
-
-        async function startEncounter(encounterId) {
-            const agreed = await showConfirmModal({
-                title: '開始遭遇戰',
-                message: '確定開始此 Encounter？',
-            });
-            if (!agreed) return;
-            controllingProtagonist = false;
-            pendingEncounterId = encounterId;
-            const res = await fetch('/combat/start', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ encounter_id: encounterId }),
-            });
-            const data = await res.json();
-            if (!data.success) {
-                showToast(data.error || '無法開始', 'error');
-                return;
-            }
-            currentCombatId = data.combat_id;
-            resetCombatSessionState();
-            combatFsmHook('onCombatReset', { combatId: data.combat_id });
-            resetCombatEnemyHpTracking(null);
-            showSection('combat', { skipCombatLobbyLoad: true });
-            if (data.can_skip && data.status === 'precheck') {
-                setVisible(document.getElementById('combat-lobby'), false);
-                document.getElementById('precheck-modal-title').textContent = data.encounter?.title || '前置判定';
-                document.getElementById('combat-precheck-text').textContent =
-                    data.precheck_text || '你們有足夠洞察力看穿這是情緒勒索的扭曲模式。';
-                setVisible(document.getElementById('combat-precheck-modal'), true);
-                return;
-            }
-            showCombatScreen();
-            await loadCombatStatus(true, { skipSquadRefresh: true });
-        }
-
-        async function confirmPrecheck(choice) {
-            const res = await fetch('/combat/start', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    encounter_id: pendingEncounterId,
-                    confirm: choice,
-                }),
-            });
-            const data = await res.json();
-            if (!data.success) {
-                showToast(data.error || '操作失敗', 'error');
-                return;
-            }
-            setVisible(document.getElementById('combat-precheck-modal'), false);
-            if (data.skipped) {
-                showCombatResult({ outcome: 'victory', narrative: data.narrative, reflection_prompt: data.reflection_prompt });
-                const statusRes = await fetchNoCache('/status');
-                updateDashboard(await statusRes.json());
-                return;
-            }
-            currentCombatId = data.combat_id;
-            resetCombatSessionState();
-            resetCombatEnemyHpTracking(null);
-            showCombatScreen();
-            await loadCombatStatus(true, { skipSquadRefresh: true });
-        }
-
-        function showCombatResult(data, options = {}) {
-            // combat_flow_v13: endgame lock — victory or defeat blocks delayed poll settlement
-            const combatId = data?.combat_id || currentCombatId;
-            if (data?.outcome && combatId) {
-                markCombatVictorySequenceComplete(combatId);
-                options = { ...options, fromVictoryFinalize: true };
-            }
-            resetCombatSessionState({ keepVictoryLock: !!options.fromVictoryFinalize });
-            resetCombatEnemyHpTracking(null);
-            controllingProtagonist = false;
-            setVisible(document.getElementById('combat-screen'), false);
-            setVisible(document.getElementById('combat-near-death-overlay'), false);
-            setVisible(document.getElementById('combat-precheck-modal'), false);
+        await loadEncounters();
+        if (combatId && window.combatV2?.isEnabled?.()) {
             setVisible(document.getElementById('combat-lobby'), false);
-            setVisible(document.getElementById('combat-result-panel'), true);
-            const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
-            const victory = data.outcome === 'victory';
-            const titleEl = document.getElementById('combat-result-title');
-            if (badEnding) {
-                titleEl.textContent = '🌑 陰影結局';
-                titleEl.className = 'text-xl font-bold mb-3 text-violet-300';
-            } else {
-                titleEl.textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
-                titleEl.className = 'text-xl font-bold mb-3';
-            }
-            const traumaBadge = document.getElementById('combat-result-trauma-badge');
-            if (badEnding) {
-                const total = data.protagonist_trauma_total ?? data.ending?.protagonist_trauma_total ?? '?';
-                traumaBadge.textContent = `主角心理創傷過深（累計 ${total} 次）——即使贏了這一仗，也無法迎來真正的救贖。`;
-                setVisible(traumaBadge, true);
-            } else {
-                setVisible(traumaBadge, false);
-            }
-            document.getElementById('combat-result-narrative').textContent = data.narrative || '';
-            const reflection = badEnding ? null : data.reflection_prompt;
-            const reflectionBox = document.getElementById('combat-reflection');
-            if (reflection) {
-                setVisible(reflectionBox, true);
-                document.getElementById('combat-reflection-title').textContent = reflection.title || '界線反思';
-                document.getElementById('combat-reflection-theology').textContent = reflection.theological_tie || '';
-                document.getElementById('combat-reflection-questions').innerHTML =
-                    (reflection.questions || []).map((q, i) =>
-                        `<li class="pl-3 border-l-2 border-amber-600/50"><span class="text-amber-500/80 text-xs">Q${i + 1}</span><br>${q}</li>`
-                    ).join('');
-            } else {
-                setVisible(reflectionBox, false);
-            }
+            await window.combatV2.onCombatStarted({ combat_id: combatId });
         }
+    }
 
-        function updateNearDeathOverlay(me) {
-            const overlay = document.getElementById('combat-near-death-overlay');
-            const countdownEl = document.getElementById('near-death-countdown');
-            const inNearDeath = me?.near_death_until && new Date(me.near_death_until) > new Date();
-            setVisible(overlay, !!inNearDeath);
-            if (inNearDeath && countdownEl) {
-                const remaining = Math.max(0, Math.floor((new Date(me.near_death_until) - Date.now()) / 1000));
-                countdownEl.textContent = formatTimerDisplay(remaining);
-            }
-        }
+    async function loadEncounters() {
+        const container = document.getElementById('encounter-list');
+        if (!container) return;
+        container.innerHTML = '<div class="text-zinc-400">載入 Encounter...</div>';
 
-        function updateCombatUI(data, options = {}) {
-            if (!data) return;
-            const uiData = normalizeCombatStatusData(applySettlementEnemyHp(data));
-            const snapKey = combatUiSnapshotKey(uiData);
-            const skipRedundantDom = !options.damageDelay
-                && !options.skipActionEnable
-                && !options.initLogsOnly
-                && !options.forceRefresh
-                && snapKey === lastCombatUiSnapshotKey;
-            if (skipRedundantDom) return;
-            lastCombatUiSnapshotKey = snapKey;
-            if (!uiData.my_state && (uiData.active || uiData.status === 'player_phase' || uiData.status === 'enemy_phase')) {
-                console.warn('Combat data missing my_state');
-            }
-            lastCombatStatus = uiData;
-            setVisible(document.getElementById('combat-result-panel'), false);
-
-            if (uiData.in_precheck) {
-                setVisible(document.getElementById('combat-precheck-modal'), true);
-                return;
-            }
-
-            const isResolving = uiData.status === 'resolving';
-            if (isResolving) {
-                setCombatPhaseLock(true, uiData);
-            } else if (combatPhaseLocked) {
-                const phase = uiData.current_phase || 0;
-                if (uiData.status === 'player_phase' && phase > combatPhaseLockedRound) {
-                    setCombatPhaseLock(false);
-                }
-            }
-
-            const combatLive = uiData.active === true
-                || ['player_phase', 'enemy_phase', 'resolving'].includes(uiData.status);
-            if (!combatLive) {
-                if (uiData.outcome) {
-                    if (isCombatVictorySequenceComplete(uiData.combat_id)) {
-                        setVisible(document.getElementById('combat-result-panel'), true);
-                        return;
-                    }
-                    if (shouldFinishCombatVictory(uiData)) {
-                        if (!isVictoryFlowLocked(uiData.combat_id)) {
-                            void finishCombatVictoryFromPayload(uiData);
-                        }
-                    } else {
-                        showCombatResult(uiData);
-                    }
-                }
-                return;
-            }
-
-            currentCombatId = uiData.combat_id || currentCombatId;
-            if (uiData.combat_id && uiData.combat_id !== settlementCombatId) {
-                settlementCombatId = uiData.combat_id;
-                lastShownSettlementPhase = 0;
-                lastSettlementDisplayKey = '';
-                victorySettlementModalCombatId = null;
-                clearSettlementModalGuard();
-                lastCombatUiSnapshotKey = '';
-                lastCombatStatusJson = '';
-                clearTimeout(showFullRoundSettlement._modalTimer);
-                showFullRoundSettlement._modalTimer = null;
-                resetCombatEnemyHpTracking(null);
-            }
-            showCombatScreen();
-            applyCombatAccent(uiData.route);
-
-            safeSetText('combat-title', uiData.title || '戰鬥中');
-            const routeLabel = ROUTE_SUBTITLES[uiData.route] || 'Encounter';
-            const phaseNum = uiData.current_phase || 1;
-            safeSetText('combat-subtitle', `${routeLabel} · 第 ${phaseNum} 回合`);
-            safeSetText('max-phase', uiData.max_phases || 5);
-
-            const phaseLabels = {
-                player_phase: { text: 'Player Phase', color: 'text-emerald-400' },
-                enemy_phase: { text: 'Enemy Phase', color: 'text-red-400' },
-                resolving: { text: '結算中', color: 'text-sky-400' },
-            };
-            const pl = phaseLabels[uiData.status] || { text: uiData.status, color: 'text-zinc-400' };
-            safeSetText('phase-status-label', pl.text);
-            safeSetClass('phase-status-label', `text-xs ${pl.color}`);
-
-            const squad = currentSquad || {};
-            const me = buildCombatMyState(uiData);
-            const enemy = uiData.enemy || {};
-
-            updateEnemyCombatStats(enemy, uiData.enemy_description || '', {
-                deferHp: !!options.deferEnemyHp,
-            });
-            updateCombatPlayerAvatar(me);
-            const playerName = me.display_name || '你';
-            safeSetText('combat-player-name', playerName);
-            document.querySelectorAll('.combat-player-name-lg').forEach(el => {
-                el.textContent = playerName;
-            });
-            safeSetText('combat-player-team', squad.team?.team_name || squad.team_name || '單人');
-            updateCombatPlayerStats(me, squad);
-            updateAttackButtonHint();
-
-            const protagonists = uiData.protagonists || squad.protagonists || {};
-            const teamData = {
-                ...uiData,
-                my_squad_id: uiData.my_squad_id || squad.squad_id,
-                route: uiData.route || protagonists.active_route || squad.route,
-                protagonists,
-                member_states: uiData.member_states || {},
-            };
-            renderCombatTeamRow(teamData);
-            updateProtagonistControlUi();
-
-            const sanity = me.sanity ?? 100;
-            const berserkBar = document.getElementById('combat-berserk-bar');
-            const berserkChance = uiData.berserk_chance || 0;
-            if (sanity < 40) {
-                setVisible(berserkBar, true);
-                let berserkMsg;
-                if (sanity < 10) {
-                    berserkMsg = `神智崩潰邊緣！暴走機率 ${berserkChance}% — 極高風險`;
-                } else if (sanity < 20) {
-                    berserkMsg = `神智危險！暴走機率 ${berserkChance}% — 提交前請確認`;
-                } else {
-                    berserkMsg = `神智偏低（${sanity}），暴走風險 ${berserkChance}%`;
-                }
-                safeSetText('combat-berserk-bar-text', berserkMsg);
-                if (berserkBar) berserkBar.classList.toggle('berserk-critical', sanity < 10);
-            } else {
-                setVisible(berserkBar, false);
-                if (berserkBar) berserkBar.classList.remove('berserk-critical');
-            }
-
-            setVisible(document.getElementById('combat-berserk-overlay'),
-                sanity < 10 && uiData.status === 'player_phase' && !me.submitted);
-
-            const zooHint = document.getElementById('zoo-hint');
-            if (zooHint) {
-                if (sanity >= 100) zooHint.textContent = 'Zoo 加成 ×1.8';
-                else if (sanity >= 90) zooHint.textContent = 'Zoo 加成 ×1.5';
-                else if (sanity >= 80) zooHint.textContent = 'Zoo 加成 ×1.4';
-                else if (sanity >= 70) zooHint.textContent = 'Zoo 加成 ×1.3 ✓';
-                else zooHint.textContent = `神智 ${sanity}，需 ≥70`;
-                zooHint.className = sanity >= 70 ? 'text-[10px] text-orange-300 font-medium' : 'text-[10px] text-zinc-500';
-            }
-
-            if (uiData.phase_deadline && uiData.status === 'player_phase') {
-                startPhaseCountdown(uiData.phase_deadline);
-            } else if (uiData.phase_expired) {
-                safeSetText('phase-timer', '0:00');
-            }
-
-            const logEl = document.getElementById('combat-log');
-            if (logEl) {
-                logEl.innerHTML = (uiData.log || []).map(line => `<div class="py-0.5">• ${line}</div>`).join('')
-                    || '<div class="text-zinc-500">尚無戰鬥記錄</div>';
-                logEl.scrollTop = logEl.scrollHeight;
-            }
-            processCombatDamageAnimations(
-                uiData,
-                options.damageDelay ?? 0,
-                !!options.initLogsOnly,
-            );
-
-            const inNearDeath = me.near_death_until && new Date(me.near_death_until) > new Date();
-            updateNearDeathOverlay(me);
-
-            const hintEl = document.getElementById('combat-submit-hint');
-            const actionContainer = document.getElementById('combat-action-area');
-            const canAct = uiData.status === 'player_phase'
-                && !combatPhaseLocked
-                && !isResolving
-                && !inNearDeath
-                && !me.submitted
-                && !isCombatFsmBlockingActions()
-                && !options.skipActionEnable;
-            if (actionContainer) actionContainer.style.opacity = canAct ? '1' : '0.45';
-            const playerPanel = document.getElementById('player-panel');
-            if (playerPanel) playerPanel.style.opacity = canAct ? '1' : '0.45';
-            document.querySelectorAll('.combat-action-btn, .combat-item-btn').forEach(el => {
-                el.disabled = !canAct || actionModalRolling || combatPhaseLocked || isResolving;
-            });
-            if (canAct && phaseNum !== lastDicePhase) {
-                lastDicePhase = phaseNum;
-                if (!isCombatModalBusy()) {
-                    resetCombatDiceUi();
-                }
-            } else if ((me.submitted || !canAct) && !isCombatModalBusy()) {
-                hideCombatModal();
-            }
-            if (hintEl) {
-                if (isCombatFsmSubmitting()) {
-                    hintEl.textContent = '回合提交結算中，請稍候…';
-                } else if (isCombatFsmSettlement()) {
-                    hintEl.textContent = '本回合傷害結算中，請先確認';
-                } else if (inNearDeath) hintEl.textContent = '你已瀕死，等待隊友救援';
-                else if (me.submitted) hintEl.textContent = `已提交：${COMBAT_ACTION_LABELS[me.action_type] || me.action_type}（骰 ${me.dice_result ?? '?' }），等待隊友…`;
-                else if (isResolving || combatPhaseLocked) hintEl.textContent = '回合結算中，請稍候…';
-                else if (uiData.status !== 'player_phase') hintEl.textContent = '敵人回合結算中…';
-                else if (actionModalRolling) hintEl.textContent = '系統擲骰中，請稍候…';
-                else if (isCombatModalOpen()) hintEl.textContent = '請於彈窗內確認並結束本回合';
-                else if (selectedAction === 'use_item' && !selectedItemId) hintEl.textContent = '請選擇要使用的物品';
-                else hintEl.textContent = '選擇行動後確認提交';
-            }
-        }
-
-        async function loadCombatStatus(showLoading, options = {}) {
-            try {
-                if (isCombatVictorySequenceComplete(currentCombatId) || isCombatResultPanelVisible()) {
-                    stopCombatPolling();
-                    return;
-                }
-                if (isCombatEndgameFinalizing()) return;
-                if (isCombatFsmEndgame()) return;
-                if (!options.skipSquadRefresh) {
-                    await refreshSquadFromServer();
-                }
-                const url = currentCombatId
-                    ? `/combat/status?combat_id=${currentCombatId}`
-                    : '/combat/status';
-                const res = await fetchNoCache(url);
-                if (!res.ok) throw new Error(`combat/status HTTP ${res.status}`);
-                const data = await res.json();
-                if (data.success === false && !data.my_state && !data.active) return;
-
-                enforceSettlementInvariant(data);
-
-                if (getCombatFlow().shouldBlockPoll()) {
-                    if (queueVictoryDuringSettlement(data)) return;
-                    syncHpOnlyFromPoll(data);
-                    return;
-                }
-
-                if (isCombatVictoryPayload(data)
-                    || (isFinalHitOrVictory(data) && Number(resolveEnemyHpAfter(data)) <= 0)) {
-                    combatWaitingForRound = false;
-                    hideCombatWaitingPanel();
-                    hideSinglePlayerResultModal();
-
-                    if (isCombatEndgameFinalizing() || isCombatFsmEndgame()) {
-                        return;
-                    }
-
-                    if (getCombatFlow().shouldBlockPoll()) {
-                        queueVictoryDuringSettlement(data);
-                        return;
-                    }
-
-                    if (victoryPayloadHasSettlement(data) || isFinalHitOrVictory(data)) {
-                        await finishCombatVictoryFromPayload(
-                            buildVictoryTransitionPayload(data),
-                        );
-                    } else {
-                        resetCombatSettlementState();
-                        hideRoundSettlementModal();
-                        showCombatResult(data);
-                    }
-
-                    const statusRes = await fetchNoCache('/status');
-                    updateDashboard(await statusRes.json());
-                    return;
-                }
-
-                const roundResolved = data.status === 'round_resolved' || data.round_resolved;
-                const phaseAdvanced = combatWaitingForRound
-                    && data.current_phase > combatSubmittedPhase
-                    && !data.my_state?.submitted;
-
-                if (roundResolved || phaseAdvanced) {
-                    if (phaseAdvanced && !data.round_settlement && data.log_entries?.length) {
-                        data.round_settlement = buildClientRoundSettlement(data.log_entries, data);
-                    }
-                    if (shouldFinishCombatVictory(data)) {
-                        await finishCombatVictoryFromPayload(data);
-                        return;
-                    }
-                    handleCombatRoundResolved(data);
-                    return;
-                }
-
-                if (shouldFinishCombatVictory(data)) {
-                    await finishCombatVictoryFromPayload(data);
-                    return;
-                }
-
-                if (data.round_settlement && !getCombatFlow().hasShownSettlementFor(settlementRoundKey(data))
-                    && !isCombatFsmSettlement() && !isCombatEndgameFinalizing()
-                    && !isCombatVictorySequenceComplete(data.combat_id)
-                    && !isCombatResultPanelVisible()
-                    && !data.outcome && data.status !== 'ended') {
-                    const pollSettled = applySettlementEnemyHp({
-                        ...data,
-                        round_resolved: true,
-                        active: data.active !== false,
-                    });
-                    handleCombatRoundResolved(pollSettled);
-                    return;
-                }
-
-                if (!showLoading) {
-                    const statusJson = JSON.stringify(data);
-                    if (statusJson === lastCombatStatusJson) {
-                        if (data.active || data.in_precheck) {
-                            startCombatPolling(getCombatPollInterval(data));
-                        } else {
-                            stopCombatPolling();
-                        }
-                        return;
-                    }
-                    lastCombatStatusJson = statusJson;
-                }
-
-                if (data.status === 'resolving') {
-                    setCombatPhaseLock(true, data);
-                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
-                } else if (data.waiting_for_teammates || data.status === 'waiting_for_teammates') {
-                    combatWaitingForRound = true;
-                    showCombatResolvingPanel(false);
-                    showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
-                    startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
-                }
-
-                if (data.active) {
-                    setVisible(document.getElementById('combat-lobby'), false);
-                }
-                const uiOptions = showLoading ? { initLogsOnly: true } : {};
-                updateCombatUI(data, uiOptions);
-                if (data.active || data.in_precheck) {
-                    startCombatPolling(getCombatPollInterval(data));
-                } else {
-                    stopCombatPolling();
-                }
-            } catch (e) {
-                if (showLoading) console.error('載入戰鬥狀態失敗', e);
-            }
-        }
-
-        async function submitAction() {
-            if (isCombatFsmSettlement()) {
-                restoreCombatConfirmBtn();
-                showToast('請先關閉當前結算彈窗', 'error');
-                return;
-            }
-            if (isCombatFsmSubmitting()) {
-                restoreCombatConfirmBtn();
-                showToast('回合提交結算中，請稍候…', 'info');
-                return;
-            }
-            if (combatPhaseLocked || lastCombatStatus?.status === 'resolving') {
-                restoreCombatConfirmBtn();
-                showToast('回合結算中，請稍候', 'error');
-                return;
-            }
-            if (selectedAction === 'use_item' && !selectedItemId) {
-                restoreCombatConfirmBtn();
-                showToast('請先選擇要使用的物品', 'error');
-                return;
-            }
-            if (COMBAT_DICE_ACTIONS.has(selectedAction) && selectedDice === null) {
-                restoreCombatConfirmBtn();
-                showToast('請先選擇攻擊行動並完成擲骰', 'error');
-                return;
-            }
-            if (selectedDice === null) selectedDice = 1;
-
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            if (confirmBtn) confirmBtn.disabled = true;
-
-            const payload = {
-                combat_id: currentCombatId,
-                action_type: selectedAction,
-            };
-            if (controllingProtagonist && lastCombatStatus?.protagonist_player_control) {
-                payload.as_protagonist = true;
-            }
-            if (selectedAction === 'use_item' && selectedItemId) payload.item_id = selectedItemId;
-
-            let data;
-            try {
-                const res = await fetch('/combat/submit_action', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                data = await res.json();
-            } catch (e) {
-                restoreCombatConfirmBtn();
-                combatFsmHook('onSettlementConfirm', { combatId: currentCombatId, recovery: true });
-                showToast('提交失敗，請稍後再試', 'error');
-                return;
-            }
-            if (!data.success && data.error) {
-                restoreCombatConfirmBtn();
-                combatFsmHook('onSettlementConfirm', { combatId: currentCombatId, recovery: true });
-                if (data.error.includes('結算中')) {
-                    setCombatPhaseLock(true, lastCombatStatus || { current_phase: combatSubmittedPhase });
-                    startCombatPolling(COMBAT_POLL_INTERVAL_RESOLVING);
-                }
-                showToast(data.error, 'error');
-                return;
-            }
-            if (data.outcome || shouldFinishCombatVictory(data)) {
-                resetCombatDiceUi();
-                combatFsmHook('onSubmitResponse', data, {
-                    isFinalHit: shouldFinishCombatVictory(data),
-                    enemyHpAfter: resolveEnemyHpAfter(data),
-                });
-                await finishCombatVictoryFromPayload(data);
-                return;
-            }
-
-            lastDicePhase = 0;
-
-            if (data.status === 'waiting_for_teammates') {
-                combatFsmHook('onSubmitResponse', data);
-                resetCombatDiceUi();
-                combatWaitingForRound = true;
-                combatSubmittedPhase = data.current_phase || lastCombatStatus?.current_phase || 0;
-                showSinglePlayerResultModal(data.single_preview);
-                showCombatWaitingPanel(data.submitted_count || 0, data.total_active || 0);
-                showToast('已提交行動，等待隊友後先會顯示全隊傷害結算', 'info');
-                updateCombatUI({ ...data, active: true }, { initLogsOnly: true });
-                startCombatPolling(COMBAT_POLL_INTERVAL_WAITING);
-                return;
-            }
-
-            if (data.status === 'round_resolved' || data.round_resolved) {
-                resetCombatDiceUi();
-                combatFsmHook('onSubmitResponse', data, {
-                    isFinalHit: isFinalHitOrVictory(data),
-                    enemyHpAfter: resolveEnemyHpAfter(data),
-                });
-                if (data.enemy?.hp != null) {
-                    resetCombatEnemyHpTracking(data.enemy.hp);
-                }
-                handleCombatRoundResolved({ ...data, active: true });
-                return;
-            }
-
-            resetCombatDiceUi();
-            combatFsmHook('onSubmitResponse', data);
-            updateCombatUI({ ...data, active: true }, { damageDelay: 0 });
-        }
-
-        async function rescueNearDeath() {
-            const agreed = await showConfirmModal({
-                title: '禱告救援',
-                message: '為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）',
-                confirmLabel: '發起禱告',
-            });
-            if (!agreed) return;
-            const res = await fetch('/combat/rescue_near_death', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ combat_id: currentCombatId, rescue_type: 'prayer' }),
-            });
+        try {
+            const res = await fetchNoCache('/encounters');
             const data = await res.json();
             if (!data.success) {
-                showToast(data.error || '救援失敗', 'error');
+                container.innerHTML = '<div class="text-red-400">載入失敗</div>';
                 return;
             }
-            if (data.rescued) setVisible(document.getElementById('combat-near-death-overlay'), false);
-            const logEl = document.getElementById('combat-log');
-            if (logEl && data.message) {
-                const line = document.createElement('div');
-                line.className = 'py-0.5 text-emerald-400';
-                line.textContent = `• ${data.message}`;
-                logEl.appendChild(line);
-                logEl.scrollTop = logEl.scrollHeight;
+
+            container.innerHTML = '';
+            if (data.progress_hint) {
+                const hint = document.createElement('div');
+                hint.className = 'text-xs text-zinc-400 cartoon-box p-3 mb-3 leading-relaxed';
+                hint.textContent = data.progress_hint;
+                container.appendChild(hint);
             }
-            await loadCombatStatus(false);
+
+            if (!data.encounters || data.encounters.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'text-zinc-400 cartoon-box p-6 text-center';
+                empty.textContent = '暫無可用遭遇戰';
+                container.appendChild(empty);
+                return;
+            }
+
+            data.encounters.forEach(enc => {
+                const card = document.createElement('div');
+                card.className = 'cartoon-box p-5';
+                const badges = [];
+                if (enc.is_practice || enc.replayable) {
+                    badges.push('<span class="text-xs px-2 py-1 bg-sky-900/50 text-sky-300 rounded-full shrink-0">可重複練習</span>');
+                } else if (enc.completed) {
+                    badges.push('<span class="text-xs px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded-full shrink-0">已完成</span>');
+                }
+                const canStart = enc.replayable || !enc.completed;
+                const btnLabel = enc.replayable && enc.completed ? '再練一次' : '開始 Encounter';
+                const btn = canStart
+                    ? `<button onclick="startEncounter('${enc.encounter_id}')" class="mt-3 px-4 py-2 theme-btn-primary rounded-xl text-sm font-medium">${btnLabel}</button>`
+                    : '';
+                const hpHint = enc.enemy_hp
+                    ? `<div class="text-xs text-zinc-500 mt-1">敵人 HP：${Number(enc.enemy_hp).toLocaleString('zh-Hant')}</div>`
+                    : '';
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-2 mb-2 flex-wrap">
+                        <div class="font-bold text-lg">${enc.title || enc.encounter_id}</div>
+                        <div class="flex flex-wrap gap-1">${badges.join('')}</div>
+                    </div>
+                    <div class="text-xs text-zinc-500 mb-2">${enc.location_hint || ''}</div>
+                    <p class="text-sm text-zinc-300">${enc.description || ''}</p>
+                    ${enc.enemy_name ? `<div class="text-xs text-red-400/80 mt-2">敵人：${enc.enemy_name}</div>` : ''}
+                    ${hpHint}
+                    ${btn}
+                `;
+                container.appendChild(card);
+            });
+
+            if (data.active_combat) {
+                const hint = document.createElement('div');
+                hint.className = 'text-sm text-amber-400 cartoon-box p-4 cursor-pointer';
+                hint.innerHTML = '⚔️ 進行中的戰鬥 — <span class="underline">點擊繼續</span>';
+                const resumeCombatId = data.active_combat_id;
+                hint.onclick = async () => {
+                    if (resumeCombatId) currentCombatId = resumeCombatId;
+                    showSection('combat', { skipCombatLobbyLoad: true });
+                    if (window.combatV2?.isEnabled?.()) {
+                        setVisible(document.getElementById('combat-lobby'), false);
+                        await window.combatV2.onCombatStarted({ combat_id: resumeCombatId || currentCombatId });
+                    } else {
+                        showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
+                    }
+                };
+                container.prepend(hint);
+            }
+        } catch (e) {
+            container.innerHTML = '<div class="text-red-400">載入失敗</div>';
         }
+    }
+
+    async function startEncounter(encounterId) {
+        const agreed = await showConfirmModal({
+            title: '開始遭遇戰',
+            message: '確定開始此 Encounter？',
+        });
+        if (!agreed) return;
+        pendingEncounterId = encounterId;
+        const res = await fetch('/combat/start', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ encounter_id: encounterId }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showToast(data.error || '無法開始', 'error');
+            return;
+        }
+        currentCombatId = data.combat_id;
+        showSection('combat', { skipCombatLobbyLoad: true });
+        if (data.can_skip && data.status === 'precheck') {
+            setVisible(document.getElementById('combat-lobby'), false);
+            document.getElementById('precheck-modal-title').textContent = data.encounter?.title || '前置判定';
+            document.getElementById('combat-precheck-text').textContent =
+                data.precheck_text || '你們有足夠洞察力看穿這是情緒勒索的扭曲模式。';
+            setVisible(document.getElementById('combat-precheck-modal'), true);
+            return;
+        }
+        if (window.combatV2?.isEnabled?.()) {
+            setVisible(document.getElementById('combat-lobby'), false);
+            await window.combatV2.onCombatStarted(data);
+            return;
+        }
+        showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
+    }
+
+    async function confirmPrecheck(choice) {
+        const res = await fetch('/combat/start', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                encounter_id: pendingEncounterId,
+                confirm: choice,
+            }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showToast(data.error || '操作失敗', 'error');
+            return;
+        }
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        if (data.skipped) {
+            showCombatResult({ outcome: 'victory', narrative: data.narrative, reflection_prompt: data.reflection_prompt });
+            const statusRes = await fetchNoCache('/status');
+            updateDashboard(await statusRes.json());
+            return;
+        }
+        currentCombatId = data.combat_id;
+        if (window.combatV2?.isEnabled?.()) {
+            setVisible(document.getElementById('combat-lobby'), false);
+            await window.combatV2.onCombatStarted(data);
+            return;
+        }
+        showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
+    }
+
+    function showCombatResult(data) {
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        setVisible(document.getElementById('combat-lobby'), false);
+        document.getElementById('combat-root-v2')?.classList.add('hidden');
+        setVisible(document.getElementById('combat-result-panel'), true);
+        const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
+        const victory = data.outcome === 'victory';
+        const titleEl = document.getElementById('combat-result-title');
+        if (badEnding) {
+            titleEl.textContent = '🌑 陰影結局';
+            titleEl.className = 'text-xl font-bold mb-3 text-violet-300';
+        } else {
+            titleEl.textContent = victory ? '🎉 戰鬥勝利' : '💀 戰鬥失敗';
+            titleEl.className = 'text-xl font-bold mb-3';
+        }
+        const traumaBadge = document.getElementById('combat-result-trauma-badge');
+        if (badEnding) {
+            const total = data.protagonist_trauma_total ?? data.ending?.protagonist_trauma_total ?? '?';
+            traumaBadge.textContent = `主角心理創傷過深（累計 ${total} 次）——即使贏了這一仗，也無法迎來真正的救贖。`;
+            setVisible(traumaBadge, true);
+        } else {
+            setVisible(traumaBadge, false);
+        }
+        document.getElementById('combat-result-narrative').textContent = data.narrative || '';
+        const reflection = badEnding ? null : data.reflection_prompt;
+        const reflectionBox = document.getElementById('combat-reflection');
+        if (reflection) {
+            setVisible(reflectionBox, true);
+            document.getElementById('combat-reflection-title').textContent = reflection.title || '界線反思';
+            document.getElementById('combat-reflection-theology').textContent = reflection.theological_tie || '';
+            document.getElementById('combat-reflection-questions').innerHTML =
+                (reflection.questions || []).map((q, i) =>
+                    `<li class="pl-3 border-l-2 border-amber-600/50"><span class="text-amber-500/80 text-xs">Q${i + 1}</span><br>${q}</li>`
+                ).join('');
+        } else {
+            setVisible(reflectionBox, false);
+        }
+    }
+
+    async function rescueNearDeath() {
+        const agreed = await showConfirmModal({
+            title: '禱告救援',
+            message: '為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）',
+            confirmLabel: '發起禱告',
+        });
+        if (!agreed) return;
+        const res = await fetch('/combat/rescue_near_death', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ combat_id: currentCombatId, rescue_type: 'prayer' }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showToast(data.error || '救援失敗', 'error');
+            return;
+        }
+        if (data.rescued) setVisible(document.getElementById('combat-near-death-overlay'), false);
+        showToast(data.message || '禱告已送出', 'success');
+    }
 
         let currentStory = null;
         let currentLineIndex = 0;
@@ -5106,145 +2460,6 @@
             }
             if (pctEl) pctEl.textContent = `(${pct}%)`;
             if (bar) bar.style.width = `${pct}%`;
-        }
-
-        function updateCombatPlayerStats(me, squad) {
-            const maxHp = effectivePlayerMaxHp({
-                hp: combatStatValue(me.hp, squad.hp),
-                max_hp: combatStatValue(me.max_hp, squad.max_hp),
-            });
-            const stats = {
-                hp: combatStatValue(me.hp, squad.hp) ?? maxHp,
-                sanity: combatStatValue(me.sanity, squad.sanity) ?? 100,
-                power: combatStatValue(me.power, squad.power) ?? 0,
-                intellect: combatStatValue(me.intellect, squad.intellect) ?? 0,
-                resilience: combatStatValue(me.resilience, squad.resilience) ?? 0,
-            };
-            setStatBar('combat-', 'hp', stats.hp, { showRatio: true, maxHp });
-            ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
-                setStatBar('combat-', s, stats[s], { showRatio: true });
-            });
-            safeSetText('combat-player-hp', stats.hp);
-            safeSetText('combat-player-sanity', stats.sanity);
-            safeSetText('combat-m-power', stats.power);
-            safeSetText('combat-m-intellect', stats.intellect);
-            safeSetText('combat-m-resilience', stats.resilience);
-            const mobileBar = document.getElementById('combat-hp-bar-mobile');
-            if (mobileBar) {
-                const pct = Math.max(0, Math.min(100, Math.round((stats.hp / maxHp) * 100)));
-                mobileBar.style.width = `${pct}%`;
-            }
-        }
-
-        function resetCombatEnemyHpTracking(enemyHp = null) {
-            combatEnemyHpSeen = enemyHp;
-            lastAnimatedEnemyHp = enemyHp != null ? enemyHp : null;
-        }
-
-        function updateEnemyCombatStats(enemy, description, hpOpts = {}) {
-            safeSetText('enemy-name', enemy.name || '敵人');
-            const quoteEl = document.getElementById('enemy-quote');
-            if (quoteEl) quoteEl.textContent = description || '';
-            if (!hpOpts.deferHp) {
-                syncEnemyHpDisplay(lastCombatStatus, { enemyOverride: enemy });
-            }
-            const maxHp = Number(enemy.max_hp || enemy.hp) || 1;
-            const hpHintEl = document.getElementById('enemy-hp-hint');
-            if (hpHintEl) {
-                if (maxHp >= 500) {
-                    hpHintEl.textContent = '高 HP 敵人：血條變化唔明顯，請睇 HP 數字同結算畫面';
-                    setVisible(hpHintEl, true);
-                } else {
-                    hpHintEl.textContent = '';
-                    setVisible(hpHintEl, false);
-                }
-            }
-            safeSetText('enemy-stat-sanity', enemy.sanity);
-            safeSetText('enemy-stat-power', enemy.power);
-            safeSetText('enemy-stat-intellect', enemy.intellect);
-            safeSetText('enemy-stat-resilience', enemy.resilience);
-        }
-
-        function updateProtagonistControlUi() {
-            const bar = document.getElementById('protagonist-control-bar');
-            const btn = document.getElementById('protagonist-control-toggle');
-            const hint = document.getElementById('protagonist-control-hint');
-            const enabled = lastCombatStatus?.protagonist_player_control;
-            if (!bar) return;
-            if (!enabled) {
-                controllingProtagonist = false;
-                setVisible(bar, false);
-                return;
-            }
-            setVisible(bar, true);
-            const route = lastCombatStatus?.route;
-            const proName = route === 'marah' ? 'Marah' : 'Iggy';
-            if (btn) {
-                btn.textContent = controllingProtagonist
-                    ? '目前：控制主角 — 點此改回控制自己'
-                    : `切換：代替 ${proName} 行動`;
-            }
-            if (hint) {
-                hint.textContent = controllingProtagonist
-                    ? `你正在代替 ${proName} 提交本回合行動（最終階段）`
-                    : '普通戰鬥時主角會自動行動；需要時可切換控制主角';
-            }
-            document.querySelectorAll('.combat-action-btn[data-action="use_item"]').forEach((btn) => {
-                btn.classList.toggle('opacity-40', !!controllingProtagonist);
-                btn.classList.toggle('pointer-events-none', !!controllingProtagonist);
-            });
-        }
-
-        function toggleProtagonistControl() {
-            if (!lastCombatStatus?.protagonist_player_control) return;
-            controllingProtagonist = !controllingProtagonist;
-            updateProtagonistControlUi();
-            const hintEl = document.getElementById('combat-submit-hint');
-            if (hintEl && controllingProtagonist) {
-                hintEl.textContent = '主角模式：選擇行動後將代替主角提交';
-            }
-        }
-
-        function renderCombatTeamRow(data) {
-            const container = document.getElementById('team-status-row');
-            const teamStrip = document.getElementById('combat-team-strip');
-            if (!container) return;
-            container.innerHTML = '';
-
-            const myId = data.my_squad_id || currentSquad?.squad_id;
-            const members = data.member_states || {};
-            const protagonists = data.protagonists || currentSquad?.protagonists || {};
-            const route = data.route
-                || data.my_state?.route
-                || protagonists.active_route
-                || currentSquad?.route;
-
-            Object.keys(members).forEach(sid => {
-                if (sid === myId) return;
-
-                const m = members[sid];
-                const isPro = m.is_protagonist;
-                const proKey = m.protagonist_key;
-                const avatarSrc = isPro
-                    ? `/static/portraits/${m.avatar || 'default.png'}`
-                    : `/static/avatars/${m.avatar || 'default.png'}`;
-                const accent = proKey === 'iggy' ? 'text-red-400' : proKey === 'marah' ? 'text-blue-400' : 'text-zinc-300';
-                const trauma = m.trauma_count > 0 ? ` 💔${m.trauma_count}` : '';
-                const div = document.createElement('div');
-                div.className = `combat-team-chip flex-shrink-0 text-center min-w-[56px]${isPro ? ' border-l border-amber-700/40 pl-2' : ''}`;
-                div.innerHTML = `
-                    <img src="${avatarSrc}"
-                         class="w-8 h-8 rounded-full border ${isPro ? 'border-amber-600/60' : 'border-zinc-600'} mx-auto mb-0.5 object-cover" alt="">
-                    <div class="text-[10px] ${accent} truncate max-w-[72px]">${m.display_name || sid}${isPro ? '（主角）' : ''}</div>
-                    <div class="text-[10px] font-mono text-zinc-400">❤️${m.hp ?? '-'} 🧠${m.sanity ?? '-'}${trauma}</div>
-                `;
-                container.appendChild(div);
-            });
-
-            if (!container.children.length) {
-                container.innerHTML = '<div class="text-[10px] text-zinc-500 py-1">暫無隊友資料</div>';
-            }
-            if (teamStrip) setVisible(teamStrip, true);
         }
 
         function updateDashboardAttackHint(squad) {
@@ -6169,9 +3384,15 @@
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
-                    setTimeout(() => {
-                        if (typeof loadCombatPage === 'function') {
-                            loadCombatPage(data.current_combat_id);
+                    setTimeout(async () => {
+                        showSection('combat', { skipCombatLobbyLoad: true });
+                        if (window.combatV2?.isEnabled?.()) {
+                            const lobby = document.getElementById('combat-lobby');
+                            if (lobby) lobby.classList.add('hidden');
+                            currentCombatId = data.current_combat_id;
+                            await window.combatV2.onCombatStarted({ combat_id: data.current_combat_id });
+                        } else if (typeof loadCombatPage === 'function') {
+                            await loadCombatPage(data.current_combat_id);
                         }
                     }, 400);
                 }
@@ -7307,126 +4528,6 @@
         </div>
     </div>
 
-    <!-- 單人行動結果 Modal（多人提交後） -->
-    <div id="combat-single-result-modal"
-         onclick="if (event.target.id === 'combat-single-result-modal') hideSinglePlayerResultModal()"
-         class="hidden fixed inset-0 bg-black/85 z-[72] flex items-center justify-center p-4">
-        <div onclick="event.stopPropagation()"
-             class="bg-zinc-900 w-full max-w-md rounded-3xl border border-zinc-700 overflow-hidden shadow-2xl">
-            <div class="px-5 py-4 border-b border-zinc-700">
-                <div class="text-xs text-emerald-400">你的行動結果</div>
-                <div id="single-result-title" class="font-semibold text-lg mt-0.5"></div>
-                <div id="single-result-summary" class="text-sm text-zinc-300 mt-2 leading-relaxed"></div>
-            </div>
-            <div class="px-5 py-4 grid grid-cols-2 gap-3">
-                <div class="bg-zinc-800 rounded-2xl p-3 text-center">
-                    <div class="text-emerald-400 text-xs">你造成傷害</div>
-                    <div class="text-3xl font-bold text-emerald-400">-<span id="single-result-dealt">0</span></div>
-                </div>
-                <div class="bg-zinc-800 rounded-2xl p-3 text-center">
-                    <div class="text-red-400 text-xs">你受到傷害</div>
-                    <div id="single-result-taken-wrap" class="text-3xl font-bold text-red-400">-<span id="single-result-taken">0</span></div>
-                    <div id="single-result-taken-pending" class="hidden text-[10px] text-zinc-500 mt-1">待全隊提交</div>
-                </div>
-            </div>
-            <div id="single-result-risks" class="px-5 pb-3 text-xs space-y-1"></div>
-            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
-                <button type="button" onclick="hideSinglePlayerResultModal()"
-                        class="w-full py-3 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">知道了，等待隊友</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 全隊回合結算 Modal（確認後主畫面才扣血） -->
-    <div id="combat-round-settlement-modal"
-         onclick="if (event.target.id === 'combat-round-settlement-modal') continueCombatAfterRound()"
-         class="hidden fixed inset-0 bg-black/85 z-[73] flex items-center justify-center p-4">
-        <div onclick="event.stopPropagation()"
-             class="bg-zinc-900 w-full max-w-md rounded-3xl border border-emerald-700/40 overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="px-5 py-4 border-b border-zinc-700">
-                <div class="text-xs text-emerald-400">傷害結算</div>
-                <div class="font-semibold text-lg"><span id="round-settlement-phase">第 1 回合</span></div>
-            </div>
-            <div class="px-5 py-3 border-b border-zinc-800">
-                <div class="text-emerald-400 text-xs font-medium mb-2">我方造成傷害</div>
-                <div id="round-settlement-dealt-rows" class="space-y-1 text-xs"></div>
-                <div class="flex justify-between gap-3 border-t border-zinc-700 pt-2 mt-2 text-xs font-semibold">
-                    <span class="text-emerald-300">輸出合計</span>
-                    <span id="round-settlement-dealt-total" class="text-emerald-400 font-mono">0</span>
-                </div>
-            </div>
-            <div class="px-5 py-3 border-b border-zinc-800">
-                <div class="text-red-400 text-xs font-medium mb-2">我方承受傷害</div>
-                <div id="round-settlement-taken-rows" class="space-y-1 text-xs"></div>
-                <div class="flex justify-between gap-3 border-t border-zinc-700 pt-2 mt-2 text-xs font-semibold">
-                    <span class="text-red-300">承受合計</span>
-                    <span id="round-settlement-taken-total" class="text-red-400 font-mono">0</span>
-                </div>
-            </div>
-            <div class="px-5 py-3 text-xs space-y-1.5">
-                <div class="text-amber-400 font-medium mb-1">敵人</div>
-                <div class="flex justify-between gap-3">
-                    <span class="text-zinc-400">受到傷害</span>
-                    <span id="round-settlement-enemy-taken" class="text-emerald-400 font-mono font-semibold">0</span>
-                </div>
-                <div class="flex justify-between gap-3">
-                    <span class="text-zinc-400">造成傷害</span>
-                    <span id="round-settlement-enemy-dealt" class="text-red-400 font-mono font-semibold">0</span>
-                </div>
-                <div class="pt-1 text-sm text-zinc-300">
-                    剩餘 HP：
-                    <span id="round-settlement-enemy-hp" class="text-red-400 font-mono font-semibold">—</span><span id="round-settlement-enemy-hp-max" class="text-zinc-500 font-mono text-xs"></span>
-                </div>
-            </div>
-            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700 sticky bottom-0">
-                <button type="button" id="round-settlement-confirm-btn" onclick="continueCombatAfterRound()"
-                        class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl">確定</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 戰鬥行動 Modal（置於 body 層級） -->
-    <div id="combat-action-modal"
-         onclick="if (event.target.id === 'combat-action-modal') closeCombatModal()"
-         class="hidden fixed inset-0 bg-black/85 z-[70] p-4">
-        <div onclick="event.stopPropagation()"
-             class="bg-zinc-900 w-full max-w-md mx-auto rounded-3xl border border-zinc-700 overflow-hidden shadow-2xl">
-            <div class="px-5 py-4 border-b border-zinc-700 flex justify-between items-center">
-                <div>
-                    <div id="modal-action-title" class="font-semibold text-lg text-amber-400"></div>
-                    <div id="modal-status-hint" class="text-xs text-zinc-400 mt-0.5">系統正在擲骰…</div>
-                </div>
-                <button type="button" id="modal-close-btn" onclick="closeCombatModal()"
-                        class="text-2xl text-zinc-400 hover:text-white leading-none">×</button>
-            </div>
-
-            <div id="modal-dice-area" class="px-6 py-8 flex flex-col items-center">
-                <div class="text-xs text-zinc-400 mb-3">系統正在擲骰…</div>
-                <div id="modal-dice-box"
-                     class="w-24 h-24 flex items-center justify-center text-6xl font-bold border-[6px] border-amber-500 rounded-3xl bg-zinc-950 mb-3 transition-all">
-                    <span id="modal-dice-value">?</span>
-                </div>
-                <div id="modal-dice-final" class="text-sm text-zinc-400 hidden text-center">
-                    <div>
-                        擲出：<span id="modal-dice-number" class="text-2xl font-bold text-amber-400"></span>
-                    </div>
-                    <div id="modal-dice-desc" class="text-xs mt-0.5 text-zinc-400"></div>
-                </div>
-            </div>
-
-            <div class="px-5 py-4 bg-zinc-950 border-t border-zinc-700">
-                <button type="button" id="modal-confirm-btn" onclick="confirmRound()"
-                        class="hidden w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl mb-2">
-                    確認並結束本回合
-                </button>
-                <button type="button" id="modal-cancel-btn" onclick="closeCombatModal()"
-                        class="w-full py-2 text-sm text-zinc-400 hover:text-white">
-                    取消
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- 劇情介面 -->
     <div id="story-modal"
          onclick="if (event.target.id === 'story-modal') tryCloseStoryModal()"
@@ -7641,5 +4742,6 @@
         </div>
     </div>
 
+    <script type="module" src="/static/js/combat/bootstrap.js"></script>
 </body>
 </html>

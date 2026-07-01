@@ -201,8 +201,8 @@ def update_squad(squad_id, **kwargs):
     for key, val in kwargs.items():
         if key not in allowed:
             continue
-        if key == "pin" and val is None:
-            updates.append("pin = NULL")
+        if key in ("pin", "current_combat_id", "near_death_until") and val is None:
+            updates.append(f"{key} = NULL")
         elif val is not None:
             updates.append(f"{key} = ?")
             params.append(val)

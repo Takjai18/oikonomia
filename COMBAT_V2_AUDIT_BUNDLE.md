@@ -104,7 +104,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ## 6. PR-6 結構（回歸）
 
-- `index.html` 4737 行 · `combat_flow.js` 已刪除
+- `index.html` 4747 行 · `combat_flow.js` 已刪除
 
 ---
 
@@ -346,19 +346,29 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
     }
 
     function exitCombatScreen() {
+        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
+
         if (window.combatV2?.isEnabled?.()) {
-            window.combatV2.exitToLobby();
-            return;
+            const app = window.combatV2.getApp?.();
+            app?.views?.endgame?.hideAll?.();
+            app?.poller?.stop();
+            app?.unmount?.();
         }
+
         setVisible(document.getElementById('combat-result-panel'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
         setVisible(document.getElementById('combat-near-death-overlay'), false);
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
+
         currentCombatId = null;
         pendingEncounterId = null;
-        loadEncounters();
+
+        setTimeout(async () => {
+            await loadEncounters();
+        }, 150);
     }
+    window.exitCombatScreen = exitCombatScreen;
 
     async function loadCombatPage(combatId) {
         if (combatId) currentCombatId = combatId;
@@ -385,7 +395,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
         container.innerHTML = '<div class="text-zinc-400">載入 Encounter...</div>';
 
         try {
-            const res = await fetch('/encounters', { credentials: 'same-origin' });
+            const res = await fetchNoCache('/encounters');
             const data = await res.json();
             if (!data.success) {
                 container.innerHTML = '<div class="text-red-400">載入失敗</div>';
@@ -1202,6 +1212,13 @@ export class CombatApp {
     this.poller.stop();
     this.unmount();
     this.rootEl.classList.add('hidden');
+    this.views.endgame.hideAll();
+
+    if (typeof window.exitCombatScreen === 'function') {
+      showToast('已安全退出戰場', 'info');
+      window.exitCombatScreen();
+      return;
+    }
 
     if (window.AppRouter && typeof window.AppRouter.navigateTo === 'function') {
       window.AppRouter.navigateTo('dashboard');
@@ -5053,6 +5070,34 @@ def set_team_combat_id(team_id, combat_id):
 def clear_team_combat_id(team_id):
     for member in get_team_members(team_id):
         update_squad(member["squad_id"], current_combat_id=None)
+
+
+def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
+    """Drop stale active markers when combat is already finished (SSOT heal)."""
+    if not combat:
+        return False, None, None
+
+    combat_id = combat.get("id")
+    enemy_hp = int(combat.get("enemy_hp") or 0)
+    is_finished = combat.get("status") == "ended" or enemy_hp <= 0
+
+    if not is_finished:
+        return True, combat_id, combat.get("encounter_id")
+
+    if combat.get("status") != "ended":
+        save_combat(
+            combat_id,
+            status="ended",
+            ended_at=datetime.now().isoformat(),
+            enemy_hp=0 if enemy_hp <= 0 else combat.get("enemy_hp"),
+        )
+
+    if team_id:
+        clear_team_combat_id(team_id)
+    elif squad_id:
+        update_squad(squad_id, current_combat_id=None)
+
+    return False, None, None
 
 def get_effective_stat(squad, stat):
     base = int(squad.get(stat) or 0)
@@ -11946,6 +11991,50 @@ def test_encounter_list_hides_test_for_players(client, team_id):
     ok("encounter list has progress hint", bool(data.get("progress_hint")), data.get("progress_hint"))
 
 
+def test_encounters_reconcile_stale_active_combat(client, team_id, leader_id):
+    """Finished combat with stale current_combat_id must not surface as active in lobby."""
+    from models.combat import (
+        clear_team_combat_id,
+        create_combat_record,
+        get_active_combat_for_team,
+        save_combat,
+        set_team_combat_id,
+    )
+    from models.encounter import load_encounter
+    from models.squad import get_squad
+
+    enc = load_encounter("practice_iggy_01_quick")
+    clear_team_combat_id(team_id)
+    combat = create_combat_record(
+        leader_id, enc["encounter_id"], enc, initial_status="player_phase",
+    )
+    combat_id = combat["id"]
+
+    save_combat(combat_id, status="player_phase", enemy_hp=0)
+    set_team_combat_id(team_id, combat_id)
+
+    r = client.get("/encounters")
+    data = r.get_json() or {}
+    ok("encounters reconcile: success", data.get("success"), str(data)[:200])
+    ok("encounters reconcile: no stale active_combat", data.get("active_combat") is False, str(data))
+    ok("encounters reconcile: active_combat_id cleared", not data.get("active_combat_id"), str(data))
+
+    squad = get_squad(leader_id)
+    ok(
+        "encounters reconcile: squad current_combat_id cleared",
+        not squad.get("current_combat_id"),
+        str(squad),
+    )
+    ok(
+        "encounters reconcile: get_active_combat_for_team empty",
+        get_active_combat_for_team(team_id) is None,
+        str(data),
+    )
+
+    save_combat(combat_id, status="ended", winner="squad")
+    clear_team_combat_id(team_id)
+
+
 def test_practice_boundary_settlement_enemy_hp(client, team_id):
     """Round settlement must include enemy_hp_after matching DB after damage."""
     from models.protagonist import update_protagonist_state
@@ -12069,6 +12158,7 @@ def main():
     ok("設定 Iggy 路線", route_data.get("route") == "iggy" or route_data.get("team", {}).get("route") == "iggy", str(route_data))
 
     test_encounter_list_hides_test_for_players(client, team_id)
+    test_encounters_reconcile_stale_active_combat(client, team_id, leader_id)
     test_practice_encounter_replayable(client, team_id)
     test_practice_boundary_settlement_enemy_hp(client, team_id)
 

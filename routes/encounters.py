@@ -3,7 +3,11 @@ import os
 
 from flask import Blueprint, jsonify, session
 
-from models.combat import get_active_combat_for_team, get_combat_by_squad
+from models.combat import (
+    get_active_combat_for_team,
+    get_combat_by_squad,
+    reconcile_finished_active_combat,
+)
 from models.settings import settings
 from models.encounter import (
     encounter_is_practice,
@@ -35,10 +39,21 @@ def list_encounters_api():
         session["squad_id"], team_id
     )
     stage = resolve_story_stage(completed_count, completed_task_ids)
+    squad_id = session["squad_id"]
     if team_id:
         active_session = get_active_combat_for_team(team_id)
     else:
-        active_session = get_combat_by_squad(session["squad_id"])
+        active_session = get_combat_by_squad(squad_id)
+
+    has_active = False
+    active_combat_id = None
+    active_encounter_id = None
+    if active_session:
+        has_active, active_combat_id, active_encounter_id = reconcile_finished_active_combat(
+            active_session,
+            team_id=team_id,
+            squad_id=squad_id if not team_id else None,
+        )
 
     show_test = (
         session.get("is_gm")
@@ -120,9 +135,9 @@ def list_encounters_api():
         "route": route,
         "completed_task_count": completed_count,
         "progress_hint": progress_hint,
-        "active_combat": bool(active_session),
-        "active_combat_id": active_session["id"] if active_session else None,
-        "active_encounter_id": active_session["encounter_id"] if active_session else None,
+        "active_combat": has_active,
+        "active_combat_id": active_combat_id,
+        "active_encounter_id": active_encounter_id,
     })
 
 

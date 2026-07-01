@@ -114,6 +114,269 @@ def submit_attack(client, combat_id):
     )
 
 
+def test_maybe_resolve_ready_claim_inside_tx():
+    """R11: all_phase_actions_submitted must run inside CAS transaction boundary."""
+    import sqlite3
+    from datetime import datetime
+
+    from models.combat import (
+        _claim_ready_player_phase_resolution,
+        maybe_resolve_player_phase,
+        upsert_combat_action,
+    )
+
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM combat_actions")
+    conn.execute("DELETE FROM combats WHERE encounter_id = 'test_claim_gate'")
+    conn.execute("DELETE FROM squads WHERE squad_id IN ('cg1', 'cg2')")
+    conn.execute("DELETE FROM teams WHERE team_id = 'T-CLAIM'")
+    conn.execute(
+        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES ('T-CLAIM', 'ClaimGate', 'iggy', ?)",
+        (now,),
+    )
+    for sid, leader in (("cg1", 1), ("cg2", 0)):
+        conn.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, team_id, hp, max_hp, sanity, power, intellect,
+                resilience, is_team_leader, route, zoo_skills, last_update)
+               VALUES (?, ?, 'T-CLAIM', 100, 100, 50, 30, 20, 20, ?, 'iggy', '[]', ?)""",
+            (sid, sid, leader, now),
+        )
+    conn.execute(
+        """INSERT INTO combats (
+               squad_id, encounter_id, status, current_phase, enemy_hp,
+               enemy_resilience, enemy_sanity, enemy_base_damage, enemy_name,
+               phase_actions, logs, phase_started_at, started_at
+           ) VALUES ('cg1', 'test_claim_gate', 'player_phase', 0, 60, 10, 50, 5, 'Boss', '{}', '[]', ?, ?)""",
+        (now, now),
+    )
+    combat_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute("UPDATE squads SET current_combat_id = ? WHERE squad_id IN ('cg1', 'cg2')", (combat_id,))
+    conn.commit()
+    conn.close()
+
+    upsert_combat_action(combat_id, "cg1", 0, "attack", 6, None)
+    partial, winner = maybe_resolve_player_phase(combat_id, {})
+    ok(
+        "maybe_resolve incomplete phase stays player_phase",
+        partial and partial.get("status") == "player_phase" and winner is None,
+        str((partial or {}).get("status")),
+    )
+    claimed_partial, _ = _claim_ready_player_phase_resolution(combat_id, {})
+    ok("claim_ready rejects incomplete phase", claimed_partial is False)
+
+    upsert_combat_action(combat_id, "cg2", 0, "attack", 6, None)
+    claimed_full, _ = _claim_ready_player_phase_resolution(combat_id, {})
+    ok("claim_ready accepts complete phase", claimed_full is True)
+    if claimed_full:
+        from models.combat import _release_player_phase_resolution
+
+        _release_player_phase_resolution(combat_id)
+
+    resolved, winner2 = maybe_resolve_player_phase(combat_id, {})
+    ok(
+        "maybe_resolve complete phase progresses combat",
+        resolved and resolved.get("status") != "player_phase",
+        str((resolved or {}).get("status")),
+    )
+
+
+def test_phase2_gm_override_gateway():
+    """Phase 2 Backlog: 驗證 GM 權威特權覆蓋閘門與結局狀態重置一致性。"""
+    import sqlite3
+    from datetime import datetime
+
+    from services.gm_auth import establish_gm_session
+
+    team_id = "TEAM-GM-OVERRIDE"
+    proto_key = "marah"
+    now = datetime.now().isoformat()
+
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM protagonist_trauma_log WHERE team_id = ?", (team_id,))
+    conn.execute("DELETE FROM protagonist_states WHERE team_id = ?", (team_id,))
+    conn.execute("DELETE FROM global_events WHERE created_by = 'GM-CHIEF-01'")
+    conn.execute("DELETE FROM teams WHERE team_id = ?", (team_id,))
+    conn.execute(
+        """INSERT INTO teams (team_id, team_name, ending_type, created_at)
+           VALUES (?, 'GM覆蓋隊', 'bad_ending', ?)""",
+        (team_id, now),
+    )
+    conn.execute(
+        """INSERT INTO protagonist_states
+           (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
+           VALUES (?, ?, 100, 100, 100, 4, 1, ?)""",
+        (team_id, proto_key, now),
+    )
+    conn.commit()
+    conn.close()
+
+    client = oikonomia.app.test_client()
+
+    r403 = client.post(
+        "/gm/api/override_trauma_ending",
+        json={"team_id": team_id, "protagonist_key": proto_key, "target_trauma": 1},
+    )
+    ok("GM Override Gate: 非管理員登入遭遇 403 熔斷拒絕", r403.status_code == 403)
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+        sess["squad_id"] = "GM-CHIEF-01"
+
+    r_ok = client.post(
+        "/gm/api/override_trauma_ending",
+        json={
+            "team_id": team_id,
+            "protagonist_key": proto_key,
+            "target_trauma": 0,
+            "target_ending_type": "clear",
+        },
+    )
+    body = r_ok.get_json() or {}
+    ok(
+        "GM Override Gate: 權威覆蓋指令發放成功",
+        r_ok.status_code == 200 and body.get("success") is True,
+        str(body)[:200],
+    )
+
+    conn = sqlite3.connect(_test_db_path())
+    trauma = conn.execute(
+        "SELECT trauma_count FROM protagonist_states WHERE team_id = ? AND protagonist = ?",
+        (team_id, proto_key),
+    ).fetchone()[0]
+    ending = conn.execute(
+        "SELECT ending_type FROM teams WHERE team_id = ?",
+        (team_id,),
+    ).fetchone()[0]
+    log_exists = conn.execute(
+        """SELECT COUNT(*) FROM protagonist_trauma_log
+           WHERE team_id = ? AND reason LIKE '%GM_OVERRIDE%'""",
+        (team_id,),
+    ).fetchone()[0]
+    event_exists = conn.execute(
+        "SELECT COUNT(*) FROM global_events WHERE created_by = 'GM-CHIEF-01'",
+    ).fetchone()[0]
+    conn.close()
+
+    ok("GM Override Gate: 實體表主角創傷已清零 SSOT", int(trauma) == 0)
+    ok("GM Override Gate: 實體表團隊結局解鎖重置", ending is None)
+    ok("GM Override Gate: 歷史審計日誌留痕合規", log_exists == 1)
+    ok("GM Override Gate: 全營廣播通知發送成功", event_exists == 1)
+
+
+def test_phase2_narrative_orchestrator_pipeline():
+    """Phase 1.5 Step 3: 驗證全新戰後劇情管線強等冪性與背包熔斷防線。"""
+    import sqlite3
+    from datetime import datetime
+
+    from services.narrative_orchestrator import execute_post_combat_success_pipeline
+
+    team_id = "TEAM-NARRATIVE-V2"
+    squad_id = "SQUAD-LEADER-V2"
+    enc_id = "enc_iggy_01_leech"
+    now = datetime.now().isoformat()
+
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute(
+        "DELETE FROM encounter_completions WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))",
+        (team_id,),
+    )
+    conn.execute("DELETE FROM player_items WHERE squad_id = ?", (squad_id,))
+    conn.execute("DELETE FROM squads WHERE squad_id = ?", (squad_id,))
+    conn.execute("DELETE FROM teams WHERE team_id = ?", (team_id,))
+    conn.execute(
+        "INSERT INTO teams (team_id, team_name, created_at) VALUES (?, ?, ?)",
+        (team_id, "NarrativeTest", now),
+    )
+    conn.execute(
+        "INSERT INTO squads (squad_id, team_id, hp, max_hp, is_team_leader, display_name) "
+        "VALUES (?, ?, 100, 100, 1, ?)",
+        (squad_id, team_id, "Leader"),
+    )
+    conn.commit()
+    conn.close()
+
+    with patch("services.narrative_orchestrator.random.random", return_value=0.0):
+        snap1 = execute_post_combat_success_pipeline(team_id, enc_id, squad_id)
+    ok("Narrative V2: 首次結算管道成功執行", "通關" in snap1.log_message)
+
+    conn = sqlite3.connect(_test_db_path())
+    item_count = conn.execute(
+        "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
+        (squad_id,),
+    ).fetchone()[0]
+    completion_exists = conn.execute(
+        """SELECT COUNT(*) FROM encounter_completions
+           WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?""",
+        (team_id, enc_id),
+    ).fetchone()[0]
+    conn.close()
+
+    ok("Narrative V2: 獎勵物品成功發放至背包", item_count > 0)
+    ok("Narrative V2: 遭遇通關誌成功存檔", completion_exists == 1)
+
+    snap2 = execute_post_combat_success_pipeline(team_id, enc_id, squad_id)
+    ok("Narrative V2: 強等冪閘門成功阻斷", "拒絕重複" in snap2.log_message)
+
+    conn = sqlite3.connect(_test_db_path())
+    item_count_after = conn.execute(
+        "SELECT COUNT(*) FROM player_items WHERE squad_id = ?",
+        (squad_id,),
+    ).fetchone()[0]
+    conn.close()
+    ok("Narrative V2: 物品數量守恆，無重複發放漏洞", item_count == item_count_after)
+
+
+def test_phase2_trauma_service_pipeline():
+    """Phase 1.5 Step 2: 驗證全新中央創傷能帶管線與神學片段權威分發機制。"""
+    import sqlite3
+    from datetime import datetime
+
+    from services.trauma_service import apply_protagonist_trauma_pipeline
+
+    team_id = "TEAM-TRAUMA-V2"
+    proto_key = "iggy"
+    now = datetime.now().isoformat()
+
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM protagonist_trauma_log WHERE team_id = ?", (team_id,))
+    conn.execute("DELETE FROM protagonist_states WHERE team_id = ?", (team_id,))
+    conn.execute("DELETE FROM teams WHERE team_id = ?", (team_id,))
+    conn.execute(
+        "INSERT INTO teams (team_id, team_name, created_at) VALUES (?, ?, ?)",
+        (team_id, "測試隊伍", now),
+    )
+    conn.execute(
+        """INSERT INTO protagonist_states
+           (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
+           VALUES (?, ?, 100, 100, 100, 0, 1, ?)""",
+        (team_id, proto_key, now),
+    )
+    conn.commit()
+    conn.close()
+
+    snap1 = apply_protagonist_trauma_pipeline(team_id, proto_key, 1, "測試低創傷原因")
+    ok("Trauma V2: 創傷正確累加至 1", snap1.current_trauma == 1)
+    ok("Trauma V2: 正確落入 low 能帶", snap1.trauma_band == "low")
+    ok("Trauma V2: 盼望 fragment 包含恩典", "恩典" in snap1.narrative_fragment)
+    ok("Trauma V2: 結局未鎖定", snap1.is_bad_ending_locked is False)
+
+    snap2 = apply_protagonist_trauma_pipeline(team_id, proto_key, 3, "測試致命瀕死累積")
+    ok("Trauma V2: 創傷穿透至 4 次", snap2.current_trauma == 4)
+    ok("Trauma V2: 正確落入 high 能帶", snap2.trauma_band == "high")
+    ok("Trauma V2: 盼望 fragment 包含基督能力", "基督" in snap2.narrative_fragment)
+    ok("Trauma V2: 不可逆陰影結局成功鎖定", snap2.is_bad_ending_locked is True)
+
+    conn = sqlite3.connect(_test_db_path())
+    ending_type = conn.execute(
+        "SELECT ending_type FROM teams WHERE team_id = ?",
+        (team_id,),
+    ).fetchone()[0]
+    conn.close()
+    ok("Trauma V2: DB 實體表寫入 bad_ending 完好合規", ending_type == "bad_ending")
+
+
 def test_trauma_ending_thresholds():
     from models.protagonist import (
         TRAUMA_BAD_ENDING_LIMIT,
@@ -569,6 +832,444 @@ def test_solo_killing_blow_practice_quick():
     teardown_test_combat(team_id, enc_id)
 
 
+def test_escape_action_type_allowed():
+    from models.combat import COMBAT_ACTION_TYPES
+
+    ok("escape in COMBAT_ACTION_TYPES", "escape" in COMBAT_ACTION_TYPES)
+
+
+def test_select_enemy_counter_target_priority():
+    from models.combat import select_enemy_counter_target
+
+    participants = [
+        {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
+        {"squad_id": "B", "hp": 30, "max_hp": 100, "resilience": 3, "is_protagonist": False, "trauma_count": 0},
+        {"squad_id": "P", "hp": 90, "max_hp": 100, "resilience": 10, "is_protagonist": True},
+    ]
+    actions = {"B": {"action_type": "escape"}}
+    target = select_enemy_counter_target(participants, actions, enemy_base_damage=50)
+    ok("escape target prefers escaper", target and target["squad_id"] == "B", str(target))
+
+
+def test_escape_fail_mixed_settlement():
+    """INV-E: escape fail still resolves combat actions with settlement metadata."""
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_01_quick"
+    client = oikonomia.app.test_client()
+    login(client, "EscapeFailSolo")
+    client.post("/team/create", data={"team_name": "EscapeFail"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    conn.close()
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("escape fail: start", start.get("success") and combat_id, str(start)[:120])
+
+    with patch("models.combat.random.random", return_value=0.99), patch(
+        "models.combat.roll_combat_dice", return_value=2
+    ):
+        data = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "escape"},
+            content_type="application/json",
+        ).get_json() or {}
+
+    ok("escape fail: not 400", data.get("success") is not False or data.get("round_resolved"), str(data)[:200])
+    ok(
+        "escape fail: round_resolved",
+        data.get("round_resolved") or data.get("status") == "round_resolved",
+        str(data)[:200],
+    )
+    settlement = data.get("round_settlement") or {}
+    ok("escape fail: escape_triggered", settlement.get("escape_triggered") is True, str(settlement))
+    ok("escape fail: escape_success false", settlement.get("escape_success") is False, str(settlement))
+    ok(
+        "escape fail: combat still active",
+        (get_combat(combat_id) or {}).get("status") == "player_phase",
+        str((get_combat(combat_id) or {}).get("status")),
+    )
+
+    teardown_test_combat(team_id, enc_id)
+
+
+def test_use_item_combat_consumes_and_resolves():
+    """P2-1: use_item consumes player_items row and resolves with damage."""
+    from models.item import consume_squad_item_for_combat, grant_item_to_squad
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_01_quick"
+    client = oikonomia.app.test_client()
+    login(client, "UseItemSolo")
+    client.post("/team/create", data={"team_name": "UseItem"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    squad_id = conn.execute(
+        "SELECT squad_id FROM squads WHERE team_id = ? ORDER BY rowid LIMIT 1",
+        (team_id,),
+    ).fetchone()[0]
+    conn.close()
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    qr_value = f"test-combat-power-{os.getpid()}"
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM player_items WHERE squad_id = ?", (squad_id,))
+    conn.execute(
+        """INSERT INTO items
+           (name, description, icon, qr_code_value, has_ability, effect_type, effect_value, is_active)
+           VALUES ('力量碎片', 'test', '💎', ?, 1, 'power_up', 5, 1)""",
+        (qr_value,),
+    )
+    conn.commit()
+    item_row = conn.execute(
+        "SELECT id FROM items WHERE qr_code_value = ?", (qr_value,),
+    ).fetchone()
+    conn.close()
+    item_id = item_row[0]
+
+    granted, grant_msg, _ = grant_item_to_squad(squad_id, item_id, source="test")
+    ok("use_item: grant power_up item", granted, grant_msg)
+
+    r = client.get("/api/inventory")
+    inv = r.get_json() or {}
+    ok("use_item: /api/inventory lists item", inv.get("success") and any(
+        i.get("item_id") == item_id for i in (inv.get("items") or [])
+    ), str(inv)[:200])
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("use_item: start combat", start.get("success") and combat_id, str(start)[:120])
+
+    with patch("routes.combat.roll_combat_dice", return_value=2):
+        data = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "use_item", "item_id": item_id},
+            content_type="application/json",
+        ).get_json() or {}
+
+    ok("use_item: submit resolves", data.get("round_resolved") or data.get("success"), str(data)[:200])
+    settlement = data.get("round_settlement") or {}
+    ok("use_item: team dealt damage", int(settlement.get("team_damage_dealt") or 0) > 0, str(settlement))
+
+    conn = sqlite3.connect(_test_db_path())
+    remaining = conn.execute(
+        "SELECT COUNT(*) FROM player_items WHERE squad_id = ? AND item_id = ?",
+        (squad_id, item_id),
+    ).fetchone()[0]
+    conn.close()
+    ok("use_item: inventory row consumed", remaining == 0, str(remaining))
+
+    ok_consume, _, err = consume_squad_item_for_combat(squad_id, item_id)
+    ok("use_item: double consume blocked", not ok_consume and err, err)
+
+    teardown_test_combat(team_id, enc_id)
+
+
+def test_non_leader_as_protagonist_rejected():
+    """P2-3: non-leader cannot submit with as_protagonist=true."""
+    from models.protagonist import update_protagonist_state
+
+    client = oikonomia.app.test_client()
+    client2 = oikonomia.app.test_client()
+    login(client, "ProLeader")
+    login(client2, "ProMember")
+    client.post("/team/create", data={"team_name": "ProGate"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    leader_id = conn.execute(
+        "SELECT squad_id FROM squads WHERE team_id = ? AND is_team_leader = 1 LIMIT 1",
+        (team_id,),
+    ).fetchone()[0]
+    conn.close()
+
+    client2.post("/team/join", data={"team_id": team_id, "display_name": "ProMember"})
+
+    update_protagonist_state(team_id, "iggy", is_active=1)
+
+    enable_gm_session(client)
+    teardown_test_combat(team_id, "test_protagonist_control")
+    clear_encounter_completion(team_id, "test_protagonist_control")
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": "test_protagonist_control"},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("pro gate: start combat", combat_id, str(start)[:120])
+
+    with client2.session_transaction() as sess:
+        member_id = sess.get("squad_id")
+
+    r403 = client2.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack", "as_protagonist": True},
+        content_type="application/json",
+    )
+    ok("pro gate: member as_protagonist 403", r403.status_code == 403, str(r403.get_json()))
+    body = r403.get_json() or {}
+    ok(
+        "pro gate: error message",
+        "隊長" in (body.get("error") or ""),
+        body.get("error"),
+    )
+
+    r_ok = client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "attack", "as_protagonist": True},
+        content_type="application/json",
+    )
+    d = r_ok.get_json() or {}
+    ok("pro gate: leader as_protagonist ok", d.get("success") or d.get("status"), str(d)[:200])
+
+    teardown_test_combat(team_id, "test_protagonist_control")
+
+
+def test_use_item_hp_up_and_sanity_up_in_combat():
+    """P2-4: hp_up / sanity_up items heal in combat without enemy damage."""
+    from models.item import grant_item_to_squad
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_01_quick"
+    client = oikonomia.app.test_client()
+    login(client, "ItemExtendSolo")
+    client.post("/team/create", data={"team_name": "ItemExtend"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    squad_id = conn.execute(
+        "SELECT squad_id FROM squads WHERE team_id = ? ORDER BY rowid LIMIT 1",
+        (team_id,),
+    ).fetchone()[0]
+    heal_qr = f"test-heal-{os.getpid()}"
+    san_qr = f"test-san-{os.getpid()}"
+    conn.execute("DELETE FROM player_items WHERE squad_id = ?", (squad_id,))
+    conn.execute(
+        """INSERT INTO items
+           (name, description, icon, qr_code_value, has_ability, effect_type, effect_value, is_active)
+           VALUES ('生命泉源', 'heal', '🧪', ?, 1, 'hp_up', 30, 1)""",
+        (heal_qr,),
+    )
+    conn.execute(
+        """INSERT INTO items
+           (name, description, icon, qr_code_value, has_ability, effect_type, effect_value, is_active)
+           VALUES ('安定情緒劑', 'sanity', '🔮', ?, 1, 'sanity_up', 25, 1)""",
+        (san_qr,),
+    )
+    conn.commit()
+    heal_item_id = conn.execute(
+        "SELECT id FROM items WHERE qr_code_value = ?", (heal_qr,),
+    ).fetchone()[0]
+    san_item_id = conn.execute(
+        "SELECT id FROM items WHERE qr_code_value = ?", (san_qr,),
+    ).fetchone()[0]
+    conn.close()
+
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    granted, _, _ = grant_item_to_squad(squad_id, heal_item_id, source="test")
+    ok("P2-4: grant hp_up item", granted)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("P2-4: start combat (heal)", start.get("success") and combat_id, str(start)[:120])
+
+    update_squad(squad_id, hp=40)
+    hp_before = int((get_squad(squad_id) or {}).get("hp") or 0)
+    max_hp = int((get_squad(squad_id) or {}).get("max_hp") or 100)
+
+    data = client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id, "action_type": "use_item", "item_id": heal_item_id},
+        content_type="application/json",
+    ).get_json() or {}
+    settlement = data.get("round_settlement") or {}
+    squad_after_heal = get_squad(squad_id) or {}
+    hp_after = int(squad_after_heal.get("hp") or 0)
+    ok(
+        "P2-4: hp_up increases HP vs baseline",
+        hp_after > hp_before,
+        f"before={hp_before} after={hp_after}",
+    )
+    ok("P2-4: hp_up deals no enemy damage", int(settlement.get("team_damage_dealt") or 0) == 0, str(settlement))
+    logs = (get_combat(combat_id) or {}).get("logs") or []
+    ok(
+        "P2-4: hp_up combat log",
+        any("生命值回復" in (e.get("message") if isinstance(e, dict) else str(e)) for e in logs),
+        str(logs[-5:]),
+    )
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    granted2, _, _ = grant_item_to_squad(squad_id, san_item_id, source="test")
+    ok("P2-4: grant sanity_up item", granted2)
+
+    start2 = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id2 = start2.get("combat_id")
+    ok("P2-4: start combat (sanity)", start2.get("success") and combat_id2, str(start2)[:120])
+
+    update_squad(squad_id, sanity=50)
+    san_before = int((get_squad(squad_id) or {}).get("sanity") or 0)
+
+    data2 = client.post(
+        "/combat/submit_action",
+        json={"combat_id": combat_id2, "action_type": "use_item", "item_id": san_item_id},
+        content_type="application/json",
+    ).get_json() or {}
+    settlement2 = data2.get("round_settlement") or {}
+    squad_after_san = get_squad(squad_id) or {}
+    san_after = int(squad_after_san.get("sanity") or 0)
+    ok(
+        "P2-4: sanity_up restores sanity SSOT",
+        san_after == min(100, san_before + 25),
+        f"before={san_before} after={san_after}",
+    )
+    ok("P2-4: sanity_up deals no enemy damage", int(settlement2.get("team_damage_dealt") or 0) == 0, str(settlement2))
+
+    teardown_test_combat(team_id, enc_id)
+
+
+def test_combat_summon_gm_creates_global_event():
+    """P2-3/GM: summon_gm writes global_events row and combat log."""
+    import sqlite3
+
+    enc_id = "practice_iggy_01_quick"
+    client = oikonomia.app.test_client()
+    login(client, "SummonGmSolo")
+    client.post("/team/create", data={"team_name": "SummonGm"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    squad_id = conn.execute(
+        "SELECT squad_id FROM squads WHERE team_id = ? LIMIT 1", (team_id,)
+    ).fetchone()[0]
+    conn.close()
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("summon_gm: start combat", start.get("success") and combat_id, str(start)[:120])
+
+    resp = client.post(
+        "/combat/summon_gm",
+        json={"combat_id": combat_id},
+        content_type="application/json",
+    ).get_json() or {}
+    ok("summon_gm: success", resp.get("success"), str(resp))
+
+    conn = sqlite3.connect(_test_db_path())
+    row = conn.execute(
+        "SELECT title, description FROM global_events ORDER BY rowid DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    ok("summon_gm: global_events row", row and "救援訊號" in (row[0] or ""), str(row))
+
+    combat = get_combat(combat_id) or {}
+    logs = combat.get("logs") or []
+    ok(
+        "summon_gm: combat log entry",
+        any("求助" in (e.get("message") if isinstance(e, dict) else str(e)) for e in logs),
+        str(logs[-3:]),
+    )
+
+    teardown_test_combat(team_id, enc_id)
+
+
+def test_escape_success_ends_combat():
+    """Escape success ends combat with outcome escaped."""
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_01_quick"
+    client = oikonomia.app.test_client()
+    login(client, "EscapeWinSolo")
+    client.post("/team/create", data={"team_name": "EscapeWin"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    conn.close()
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("escape win: start", start.get("success") and combat_id, str(start)[:120])
+
+    with patch("models.combat.random.random", return_value=0.01):
+        data = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "escape"},
+            content_type="application/json",
+        ).get_json() or {}
+
+    ok("escape win: outcome escaped", data.get("outcome") == "escaped", str(data)[:200])
+    ok("escape win: winner escaped", data.get("winner") == "escaped", str(data)[:200])
+    settlement = data.get("round_settlement") or {}
+    ok("escape win: escape_success", settlement.get("escape_success") is True, str(settlement))
+    ok(
+        "escape win: combat ended",
+        (get_combat(combat_id) or {}).get("winner") == "escaped",
+        str(get_combat(combat_id)),
+    )
+
+    teardown_test_combat(team_id, enc_id)
+
+
 def test_solo_multi_round_poll_hp_monotonic():
     """Solo multi-round: submit + poll must return decreasing enemy.hp (Henry scenario)."""
     from models.protagonist import update_protagonist_state
@@ -922,6 +1623,50 @@ def test_encounter_list_hides_test_for_players(client, team_id):
     ok("encounter list has progress hint", bool(data.get("progress_hint")), data.get("progress_hint"))
 
 
+def test_encounters_reconcile_stale_active_combat(client, team_id, leader_id):
+    """Finished combat with stale current_combat_id must not surface as active in lobby."""
+    from models.combat import (
+        clear_team_combat_id,
+        create_combat_record,
+        get_active_combat_for_team,
+        save_combat,
+        set_team_combat_id,
+    )
+    from models.encounter import load_encounter
+    from models.squad import get_squad
+
+    enc = load_encounter("practice_iggy_01_quick")
+    clear_team_combat_id(team_id)
+    combat = create_combat_record(
+        leader_id, enc["encounter_id"], enc, initial_status="player_phase",
+    )
+    combat_id = combat["id"]
+
+    save_combat(combat_id, status="player_phase", enemy_hp=0)
+    set_team_combat_id(team_id, combat_id)
+
+    r = client.get("/encounters")
+    data = r.get_json() or {}
+    ok("encounters reconcile: success", data.get("success"), str(data)[:200])
+    ok("encounters reconcile: no stale active_combat", data.get("active_combat") is False, str(data))
+    ok("encounters reconcile: active_combat_id cleared", not data.get("active_combat_id"), str(data))
+
+    squad = get_squad(leader_id)
+    ok(
+        "encounters reconcile: squad current_combat_id cleared",
+        not squad.get("current_combat_id"),
+        str(squad),
+    )
+    ok(
+        "encounters reconcile: get_active_combat_for_team empty",
+        get_active_combat_for_team(team_id) is None,
+        str(data),
+    )
+
+    save_combat(combat_id, status="ended", winner="squad")
+    clear_team_combat_id(team_id)
+
+
 def test_practice_boundary_settlement_enemy_hp(client, team_id):
     """Round settlement must include enemy_hp_after matching DB after damage."""
     from models.protagonist import update_protagonist_state
@@ -1045,6 +1790,7 @@ def main():
     ok("設定 Iggy 路線", route_data.get("route") == "iggy" or route_data.get("team", {}).get("route") == "iggy", str(route_data))
 
     test_encounter_list_hides_test_for_players(client, team_id)
+    test_encounters_reconcile_stale_active_combat(client, team_id, leader_id)
     test_practice_encounter_replayable(client, team_id)
     test_practice_boundary_settlement_enemy_hp(client, team_id)
 
@@ -1105,11 +1851,23 @@ def main():
     test_create_combat_record_active_guard(leader_id, team_id)
     test_trauma_bad_ending_victory(client, client2, team_id, leader_id, member_id)
     test_protagonist_player_control(client, client2, team_id, route="iggy")
+    test_non_leader_as_protagonist_rejected()
     test_solo_killing_blow_returns_victory(client, client2, team_id)
     test_solo_killing_blow_practice_quick()
+    test_escape_action_type_allowed()
+    test_select_enemy_counter_target_priority()
+    test_escape_fail_mixed_settlement()
+    test_use_item_combat_consumes_and_resolves()
+    test_use_item_hp_up_and_sanity_up_in_combat()
+    test_combat_summon_gm_creates_global_event()
+    test_escape_success_ends_combat()
     test_solo_multi_round_poll_hp_monotonic()
     test_zombie_hp_zero_status_poll_returns_victory()
     test_practice_combat_start_enemy_hp_full()
+    test_phase2_trauma_service_pipeline()
+    test_phase2_narrative_orchestrator_pipeline()
+    test_maybe_resolve_ready_claim_inside_tx()
+    test_phase2_gm_override_gateway()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
@@ -1129,12 +1887,12 @@ def main():
     ok("combat_system marker", ver.get("markers", {}).get("combat_system") is True)
     ok("server_combat_dice marker", ver.get("markers", {}).get("server_combat_dice") is True)
     ok("defend_team_buff marker", ver.get("markers", {}).get("defend_team_buff") is True)
-    ok("combat_round_continue marker", ver.get("markers", {}).get("combat_round_continue") is True)
+    ok("combat_v2_module marker", ver.get("markers", {}).get("combat_v2_module") is True)
     ok("player_max_hp marker", ver.get("markers", {}).get("player_max_hp") is True)
     ok("protagonist_combat marker", ver.get("markers", {}).get("protagonist_combat") is True)
     ok("trauma_ending marker", ver.get("markers", {}).get("trauma_ending") is True)
     ok("confirm_modal marker", ver.get("markers", {}).get("confirm_modal") is True)
-    ok("protagonist_player_control marker", ver.get("markers", {}).get("protagonist_player_control") is True)
+    ok("combat_v2 marker key present", "combat_v2" in (ver.get("markers") or {}))
     ok("encounter_logs marker", ver.get("markers", {}).get("encounter_logs") is True)
 
     r = client.get("/encounter_logs")

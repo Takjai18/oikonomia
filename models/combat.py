@@ -24,7 +24,12 @@ from services.combat_outcomes import (
     resolve_combat_outcome,
 )
 from services.ending import judge_ending
-from models.item import get_item_by_id
+from models.item import (
+    build_combat_item_consume_batch,
+    combat_item_effect_display_label,
+    get_item_by_id,
+    get_items_by_ids,
+)
 from models.squad import (
     fetch_squads_by_ids,
     get_squad,
@@ -149,6 +154,34 @@ def set_team_combat_id(team_id, combat_id):
 def clear_team_combat_id(team_id):
     for member in get_team_members(team_id):
         update_squad(member["squad_id"], current_combat_id=None)
+
+
+def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
+    """Drop stale active markers when combat is already finished (SSOT heal)."""
+    if not combat:
+        return False, None, None
+
+    combat_id = combat.get("id")
+    enemy_hp = int(combat.get("enemy_hp") or 0)
+    is_finished = combat.get("status") == "ended" or enemy_hp <= 0
+
+    if not is_finished:
+        return True, combat_id, combat.get("encounter_id")
+
+    if combat.get("status") != "ended":
+        save_combat(
+            combat_id,
+            status="ended",
+            ended_at=datetime.now().isoformat(),
+            enemy_hp=0 if enemy_hp <= 0 else combat.get("enemy_hp"),
+        )
+
+    if team_id:
+        clear_team_combat_id(team_id)
+    elif squad_id:
+        update_squad(squad_id, current_combat_id=None)
+
+    return False, None, None
 
 def get_effective_stat(squad, stat):
     base = int(squad.get(stat) or 0)
@@ -602,6 +635,69 @@ def _claim_player_phase_resolution(combat_id):
         return cur.rowcount > 0
 
 
+def _phase_actions_from_conn(conn, combat_id, phase, json_fallback=None):
+    """Read phase actions using the caller's transaction connection (no nested locks)."""
+    rows = conn.execute(
+        """SELECT squad_id, action_type, dice_result, item_id
+           FROM combat_actions WHERE combat_id = ? AND phase = ?""",
+        (combat_id, phase),
+    ).fetchall()
+    if rows:
+        return {
+            row[0]: {
+                "action_type": row[1],
+                "dice_result": row[2],
+                "item_id": row[3],
+            }
+            for row in rows
+        }
+    return dict(json_fallback or {})
+
+
+def _claim_ready_player_phase_resolution(combat_id, combat_settings=None):
+    """
+    CAS claim player_phase -> resolving only when resolve preconditions hold.
+    Participant assembly runs outside TX; phase_actions are re-read inside TX.
+    """
+    combat = get_combat(combat_id)
+    if not combat or combat.get("status") != "player_phase":
+        return False, None
+    participants = get_combat_participants(combat) or []
+    settings = combat_settings or {}
+
+    with immediate_transaction() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM combats WHERE id = ?",
+            (combat_id,),
+        ).fetchone()
+        if not row or row["status"] != "player_phase":
+            return False, None
+        cur = conn.execute(
+            "UPDATE combats SET status = ? WHERE id = ? AND status = 'player_phase'",
+            (COMBAT_STATUS_RESOLVING, combat_id),
+        )
+        if cur.rowcount == 0:
+            return False, None
+
+        fresh = row_to_combat(row)
+        phase = int(fresh.get("current_phase") or 0)
+        json_actions = fresh.get("phase_actions") or {}
+        fresh["phase_actions"] = _phase_actions_from_conn(
+            conn, combat_id, phase, json_fallback=json_actions
+        )
+        if not (
+            all_phase_actions_submitted(fresh, participants)
+            or combat_phase_expired(fresh, settings)
+        ):
+            conn.execute(
+                "UPDATE combats SET status = 'player_phase' WHERE id = ? AND status = ?",
+                (combat_id, COMBAT_STATUS_RESOLVING),
+            )
+            return False, fresh
+        return True, fresh
+
+
 def _release_player_phase_resolution(combat_id):
     combat = get_combat(combat_id)
     if combat and int(combat.get("enemy_hp") or 0) <= 0:
@@ -647,6 +743,77 @@ def get_lowest_resilience_player(participants):
             best = p
     return best or (participants[0] if participants else None)
 
+
+def _is_active_combat_participant(participant):
+    if int(participant.get("hp") or 0) <= 0:
+        return False
+    if participant.get("near_death_until"):
+        try:
+            if datetime.now() < datetime.fromisoformat(participant["near_death_until"]):
+                return False
+        except ValueError:
+            pass
+    return True
+
+
+def select_enemy_counter_target(participants, actions, enemy_base_damage):
+    """
+    Enemy counter targeting priority (Greenfield Spec 1.1):
+    1. can one-shot  2. escaping  3. HP < 50%  4. trauma  5. protagonist last
+    """
+    candidates = [p for p in participants if _is_active_combat_participant(p)]
+    if not candidates:
+        return None
+
+    def sort_key(member):
+        hp = int(member.get("hp") or 0)
+        max_hp = max(1, int(member.get("max_hp") or hp or 1))
+        sid = member.get("squad_id")
+        action_type = (actions.get(sid) or {}).get("action_type") or ""
+        trauma = int(member.get("trauma_count") or 0)
+        can_oneshot = 1 if int(enemy_base_damage) >= hp else 0
+        is_escaping = 1 if action_type == "escape" else 0
+        low_hp = 1 if (hp / max_hp) < 0.5 else 0
+        has_trauma = 1 if trauma > 0 else 0
+        non_protagonist = 0 if member.get("is_protagonist") else 1
+        return (can_oneshot, is_escaping, low_hp, has_trauma, non_protagonist)
+
+    candidates.sort(key=sort_key, reverse=True)
+    return candidates[0]
+
+
+def _escape_success_rate(combat_settings):
+    try:
+        rate = float((combat_settings or {}).get("escape_success_rate", 0.4))
+    except (TypeError, ValueError):
+        rate = 0.4
+    return max(0.0, min(1.0, rate))
+
+
+def _escape_meta_from_logs(logs, summary_idx=None):
+    """Detect escape attempt outcome from combat logs for settlement enrichment."""
+    entries = logs or []
+    if summary_idx is None:
+        summary_idx = _latest_team_summary_index(entries)
+    start = 0
+    if summary_idx is not None:
+        prev = _latest_team_summary_index(entries[:summary_idx])
+        start = (prev + 1) if prev is not None else 0
+    scan = entries[start:summary_idx + 1] if summary_idx is not None else entries
+    escape_triggered = False
+    escape_success = False
+    for entry in scan:
+        if not isinstance(entry, dict):
+            continue
+        etype = entry.get("type")
+        if etype in ("escape", "escape_failed"):
+            escape_triggered = True
+            escape_success = False
+        elif etype == "escape_success":
+            escape_triggered = True
+            escape_success = True
+    return escape_triggered, escape_success
+
 def resolve_player_phase(combat_id):
     """
     完整解析 Player Phase：
@@ -675,6 +842,45 @@ def resolve_player_phase(combat_id):
         raise
 
 
+def maybe_resolve_player_phase(combat_id, combat_settings=None):
+    """
+    Authoritative resolve gate for routes: re-read DB snapshot, resolve at most once.
+    Readiness is validated inside _claim_ready_player_phase_resolution (CAS + TX).
+    Returns (combat, winner).
+    """
+    _recover_stale_resolving_combat(combat_id)
+    combat = get_combat(combat_id)
+    if not combat:
+        return None, None
+
+    status = combat.get("status")
+    if status == "ended":
+        return combat, combat.get("winner")
+    if status == COMBAT_STATUS_RESOLVING:
+        return _wait_for_resolution_complete(combat_id)
+    if status != "player_phase":
+        return combat, None
+
+    encounter = load_encounter(combat.get("encounter_id") or "")
+    settings = combat_settings or (encounter or {}).get("combat_settings", {})
+
+    claimed, snapshot = _claim_ready_player_phase_resolution(combat_id, settings)
+    if not claimed:
+        combat = get_combat(combat_id) or snapshot
+        if combat and combat.get("status") == COMBAT_STATUS_RESOLVING:
+            return _wait_for_resolution_complete(combat_id)
+        return combat, None
+
+    try:
+        combat, winner = _resolve_player_phase_body(combat_id)
+    except Exception:
+        _release_player_phase_resolution(combat_id)
+        raise
+    if combat and combat.get("status") == COMBAT_STATUS_RESOLVING and winner is None:
+        return _wait_for_resolution_complete(combat_id)
+    return combat, winner
+
+
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != COMBAT_STATUS_RESOLVING:
@@ -697,12 +903,33 @@ def _resolve_player_phase_body(combat_id):
         encounter,
         player_control_ids,
     )
+    item_consume_batch = build_combat_item_consume_batch(actions)
 
     enemy_hp = int(combat.get("enemy_hp") or 0)
     enemy_resilience = int(combat.get("enemy_resilience") or 0)
     enemy_sanity = int(combat.get("enemy_sanity") or 0)
     enemy_base_damage = int(combat.get("enemy_base_damage") or 0)
     enemy_name = combat.get("enemy_name") or "敵人"
+
+    escape_triggered = any(
+        (a.get("action_type") or a.get("action")) == "escape"
+        for a in actions.values()
+    )
+    if escape_triggered:
+        escape_rate = _escape_success_rate(combat_settings)
+        if random.random() < escape_rate:
+            combat = append_combat_log(
+                combat,
+                f"全隊逃跑成功！（成功率 {int(escape_rate * 100)}%）",
+                log_type="escape_success",
+            )
+            save_combat(combat_id, logs=combat.get("logs"))
+            return _end_combat(combat_id, "escaped", encounter), "escaped"
+        combat = append_combat_log(
+            combat,
+            "全隊逃跑失敗，將繼續結算戰鬥行動",
+            log_type="escape_failed",
+        )
 
     total_damage_to_enemy = 0
     berserk_players = []
@@ -744,11 +971,63 @@ def _resolve_player_phase_body(combat_id):
         dice = action_data.get("dice_result", action_data.get("dice", 1))
         multiplier = dice_multiplier(dice)
         item_bonus = int(action_data.get("item_bonus") or 0)
+        used_item_name = None
+        item_effect_type = None
+        item_effect_value = 0
 
-        if not item_bonus and action_type == "use_item" and action_data.get("item_id"):
-            item = get_item_by_id(int(action_data["item_id"]))
-            if item and item.get("effect_type") == "power_up":
-                item_bonus = abs(int(item.get("effect_value") or 0))
+        if action_type == "use_item" and action_data.get("item_id"):
+            ok, item, err = item_consume_batch.consume(
+                player_squad_id, action_data["item_id"],
+            )
+            if not ok:
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 使用物品失敗：{err}",
+                    log_type="item_fail",
+                )
+                continue
+            used_item_name = item.get("name") or "物品"
+            item_effect_type = item.get("effect_type")
+            try:
+                item_effect_value = int(item.get("effect_value") or 0)
+            except (TypeError, ValueError):
+                item_effect_value = 0
+
+            if item_effect_type == "hp_up" and item_effect_value > 0:
+                curr_hp = int(player.get("hp") or 0)
+                max_hp = int(player.get("max_hp") or 100)
+                new_hp = min(max_hp, curr_hp + item_effect_value)
+                update_squad(player_squad_id, hp=new_hp)
+                player["hp"] = new_hp
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 消耗了 [{used_item_name}]！❤️ 生命值回復 {item_effect_value} 點 (目前: {new_hp}/{max_hp})",
+                    log_type="item_use",
+                )
+            elif item_effect_type == "sanity_up":
+                curr_san = int(player.get("sanity") or 0)
+                new_san = max(0, min(100, curr_san + item_effect_value))
+                update_squad(player_squad_id, sanity=new_san)
+                player["sanity"] = new_san
+                san_label = "回復" if item_effect_value >= 0 else "扣除"
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 消耗了 [{used_item_name}]！🧠 神智值{san_label} {abs(item_effect_value)} 點 (目前: {new_san}/100)",
+                    log_type="item_use",
+                )
+            elif item_effect_type == "power_up":
+                item_bonus = abs(item_effect_value)
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 消耗了 [{used_item_name}]！💪 獲得臨時算力加成 +{item_bonus}",
+                    log_type="item_use",
+                )
+            else:
+                combat = append_combat_log(
+                    combat,
+                    f"{display} 消耗了 [{used_item_name}]！效果已生效",
+                    log_type="item_use",
+                )
 
         if action_type == "use_zoo":
             zoo_mult = zoo_bonus_multiplier(sanity)
@@ -797,6 +1076,31 @@ def _resolve_player_phase_body(combat_id):
                 f"{display} 選擇觀望{pro_tag}",
                 log_type="pass",
             )
+        elif action_type == "escape":
+            pro_tag = "（主角·自動）" if (
+                player.get("is_protagonist")
+                and player_squad_id not in (combat.get("phase_actions") or {})
+            ) else ""
+            combat = append_combat_log(
+                combat,
+                f"{display} 選擇逃跑{pro_tag}",
+                log_type="escape",
+            )
+        elif action_type == "use_item":
+            if item_effect_type in ("hp_up", "sanity_up"):
+                continue
+            stat_info = describe_attack_stat(player)
+            dmg = calculate_attack_damage(
+                player, enemy_resilience, multiplier=multiplier, item_bonus=item_bonus,
+            )
+            total_damage_to_enemy += dmg
+            item_label = used_item_name or "物品"
+            combat = append_combat_log(
+                combat,
+                f"{display} 使用「{item_label}」對{enemy_name}造成 {dmg} 點傷害"
+                f"（{stat_info['label']} {stat_info['value']} · 骰 {dice}）",
+                log_type="damage",
+            )
 
     new_enemy_hp = max(0, enemy_hp - total_damage_to_enemy)
     if total_damage_to_enemy:
@@ -828,7 +1132,11 @@ def _resolve_player_phase_body(combat_id):
     combat["status"] = "enemy_phase"
 
     fresh_participants = refresh_combat_participants(participants)
-    target = get_lowest_resilience_player(fresh_participants)
+    target = (
+        select_enemy_counter_target(fresh_participants, actions, enemy_base_damage)
+        if escape_triggered
+        else get_lowest_resilience_player(fresh_participants)
+    )
     if target:
         target_id = target["squad_id"]
         defender_count = count_team_defenders(actions)
@@ -1035,10 +1343,28 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
     phase_actions = (combat or {}).get("phase_actions") or {}
     berserk_hint = berserk_probability(me.get("sanity", 50)) > 0
 
+    item_ids_for_status = [
+        (submitted or {}).get("item_id")
+        for submitted in phase_actions.values()
+        if (submitted or {}).get("item_id") is not None
+    ]
+    item_catalog_by_id = get_items_by_ids(item_ids_for_status)
+
     member_states = {}
     for p in participants:
         sid = p["squad_id"]
         submitted = phase_actions.get(sid)
+        item_id = (submitted or {}).get("item_id")
+        item_effect_type = None
+        item_effect_label = None
+        if item_id:
+            try:
+                item_row = item_catalog_by_id.get(int(item_id))
+            except (TypeError, ValueError):
+                item_row = None
+            if item_row:
+                item_effect_type = item_row.get("effect_type")
+                item_effect_label = combat_item_effect_display_label(item_effect_type)
         member_states[sid] = {
             "display_name": p.get("display_name") or sid,
             "avatar": p.get("avatar"),
@@ -1050,11 +1376,15 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
             "resilience": get_effective_stat(p, "resilience"),
             "near_death_until": p.get("near_death_until"),
             "is_protagonist": bool(p.get("is_protagonist")),
+            "is_team_leader": bool(p.get("is_team_leader")),
             "protagonist_key": p.get("protagonist_key"),
             "trauma_count": p.get("trauma_count"),
             "submitted": bool(submitted),
             "action_type": (submitted or {}).get("action_type"),
             "dice_result": (submitted or {}).get("dice_result"),
+            "item_id": item_id,
+            "item_effect_type": item_effect_type,
+            "item_effect_label": item_effect_label,
         }
 
     logs = combat.get("logs") or []
@@ -1074,7 +1404,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 
     ending_state = judge_ending(team_id) if team_id else None
 
-    return {
+    payload = {
         "success": True,
         "combat_id": combat["id"],
         "encounter_id": combat["encounter_id"],
@@ -1115,6 +1445,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "route": team_route or (encounter or {}).get("route"),
         "max_phases": combat_settings.get("max_phases", 5),
         "my_squad_id": squad_id,
+        "team_id": team_id,
         "story_stage": get_team_story_stage(team_id) if team_id else 0,
         "protagonist_player_control": protagonist_player_control_enabled(
             encounter, get_team_story_stage(team_id) if team_id else 0
@@ -1134,6 +1465,8 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "ending": ending_state,
         "trauma_level": (ending_state or {}).get("trauma_level", "safe"),
     }
+    _enrich_settlement_meta(payload, combat=combat)
+    return payload
 
 def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):
     """預估單一行動對敵人傷害（不含暴走隨機結果）"""
@@ -1152,10 +1485,14 @@ def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enem
     item_bonus = 0
     if item_id:
         item = get_item_by_id(int(item_id))
-        if item and item.get("effect_type") == "power_up":
-            item_bonus = abs(int(item.get("effect_value") or 0))
+        if item:
+            effect = item.get("effect_type")
+            if effect == "power_up":
+                item_bonus = abs(int(item.get("effect_value") or 0))
+            elif effect in ("hp_up", "sanity_up"):
+                return 0, meta
 
-    if action_type in ATTACK_ACTION_TYPES:
+    if action_type in ATTACK_ACTION_TYPES or action_type == "use_item":
         if action_type == "use_zoo":
             multiplier *= zoo_bonus_multiplier(sanity)
         stat_info = describe_attack_stat(player)
@@ -1308,6 +1645,7 @@ def build_combat_round_preview(
         "use_zoo": "Zoo 能力",
         "use_item": "使用物品",
         "pass": "觀望",
+        "escape": "逃跑",
     }
 
     return {
@@ -1377,6 +1715,8 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
         summary_parts.append(f"你對敵人造成 {damage_dealt} 點傷害")
     elif base.get("action_label") == "堅守界線":
         summary_parts.append("你為全隊堅守界線")
+    elif base.get("action_label") == "逃跑":
+        summary_parts.append("你選擇逃跑")
     elif base.get("action_label") == "觀望":
         summary_parts.append("你選擇觀望")
     else:
@@ -1416,7 +1756,36 @@ def _combat_outcome_json(winner, encounter, team_id=None):
         return build_victory_outcome_payload(encounter, team_id=team_id)
     if winner == "enemy":
         return build_defeat_outcome_payload(encounter)
+    if winner == "escaped":
+        escape_block = (encounter or {}).get("escape") or {}
+        return {
+            "success": True,
+            "status": "ended",
+            "outcome": "escaped",
+            "winner": "escaped",
+            "active": False,
+            "narrative": escape_block.get("narrative") or "全隊成功脫離戰鬥。",
+            "reflection_prompt": None,
+        }
     return None
+
+
+def build_escape_outcome_response(combat, encounter, squad_id, team_id=None):
+    """Escape success JSON — combat ends without victory/defeat rewards."""
+    payload = build_combat_status_response(combat, encounter, squad_id)
+    meta = _combat_outcome_json("escaped", encounter, team_id=team_id) or {}
+    payload.update(meta)
+    payload["round_settlement"] = {
+        "team_damage_dealt": 0,
+        "enemy_damage_dealt": 0,
+        "escape_triggered": True,
+        "escape_success": True,
+        "player_hits": [],
+        "counter_hits": [],
+        "breakdown": {},
+    }
+    _enrich_settlement_meta(payload, combat=combat)
+    return payload
 
 
 def build_victory_outcome_response(combat, encounter, squad_id, team_id=None):
@@ -1453,6 +1822,8 @@ def combat_outcome_if_finished(combat, encounter, team_id=None, squad_id=None):
         winner = combat.get("winner")
         if winner == "squad" and squad_id:
             return build_victory_outcome_response(combat, encounter, squad_id, team_id=team_id)
+        if winner == "escaped" and squad_id:
+            return build_escape_outcome_response(combat, encounter, squad_id, team_id=team_id)
         return _combat_outcome_json(winner, encounter, team_id=team_id)
     if int(combat.get("enemy_hp") or 0) <= 0:
         combat_id = combat.get("id")
@@ -1567,13 +1938,18 @@ def _round_settlement_from_logs(logs, participants=None, viewer_squad_id=None):
 
     if summary_idx is None:
         breakdown = _build_settlement_role_breakdown(player_hits, counter_hits, team_dealt, enemy_dealt)
-        return {
+        escape_triggered, escape_success = _escape_meta_from_logs(entries)
+        result = {
             "team_damage_dealt": team_dealt,
             "enemy_damage_dealt": enemy_dealt,
             "counter_hits": counter_hits,
             "player_hits": player_hits,
             "breakdown": breakdown,
         }
+        if escape_triggered:
+            result["escape_triggered"] = True
+            result["escape_success"] = escape_success
+        return result
 
     prev_summary_idx = _latest_team_summary_index(entries[:summary_idx])
     round_start = (prev_summary_idx + 1) if prev_summary_idx is not None else 0
@@ -1625,7 +2001,8 @@ def _round_settlement_from_logs(logs, participants=None, viewer_squad_id=None):
             summary_hp = int(hp_match.group(1))
 
     breakdown = _build_settlement_role_breakdown(player_hits, counter_hits, team_dealt, enemy_dealt)
-    return {
+    escape_triggered, escape_success = _escape_meta_from_logs(entries, summary_idx)
+    result = {
         "team_damage_dealt": team_dealt,
         "enemy_damage_dealt": enemy_dealt,
         "counter_hits": counter_hits,
@@ -1633,6 +2010,10 @@ def _round_settlement_from_logs(logs, participants=None, viewer_squad_id=None):
         "enemy_hp_after": summary_hp,
         "breakdown": breakdown,
     }
+    if escape_triggered:
+        result["escape_triggered"] = True
+        result["escape_success"] = escape_success
+    return result
 
 
 def _attach_round_settlement(payload, combat=None):
@@ -1657,6 +2038,22 @@ def _attach_round_settlement(payload, combat=None):
     return payload
 
 
+def _enrich_settlement_meta(payload, combat=None):
+    """Additive COMBAT_V2 fields: stable settlement progress on every status snapshot."""
+    combat_id = payload.get("combat_id") or (combat or {}).get("id")
+    if combat_id is None:
+        return payload
+    current_phase = int(
+        (combat or {}).get("current_phase")
+        if combat is not None
+        else payload.get("current_phase") or 0
+    )
+    settled_round_index = max(0, current_phase - 1)
+    payload["settled_round_index"] = settled_round_index
+    payload["settlement_id"] = f"{combat_id}:{settled_round_index}"
+    return payload
+
+
 def _build_round_resolved_response(combat, encounter, squad_id):
     combat = reconcile_enemy_hp(combat, persist=True) if combat else combat
     payload = build_combat_status_response(combat, encounter, squad_id)
@@ -1664,6 +2061,7 @@ def _build_round_resolved_response(combat, encounter, squad_id):
     payload["round_resolved"] = True
     payload["active"] = combat.get("status") not in ("ended", "precheck")
     _attach_round_settlement(payload, combat=combat)
+    _enrich_settlement_meta(payload, combat=combat)
     payload["full_preview"] = _build_full_preview_from_status(payload)
     return payload
 
