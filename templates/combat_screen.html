@@ -1,0 +1,87 @@
+{# Combat V2 mount skeleton — included when COMBAT_V2 enabled #}
+<div id="combat-root-v2" class="combat-v2 flex flex-col min-h-[70vh] max-w-md lg:max-w-6xl mx-auto px-1 sm:px-0 hidden"
+     data-testid="combat-v2-screen">
+  <section id="combat-v2-hud" class="shrink-0 px-3 py-2 grid grid-cols-2 gap-2 max-h-20">
+    <div class="flex items-center gap-2 min-w-0">
+      <img id="combat-v2-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
+           class="w-8 h-8 md:w-12 md:h-12 rounded-full object-cover shrink-0" alt="敵人"
+           data-testid="enemy-avatar" width="32" height="32" loading="eager" />
+      <div class="min-w-0 flex-1">
+        <div id="combat-v2-enemy-name" class="text-xs truncate text-red-300">敵人</div>
+        <div class="h-2 bg-zinc-800 rounded overflow-hidden">
+          <div id="combat-v2-enemy-hp-bar" class="h-full bg-red-500 transition-all duration-300" style="width:100%"></div>
+        </div>
+        <div id="combat-v2-enemy-hp" class="text-[10px] text-zinc-400" data-testid="enemy-hp">—/—</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 min-w-0">
+      <img id="combat-v2-player-avatar" src="/static/avatars/default.png"
+           class="w-8 h-8 md:w-12 md:h-12 rounded-full object-cover shrink-0" alt="我"
+           data-testid="player-avatar" width="32" height="32" loading="eager" />
+      <div class="min-w-0 flex-1">
+        <div id="combat-v2-player-name" class="text-xs truncate text-amber-400">你</div>
+        <div class="h-2 bg-zinc-800 rounded overflow-hidden">
+          <div id="combat-v2-player-hp-bar" class="h-full bg-amber-500 transition-all duration-300" style="width:100%"></div>
+        </div>
+        <div id="combat-v2-player-hp" class="text-[10px] text-zinc-400">—/—</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="combat-v2-protagonist-control-bar" class="hidden shrink-0 px-3 py-1.5 bg-purple-950/30 border-y border-purple-900/40 flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="text-xs text-purple-300 font-bold shrink-0">⭐ 隊長特權</span>
+      <span id="combat-v2-protagonist-label" class="text-[11px] text-zinc-400 truncate">可代替主角行動</span>
+    </div>
+    <label class="relative inline-flex items-center cursor-pointer select-none shrink-0">
+      <input type="checkbox" id="combat-v2-protagonist-toggle" class="sr-only peer" data-testid="protagonist-toggle">
+      <div class="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600 peer-checked:after:bg-white"></div>
+      <span class="ml-2 text-xs text-purple-200 peer-checked:text-purple-400 font-medium">代打模式</span>
+    </label>
+  </section>
+
+  <section id="combat-v2-team-status" class="shrink-0 px-3 py-1 border-y border-zinc-800/80 max-h-24 overflow-y-auto"></section>
+
+  <div id="combat-v2-zoo-tip" class="hidden mx-3 mt-2"></div>
+
+  <section id="combat-v2-log" class="flex-1 overflow-y-auto px-3 py-2 text-sm min-h-0"></section>
+
+  <section id="combat-v2-actions" class="shrink-0 p-3 grid grid-cols-2 gap-2 md:flex md:gap-3 md:flex-wrap"
+           style="touch-action: manipulation;">
+    <button type="button" id="combat-v2-attack-btn" data-testid="attack-btn"
+            class="min-h-11 rounded-lg bg-red-600 text-white font-medium active:scale-95 transition-transform">⚔ 攻擊</button>
+    <button type="button" id="combat-v2-defend-btn" data-testid="defend-btn"
+            class="min-h-11 rounded-lg bg-blue-600 text-white font-medium active:scale-95 transition-transform">🛡 防禦</button>
+    <button type="button" id="combat-v2-zoo-btn" data-testid="zoo-btn"
+            class="min-h-11 rounded-lg bg-purple-700 text-white font-medium text-sm active:scale-95 transition-transform">🦄 Zoo</button>
+    <button type="button" id="combat-v2-item-btn"
+            class="min-h-11 rounded-lg bg-amber-600 text-white font-medium text-sm active:scale-95 transition-transform">🎒 物品</button>
+    <button type="button" id="combat-v2-escape-btn"
+            class="min-h-11 rounded-lg bg-zinc-700 text-zinc-300 font-medium text-sm active:scale-95 transition-transform md:col-span-1 col-span-2">🏃 逃跑</button>
+  </section>
+
+  <div id="combat-v2-dice-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+    <div class="bg-zinc-900 rounded-2xl p-6 text-center w-full max-w-xs">
+      <div class="text-4xl font-bold text-amber-400 mb-4" id="combat-v2-dice-value" data-testid="dice-value">—</div>
+      <button type="button" id="combat-v2-dice-confirm-btn" data-testid="dice-confirm-btn"
+              class="hidden min-h-11 w-full rounded-lg bg-amber-600 text-white font-medium">確認並結束本回合</button>
+    </div>
+  </div>
+
+  <div id="combat-v2-round-settlement-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+    <div class="bg-zinc-900 rounded-2xl p-5 w-full max-w-sm max-h-[80vh] overflow-y-auto">
+      <h3 class="text-lg font-bold text-amber-400 mb-3">傷害結算</h3>
+      <div id="combat-v2-settlement-body"></div>
+      <button type="button" id="combat-v2-settlement-confirm-btn" data-testid="settlement-confirm-btn"
+              class="mt-4 min-h-11 w-full rounded-lg bg-amber-600 text-white font-medium">確定</button>
+    </div>
+  </div>
+
+  <div id="combat-v2-submit-hint" class="hidden fixed inset-0 z-[65] flex items-center justify-center bg-black/50">
+    <span class="text-white text-lg animate-pulse">結算中…</span>
+  </div>
+
+  <div id="combat-v2-escape-result" class="hidden"></div>
+  <div id="combat-v2-result-panel" class="hidden"></div>
+  <div id="combat-v2-failed-panel" class="hidden"></div>
+</div>

@@ -1,8 +1,11 @@
 {
   "name": "oikonomia",
   "private": true,
+  "type": "module",
   "scripts": {
-    "test:e2e": "playwright test tests/combat_fsm_flow.spec.js"
+    "test:combat": "node --test tests/combat_state_machine.test.js",
+    "test:e2e": "playwright test tests/combat_fsm_flow.spec.js",
+    "test:e2e:v2": "playwright test -c playwright.config.cjs tests/combat_v2.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

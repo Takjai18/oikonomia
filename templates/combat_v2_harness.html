@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combat V2 E2E Harness</title>
+    <script>window.__OIKONOMIA_COMBAT_V2__ = true;</script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; background: #09090b; color: #fff; font-family: system-ui, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="combat-module-container" class="w-full min-h-screen">
+        {% include 'combat_screen.html' %}
+    </div>
+    <script type="module" src="/static/js/combat/bootstrap.js"></script>
+</body>
+</html>
