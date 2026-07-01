@@ -457,8 +457,7 @@ const TRANSITIONS = {
     ACTION_USE_ZOO: {
       guard: (ctx) => {
         if (ctx.hud?.me?.submitted) return false;
-        if (ctx.hud?.allow_zoo === false) return false;
-        return parseInt(ctx.hud?.me?.sanity ?? 0, 10) >= 70;
+        return ctx.hud?.allow_zoo !== false;
       },
       reduce: (ctx, meta) => ({
         ...ctx,

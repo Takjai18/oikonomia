@@ -339,6 +339,16 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.phase, Phase.DICE_ROLLING);
     assert.equal(next.dice.action, 'use_zoo');
   });
+
+  it('IDLE + ACTION_USE_ZOO allowed below sanity 70 (no bonus tier)', () => {
+    const ctx = {
+      ...createInitialContext('c1'),
+      hud: { me: { submitted: false, sanity: 55 }, allow_zoo: true },
+    };
+    assert.equal(canDispatch(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 }), true);
+    const { ctx: next } = transition(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 });
+    assert.equal(next.phase, Phase.DICE_ROLLING);
+  });
 });
 
 describe('Settlement normalization', () => {

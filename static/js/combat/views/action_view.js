@@ -81,7 +81,7 @@ export function createActionView(rootEl, handlers = {}) {
       zooTip.innerHTML = `✨ Zoo 就緒：神智 ${sanity}，發動 Zoo 可獲 <b>×${zooMult}</b> 算力增益`;
     } else {
       zooTip.className = 'text-[10px] text-zinc-500 font-mono bg-zinc-900/40 border border-zinc-800 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `Zoo 需神智 ≥70（目前 ${sanity}）`;
+      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 >70 才有加成（目前 ×1.0）`;
     }
   }
 
@@ -107,13 +107,11 @@ export function createActionView(rootEl, handlers = {}) {
       const busy = BUSY_PHASES.includes(ctx.phase);
       const submitted = !!ctx.hud?.me?.submitted;
       const allowZoo = ctx.hud?.allow_zoo !== false;
-      const sanity = parseInt(ctx.hud?.me?.sanity ?? 0, 10);
-      const zooReady = allowZoo && sanity >= 70;
 
       setDisabled(absorbing || busy || submitted);
       if (zooBtn) {
-        zooBtn.disabled = absorbing || busy || submitted || !zooReady;
-        zooBtn.title = zooReady ? '' : '神智需 ≥70 才能發動 Zoo';
+        zooBtn.disabled = absorbing || busy || submitted || !allowZoo;
+        zooBtn.title = allowZoo ? '' : '此遭遇不允許 Zoo 能力';
       }
 
       updateZooTip(ctx);
