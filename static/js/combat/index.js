@@ -317,12 +317,61 @@ export class CombatApp {
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
-    if (this.ctx.phase !== Phase.IDLE) return;
-    if (this.ctx.hud?.me?.submitted) return;
+
+    const protectedPhases = [
+      Phase.DICE_ROLLING,
+      Phase.DICE_CONFIRM,
+      Phase.SUBMITTING,
+      Phase.SETTLEMENT,
+      Phase.WAITING_FOR_PLAYERS,
+    ];
+    if (protectedPhases.includes(this.ctx.phase)) return;
+
+    if (this.ctx.hud?.me?.submitted) {
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
 
     this.hasTriggeredTimeoutDefense = true;
-    showToast('操作超時！系統已自動為你選擇「防禦」。', 'warn');
-    this.performAction('defend');
+    showToast('操作超時！系統已自動為您執行「防禦」指令。', 'warn');
+    void this.performActionDirectly('defend');
+  }
+
+  async performActionDirectly(actionType) {
+    if (this.ctx.phase === Phase.SUBMITTING) return;
+
+    if (this.ctx.phase === Phase.IDLE) {
+      this.ctx = {
+        ...this.ctx,
+        phase: Phase.DICE_CONFIRM,
+        dice: {
+          action: actionType,
+          value: null,
+          itemId: null,
+          cosmetic: false,
+        },
+      };
+    } else if (this.ctx.phase !== Phase.DICE_CONFIRM) {
+      return;
+    }
+
+    this.dispatch('CONFIRM_DICE');
+    this.poller.pause();
+
+    try {
+      const data = await CombatApi.submit({
+        combatId: this.ctx.combatId,
+        actionType,
+        itemId: null,
+        asProtagonist: false,
+      });
+      await this.onSubmitSuccess(data);
+    } catch (err) {
+      this.hasTriggeredTimeoutDefense = false;
+      this.dispatch('SUBMIT_ERROR', { error: err.message || '自動提交失敗' });
+    } finally {
+      if (!this.ctx.pollPaused) this.poller.resume();
+    }
   }
 
   pollTick(snapshot) {
@@ -342,10 +391,9 @@ export class CombatApp {
       snapshot.status === 'player_phase'
       && snapshot.remaining_seconds === 0
       && !snapshot.my_state?.submitted
-      && this.ctx.phase === Phase.IDLE
     ) {
       this.triggerTimeoutAutomaticDefense();
-      return;
+      if (this.hasTriggeredTimeoutDefense) return;
     }
 
     if (['VICTORY', 'DEFEAT', 'COMBAT_FAILED', 'ESCAPED'].includes(this.ctx.phase)) {

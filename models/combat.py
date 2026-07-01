@@ -863,10 +863,12 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
         return None, None, False, None
 
     if combat.get("status") == COMBAT_STATUS_RESOLVING:
-        combat, winner = _wait_for_resolution_complete(combat_id)
+        initial_phase = int(combat.get("current_phase") or 0)
+        combat, winner = _wait_after_peer_resolve(combat_id, initial_phase)
         resolved = bool(
             winner
             or (combat and combat.get("status") == "ended")
+            or (combat and int(combat.get("current_phase") or 0) > initial_phase)
         )
         return combat, winner, resolved, None
 
@@ -897,6 +899,23 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
     return combat, winner, round_just_resolved, participants
 
 
+def _wait_after_peer_resolve(combat_id, initial_phase, max_wait=6.0):
+    """
+    Wait for in-flight resolve; if round already advanced, skip duplicate settlement.
+    """
+    waited, winner = _wait_for_resolution_complete(combat_id, max_wait=max_wait)
+    if not waited:
+        return None, None
+    if int(waited.get("current_phase") or 0) > initial_phase:
+        return waited, winner
+    if waited.get("status") == "ended":
+        return waited, winner
+    fresh = get_combat(combat_id) or waited
+    if fresh and int(fresh.get("current_phase") or 0) > initial_phase:
+        return fresh, fresh.get("winner") if fresh.get("status") == "ended" else None
+    return waited, winner
+
+
 def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """
     Authoritative resolve gate for routes: re-read DB snapshot, resolve at most once.
@@ -908,11 +927,12 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
     if not combat:
         return None, None
 
+    initial_phase = int(combat.get("current_phase") or 0)
     status = combat.get("status")
     if status == "ended":
         return combat, combat.get("winner")
     if status == COMBAT_STATUS_RESOLVING:
-        return _wait_for_resolution_complete(combat_id)
+        return _wait_after_peer_resolve(combat_id, initial_phase)
     if status != "player_phase":
         return combat, None
 
@@ -926,9 +946,16 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
     )
     if not claimed:
         combat = get_combat(combat_id) or snapshot
+        if combat and int(combat.get("current_phase") or 0) > initial_phase:
+            return combat, combat.get("winner") if combat.get("status") == "ended" else None
         if combat and combat.get("status") == COMBAT_STATUS_RESOLVING:
-            return _wait_for_resolution_complete(combat_id)
+            return _wait_after_peer_resolve(combat_id, initial_phase)
         return combat, None
+
+    snap_phase = int((snapshot or {}).get("current_phase") or initial_phase)
+    if snap_phase != initial_phase:
+        _release_player_phase_resolution(combat_id)
+        return get_combat(combat_id), None
 
     try:
         combat, winner = _resolve_player_phase_body(combat_id)
@@ -936,7 +963,7 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
         _release_player_phase_resolution(combat_id)
         raise
     if combat and combat.get("status") == COMBAT_STATUS_RESOLVING and winner is None:
-        return _wait_for_resolution_complete(combat_id)
+        return _wait_after_peer_resolve(combat_id, initial_phase)
     return combat, winner
 
 

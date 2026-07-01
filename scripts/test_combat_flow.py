@@ -182,6 +182,72 @@ def test_maybe_resolve_ready_claim_inside_tx():
     )
 
 
+def test_maybe_resolve_monotonic_phase_guard():
+    """R11 Scope C: peer resolve must not double-settle same round."""
+    import sqlite3
+    from datetime import datetime
+
+    from models.combat import get_combat, maybe_resolve_player_phase, upsert_combat_action
+
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM combat_actions")
+    conn.execute(f"DELETE FROM combats WHERE encounter_id = '{TEST_ENCOUNTER_ID}'")
+    conn.execute("DELETE FROM squads WHERE squad_id IN ('mr1', 'mr2')")
+    conn.execute("DELETE FROM teams WHERE team_id = 'T-MONO'")
+    conn.execute(
+        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES ('T-MONO', 'Mono', 'iggy', ?)",
+        (now,),
+    )
+    for sid, leader in (("mr1", 1), ("mr2", 0)):
+        conn.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, team_id, hp, max_hp, sanity, power, intellect,
+                resilience, is_team_leader, route, zoo_skills, last_update)
+               VALUES (?, ?, 'T-MONO', 100, 100, 50, 30, 20, 20, ?, 'iggy', '[]', ?)""",
+            (sid, sid, leader, now),
+        )
+    conn.execute(
+        """INSERT INTO combats (
+               squad_id, encounter_id, status, current_phase, enemy_hp,
+               enemy_resilience, enemy_sanity, enemy_base_damage, enemy_name,
+               phase_actions, logs, phase_started_at, started_at
+           ) VALUES ('mr1', ?, 'player_phase', 0, 5000, 10, 50, 5, 'Boss', '{}', '[]', ?, ?)""",
+        (TEST_ENCOUNTER_ID, now, now),
+    )
+    combat_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "UPDATE squads SET current_combat_id = ? WHERE squad_id IN ('mr1', 'mr2')",
+        (combat_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    upsert_combat_action(combat_id, "mr1", 0, "attack", 6, None)
+    upsert_combat_action(combat_id, "mr2", 0, "attack", 6, None)
+
+    first, _ = maybe_resolve_player_phase(combat_id, {})
+    after_first = get_combat(combat_id)
+    progressed = (
+        int(after_first.get("current_phase") or 0) >= 1
+        or after_first.get("status") in ("enemy_phase", "ended")
+    )
+    ok("monotonic: first resolve progresses combat", progressed, str(after_first.get("status")))
+
+    logs_len_1 = len(after_first.get("logs") or [])
+    enemy_hp_1 = int(after_first.get("enemy_hp") or 0)
+
+    second, winner2 = maybe_resolve_player_phase(combat_id, {})
+    after_second = get_combat(combat_id)
+    ok(
+        "monotonic: second resolve does not re-run same round",
+        int(after_second.get("current_phase") or 0) == int(after_first.get("current_phase") or 0)
+        and len(after_second.get("logs") or []) == logs_len_1
+        and int(after_second.get("enemy_hp") or 0) == enemy_hp_1,
+        f"phase={after_second.get('current_phase')} logs={len(after_second.get('logs') or [])} winner2={winner2}",
+    )
+
+
 def test_phase2_gm_override_gateway():
     """Phase 2 Backlog: 驗證 GM 權威特權覆蓋閘門與結局狀態重置一致性。"""
     import sqlite3
@@ -219,6 +285,24 @@ def test_phase2_gm_override_gateway():
         json={"team_id": team_id, "protagonist_key": proto_key, "target_trauma": 1},
     )
     ok("GM Override Gate: 非管理員登入遭遇 403 熔斷拒絕", r403.status_code == 403)
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+
+    r_no_op = client.post(
+        "/gm/api/override_trauma_ending",
+        json={
+            "team_id": team_id,
+            "protagonist_key": proto_key,
+            "target_trauma": 0,
+            "target_ending_type": "clear",
+        },
+    )
+    ok(
+        "GM Override Gate: 有效 GM session 但無 operator 身分遭 403",
+        r_no_op.status_code == 403,
+        str(r_no_op.status_code),
+    )
 
     with client.session_transaction() as sess:
         establish_gm_session(sess)
@@ -1903,6 +1987,7 @@ def main():
     test_phase2_trauma_service_pipeline()
     test_phase2_narrative_orchestrator_pipeline()
     test_maybe_resolve_ready_claim_inside_tx()
+    test_maybe_resolve_monotonic_phase_guard()
     test_phase2_gm_override_gateway()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---

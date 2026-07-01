@@ -23,6 +23,7 @@ from services.teams_overview import (
     get_all_teams_with_stats,
 )
 from services.gm_auth import clear_gm_session, establish_gm_session, gm_session_valid
+from utils.db_tx import immediate_transaction, with_db_retry
 from utils.env import is_production_env
 from utils.helpers import (
     hkt_timestamp,
@@ -758,3 +759,151 @@ def gm_update_team_name():
         conn.close()
 
     return jsonify({"success": True, "message": "隊名已更新"})
+
+
+@gm_bp.route("/api/override_trauma_ending", methods=["POST"])
+def gm_override_trauma_ending_api():
+    """
+    [GM 特權網關] 權威人工覆蓋：手動扭轉隊伍創傷數值與結局鎖定狀態。
+    寫入專項特權審計日誌，並向全營廣播界線重組事件。
+    """
+    if not gm_session_valid(session):
+        clear_gm_session(session)
+        return jsonify({
+            "success": False,
+            "error": "拒絕存取：缺少 GM 權限憑證",
+        }), 403
+
+    body = request.json if request.is_json else {}
+    team_id = normalize_team_id(body.get("team_id") or "")
+    protagonist_key = (body.get("protagonist_key") or "").strip().lower()
+
+    if not team_id:
+        return jsonify({"success": False, "error": "缺少 team_id"}), 400
+
+    target_trauma = body.get("target_trauma")
+    target_ending_type = (body.get("target_ending_type") or "").strip().lower() or None
+
+    if target_trauma is not None:
+        if protagonist_key not in ("iggy", "marah"):
+            return jsonify({
+                "success": False,
+                "error": "調整創傷必須指定有效的主角 key ('iggy'|'marah')",
+            }), 400
+        try:
+            target_trauma = max(0, int(target_trauma))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "無效的創傷數值"}), 400
+
+    if target_ending_type and target_ending_type not in (
+        "clear", "bad_ending", "normal_ending",
+    ):
+        return jsonify({"success": False, "error": "無效的 target_ending_type"}), 400
+
+    if target_trauma is None and not target_ending_type:
+        return jsonify({"success": False, "error": "缺少有效的覆蓋變更指令"}), 400
+
+    now = datetime.now().isoformat()
+    gm_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    if not gm_operator:
+        return jsonify({
+            "success": False,
+            "error": "資安審計攔截：未能識別當前工作人員身分，操作已遭封鎖",
+        }), 403
+
+    def _override_tx(conn):
+        c = conn.cursor()
+
+        team_exists = c.execute(
+            "SELECT 1 FROM teams WHERE team_id = ?",
+            (team_id,),
+        ).fetchone()
+        if not team_exists:
+            return False, "找不到指定的隊伍編號"
+
+        log_parts = []
+
+        if target_trauma is not None:
+            old_row = c.execute(
+                """SELECT trauma_count FROM protagonist_states
+                   WHERE team_id = ? AND protagonist = ?""",
+                (team_id, protagonist_key),
+            ).fetchone()
+            old_trauma = int(old_row[0] or 0) if old_row else 0
+
+            c.execute(
+                """INSERT INTO protagonist_states
+                   (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
+                   VALUES (?, ?, 100, 100, 100, ?, 1, ?)
+                   ON CONFLICT(team_id, protagonist) DO UPDATE SET
+                       trauma_count = excluded.trauma_count,
+                       last_updated = excluded.last_updated""",
+                (team_id, protagonist_key, target_trauma, now),
+            )
+
+            c.execute(
+                """INSERT INTO protagonist_trauma_log
+                   (team_id, protagonist, delta, reason, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    team_id,
+                    protagonist_key,
+                    target_trauma - old_trauma,
+                    f"GM_OVERRIDE_BY_{gm_operator}",
+                    now,
+                ),
+            )
+            log_parts.append(
+                f"🧠 {protagonist_key} 創傷強制變更: {old_trauma} -> {target_trauma}",
+            )
+
+        if target_ending_type:
+            if target_ending_type == "clear":
+                c.execute(
+                    "UPDATE teams SET ending_type = NULL, ending_locked_at = NULL WHERE team_id = ?",
+                    (team_id,),
+                )
+                log_parts.append("🌑 結局鎖定狀態徹底解除重置")
+            elif target_ending_type == "bad_ending":
+                c.execute(
+                    """UPDATE teams SET ending_type = 'bad_ending', ending_locked_at = ?
+                       WHERE team_id = ?""",
+                    (now, team_id),
+                )
+                log_parts.append("🌑 強制鎖定為陰影結局 (bad_ending)")
+            elif target_ending_type == "normal_ending":
+                c.execute(
+                    """UPDATE teams SET ending_type = 'normal_ending', ending_locked_at = ?
+                       WHERE team_id = ?""",
+                    (now, team_id),
+                )
+                log_parts.append("☀️ 強制鎖定為常規結局 (normal_ending)")
+
+        summary_log = "; ".join(log_parts)
+        return True, summary_log
+
+    def _run():
+        with immediate_transaction(settings.db_path) as conn:
+            return _override_tx(conn)
+
+    success, audit_msg = with_db_retry(_run)
+
+    if not success:
+        return jsonify({"success": False, "error": audit_msg}), 400
+
+    create_global_event(
+        title=f"🛠️ GM 人工干預：隊伍 [{team_id}] 歷史重組",
+        description=(
+            f"工作人員 {gm_operator} 啟動特權網關調整該隊邊界：{audit_msg}。"
+        ),
+        effect_type="announcement",
+        effect_value=0,
+        created_by=gm_operator,
+    )
+
+    return jsonify({
+        "success": True,
+        "message": f"覆蓋指令發放成功：{audit_msg}",
+        "team_id": team_id,
+        "timestamp": now,
+    })
