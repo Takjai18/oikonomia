@@ -2,6 +2,9 @@
 
 import { normalizeSettlement, deriveSettlementId } from './settlement.js';
 
+/** Fallback when HP field is missing (display / max baseline — not “alive” sentinel). */
+export const DEFAULT_COMBAT_MAX_HP = 100;
+
 export const Phase = {
   IDLE: 'IDLE',
   DICE_ROLLING: 'DICE_ROLLING',
@@ -146,7 +149,7 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
 /** Death preempt — INV-D highest priority */
 export function handleAnyDeath(ctx, members) {
   const dead = Object.entries(members || {})
-    .filter(([, m]) => intHp(m?.hp) <= 0)
+    .filter(([, m]) => isMemberCollapsed(m))
     .map(([id, m]) => m.display_name || id);
   if (dead.length === 0) return { ctx, effects: [] };
   if (ctx.phase === Phase.COMBAT_FAILED) return { ctx, effects: [] };
@@ -297,7 +300,7 @@ export function syncState(ctx, snapshot) {
     if (settlement && settlementId && !ctx.shownSettlementIds.has(settlementId)) {
       const killing = snapshot.outcome === 'victory'
         || snapshot.winner === 'squad'
-        || intHp(snapshot.enemy?.hp) <= 0;
+        || isEnemyDefeated(snapshot.enemy);
       newCtx = {
         ...newCtx,
         phase: Phase.SETTLEMENT,
@@ -325,9 +328,27 @@ function isHpOnlyPhase(phase) {
   return DICE_BUSY.has(phase) || phase === Phase.SUBMITTING || phase === Phase.SETTLEMENT;
 }
 
-function intHp(v) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : 999;
+/**
+ * Parse HP for display; uses member/enemy max_hp when value is absent.
+ * @param {number|string|null|undefined} value
+ * @param {number|string|null|undefined} maxHp
+ */
+export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
+  const n = parseInt(value, 10);
+  if (Number.isFinite(n)) return n;
+  const max = parseInt(maxHp, 10);
+  return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
+}
+
+/** INV-D: only finite hp ≤ 0 counts as collapsed (malformed hp → not dead). */
+export function isMemberCollapsed(member) {
+  const hp = parseInt(member?.hp, 10);
+  return Number.isFinite(hp) && hp <= 0;
+}
+
+export function isEnemyDefeated(enemy) {
+  const hp = parseInt(enemy?.hp, 10);
+  return Number.isFinite(hp) && hp <= 0;
 }
 
 const TRANSITIONS = {

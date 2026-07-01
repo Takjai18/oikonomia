@@ -10,6 +10,9 @@ import {
   transition,
   canDispatch,
   handleAnyDeath,
+  isMemberCollapsed,
+  isEnemyDefeated,
+  parseCombatHp,
   syncState,
   determineSettlementRoute,
 } from '../static/js/combat/state_machine.js';
@@ -201,6 +204,18 @@ describe('Settlement normalization', () => {
   it('deriveSettlementId prefers API field', () => {
     assert.equal(deriveSettlementId({ settlement_id: '9:3', combat_id: 9 }), '9:3');
     assert.equal(deriveSettlementId({ combat_id: 9, settled_round_index: 2 }), '9:2');
+  });
+
+  it('malformed member hp does not trigger COMBAT_FAILED', () => {
+    const ctx = createInitialContext(1);
+    const { ctx: next } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 'n/a', max_hp: 100 },
+    });
+    assert.notEqual(next.phase, Phase.COMBAT_FAILED);
+    assert.equal(isMemberCollapsed({ hp: 'n/a' }), false);
+    assert.equal(isEnemyDefeated({ hp: undefined }), false);
+    assert.equal(parseCombatHp(null, 80), 80);
+    assert.equal(parseCombatHp('12', 80), 12);
   });
 
   it('falls back to authoritative round fields when settlement missing', () => {
