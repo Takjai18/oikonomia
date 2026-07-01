@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
 > **目的**：審計 **前端權威狀態機** — `settlement_id` / `settled_round_index` 單調防護、`entrySyncPending` 進場吸收、INV-D 失敗搶占  
-> **日期**：2026-07-01 · **commit**：`28601b3`  
+> **日期**：2026-07-01 · **commit**：`d41f23a`  
 > **Baseline**：假設已讀 `combat_greenfield_final.md` §3 不變式表  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -9,7 +9,7 @@
 
 ## 0. 給 Gemini 的指令
 
-**焦點問題**（§22 已修：`handleAnyDeath` teardown · SETTLEMENT defeat pending 清零 — 回歸 only）：
+**焦點問題**（§22–§24 已修：teardown · `submittingActive` poll 降級 — 回歸 only）：
 | INV | 審計問題 |
 |-----|----------|
 | INV-A | SETTLEMENT ⇔ modal 可見是否雙向成立？終端轉移是否清零 `pendingSettlement`？ |
@@ -44,6 +44,14 @@ export const Phase = {
   ESCAPED: 'ESCAPED',
 };
 
+/** SSOT: terminal absorbing phases (views + poll guards) */
+export const TERMINAL_PHASES = Object.freeze([
+  Phase.COMBAT_FAILED,
+  Phase.VICTORY,
+  Phase.DEFEAT,
+  Phase.ESCAPED,
+]);
+
 const PHASE_LABELS = {
   [Phase.IDLE]: '等待行動',
   [Phase.DICE_ROLLING]: '擲骰中',
@@ -58,22 +66,12 @@ const PHASE_LABELS = {
   [Phase.ESCAPED]: '成功逃跑',
 };
 
-const ABSORBING = new Set([
-  Phase.COMBAT_FAILED,
-  Phase.VICTORY,
-  Phase.DEFEAT,
-  Phase.ESCAPED,
-]);
+const ABSORBING = new Set(TERMINAL_PHASES);
 
 const DICE_BUSY = new Set([Phase.DICE_ROLLING, Phase.DICE_CONFIRM]);
 
 /** Phases that must exit SETTLEMENT without pinning poll handler */
-const SETTLEMENT_EXIT_PHASES = new Set([
-  Phase.VICTORY,
-  Phase.DEFEAT,
-  Phase.COMBAT_FAILED,
-  Phase.ESCAPED,
-]);
+const SETTLEMENT_EXIT_PHASES = new Set(TERMINAL_PHASES);
 
 function terminalModalTeardownEffects(effects) {
   return [
@@ -918,21 +916,20 @@ export function extractHud(snapshot) {
 
 ## 3. poll 與 entry sync
 
-# static/js/combat/index.js (L473–L484)
+# static/js/combat/index.js (L481–L491)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
 
-    const deathCheck = handleAnyDeath(
-      { ...this.ctx, hud: extractHud(snapshot) },
-      snapshot.member_states,
-    );
-    if (deathCheck.ctx.phase === Phase.COMBAT_FAILED) {
-      this.ctx = deathCheck.ctx;
-      this.applyEffects(deathCheck.effects);
+    if (this.submittingActive) {
+      if (this.debug) console.log('[CombatV2] poll muted during in-flight submit');
+      if (snapshot.enemy || snapshot.my_state || snapshot.member_states) {
+        this.ctx.hud = extractHud(snapshot);
+        this.views.hud?.update(this.ctx, { hpOnly: true });
+      }
       return;
     }
-# static/js/combat/index.js (L307–L316)
+# static/js/combat/index.js (L313–L322)
 
   async onSubmitSuccess(data) {
     const deathCheck = handleAnyDeath(
@@ -976,6 +973,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Phase,
+  TERMINAL_PHASES,
   createInitialContext,
   transition,
   canDispatch,
@@ -989,6 +987,15 @@ import {
 import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
 
 describe('Combat V2 state machine', () => {
+  it('TERMINAL_PHASES SSOT covers endgame absorbing phases', () => {
+    assert.deepEqual(TERMINAL_PHASES, [
+      Phase.COMBAT_FAILED,
+      Phase.VICTORY,
+      Phase.DEFEAT,
+      Phase.ESCAPED,
+    ]);
+  });
+
   it('IDLE + ACTION_ATTACK → DICE_ROLLING', () => {
     const ctx = createInitialContext('c1');
     const { ctx: next } = transition(ctx, 'ACTION_ATTACK', { action: 'attack', dice: 3 });

@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-01 · **基準 commit `28601b3`**（全棧審計落地 · PA 可部署 · 已修對照 §18–§23）
+> **最後更新**：2026-07-01 · **基準 commit `d41f23a`**（弱網提交鎖 · PA 可部署 · 已修對照 §18–§24）
 
 ---
 
@@ -50,7 +50,7 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§23 已修 R11–R14 + 全棧審計落地） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§24 已修 R11–R15 + 弱網硬化） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -998,6 +998,44 @@ bash scripts/pre_deploy_checks.sh
 Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
 已修對照：GEMINI_REVIEW.md §18–§23（唔重複報）
 基準 commit：28601b3
+本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 24. 弱網提交鎖與 TERMINAL_PHASES SSOT（2026-07-01 · `d41f23a`）
+
+> **性質**：Gemini v14 第二輪（8.8/10）前端 Polling 競態 + 終端 Phase 常數化；下一輪 **唔好重複報** 以下項。
+
+### 24.1 已修對照表
+
+| 輪次 | 議題 | 狀態 | commit / 檔案 |
+|------|------|------|----------------|
+| **R16** | `submittingActive` 飛行期 poll 降級（hpOnly HUD） | ✅ | `d41f23a` `index.js` · `render.js` |
+| **R16** | `TERMINAL_PHASES` SSOT（`state_machine.js` → views） | ✅ | `d41f23a` `action_view.js` |
+| **Low** | `get_protagonists_states_bulk` N+1 | ⛔ 刻意不做 | 20 人規模足夠 |
+
+### 24.2 測試基線（`d41f23a`）
+
+```bash
+./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
+./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5
+./venv/bin/python3 scripts/test_db_hardening.py     # 13/13
+npm run test:combat                                 # 25/25
+bash scripts/pre_deploy_checks.sh
+```
+
+### 24.3 Copy-paste 開場白（R16 後下一輪）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
+已修對照：GEMINI_REVIEW.md §18–§24（唔重複報）
+基準 commit：d41f23a
 本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10

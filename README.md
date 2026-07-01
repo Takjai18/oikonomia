@@ -63,7 +63,7 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 
 | Baseline（只讀引用，唔貼全文） | 用途 |
 |-------------------------------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md` v14** | Combat V2 SSOT（首次 onboarding）· commit `28601b3` |
+| **`COMBAT_V2_AUDIT_BUNDLE.md` v14** | Combat V2 SSOT（首次 onboarding）· commit `d41f23a` |
 | **`COMBAT_V2_PARTIAL_INDEX.md`** | 選 R11 / R12-A～D Partial Bundle |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | 營會現場高風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | 大廳橋接 / DB / 編排 / INV 局部審計 |

@@ -267,7 +267,7 @@ export function createVictoryView(rootEl) {
 
 ===== EXCERPT: static/js/combat/index.js — executeGmOverride =====
 
-# static/js/combat/index.js (L669–L687)
+# static/js/combat/index.js (L686–L704)
 
   async executeGmOverride(opts) {
     try {
@@ -487,7 +487,7 @@ def gm_override_trauma_ending_api():
 
 ## 2. Scope B — 超時自動防禦
 
-# static/js/combat/index.js (L377–L387)
+# static/js/combat/index.js (L383–L393)
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
@@ -500,18 +500,17 @@ def gm_override_trauma_ending_api():
       this.hasTriggeredTimeoutDefense = true;
       return;
     }
-# static/js/combat/index.js (L473–L484)
+# static/js/combat/index.js (L481–L491)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
 
-    const deathCheck = handleAnyDeath(
-      { ...this.ctx, hud: extractHud(snapshot) },
-      snapshot.member_states,
-    );
-    if (deathCheck.ctx.phase === Phase.COMBAT_FAILED) {
-      this.ctx = deathCheck.ctx;
-      this.applyEffects(deathCheck.effects);
+    if (this.submittingActive) {
+      if (this.debug) console.log('[CombatV2] poll muted during in-flight submit');
+      if (snapshot.enemy || snapshot.my_state || snapshot.member_states) {
+        this.ctx.hud = extractHud(snapshot);
+        this.views.hud?.update(this.ctx, { hpOnly: true });
+      }
       return;
     }
 

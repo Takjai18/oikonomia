@@ -1,11 +1,11 @@
 # COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-01 · **commit**：`28601b3`  
+> **日期**：2026-07-01 · **commit**：`d41f23a`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：原子 resolve-phase · bootstrap 重連 skeleton · PA deploy 硬化 ✅（見 `GEMINI_REVIEW.md` §23）  
-> **本輪**：v14 錨點（PA 可部署 · `28601b3`）；下一輪用 **Partial** 或 §20.3 **新 scope**
+> **上一輪**：弱網 `submittingActive` 排他鎖 · `TERMINAL_PHASES` SSOT ✅（見 `GEMINI_REVIEW.md` §24）
+> **本輪**：v14 錨點（PA 可部署 · `d41f23a`）；下一輪用 **Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
@@ -17,14 +17,14 @@
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§23 — 唔好重複報已落地項（含 §23 全棧審計落地）
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§24 — 唔好重複報已落地項（含 §24 弱網提交鎖）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
-### 0.1 Partial 審計狀態（`28601b3` · 已審已修，回歸 only）
+### 0.1 Partial 審計狀態（`d41f23a` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
-| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 · §22 |
+| **R12-D** | monotonic · SETTLEMENT 終端拆解 · submittingActive | ✅ §20 · §22 · §24 |
 | **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
 | **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
 | **R12-C** | failed_escape targeting · atomic resolve-phase · INV-E | ✅ §20 · §22 · §23 |
@@ -63,10 +63,10 @@
 
 ---
 
-## 3. 測試狀態（R14 · `28601b3`）
+## 3. 測試狀態（R14 · `d41f23a`）
 
 ```bash
-npm run test:combat                                    # 24/24 pass
+npm run test:combat                                    # 25/25 pass
 ./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
 ./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
@@ -143,7 +143,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§23 已修 R11–R14 + 全棧審計落地） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§24 已修 R11–R15 + 弱網硬化） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -974,6 +974,7 @@ export const PROTAGONIST_ROUTE_KEY_HINT = PROTAGONIST_ROUTE_KEYS.join(' 或 ');
 import { CombatApi, ResilientPollingManager } from './api_client.js';
 import {
   Phase,
+  TERMINAL_PHASES,
   createInitialContext,
   transition,
   canDispatch,
@@ -1013,6 +1014,7 @@ export class CombatApp {
     this.ctx = createInitialContext();
     this.invRecoveryCount = 0;
     this.hasTriggeredTimeoutDefense = false;
+    this.submittingActive = false;
     this._activeRafIds = new Set();
     this._activeTimeoutIds = new Set();
 
@@ -1085,6 +1087,7 @@ export class CombatApp {
         delete this.rootEl.__combat_app_instance__;
       }
       this.hasTriggeredTimeoutDefense = false;
+      this.submittingActive = false;
       console.log('[CombatV2] 本地狀態機環境已完全釋放。');
     } catch (err) {
       console.error('[CombatV2] destroy failed', err);
@@ -1120,6 +1123,7 @@ export class CombatApp {
     this.ctx.shownSettlementIds.clear();
     this.ctx.entrySyncPending = true;
     this.hasTriggeredTimeoutDefense = false;
+    this.submittingActive = false;
     this.invRecoveryCount = 0;
 
     if (data.combat_id) {
@@ -1151,7 +1155,7 @@ export class CombatApp {
   }
 
   openItemSelect() {
-    if (['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(this.ctx.phase)) {
+    if (TERMINAL_PHASES.includes(this.ctx.phase)) {
       return;
     }
     if (this.ctx.phase !== Phase.IDLE || this.ctx.hud?.me?.submitted) {
@@ -1245,6 +1249,7 @@ export class CombatApp {
 
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
+    this.submittingActive = true;
 
     try {
       const actionMap = {
@@ -1268,6 +1273,7 @@ export class CombatApp {
     } catch (err) {
       this.dispatch('SUBMIT_ERROR', { error: err.message || '提交失敗' });
     } finally {
+      this.submittingActive = false;
       if (!this.ctx.pollPaused) this.poller.resume();
     }
   }
@@ -1421,6 +1427,7 @@ export class CombatApp {
 
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
+    this.submittingActive = true;
 
     try {
       const data = await CombatApi.submit({
@@ -1434,12 +1441,22 @@ export class CombatApp {
       this.hasTriggeredTimeoutDefense = false;
       this.dispatch('SUBMIT_ERROR', { error: err.message || '自動提交失敗' });
     } finally {
+      this.submittingActive = false;
       if (!this.ctx.pollPaused) this.poller.resume();
     }
   }
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
+
+    if (this.submittingActive) {
+      if (this.debug) console.log('[CombatV2] poll muted during in-flight submit');
+      if (snapshot.enemy || snapshot.my_state || snapshot.member_states) {
+        this.ctx.hud = extractHud(snapshot);
+        this.views.hud?.update(this.ctx, { hpOnly: true });
+      }
+      return;
+    }
 
     const deathCheck = handleAnyDeath(
       { ...this.ctx, hud: extractHud(snapshot) },
@@ -1460,7 +1477,7 @@ export class CombatApp {
       if (this.hasTriggeredTimeoutDefense) return;
     }
 
-    if (['VICTORY', 'DEFEAT', 'COMBAT_FAILED', 'ESCAPED'].includes(this.ctx.phase)) {
+    if (TERMINAL_PHASES.includes(this.ctx.phase)) {
       return;
     }
 
@@ -1682,6 +1699,14 @@ export const Phase = {
   ESCAPED: 'ESCAPED',
 };
 
+/** SSOT: terminal absorbing phases (views + poll guards) */
+export const TERMINAL_PHASES = Object.freeze([
+  Phase.COMBAT_FAILED,
+  Phase.VICTORY,
+  Phase.DEFEAT,
+  Phase.ESCAPED,
+]);
+
 const PHASE_LABELS = {
   [Phase.IDLE]: '等待行動',
   [Phase.DICE_ROLLING]: '擲骰中',
@@ -1696,22 +1721,12 @@ const PHASE_LABELS = {
   [Phase.ESCAPED]: '成功逃跑',
 };
 
-const ABSORBING = new Set([
-  Phase.COMBAT_FAILED,
-  Phase.VICTORY,
-  Phase.DEFEAT,
-  Phase.ESCAPED,
-]);
+const ABSORBING = new Set(TERMINAL_PHASES);
 
 const DICE_BUSY = new Set([Phase.DICE_ROLLING, Phase.DICE_CONFIRM]);
 
 /** Phases that must exit SETTLEMENT without pinning poll handler */
-const SETTLEMENT_EXIT_PHASES = new Set([
-  Phase.VICTORY,
-  Phase.DEFEAT,
-  Phase.COMBAT_FAILED,
-  Phase.ESCAPED,
-]);
+const SETTLEMENT_EXIT_PHASES = new Set(TERMINAL_PHASES);
 
 function terminalModalTeardownEffects(effects) {
   return [
@@ -2745,7 +2760,9 @@ export function extractHud(snapshot) {
 
 export function renderAll(views, ctx, options = {}) {
   views.hud?.update(ctx, options);
-  views.actions?.update(ctx);
+  if (!options.hpOnly) {
+    views.actions?.update(ctx);
+  }
 }
 
 
@@ -2920,6 +2937,7 @@ function escapeHtml(s) {
  * @description 戰鬥主行動控制面板 — P2-2 Zoo / P2-3 主角代打
  */
 
+import { Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { DOM_IDS } from '../selectors.js';
 
 function zooBonusMultiplier(sanity) {
@@ -2936,6 +2954,15 @@ function berserkChancePct(sanity) {
   if (sanity < 40) return 20;
   return 0;
 }
+
+const BUSY_PHASES = [
+  Phase.DICE_ROLLING,
+  Phase.DICE_CONFIRM,
+  Phase.SUBMITTING,
+  Phase.SETTLEMENT,
+  Phase.WAITING_FOR_PLAYERS,
+  Phase.ESCAPE_ATTEMPT,
+];
 
 export function createActionView(rootEl, handlers = {}) {
   const attackBtn = rootEl.querySelector(`#${DOM_IDS.ATTACK_BTN}`);
@@ -2963,7 +2990,7 @@ export function createActionView(rootEl, handlers = {}) {
   function updateZooTip(ctx) {
     if (!zooTip) return;
     const me = ctx.hud?.me;
-    if (!me || ['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(ctx.phase)) {
+    if (!me || TERMINAL_PHASES.includes(ctx.phase)) {
       zooTip.className = 'hidden';
       zooTip.innerHTML = '';
       return;
@@ -2996,8 +3023,7 @@ export function createActionView(rootEl, handlers = {}) {
     if (!protagonistBar) return;
     const ctrlId = ctx.hud?.controllable_protagonist_id;
     const isLeader = !!ctx.hud?.me?.is_team_leader;
-    const show = !!ctrlId && isLeader
-      && !['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(ctx.phase);
+    const show = !!ctrlId && isLeader && !TERMINAL_PHASES.includes(ctx.phase);
     if (show) {
       protagonistBar.classList.remove('hidden');
       const members = ctx.hud?.members || {};
@@ -3011,15 +3037,8 @@ export function createActionView(rootEl, handlers = {}) {
 
   return {
     update(ctx) {
-      const absorbing = ['COMBAT_FAILED', 'VICTORY', 'DEFEAT', 'ESCAPED'].includes(ctx.phase);
-      const busy = [
-        'DICE_ROLLING',
-        'DICE_CONFIRM',
-        'SUBMITTING',
-        'SETTLEMENT',
-        'WAITING_FOR_PLAYERS',
-        'ESCAPE_ATTEMPT',
-      ].includes(ctx.phase);
+      const absorbing = TERMINAL_PHASES.includes(ctx.phase);
+      const busy = BUSY_PHASES.includes(ctx.phase);
       const submitted = !!ctx.hud?.me?.submitted;
       const allowZoo = ctx.hud?.allow_zoo !== false;
       const sanity = parseInt(ctx.hud?.me?.sanity ?? 0, 10);
@@ -11066,6 +11085,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Phase,
+  TERMINAL_PHASES,
   createInitialContext,
   transition,
   canDispatch,
@@ -11079,6 +11099,15 @@ import {
 import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
 
 describe('Combat V2 state machine', () => {
+  it('TERMINAL_PHASES SSOT covers endgame absorbing phases', () => {
+    assert.deepEqual(TERMINAL_PHASES, [
+      Phase.COMBAT_FAILED,
+      Phase.VICTORY,
+      Phase.DEFEAT,
+      Phase.ESCAPED,
+    ]);
+  });
+
   it('IDLE + ACTION_ATTACK → DICE_ROLLING', () => {
     const ctx = createInitialContext('c1');
     const { ctx: next } = transition(ctx, 'ACTION_ATTACK', { action: 'attack', dice: 3 });
@@ -14612,4 +14641,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v14 · 2026-07-01 · `28601b3`*
+*End of COMBAT_V2_AUDIT_BUNDLE v14 · 2026-07-01 · `d41f23a`*
