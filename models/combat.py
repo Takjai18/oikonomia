@@ -26,12 +26,6 @@ from services.combat_outcomes import (
     resolve_combat_outcome,
 )
 from services.ending import judge_ending
-from models.item import (
-    build_combat_item_consume_batch,
-    combat_item_effect_display_label,
-    get_item_by_id,
-    get_items_by_ids,
-)
 from models.squad import (
     fetch_squads_by_ids,
     get_squad,
@@ -982,6 +976,8 @@ def _resolve_player_phase_body(combat_id):
         _release_player_phase_resolution(combat_id)
         return combat, None
 
+    from models.item import build_combat_item_consume_batch
+
     encounter = load_encounter(combat["encounter_id"])
     combat_settings = (encounter or {}).get("combat_settings", {})
     participants = get_combat_participants(combat)
@@ -1448,6 +1444,8 @@ def build_enemy_combat_stats(combat, encounter=None):
 
 
 def build_combat_status_response(combat, encounter, squad_id, participants=None):
+    from models.item import combat_item_effect_display_label, get_items_by_ids
+
     if combat:
         combat = reconcile_enemy_hp(combat, persist=True)
     combat_settings = (encounter or {}).get("combat_settings", {})
@@ -1602,6 +1600,8 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 
 def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):
     """預估單一行動對敵人傷害（不含暴走隨機結果）"""
+    from models.item import get_item_by_id
+
     meta = {}
     sanity = int(player.get("sanity") or 0)
     berserk_chance = berserk_probability(sanity)
