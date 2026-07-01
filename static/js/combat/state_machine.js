@@ -118,7 +118,7 @@ function resolveTransition(ctx, event) {
 }
 
 /**
- * First poll after COMBAT_RESET — absorb stale round_settlement (INV-C).
+ * First poll after COMBAT_RESET — strict entry absorb boundary (INV-A/C).
  * @returns {{ ctx: object, effects: Effect[] } | null}
  */
 function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
@@ -129,7 +129,11 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     ? parseInt(apiIdx, 10)
     : parseInt(snapshot.current_phase, 10) - 1;
   const shown = new Set(ctx.shownSettlementIds);
-  if (settlementId) shown.add(settlementId);
+
+  // Only mark shown when backend is in stable player_phase without an unresolved round
+  if (settlementId && snapshot.status === 'player_phase' && !snapshot.round_resolved) {
+    shown.add(settlementId);
+  }
 
   const alignedCtx = {
     ...ctx,
@@ -138,7 +142,7 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     pendingSettlementId: null,
     shownSettlementIds: shown,
     entrySyncPending: false,
-    phase: snapshot.status === 'player_phase' ? Phase.IDLE : ctx.phase,
+    phase: ctx.phase,
   };
   return {
     ctx: alignedCtx,
@@ -172,11 +176,19 @@ export function handleAnyDeath(ctx, members) {
 }
 
 /**
- * Passive sync from poll — never opens settlement modal.
+ * Passive sync from poll — monotonic guards + settlement modal routing.
  * @returns {{ ctx: object, effects: Effect[] }}
  */
 export function syncState(ctx, snapshot) {
   if (ABSORBING.has(ctx.phase)) {
+    return { ctx, effects: [] };
+  }
+
+  const apiIdx = parseInt(snapshot.settled_round_index, 10);
+  if (Number.isFinite(apiIdx) && ctx.settledRoundIndex >= 0 && apiIdx < ctx.settledRoundIndex) {
+    console.warn(
+      `[FSM] Stale snapshot dropped (API round ${apiIdx} < local ${ctx.settledRoundIndex})`,
+    );
     return { ctx, effects: [] };
   }
 
@@ -210,7 +222,7 @@ export function syncState(ctx, snapshot) {
     const entryAbsorb = absorbStaleSettlementOnEntry(newCtx, snapshot, settlementId);
     if (entryAbsorb) {
       newCtx = { ...entryAbsorb.ctx, hud: newCtx.hud, combatId: newCtx.combatId };
-      return entryAbsorb;
+      effects = [...entryAbsorb.effects, ...effects.filter((e) => e.type !== 'UPDATE_HUD')];
     }
   }
 
@@ -270,17 +282,19 @@ export function syncState(ctx, snapshot) {
       };
     }
 
-    if (ctx.phase !== Phase.SETTLEMENT) {
-      newCtx = { ...newCtx, phase: Phase.VICTORY, pollPaused: true };
-      return {
-        ctx: newCtx,
-        effects: [
-          { type: 'HIDE_ALL_MODALS' },
-          { type: 'SHOW_VICTORY', data: snapshot },
-          { type: 'STOP_POLL' },
-        ],
-      };
+    if (ctx.phase === Phase.SETTLEMENT) {
+      return { ctx: newCtx, effects };
     }
+
+    newCtx = { ...newCtx, phase: Phase.VICTORY, pollPaused: true };
+    return {
+      ctx: newCtx,
+      effects: [
+        { type: 'HIDE_ALL_MODALS' },
+        { type: 'SHOW_VICTORY', data: snapshot },
+        { type: 'STOP_POLL' },
+      ],
+    };
   }
 
   if (snapshot.waiting_for_teammates && ctx.phase === Phase.SUBMITTING) {

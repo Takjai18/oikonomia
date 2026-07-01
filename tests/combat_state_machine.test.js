@@ -111,7 +111,7 @@ describe('Combat V2 state machine', () => {
     assert.equal(canDispatch(ctx, 'ACTION_ATTACK'), false);
   });
 
-  it('entry sync absorbs stale settlement on first poll (INV-C)', () => {
+  it('entry sync absorbs stable stale settlement on first poll (INV-C)', () => {
     const ctx = {
       ...createInitialContext(99),
       phase: Phase.IDLE,
@@ -123,7 +123,7 @@ describe('Combat V2 state machine', () => {
       current_phase: 3,
       settled_round_index: 2,
       settlement_id: '99:2',
-      round_resolved: true,
+      round_resolved: false,
       round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
       enemy: { hp: 160, max_hp: 200 },
       my_state: { hp: 100, submitted: false },
@@ -134,6 +134,73 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.entrySyncPending, false);
     assert.ok(next.shownSettlementIds.has('99:2'));
     assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('entry sync does not swallow modal when round_resolved on reconnect (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(99),
+      phase: Phase.IDLE,
+      entrySyncPending: true,
+    };
+    const { ctx: next } = syncState(ctx, {
+      combat_id: 99,
+      status: 'player_phase',
+      current_phase: 2,
+      settled_round_index: 1,
+      settlement_id: '99:1',
+      round_resolved: true,
+      round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
+      enemy: { hp: 160, max_hp: 200 },
+      my_state: { hp: 100, submitted: false },
+      member_states: { s1: { hp: 100, submitted: false } },
+    });
+    assert.equal(next.entrySyncPending, false);
+    assert.ok(!next.shownSettlementIds.has('99:1'));
+  });
+
+  it('R12-D: stale victory poll dropped by monotonic guard (INV-C)', () => {
+    const ctx = {
+      ...createInitialContext(999),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 2,
+      pendingSettlementId: '999:2',
+      isKillingBlow: true,
+      hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 999,
+      settled_round_index: 1,
+      settlement_id: '999:1',
+      round_settlement: { team_damage_dealt: 10 },
+      enemy: { hp: 50, max_hp: 200 },
+      my_state: { hp: 80 },
+      member_states: {},
+    });
+    assert.equal(next.hud.enemy.hp, 0);
+    assert.equal(effects.length, 0);
+  });
+
+  it('R12-D: victory poll during SETTLEMENT does not skip to VICTORY', () => {
+    const ctx = {
+      ...createInitialContext(999),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 2,
+      pendingSettlementId: '999:2',
+      isKillingBlow: true,
+      hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 999,
+      settled_round_index: 2,
+      settlement_id: '999:2',
+      enemy: { hp: 0, max_hp: 200 },
+      my_state: { hp: 80 },
+      member_states: {},
+    });
+    assert.equal(next.phase, Phase.SETTLEMENT);
+    assert.ok(!effects.some((e) => e.type === 'SHOW_VICTORY'));
   });
 
   it('P2-5: WAITING_FOR_PLAYERS poll round_resolved → SETTLEMENT', () => {
@@ -163,6 +230,21 @@ describe('Combat V2 state machine', () => {
     );
     assert.equal(route.skipModal, true);
     assert.equal(route.settledRoundIndex, 3);
+  });
+
+  it('defeat with dead_squad_names from DICE_CONFIRM clears modals (INV-D)', () => {
+    const ctx = { ...createInitialContext(1), phase: Phase.DICE_CONFIRM };
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      outcome: 'defeat',
+      winner: 'enemy',
+      dead_squad_names: ['Alice'],
+      member_states: { A: { display_name: 'Alice', hp: 50 } },
+      my_state: { hp: 80, submitted: false },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.ok(effects.some((e) => e.type === 'HIDE_ALL_MODALS'));
+    assert.ok(effects.some((e) => e.type === 'SHOW_FAILED'));
   });
 
   it('defeat payload with dead_squad_names → COMBAT_FAILED', () => {
