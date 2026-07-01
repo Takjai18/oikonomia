@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_B_DB_HARDENING（局部審計 · SQLite 併發與資料 SSOT）
 
 > **目的**：審計 **20 人西貢戶外** 資料層 — WAL 模式、orphan `combat_actions`、主角狀態單一真相源、斷線重連後端握手  
-> **日期**：2026-07-01 · **commit**：`649526a`  
+> **日期**：2026-07-01 · **commit**：`5ea4cf8`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -110,7 +110,9 @@ def init_db():
         resources INTEGER DEFAULT 0,
 # database.py (L196–L212)
 
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
     migrate_db()
     ensure_wal_mode(_db_path())
 
@@ -125,8 +127,6 @@ def migrate_db():
 
     c.execute("PRAGMA table_info(squads)")
     cols = {row[1] for row in c.fetchall()}
-    squad_additions = {
-        "power": "INTEGER DEFAULT 100",
 
 ## 3. combat_actions 清理
 
@@ -148,7 +148,7 @@ def purge_combat_actions(combat_id, *, conn=None):
         return cur.rowcount
 
 
-# models/combat.py (L1316–L1355)
+# models/combat.py (L1322–L1361)
 
 def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)
@@ -193,55 +193,45 @@ def _end_combat(combat_id, winner, encounter):
 
 ## 4. 主角 SSOT
 
-# models/team.py (L162–L222)
+# models/team.py (L171–L221)
 
 def get_team_protagonists(team_id):
     """
     SSOT: protagonist HP/sanity/trauma from protagonist_states;
     static combat stats from PROTAGONIST_PROFILES (not squads.protagonist_stats JSON).
+    Reads team route via get_db_connection (WAL + busy_timeout).
     """
     from models.protagonist import PROTAGONIST_PROFILES, get_protagonist_state
 
     clean_team_id = normalize_team_id(team_id)
-    default = default_protagonist_template()
+    default_base = default_protagonist_template()
     if not clean_team_id:
-        return {
-            "iggy": default.copy(),
-            "marah": default.copy(),
-            "active_route": None,
-        }
+        return _protagonist_pair_payload(default_base)
 
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
-    team_row = conn.execute(
-        "SELECT route FROM teams WHERE team_id = ?", (clean_team_id,)
-    ).fetchone()
-    conn.close()
+    conn = get_db_connection(settings.db_path, row_factory=sqlite3.Row)
+    try:
+        team_row = conn.execute(
+            "SELECT route FROM teams WHERE team_id = ?", (clean_team_id,),
+        ).fetchone()
+    finally:
+        conn.close()
 
     if not team_row:
-        return {
-            "iggy": default.copy(),
-            "marah": default.copy(),
-            "active_route": None,
-        }
+        return _protagonist_pair_payload(default_base)
 
     route = team_row["route"]
-    result = {
-        "iggy": default.copy(),
-        "marah": default.copy(),
-        "active_route": route,
-    }
+    result = _protagonist_pair_payload(default_base, active_route=route)
 
     for key in ("iggy", "marah"):
         profile = PROTAGONIST_PROFILES.get(key, {})
         state = get_protagonist_state(clean_team_id, key, create=True)
         entry = {
-            **default.copy(),
+            **default_base,
             "name": profile.get("display_name", key.title()),
             "avatar": profile.get("avatar"),
-            "power": int(profile.get("power", default.get("power", 100))),
-            "intellect": int(profile.get("intellect", default.get("intellect", 100))),
-            "resilience": int(profile.get("resilience", default.get("resilience", 100))),
+            "power": int(profile.get("power", default_base.get("power", 100))),
+            "intellect": int(profile.get("intellect", default_base.get("intellect", 100))),
+            "resilience": int(profile.get("resilience", default_base.get("resilience", 100))),
         }
         if state:
             entry.update({
@@ -643,6 +633,40 @@ def test_reconcile_finished_combat_purges_actions():
             ok("reconcile finished combat purges stale combat_actions")
         else:
             fail("reconcile finished combat purges stale combat_actions", f"remaining={remaining}")
+
+        ended_combat = {
+            "id": combat_id,
+            "status": "ended",
+            "enemy_hp": 0,
+            "encounter_id": "enc_test",
+        }
+        conn = sqlite3.connect(path)
+        configure_sqlite_connection(conn)
+        conn.execute(
+            """INSERT INTO combat_actions
+               (combat_id, squad_id, phase, action_type, dice_result, submitted_at)
+               VALUES (?, 'solo1', 1, 'defend', 1, ?)""",
+            (combat_id, now),
+        )
+        conn.execute(
+            "UPDATE squads SET current_combat_id = ? WHERE squad_id = 'solo1'",
+            (combat_id,),
+        )
+        conn.commit()
+        conn.close()
+        reconcile_finished_active_combat(ended_combat, team_id="T-PURGE")
+        conn = sqlite3.connect(path)
+        re_remaining = conn.execute(
+            "SELECT COUNT(*) FROM combat_actions WHERE combat_id = ?", (combat_id,),
+        ).fetchone()[0]
+        conn.close()
+        if re_remaining == 0:
+            ok("reconcile ended combat still purges orphan combat_actions")
+        else:
+            fail(
+                "reconcile ended combat still purges orphan combat_actions",
+                f"remaining={re_remaining}",
+            )
         if squad_combat is None:
             ok("reconcile finished combat clears squad current_combat_id")
         else:

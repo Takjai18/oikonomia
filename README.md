@@ -63,7 +63,7 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 
 | Baseline（只讀引用，唔貼全文） | 用途 |
 |-------------------------------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md` v12** | Combat V2 SSOT（首次 onboarding）· commit `0e2fa93` |
+| **`COMBAT_V2_AUDIT_BUNDLE.md` v13** | Combat V2 SSOT（首次 onboarding）· commit `5ea4cf8` |
 | **`COMBAT_V2_PARTIAL_INDEX.md`** | 選 R11 / R12-A～D Partial Bundle |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | 營會現場高風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | 大廳橋接 / DB / 編排 / INV 局部審計 |
@@ -73,7 +73,7 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 **局部交付**：每次只處理**一個** Python 檔／路由函數，或**一個**前端 JS View；附專項測試即可。  
 **重新生成 Bundle**：
 ```bash
-python3 scripts/build_combat_v2_audit_bundle.py       # v12 全文 SSOT + R11 partial
+python3 scripts/build_combat_v2_audit_bundle.py       # v13 全文 SSOT + R11 partial
 python3 scripts/build_combat_v2_partial_bundles.py  # 索引 + R11 + R12 A–D
 ```
 
@@ -97,7 +97,7 @@ python3 scripts/build_combat_v2_partial_bundles.py  # 索引 + R11 + R12 A–D
 【審計模式】
 範圍：<單檔 / 單函數>
 焦點：<例如 INV-D、GM session>
-Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
 ```
 
 詳見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**（Grok Build）與 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)**（Gemini）。

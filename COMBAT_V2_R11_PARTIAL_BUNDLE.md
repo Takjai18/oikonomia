@@ -53,6 +53,10 @@ npm run test:e2e:v2                              # T8–T14
  * @description 戰鬥結局（勝利/失敗/致命崩潰）全屏渲染器，已解耦舊版 Section 依賴
  */
 
+import {
+  isValidProtagonistRouteKey,
+  PROTAGONIST_ROUTE_KEY_HINT,
+} from '../constants.js';
 import { DOM_IDS } from '../selectors.js';
 import { showToast } from '../toast.js';
 
@@ -98,8 +102,8 @@ export function createVictoryView(rootEl) {
   }
 
   async function resolveProtagonistKeyForOverride(app) {
-    const route = app.ctx.hud?.route;
-    if (route === 'iggy' || route === 'marah') return route;
+    const route = String(app.ctx.hud?.route || '').trim().toLowerCase();
+    if (isValidProtagonistRouteKey(route)) return route;
     const promptFn = typeof window.showInputModal === 'function' ? window.showInputModal : null;
     if (!promptFn) {
       showToast('無法取得主角路線，請 GM 後台手動處理', 'error');
@@ -107,12 +111,12 @@ export function createVictoryView(rootEl) {
     }
     const raw = await promptFn({
       title: '請輸入欲重置的主角代號',
-      placeholder: 'iggy 或 marah',
+      placeholder: PROTAGONIST_ROUTE_KEY_HINT,
       maxLength: 10,
     });
     const key = String(raw || '').trim().toLowerCase();
-    if (key !== 'iggy' && key !== 'marah') {
-      showToast('主角代號無效，請輸入 iggy 或 marah', 'error');
+    if (!isValidProtagonistRouteKey(key)) {
+      showToast(`主角代號無效，請輸入 ${PROTAGONIST_ROUTE_KEY_HINT}`, 'error');
       return null;
     }
     return key;
@@ -263,7 +267,7 @@ export function createVictoryView(rootEl) {
 
 ===== EXCERPT: static/js/combat/index.js — executeGmOverride =====
 
-# static/js/combat/index.js (L595–L613)
+# static/js/combat/index.js (L612–L630)
 
   async executeGmOverride(opts) {
     try {
@@ -324,7 +328,7 @@ export class ResilientPollingManager {
 
 ===== EXCERPT: routes/gm.py — gm_override_trauma_ending_api =====
 
-# routes/gm.py (L765–L909)
+# routes/gm.py (L766–L911)
 
 def gm_override_trauma_ending_api():
     """
@@ -368,7 +372,8 @@ def gm_override_trauma_ending_api():
         return jsonify({"success": False, "error": "缺少有效的覆蓋變更指令"}), 400
 
     now = datetime.now().isoformat()
-    gm_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    raw_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    gm_operator = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_operator)
     if not gm_operator:
         return jsonify({
             "success": False,
@@ -475,25 +480,26 @@ def gm_override_trauma_ending_api():
 
 ## 2. Scope B — 超時自動防禦
 
-# static/js/combat/index.js (L340–L355)
+# static/js/combat/index.js (L343–L359)
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
 
-    const protectedPhases = [
-      Phase.DICE_ROLLING,
-      Phase.DICE_CONFIRM,
-      Phase.SUBMITTING,
-      Phase.SETTLEMENT,
-      Phase.WAITING_FOR_PLAYERS,
-    ];
-    if (protectedPhases.includes(this.ctx.phase)) return;
-
-    if (this.ctx.hud?.me?.submitted) {
+    if (this.ctx.phase === Phase.DICE_CONFIRM) {
+      console.warn(
+        '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
+      );
       this.hasTriggeredTimeoutDefense = true;
+      this.ctx = {
+        ...this.ctx,
+        dice: { ...this.ctx.dice, action: 'defend', value: null, cosmetic: false },
+      };
+      this.views?.dice?.hide();
+      showToast('操作超時！系統已自動為您執行「防禦」指令。', 'warn');
+      void this.performActionDirectly('defend');
       return;
     }
-# static/js/combat/index.js (L399–L410)
+# static/js/combat/index.js (L416–L427)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;

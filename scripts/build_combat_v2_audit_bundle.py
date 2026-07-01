@@ -10,6 +10,7 @@ OUT_R11 = ROOT / "COMBAT_V2_R11_PARTIAL_BUNDLE.md"
 
 FRONTEND_FILES = [
     "static/js/combat/bootstrap.js",
+    "static/js/combat/constants.js",
     "static/js/combat/index.js",
     "static/js/combat/state_machine.js",
     "static/js/combat/api_client.js",
@@ -127,37 +128,38 @@ def main():
         ref = ROOT / ".git" / "refs" / "heads" / "main"
         head = ref.read_text(encoding="utf-8").strip()[:7] if ref.exists() else "unknown"
 
-    header = f"""# COMBAT_V2_AUDIT_BUNDLE v12（營會 SSOT · R11/R12 封頂版）
+    header = f"""# COMBAT_V2_AUDIT_BUNDLE v13（營會 SSOT · R14 封頂版）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
 > **日期**：{today} · **commit**：`{head}`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R11 現場風險 A/B/C ✅ · R12-A～D 橋接/DB/編排/INV ✅  
-> **本輪**：R11/R12 審計修復已落地；下一輪用 **Partial Bundle** 做 regression 審計  
+> **上一輪**：R11～R13 + R12 Partial 二輪審計 ✅（見 `GEMINI_REVIEW.md` §18–§20）  
+> **本輪**：v13 錨點；下一輪用 **Partial** 或 §20.3 **新 scope**  
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
-> 生成：`python3 scripts/build_combat_v2_partial_bundles.py`
+> 生成：`python3 scripts/build_combat_v2_audit_bundle.py`
 
 ---
 
-## 0. 給 Gemini 的指令（R12 封頂 — Baseline / 錨點 Audit）
+## 0. 給 Gemini 的指令（R14 封頂 — Baseline / 錨點 Audit）
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §17（R11/R12）— 唔好重複報已落地項
-4. **下一輪建議 scope**（見 §0.1）— 新功能或 regression only
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§20 — 唔好重複報已落地項
+4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
-### 0.1 建議局部審計（用 Partial Bundle，唔貼全文）
+### 0.1 Partial 審計狀態（`{head}` · 已審已修，回歸 only）
 
-| Bundle | 焦點 | 狀態（`{head}`） |
-|--------|------|------------------|
-| **R12-D** | settlement monotonic · INV-A～E | ✅ 已審已修 |
-| **R12-A** | sessionStorage lock · restore 時序 | ✅ 已審已修 |
-| **R12-B** | atomic `_end_combat` · WAL · purge actions | ✅ 已審已修 |
-| **R12-C** | piercing floor · failed_escape · outcome 冪等 | ✅ 已審已修 |
-| **R11** | GM override · timeout mutex · co-op CAS | ✅ 已審已修 |
+| Bundle | 焦點 | 狀態 |
+|--------|------|------|
+| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 |
+| **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
+| **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
+| **R12-C** | Solo SOLO: scope · dice fallback · INV-E | ✅ §20 |
+| **R11** | GM sanitize · DICE_CONFIRM timeout · co-op CAS | ✅ §18–§20 |
+| **R13** | combat_start IDOR · rescue target · lazy import | ✅ §19 |
 
 **測試帳號**：Henry `PLAYER-75406`  
 **Encounter**：`practice_iggy_04_marathon` · `test_protagonist_control`
@@ -191,17 +193,18 @@ def main():
 
 ---
 
-## 3. 測試狀態（R12 · `{head}`）
+## 3. 測試狀態（R14 · `{head}`）
 
 ```bash
-npm run test:combat                                    # 17/17 pass
-./venv/bin/python3 scripts/test_combat_flow.py         # 267/267 pass
-./venv/bin/python3 scripts/test_db_hardening.py        # 11/11 pass
+npm run test:combat                                    # 23/23 pass
+./venv/bin/python3 scripts/test_combat_flow.py         # 280/280 pass
+./venv/bin/python3 scripts/test_db_hardening.py        # 12/12 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 17/17 pass
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 scripts/test_ending_flow.py                            # 23/23 pass
 npm run test:e2e:v2                                    # T8–T14
+bash scripts/pre_deploy_checks.sh
 ```
 
 ---
@@ -268,7 +271,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
     for rel in BACKEND_FILES:
         append_file(buf, rel)
 
-    buf.append(f"\n\n---\n*End of COMBAT_V2_AUDIT_BUNDLE v12 · {today} · `{head}`*\n")
+    buf.append(f"\n\n---\n*End of COMBAT_V2_AUDIT_BUNDLE v13 · {today} · `{head}`*\n")
 
     OUT.write_text("".join(buf), encoding="utf-8")
     size_kb = OUT.stat().st_size / 1024

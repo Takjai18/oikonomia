@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_C_STEP4_ORCHESTRATION（局部審計 · 純計算層與戰後編排）
 
 > **目的**：審計 **Greenfield Step 4** — `combat_engine` 純函式、`combat_flow` INV-E 混合結算、`combat_outcomes` 冪等與 `settlement_id`  
-> **日期**：2026-07-01 · **commit**：`0e2fa93`  
+> **日期**：2026-07-01 · **commit**：`5ea4cf8`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` + `combat_greenfield_final.md` §1.1 INV-E  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -117,7 +117,7 @@ def dice_multiplier(
     try:
         dice = int(dice_result)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        dice = 2
+        dice = 1
     return float(table.get(max(0, min(3, dice)), 1.0))
 
 
@@ -377,6 +377,8 @@ def _resolve_player_phase_body(combat_id):
         _release_player_phase_resolution(combat_id)
         return combat, None
 
+    from models.item import build_combat_item_consume_batch
+
     encounter = load_encounter(combat["encounter_id"])
     combat_settings = (encounter or {}).get("combat_settings", {})
     participants = get_combat_participants(combat)
@@ -459,8 +461,6 @@ def _resolve_player_phase_body(combat_id):
                 self_dmg = max(1, int(get_effective_attack_stat(player) * 0.3))
                 apply_damage_to_combat_participant(player_squad_id, self_dmg, participant=player)
                 combat = append_combat_log(
-                    combat,
-                    f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
 
 ## 4. 戰後編排與 settlement_id
 
@@ -469,12 +469,20 @@ from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
 
 
-def _outcome_already_recorded(team_id, encounter_id):
+def _outcome_already_recorded_team(team_id, encounter_id):
     if not team_id or not encounter_id:
         return False
     from models.encounter_outcomes import encounter_already_completed
 
     return encounter_already_completed(team_id, encounter_id)
+
+
+def _outcome_already_recorded_solo(starter_id, encounter_id):
+    if not starter_id or not encounter_id:
+        return False
+    from models.encounter_outcomes import encounter_already_completed_solo
+
+    return encounter_already_completed_solo(starter_id, encounter_id)
 
 
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
@@ -516,7 +524,7 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         trauma_total = int(ending.get("protagonist_trauma_total") or 0)
 
         if team_id and ending.get("should_apply_bad_ending_victory"):
-            if not _outcome_already_recorded(team_id, encounter_id):
+            if not _outcome_already_recorded_team(team_id, encounter_id):
                 apply_trauma_bad_ending_victory(team_id, encounter)
                 result["applied_success"] = True
             result["trauma_bad_ending"] = True
@@ -542,20 +550,18 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                     "message": f"劇情推進管線觸發等冪保護: {exc}",
                     "log_type": "idempotent_blocked",
                 })
-        elif starter_id and not _outcome_already_recorded(starter_id, encounter_id):
+        elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
             apply_encounter_success_solo(starter_id, encounter)
             result["applied_success"] = True
         return result
 
     if winner == "enemy":
-        id_key = team_id or starter_id
-        if id_key and not _outcome_already_recorded(id_key, encounter_id):
-            if team_id:
-                apply_encounter_failure(team_id, encounter)
-                result["applied_failure"] = True
-            elif starter_id:
-                apply_encounter_failure_solo(starter_id, encounter)
-                result["applied_failure"] = True
+        if team_id and not _outcome_already_recorded_team(team_id, encounter_id):
+            apply_encounter_failure(team_id, encounter)
+            result["applied_failure"] = True
+        elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
+            apply_encounter_failure_solo(starter_id, encounter)
+            result["applied_failure"] = True
         if team_id:
             result["ending"] = judge_ending(team_id)
         return result
@@ -794,7 +800,7 @@ def test_calculate_attack_damage_basic():
 
 
 def test_dice_multiplier_edge_cases():
-    cases = [(0, 0.0), (1, 1.0), (2, 1.5), (3, 2.0), (99, 2.0), ("bad", 1.5)]
+    cases = [(0, 0.0), (1, 1.0), (2, 1.5), (3, 2.0), (99, 2.0), ("bad", 1.0)]
     for dice, expected in cases:
         got = dice_multiplier(dice)
         if got == expected:

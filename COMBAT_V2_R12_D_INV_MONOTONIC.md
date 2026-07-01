@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
 > **目的**：審計 **前端權威狀態機** — `settlement_id` / `settled_round_index` 單調防護、`entrySyncPending` 進場吸收、INV-D 失敗搶占  
-> **日期**：2026-07-01 · **commit**：`0e2fa93`  
+> **日期**：2026-07-01 · **commit**：`5ea4cf8`  
 > **Baseline**：假設已讀 `combat_greenfield_final.md` §3 不變式表  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -66,6 +66,24 @@ const ABSORBING = new Set([
 ]);
 
 const DICE_BUSY = new Set([Phase.DICE_ROLLING, Phase.DICE_CONFIRM]);
+
+/** Phases that must exit SETTLEMENT without pinning poll handler */
+const SETTLEMENT_EXIT_PHASES = new Set([
+  Phase.VICTORY,
+  Phase.DEFEAT,
+  Phase.COMBAT_FAILED,
+  Phase.ESCAPED,
+]);
+
+function terminalModalTeardownEffects(effects) {
+  return [
+    { type: 'HIDE_SETTLEMENT' },
+    { type: 'HIDE_ALL_MODALS' },
+    ...effects.filter(
+      (e) => e.type !== 'HIDE_ALL_MODALS' && e.type !== 'HIDE_SETTLEMENT',
+    ),
+  ];
+}
 
 /**
  * @returns {import('./state_machine.js').CombatContext}
@@ -143,7 +161,7 @@ function resolveTransition(ctx, event) {
 }
 
 /**
- * First poll after COMBAT_RESET — absorb stale round_settlement (INV-C).
+ * First poll after COMBAT_RESET — strict entry absorb boundary (INV-A/C).
  * @returns {{ ctx: object, effects: Effect[] } | null}
  */
 function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
@@ -154,7 +172,11 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     ? parseInt(apiIdx, 10)
     : parseInt(snapshot.current_phase, 10) - 1;
   const shown = new Set(ctx.shownSettlementIds);
-  if (settlementId) shown.add(settlementId);
+
+  // Only mark shown when backend is in stable player_phase without an unresolved round
+  if (settlementId && snapshot.status === 'player_phase' && !snapshot.round_resolved) {
+    shown.add(settlementId);
+  }
 
   const alignedCtx = {
     ...ctx,
@@ -163,7 +185,7 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     pendingSettlementId: null,
     shownSettlementIds: shown,
     entrySyncPending: false,
-    phase: snapshot.status === 'player_phase' ? Phase.IDLE : ctx.phase,
+    phase: ctx.phase,
   };
   return {
     ctx: alignedCtx,
@@ -197,11 +219,19 @@ export function handleAnyDeath(ctx, members) {
 }
 
 /**
- * Passive sync from poll — never opens settlement modal.
+ * Passive sync from poll — monotonic guards + settlement modal routing.
  * @returns {{ ctx: object, effects: Effect[] }}
  */
 export function syncState(ctx, snapshot) {
   if (ABSORBING.has(ctx.phase)) {
+    return { ctx, effects: [] };
+  }
+
+  const apiIdx = parseInt(snapshot.settled_round_index, 10);
+  if (Number.isFinite(apiIdx) && ctx.settledRoundIndex >= 0 && apiIdx < ctx.settledRoundIndex) {
+    console.warn(
+      `[FSM] Stale snapshot dropped (API round ${apiIdx} < local ${ctx.settledRoundIndex})`,
+    );
     return { ctx, effects: [] };
   }
 
@@ -235,7 +265,7 @@ export function syncState(ctx, snapshot) {
     const entryAbsorb = absorbStaleSettlementOnEntry(newCtx, snapshot, settlementId);
     if (entryAbsorb) {
       newCtx = { ...entryAbsorb.ctx, hud: newCtx.hud, combatId: newCtx.combatId };
-      return entryAbsorb;
+      effects = [...entryAbsorb.effects, ...effects.filter((e) => e.type !== 'UPDATE_HUD')];
     }
   }
 
@@ -255,16 +285,27 @@ export function syncState(ctx, snapshot) {
           pendingSettlement: null,
           pendingSettlementId: null,
         },
-        effects: [
-          { type: 'HIDE_ALL_MODALS' },
+        effects: terminalModalTeardownEffects([
           { type: 'SHOW_FAILED', members: deadNames },
           { type: 'STOP_POLL' },
-        ],
+        ]),
       };
     }
-    newCtx = { ...newCtx, phase: Phase.DEFEAT, pollPaused: true };
-    effects.push({ type: 'HIDE_ALL_MODALS' }, { type: 'SHOW_DEFEAT', data: snapshot }, { type: 'STOP_POLL' });
-    return { ctx: newCtx, effects };
+    newCtx = {
+      ...newCtx,
+      phase: Phase.DEFEAT,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+    };
+    return {
+      ctx: newCtx,
+      effects: terminalModalTeardownEffects([
+        { type: 'SHOW_DEFEAT', data: snapshot },
+        { type: 'STOP_POLL' },
+      ]),
+    };
   }
 
   if (snapshot.outcome === 'victory' || snapshot.winner === 'squad') {
@@ -295,17 +336,25 @@ export function syncState(ctx, snapshot) {
       };
     }
 
-    if (ctx.phase !== Phase.SETTLEMENT) {
-      newCtx = { ...newCtx, phase: Phase.VICTORY, pollPaused: true };
-      return {
-        ctx: newCtx,
-        effects: [
-          { type: 'HIDE_ALL_MODALS' },
-          { type: 'SHOW_VICTORY', data: snapshot },
-          { type: 'STOP_POLL' },
-        ],
-      };
+    if (ctx.phase === Phase.SETTLEMENT) {
+      return { ctx: newCtx, effects };
     }
+
+    newCtx = {
+      ...newCtx,
+      phase: Phase.VICTORY,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+    };
+    return {
+      ctx: newCtx,
+      effects: terminalModalTeardownEffects([
+        { type: 'SHOW_VICTORY', data: snapshot },
+        { type: 'STOP_POLL' },
+      ]),
+    };
   }
 
   if (snapshot.waiting_for_teammates && ctx.phase === Phase.SUBMITTING) {
@@ -365,10 +414,15 @@ export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
   return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
 }
 
-/** INV-D: only finite hp ≤ 0 counts as collapsed (malformed hp → not dead). */
+/** INV-D: hp ≤ 0 or active near-death marker counts as collapsed. */
 export function isMemberCollapsed(member) {
-  const hp = parseInt(member?.hp, 10);
-  return Number.isFinite(hp) && hp <= 0;
+  if (!member) return false;
+  if (member.near_death_until) return true;
+  const hp = parseInt(member.hp, 10);
+  if (Number.isFinite(hp)) {
+    return hp <= 0;
+  }
+  return false;
 }
 
 export function isEnemyDefeated(enemy) {
@@ -611,10 +665,26 @@ const TRANSITIONS = {
     },
     ACTION_ATTACK: { reduce: (c) => c, effects: () => [{ type: 'TOAST', message: '請先關閉當前結算彈窗' }] },
     POLL_TICK: {
-      reduce: (ctx, meta) => ({ ...syncState(ctx, meta.snapshot).ctx, phase: Phase.SETTLEMENT }),
-      effects: (ctx, meta) => syncState(ctx, meta.snapshot).effects.map((e) =>
-        e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e,
-      ),
+      reduce: (ctx, meta) => {
+        const { ctx: synced } = syncState(ctx, meta.snapshot);
+        if (SETTLEMENT_EXIT_PHASES.has(synced.phase)) {
+          return synced;
+        }
+        return { ...synced, phase: Phase.SETTLEMENT };
+      },
+      effects: (ctx, meta) => {
+        // reduce may have advanced phase; replay sync from SETTLEMENT for effect list
+        const sourceCtx = SETTLEMENT_EXIT_PHASES.has(ctx.phase)
+          ? { ...ctx, phase: Phase.SETTLEMENT }
+          : ctx;
+        const { ctx: synced, effects } = syncState(sourceCtx, meta.snapshot);
+        if (SETTLEMENT_EXIT_PHASES.has(synced.phase)) {
+          return terminalModalTeardownEffects(effects);
+        }
+        return effects.map((e) =>
+          (e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e),
+        );
+      },
     },
     INV_RECOVERY: {
       reduce: (ctx) => ({ ...ctx, phase: Phase.IDLE, pollPaused: false }),
@@ -849,7 +919,7 @@ export function extractHud(snapshot) {
 
 ## 3. poll 與 entry sync
 
-# static/js/combat/index.js (L399–L410)
+# static/js/combat/index.js (L416–L427)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
@@ -863,7 +933,7 @@ export function extractHud(snapshot) {
       this.applyEffects(deathCheck.effects);
       return;
     }
-# static/js/combat/index.js (L270–L279)
+# static/js/combat/index.js (L273–L282)
 
   async onSubmitSuccess(data) {
     const deathCheck = handleAnyDeath(
@@ -878,7 +948,7 @@ export function extractHud(snapshot) {
 
 ## 4. 後端 settlement meta
 
-# models/combat.py (L2193–L2208)
+# models/combat.py (L2199–L2214)
 
 def _enrich_settlement_meta(payload, combat=None):
     """Additive COMBAT_V2 fields: stable settlement progress on every status snapshot."""
@@ -1012,7 +1082,7 @@ describe('Combat V2 state machine', () => {
     assert.equal(canDispatch(ctx, 'ACTION_ATTACK'), false);
   });
 
-  it('entry sync absorbs stale settlement on first poll (INV-C)', () => {
+  it('entry sync absorbs stable stale settlement on first poll (INV-C)', () => {
     const ctx = {
       ...createInitialContext(99),
       phase: Phase.IDLE,
@@ -1024,7 +1094,7 @@ describe('Combat V2 state machine', () => {
       current_phase: 3,
       settled_round_index: 2,
       settlement_id: '99:2',
-      round_resolved: true,
+      round_resolved: false,
       round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
       enemy: { hp: 160, max_hp: 200 },
       my_state: { hp: 100, submitted: false },
@@ -1035,6 +1105,73 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.entrySyncPending, false);
     assert.ok(next.shownSettlementIds.has('99:2'));
     assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('entry sync does not swallow modal when round_resolved on reconnect (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(99),
+      phase: Phase.IDLE,
+      entrySyncPending: true,
+    };
+    const { ctx: next } = syncState(ctx, {
+      combat_id: 99,
+      status: 'player_phase',
+      current_phase: 2,
+      settled_round_index: 1,
+      settlement_id: '99:1',
+      round_resolved: true,
+      round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
+      enemy: { hp: 160, max_hp: 200 },
+      my_state: { hp: 100, submitted: false },
+      member_states: { s1: { hp: 100, submitted: false } },
+    });
+    assert.equal(next.entrySyncPending, false);
+    assert.ok(!next.shownSettlementIds.has('99:1'));
+  });
+
+  it('R12-D: stale victory poll dropped by monotonic guard (INV-C)', () => {
+    const ctx = {
+      ...createInitialContext(999),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 2,
+      pendingSettlementId: '999:2',
+      isKillingBlow: true,
+      hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 999,
+      settled_round_index: 1,
+      settlement_id: '999:1',
+      round_settlement: { team_damage_dealt: 10 },
+      enemy: { hp: 50, max_hp: 200 },
+      my_state: { hp: 80 },
+      member_states: {},
+    });
+    assert.equal(next.hud.enemy.hp, 0);
+    assert.equal(effects.length, 0);
+  });
+
+  it('R12-D: victory poll during SETTLEMENT does not skip to VICTORY', () => {
+    const ctx = {
+      ...createInitialContext(999),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 2,
+      pendingSettlementId: '999:2',
+      isKillingBlow: true,
+      hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 999,
+      settled_round_index: 2,
+      settlement_id: '999:2',
+      enemy: { hp: 0, max_hp: 200 },
+      my_state: { hp: 80 },
+      member_states: {},
+    });
+    assert.equal(next.phase, Phase.SETTLEMENT);
+    assert.ok(!effects.some((e) => e.type === 'SHOW_VICTORY'));
   });
 
   it('P2-5: WAITING_FOR_PLAYERS poll round_resolved → SETTLEMENT', () => {
@@ -1064,6 +1201,53 @@ describe('Combat V2 state machine', () => {
     );
     assert.equal(route.skipModal, true);
     assert.equal(route.settledRoundIndex, 3);
+  });
+
+  it('SETTLEMENT poll defeat exits to DEFEAT with settlement teardown (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(1),
+      phase: Phase.SETTLEMENT,
+      pendingSettlementId: '1:0',
+      pendingSettlement: { team_damage_dealt: 8 },
+      isKillingBlow: false,
+    };
+    const { ctx: next, effects } = transition(ctx, 'POLL_TICK', {
+      snapshot: {
+        combat_id: 1,
+        outcome: 'defeat',
+        winner: 'enemy',
+        my_state: { hp: 80 },
+        member_states: { s1: { hp: 80 } },
+      },
+    });
+    assert.equal(next.phase, Phase.DEFEAT);
+    assert.equal(next.pendingSettlement, null);
+    assert.ok(effects.some((e) => e.type === 'HIDE_SETTLEMENT'));
+    assert.ok(effects.some((e) => e.type === 'SHOW_DEFEAT'));
+  });
+
+  it('near_death_until triggers isMemberCollapsed (INV-D)', () => {
+    assert.equal(isMemberCollapsed({ hp: 50, near_death_until: '2099-01-01T00:00:00' }), true);
+    const ctx = createInitialContext(1);
+    const { ctx: failed } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 'n/a', near_death_until: '2099-01-01T00:00:00' },
+    });
+    assert.equal(failed.phase, Phase.COMBAT_FAILED);
+  });
+
+  it('defeat with dead_squad_names from DICE_CONFIRM clears modals (INV-D)', () => {
+    const ctx = { ...createInitialContext(1), phase: Phase.DICE_CONFIRM };
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      outcome: 'defeat',
+      winner: 'enemy',
+      dead_squad_names: ['Alice'],
+      member_states: { A: { display_name: 'Alice', hp: 50 } },
+      my_state: { hp: 80, submitted: false },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.ok(effects.some((e) => e.type === 'HIDE_ALL_MODALS'));
+    assert.ok(effects.some((e) => e.type === 'SHOW_FAILED'));
   });
 
   it('defeat payload with dead_squad_names → COMBAT_FAILED', () => {

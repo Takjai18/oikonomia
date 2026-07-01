@@ -1,34 +1,35 @@
-# COMBAT_V2_AUDIT_BUNDLE v12（營會 SSOT · R11/R12 封頂版）
+# COMBAT_V2_AUDIT_BUNDLE v13（營會 SSOT · R14 封頂版）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-01 · **commit**：`0e2fa93`  
+> **日期**：2026-07-01 · **commit**：`5ea4cf8`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R11 現場風險 A/B/C ✅ · R12-A～D 橋接/DB/編排/INV ✅  
-> **本輪**：R11/R12 審計修復已落地；下一輪用 **Partial Bundle** 做 regression 審計  
+> **上一輪**：R11～R13 + R12 Partial 二輪審計 ✅（見 `GEMINI_REVIEW.md` §18–§20）  
+> **本輪**：v13 錨點；下一輪用 **Partial** 或 §20.3 **新 scope**  
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
-> 生成：`python3 scripts/build_combat_v2_partial_bundles.py`
+> 生成：`python3 scripts/build_combat_v2_audit_bundle.py`
 
 ---
 
-## 0. 給 Gemini 的指令（R12 封頂 — Baseline / 錨點 Audit）
+## 0. 給 Gemini 的指令（R14 封頂 — Baseline / 錨點 Audit）
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §17（R11/R12）— 唔好重複報已落地項
-4. **下一輪建議 scope**（見 §0.1）— 新功能或 regression only
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§20 — 唔好重複報已落地項
+4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
 
-### 0.1 建議局部審計（用 Partial Bundle，唔貼全文）
+### 0.1 Partial 審計狀態（`5ea4cf8` · 已審已修，回歸 only）
 
-| Bundle | 焦點 | 狀態（`0e2fa93`） |
-|--------|------|------------------|
-| **R12-D** | settlement monotonic · INV-A～E | ✅ 已審已修 |
-| **R12-A** | sessionStorage lock · restore 時序 | ✅ 已審已修 |
-| **R12-B** | atomic `_end_combat` · WAL · purge actions | ✅ 已審已修 |
-| **R12-C** | piercing floor · failed_escape · outcome 冪等 | ✅ 已審已修 |
-| **R11** | GM override · timeout mutex · co-op CAS | ✅ 已審已修 |
+| Bundle | 焦點 | 狀態 |
+|--------|------|------|
+| **R12-D** | monotonic · SETTLEMENT 終端拆解 · INV-A～E | ✅ §20 |
+| **R12-A** | sessionStorage lock · restore rAF · destroy | ✅ §20 |
+| **R12-B** | reconcile purge · WAL · `get_team_protagonists` | ✅ §20 |
+| **R12-C** | Solo SOLO: scope · dice fallback · INV-E | ✅ §20 |
+| **R11** | GM sanitize · DICE_CONFIRM timeout · co-op CAS | ✅ §18–§20 |
+| **R13** | combat_start IDOR · rescue target · lazy import | ✅ §19 |
 
 **測試帳號**：Henry `PLAYER-75406`  
 **Encounter**：`practice_iggy_04_marathon` · `test_protagonist_control`
@@ -62,17 +63,18 @@
 
 ---
 
-## 3. 測試狀態（R12 · `0e2fa93`）
+## 3. 測試狀態（R14 · `5ea4cf8`）
 
 ```bash
-npm run test:combat                                    # 17/17 pass
-./venv/bin/python3 scripts/test_combat_flow.py         # 267/267 pass
-./venv/bin/python3 scripts/test_db_hardening.py        # 11/11 pass
+npm run test:combat                                    # 23/23 pass
+./venv/bin/python3 scripts/test_combat_flow.py         # 280/280 pass
+./venv/bin/python3 scripts/test_db_hardening.py        # 12/12 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 17/17 pass
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
 ./venv/bin/python3 scripts/test_combat_concurrency.py
 scripts/test_ending_flow.py                            # 23/23 pass
 npm run test:e2e:v2                                    # T8–T14
+bash scripts/pre_deploy_checks.sh
 ```
 
 ---
@@ -110,7 +112,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ## 6. PR-6 結構（回歸）
 
-- `index.html` 4853 行 · `combat_flow.js` 已刪除
+- `index.html` 4882 行 · `combat_flow.js` 已刪除
 
 ---
 
@@ -136,12 +138,12 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 | 檔案 | 版本 | 說明 |
 |------|------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v12** | Combat V2 SSOT（首次 onboarding 貼全文） |
+| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v13** | Combat V2 SSOT（首次 onboarding 貼全文） |
 | **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D Partial |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§17 已修 R11/R12） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§20 已修 R11–R14） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -155,7 +157,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 ### 局部審計規則
 
 1. **一次一個 scope** — 例如只審 `routes/gm.py` 嘅 `gm_override_trauma_ending_api`，或只審 `victory_view.js` `showFailed`。
-2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v12 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
+2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v13 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
 3. **戰鬥 V2** 前端已遷至 `static/js/combat/` — 審計 legacy `index.html` 戰鬥區前，先確認 `COMBAT_V2=1` 是否為現場配置。
 4. **Bug case** 仍用 `bash scripts/build_gemini_packet.sh` 生成**局部** packet（`GEMINI_PACKET.md`），唔與 v10 Bundle 混貼。
 
@@ -181,7 +183,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ```
 【審計模式】
-Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+Baseline：COMBAT_V2_AUDIT_BUNDLE v13（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
 範圍：static/js/combat/views/victory_view.js — showFailed + GM 嵌入式面板
 焦點：gm_session 403、team_id 來源、COMBAT_RESET from COMBAT_FAILED
 請依 GEMINI_REVIEW.md §0.5 輸出。
@@ -335,12 +337,24 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT
     }
 
     function revealCombatV2Surface() {
+        // DOM-first: visible combat section before V2 init (avoids 0px reflow on restore)
         showSection('combat', { skipCombatLobbyLoad: true });
-        setVisible(document.getElementById('combat-lobby'), false);
-        setVisible(document.getElementById('combat-result-panel'), false);
-        setVisible(document.getElementById('combat-precheck-modal'), false);
-        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        [
+            'combat-lobby',
+            'combat-result-panel',
+            'combat-precheck-modal',
+            'combat-near-death-overlay',
+        ].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) setVisible(el, false);
+        });
         document.getElementById('combat-root-v2')?.classList.remove('hidden');
+    }
+
+    function waitForCombatRepaint() {
+        return new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+        });
     }
 
     async function waitForCombatV2Ready(maxMs = 8000) {
@@ -430,18 +444,27 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT
     }
 
     function exitCombatScreen(options = {}) {
-        console.log('[Bridge] 執行戰鬥退出，清理殘留環境...');
+        console.log('[Bridge] 執行戰鬥退出，清理殘留環境並釋放全局鎖...');
         clearActiveCombatBridge();
         removeLegacyCombatGarbage();
 
-        const app = window.combatV2?.getApp?.();
-        if (app && typeof app.destroy === 'function') {
-            app.destroy();
+        if (typeof window.combatV2?.destroy === 'function') {
+            window.combatV2.destroy();
+        } else {
+            const app = window.combatV2?.getApp?.();
+            if (app && typeof app.destroy === 'function') {
+                app.destroy();
+            }
         }
 
-        setVisible(document.getElementById('combat-result-panel'), false);
-        setVisible(document.getElementById('combat-precheck-modal'), false);
-        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        [
+            'combat-result-panel',
+            'combat-precheck-modal',
+            'combat-near-death-overlay',
+        ].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) setVisible(el, false);
+        });
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
 
@@ -450,7 +473,9 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT
         }
 
         setTimeout(async () => {
-            await loadEncounters();
+            if (typeof loadEncounters === 'function') {
+                await loadEncounters();
+            }
         }, 150);
     }
     window.exitCombatScreen = exitCombatScreen;
@@ -713,23 +738,29 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
                     const combatId = data.current_combat_id;
-                    console.log(`[Bridge] 偵測到進行中戰鬥 ${combatId}，啟動權威引導...`);
+                    console.log(`[Bridge] 偵測到重連進行中戰鬥 ${combatId}，強開權威引導渲染...`);
                     setActiveCombatBridge(combatId);
                     revealCombatV2Surface();
-                    await new Promise((r) => setTimeout(r, 100));
+                    await waitForCombatRepaint();
+                    await new Promise((r) => setTimeout(r, 60));
 
                     const ready = await waitForCombatV2Ready();
                     if (ready) {
+                        revealCombatV2Surface();
+                        await waitForCombatRepaint();
                         await window.combatV2.onCombatStarted({ combat_id: combatId });
-                    } else if (typeof loadCombatPage === 'function') {
-                        await loadCombatPage(combatId);
+                    } else {
+                        console.warn('[Bridge] Combat V2 未能及時就緒，執行降級引導。');
+                        if (typeof loadCombatPage === 'function') {
+                            await loadCombatPage(combatId);
+                        }
                     }
                 } else {
                     clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {
-                console.error('finishSessionRestore failed', e);
+                console.error('finishSessionRestore 遭遇競態崩潰:', e);
                 showLoginScreenAfterFailedRestore(loadLocalSession());
                 return false;
             }
@@ -823,7 +854,12 @@ async function init() {
     pollTick: (data) => app.pollTick(data),
     onSubmitSuccess: (data) => app.onSubmitSuccess(data),
     getApp: () => app,
-    destroy: () => app.destroy(),
+    destroy: () => {
+      if (app) {
+        app.destroy();
+        app = null;
+      }
+    },
   };
 
   window.CombatV2App = window.combatV2;
@@ -839,6 +875,19 @@ if (document.readyState === 'loading') {
 } else {
   init();
 }
+
+
+===== FILE: static/js/combat/constants.js =====
+
+/** Shared combat constants (protagonist keys, etc.). */
+
+export const PROTAGONIST_ROUTE_KEYS = Object.freeze(['iggy', 'marah']);
+
+export function isValidProtagonistRouteKey(key) {
+  return PROTAGONIST_ROUTE_KEYS.includes(String(key || '').trim().toLowerCase());
+}
+
+export const PROTAGONIST_ROUTE_KEY_HINT = PROTAGONIST_ROUTE_KEYS.join(' 或 ');
 
 
 ===== FILE: static/js/combat/index.js =====
@@ -930,6 +979,7 @@ export class CombatApp {
   }
 
   destroy() {
+    console.log('[CombatV2] 接收到大廳橋接解構訊號，實施原子化銷毀程序...');
     try {
       if (this.poller) {
         this.poller.stop();
@@ -942,8 +992,10 @@ export class CombatApp {
       this.views?.items?.hide();
       if (this.rootEl) {
         this.rootEl.classList.add('hidden');
+        delete this.rootEl.__combat_app_instance__;
       }
       this.hasTriggeredTimeoutDefense = false;
+      console.log('[CombatV2] 本地狀態機環境已完全釋放。');
     } catch (err) {
       console.error('[CombatV2] destroy failed', err);
     }
@@ -1185,9 +1237,23 @@ export class CombatApp {
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
 
+    if (this.ctx.phase === Phase.DICE_CONFIRM) {
+      console.warn(
+        '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
+      );
+      this.hasTriggeredTimeoutDefense = true;
+      this.ctx = {
+        ...this.ctx,
+        dice: { ...this.ctx.dice, action: 'defend', value: null, cosmetic: false },
+      };
+      this.views?.dice?.hide();
+      showToast('操作超時！系統已自動為您執行「防禦」指令。', 'warn');
+      void this.performActionDirectly('defend');
+      return;
+    }
+
     const protectedPhases = [
       Phase.DICE_ROLLING,
-      Phase.DICE_CONFIRM,
       Phase.SUBMITTING,
       Phase.SETTLEMENT,
       Phase.WAITING_FOR_PLAYERS,
@@ -1508,6 +1574,24 @@ const ABSORBING = new Set([
 
 const DICE_BUSY = new Set([Phase.DICE_ROLLING, Phase.DICE_CONFIRM]);
 
+/** Phases that must exit SETTLEMENT without pinning poll handler */
+const SETTLEMENT_EXIT_PHASES = new Set([
+  Phase.VICTORY,
+  Phase.DEFEAT,
+  Phase.COMBAT_FAILED,
+  Phase.ESCAPED,
+]);
+
+function terminalModalTeardownEffects(effects) {
+  return [
+    { type: 'HIDE_SETTLEMENT' },
+    { type: 'HIDE_ALL_MODALS' },
+    ...effects.filter(
+      (e) => e.type !== 'HIDE_ALL_MODALS' && e.type !== 'HIDE_SETTLEMENT',
+    ),
+  ];
+}
+
 /**
  * @returns {import('./state_machine.js').CombatContext}
  */
@@ -1584,7 +1668,7 @@ function resolveTransition(ctx, event) {
 }
 
 /**
- * First poll after COMBAT_RESET — absorb stale round_settlement (INV-C).
+ * First poll after COMBAT_RESET — strict entry absorb boundary (INV-A/C).
  * @returns {{ ctx: object, effects: Effect[] } | null}
  */
 function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
@@ -1595,7 +1679,11 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     ? parseInt(apiIdx, 10)
     : parseInt(snapshot.current_phase, 10) - 1;
   const shown = new Set(ctx.shownSettlementIds);
-  if (settlementId) shown.add(settlementId);
+
+  // Only mark shown when backend is in stable player_phase without an unresolved round
+  if (settlementId && snapshot.status === 'player_phase' && !snapshot.round_resolved) {
+    shown.add(settlementId);
+  }
 
   const alignedCtx = {
     ...ctx,
@@ -1604,7 +1692,7 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     pendingSettlementId: null,
     shownSettlementIds: shown,
     entrySyncPending: false,
-    phase: snapshot.status === 'player_phase' ? Phase.IDLE : ctx.phase,
+    phase: ctx.phase,
   };
   return {
     ctx: alignedCtx,
@@ -1638,11 +1726,19 @@ export function handleAnyDeath(ctx, members) {
 }
 
 /**
- * Passive sync from poll — never opens settlement modal.
+ * Passive sync from poll — monotonic guards + settlement modal routing.
  * @returns {{ ctx: object, effects: Effect[] }}
  */
 export function syncState(ctx, snapshot) {
   if (ABSORBING.has(ctx.phase)) {
+    return { ctx, effects: [] };
+  }
+
+  const apiIdx = parseInt(snapshot.settled_round_index, 10);
+  if (Number.isFinite(apiIdx) && ctx.settledRoundIndex >= 0 && apiIdx < ctx.settledRoundIndex) {
+    console.warn(
+      `[FSM] Stale snapshot dropped (API round ${apiIdx} < local ${ctx.settledRoundIndex})`,
+    );
     return { ctx, effects: [] };
   }
 
@@ -1676,7 +1772,7 @@ export function syncState(ctx, snapshot) {
     const entryAbsorb = absorbStaleSettlementOnEntry(newCtx, snapshot, settlementId);
     if (entryAbsorb) {
       newCtx = { ...entryAbsorb.ctx, hud: newCtx.hud, combatId: newCtx.combatId };
-      return entryAbsorb;
+      effects = [...entryAbsorb.effects, ...effects.filter((e) => e.type !== 'UPDATE_HUD')];
     }
   }
 
@@ -1696,16 +1792,27 @@ export function syncState(ctx, snapshot) {
           pendingSettlement: null,
           pendingSettlementId: null,
         },
-        effects: [
-          { type: 'HIDE_ALL_MODALS' },
+        effects: terminalModalTeardownEffects([
           { type: 'SHOW_FAILED', members: deadNames },
           { type: 'STOP_POLL' },
-        ],
+        ]),
       };
     }
-    newCtx = { ...newCtx, phase: Phase.DEFEAT, pollPaused: true };
-    effects.push({ type: 'HIDE_ALL_MODALS' }, { type: 'SHOW_DEFEAT', data: snapshot }, { type: 'STOP_POLL' });
-    return { ctx: newCtx, effects };
+    newCtx = {
+      ...newCtx,
+      phase: Phase.DEFEAT,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+    };
+    return {
+      ctx: newCtx,
+      effects: terminalModalTeardownEffects([
+        { type: 'SHOW_DEFEAT', data: snapshot },
+        { type: 'STOP_POLL' },
+      ]),
+    };
   }
 
   if (snapshot.outcome === 'victory' || snapshot.winner === 'squad') {
@@ -1736,17 +1843,25 @@ export function syncState(ctx, snapshot) {
       };
     }
 
-    if (ctx.phase !== Phase.SETTLEMENT) {
-      newCtx = { ...newCtx, phase: Phase.VICTORY, pollPaused: true };
-      return {
-        ctx: newCtx,
-        effects: [
-          { type: 'HIDE_ALL_MODALS' },
-          { type: 'SHOW_VICTORY', data: snapshot },
-          { type: 'STOP_POLL' },
-        ],
-      };
+    if (ctx.phase === Phase.SETTLEMENT) {
+      return { ctx: newCtx, effects };
     }
+
+    newCtx = {
+      ...newCtx,
+      phase: Phase.VICTORY,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+    };
+    return {
+      ctx: newCtx,
+      effects: terminalModalTeardownEffects([
+        { type: 'SHOW_VICTORY', data: snapshot },
+        { type: 'STOP_POLL' },
+      ]),
+    };
   }
 
   if (snapshot.waiting_for_teammates && ctx.phase === Phase.SUBMITTING) {
@@ -1806,10 +1921,15 @@ export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
   return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
 }
 
-/** INV-D: only finite hp ≤ 0 counts as collapsed (malformed hp → not dead). */
+/** INV-D: hp ≤ 0 or active near-death marker counts as collapsed. */
 export function isMemberCollapsed(member) {
-  const hp = parseInt(member?.hp, 10);
-  return Number.isFinite(hp) && hp <= 0;
+  if (!member) return false;
+  if (member.near_death_until) return true;
+  const hp = parseInt(member.hp, 10);
+  if (Number.isFinite(hp)) {
+    return hp <= 0;
+  }
+  return false;
 }
 
 export function isEnemyDefeated(enemy) {
@@ -2052,10 +2172,26 @@ const TRANSITIONS = {
     },
     ACTION_ATTACK: { reduce: (c) => c, effects: () => [{ type: 'TOAST', message: '請先關閉當前結算彈窗' }] },
     POLL_TICK: {
-      reduce: (ctx, meta) => ({ ...syncState(ctx, meta.snapshot).ctx, phase: Phase.SETTLEMENT }),
-      effects: (ctx, meta) => syncState(ctx, meta.snapshot).effects.map((e) =>
-        e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e,
-      ),
+      reduce: (ctx, meta) => {
+        const { ctx: synced } = syncState(ctx, meta.snapshot);
+        if (SETTLEMENT_EXIT_PHASES.has(synced.phase)) {
+          return synced;
+        }
+        return { ...synced, phase: Phase.SETTLEMENT };
+      },
+      effects: (ctx, meta) => {
+        // reduce may have advanced phase; replay sync from SETTLEMENT for effect list
+        const sourceCtx = SETTLEMENT_EXIT_PHASES.has(ctx.phase)
+          ? { ...ctx, phase: Phase.SETTLEMENT }
+          : ctx;
+        const { ctx: synced, effects } = syncState(sourceCtx, meta.snapshot);
+        if (SETTLEMENT_EXIT_PHASES.has(synced.phase)) {
+          return terminalModalTeardownEffects(effects);
+        }
+        return effects.map((e) =>
+          (e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e),
+        );
+      },
     },
     INV_RECOVERY: {
       reduce: (ctx) => ({ ...ctx, phase: Phase.IDLE, pollPaused: false }),
@@ -3068,6 +3204,10 @@ export function createSubmittingOverlay(rootEl) {
  * @description 戰鬥結局（勝利/失敗/致命崩潰）全屏渲染器，已解耦舊版 Section 依賴
  */
 
+import {
+  isValidProtagonistRouteKey,
+  PROTAGONIST_ROUTE_KEY_HINT,
+} from '../constants.js';
 import { DOM_IDS } from '../selectors.js';
 import { showToast } from '../toast.js';
 
@@ -3113,8 +3253,8 @@ export function createVictoryView(rootEl) {
   }
 
   async function resolveProtagonistKeyForOverride(app) {
-    const route = app.ctx.hud?.route;
-    if (route === 'iggy' || route === 'marah') return route;
+    const route = String(app.ctx.hud?.route || '').trim().toLowerCase();
+    if (isValidProtagonistRouteKey(route)) return route;
     const promptFn = typeof window.showInputModal === 'function' ? window.showInputModal : null;
     if (!promptFn) {
       showToast('無法取得主角路線，請 GM 後台手動處理', 'error');
@@ -3122,12 +3262,12 @@ export function createVictoryView(rootEl) {
     }
     const raw = await promptFn({
       title: '請輸入欲重置的主角代號',
-      placeholder: 'iggy 或 marah',
+      placeholder: PROTAGONIST_ROUTE_KEY_HINT,
       maxLength: 10,
     });
     const key = String(raw || '').trim().toLowerCase();
-    if (key !== 'iggy' && key !== 'marah') {
-      showToast('主角代號無效，請輸入 iggy 或 marah', 'error');
+    if (!isValidProtagonistRouteKey(key)) {
+      showToast(`主角代號無效，請輸入 ${PROTAGONIST_ROUTE_KEY_HINT}`, 'error');
       return null;
     }
     return key;
@@ -3464,7 +3604,11 @@ def combat_start_api(encounter_id=None):
         return jsonify({"error": "未登入"}), 401
 
     body = request.json if request.is_json else {}
-    squad_id = (body.get("squad_id") or session["squad_id"]).strip()
+    is_e2e_mode = os.environ.get("COMBAT_E2E", "").lower() in ("1", "true", "yes")
+    if is_e2e_mode and body.get("squad_id"):
+        squad_id = str(body.get("squad_id")).strip()
+    else:
+        squad_id = session["squad_id"]
     encounter_id = encounter_id or body.get("encounter_id") or request.form.get("encounter_id")
     confirm = body.get("confirm") or request.form.get("confirm")
 
@@ -3962,15 +4106,32 @@ def combat_rescue_near_death_api():
         }), 400
 
     participants = get_team_members(squad["team_id"])
+    target_squad_id = (body.get("target_squad_id") or "").strip() or None
     target = None
-    for p in participants:
-        if p.get("near_death_until"):
-            try:
-                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
-                    target = p
-                    break
-            except ValueError:
-                continue
+
+    def _is_near_death_active_member(member):
+        if not member or not member.get("near_death_until"):
+            return False
+        try:
+            return datetime.now() < datetime.fromisoformat(member["near_death_until"])
+        except ValueError:
+            return False
+
+    if target_squad_id:
+        candidate = next(
+            (p for p in participants if p.get("squad_id") == target_squad_id),
+            None,
+        )
+        if not candidate:
+            return jsonify({"success": False, "error": "指定隊友不在你的小隊"}), 400
+        if not _is_near_death_active_member(candidate):
+            return jsonify({"success": False, "error": "指定隊友目前不需要救援"}), 400
+        target = candidate
+    else:
+        for p in participants:
+            if _is_near_death_active_member(p):
+                target = p
+                break
 
     if not target:
         return jsonify({"success": False, "error": "沒有需要救援的隊友"}), 400
@@ -4080,6 +4241,7 @@ def combat_summon_gm_api():
 import io
 import os
 import random
+import re
 import sqlite3
 import zipfile
 from datetime import datetime
@@ -4882,7 +5044,8 @@ def gm_override_trauma_ending_api():
         return jsonify({"success": False, "error": "缺少有效的覆蓋變更指令"}), 400
 
     now = datetime.now().isoformat()
-    gm_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    raw_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    gm_operator = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_operator)
     if not gm_operator:
         return jsonify({
             "success": False,
@@ -5216,12 +5379,6 @@ from services.combat_outcomes import (
     resolve_combat_outcome,
 )
 from services.ending import judge_ending
-from models.item import (
-    build_combat_item_consume_batch,
-    combat_item_effect_display_label,
-    get_item_by_id,
-    get_items_by_ids,
-)
 from models.squad import (
     fetch_squads_by_ids,
     get_squad,
@@ -5357,7 +5514,7 @@ def purge_combat_actions(combat_id, *, conn=None):
             "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
         )
         return cur.rowcount
-    with immediate_transaction() as tx:
+    with immediate_transaction(settings.db_path) as tx:
         cur = tx.execute(
             "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
         )
@@ -5365,7 +5522,10 @@ def purge_combat_actions(combat_id, *, conn=None):
 
 
 def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
-    """Drop stale active markers when combat is already finished (SSOT heal)."""
+    """
+    SSOT heal on session restore: seal finished combats, purge orphan actions,
+    and release squad current_combat_id inside one BEGIN IMMEDIATE transaction.
+    """
     if not combat:
         return False, None, None
 
@@ -5376,18 +5536,22 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     if not is_finished:
         return True, combat_id, combat.get("encounter_id")
 
+    if not combat_id:
+        return False, None, None
+
     now_str = datetime.now().isoformat()
-    with immediate_transaction() as conn:
+    with immediate_transaction(settings.db_path) as conn:
         if combat.get("status") != "ended":
             conn.execute(
                 """UPDATE combats SET status = 'ended', ended_at = ?, enemy_hp = ?
                    WHERE id = ?""",
                 (
                     now_str,
-                    0 if enemy_hp <= 0 else combat.get("enemy_hp"),
-                    combat_id,
+                    0 if enemy_hp <= 0 else enemy_hp,
+                    int(combat_id),
                 ),
             )
+        purge_combat_actions(combat_id, conn=conn)
         if team_id:
             conn.execute(
                 "UPDATE squads SET current_combat_id = NULL WHERE team_id = ?",
@@ -5398,7 +5562,6 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
                 "UPDATE squads SET current_combat_id = NULL WHERE squad_id = ?",
                 (squad_id,),
             )
-        purge_combat_actions(combat_id, conn=conn)
 
     return False, None, None
 
@@ -6172,6 +6335,8 @@ def _resolve_player_phase_body(combat_id):
         _release_player_phase_resolution(combat_id)
         return combat, None
 
+    from models.item import build_combat_item_consume_batch
+
     encounter = load_encounter(combat["encounter_id"])
     combat_settings = (encounter or {}).get("combat_settings", {})
     participants = get_combat_participants(combat)
@@ -6638,6 +6803,8 @@ def build_enemy_combat_stats(combat, encounter=None):
 
 
 def build_combat_status_response(combat, encounter, squad_id, participants=None):
+    from models.item import combat_item_effect_display_label, get_items_by_ids
+
     if combat:
         combat = reconcile_enemy_hp(combat, persist=True)
     combat_settings = (encounter or {}).get("combat_settings", {})
@@ -6792,6 +6959,8 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 
 def _preview_action_enemy_damage(player, action_type, dice_result, item_id, enemy_resilience, enemy_sanity):
     """預估單一行動對敵人傷害（不含暴走隨機結果）"""
+    from models.item import get_item_by_id
+
     meta = {}
     sanity = int(player.get("sanity") or 0)
     berserk_chance = berserk_probability(sanity)
@@ -8523,12 +8692,20 @@ from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
 
 
-def _outcome_already_recorded(team_id, encounter_id):
+def _outcome_already_recorded_team(team_id, encounter_id):
     if not team_id or not encounter_id:
         return False
     from models.encounter_outcomes import encounter_already_completed
 
     return encounter_already_completed(team_id, encounter_id)
+
+
+def _outcome_already_recorded_solo(starter_id, encounter_id):
+    if not starter_id or not encounter_id:
+        return False
+    from models.encounter_outcomes import encounter_already_completed_solo
+
+    return encounter_already_completed_solo(starter_id, encounter_id)
 
 
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
@@ -8570,7 +8747,7 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         trauma_total = int(ending.get("protagonist_trauma_total") or 0)
 
         if team_id and ending.get("should_apply_bad_ending_victory"):
-            if not _outcome_already_recorded(team_id, encounter_id):
+            if not _outcome_already_recorded_team(team_id, encounter_id):
                 apply_trauma_bad_ending_victory(team_id, encounter)
                 result["applied_success"] = True
             result["trauma_bad_ending"] = True
@@ -8596,20 +8773,18 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                     "message": f"劇情推進管線觸發等冪保護: {exc}",
                     "log_type": "idempotent_blocked",
                 })
-        elif starter_id and not _outcome_already_recorded(starter_id, encounter_id):
+        elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
             apply_encounter_success_solo(starter_id, encounter)
             result["applied_success"] = True
         return result
 
     if winner == "enemy":
-        id_key = team_id or starter_id
-        if id_key and not _outcome_already_recorded(id_key, encounter_id):
-            if team_id:
-                apply_encounter_failure(team_id, encounter)
-                result["applied_failure"] = True
-            elif starter_id:
-                apply_encounter_failure_solo(starter_id, encounter)
-                result["applied_failure"] = True
+        if team_id and not _outcome_already_recorded_team(team_id, encounter_id):
+            apply_encounter_failure(team_id, encounter)
+            result["applied_failure"] = True
+        elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
+            apply_encounter_failure_solo(starter_id, encounter)
+            result["applied_failure"] = True
         if team_id:
             result["ending"] = judge_ending(team_id)
         return result
@@ -10224,7 +10399,7 @@ describe('Combat V2 state machine', () => {
     assert.equal(canDispatch(ctx, 'ACTION_ATTACK'), false);
   });
 
-  it('entry sync absorbs stale settlement on first poll (INV-C)', () => {
+  it('entry sync absorbs stable stale settlement on first poll (INV-C)', () => {
     const ctx = {
       ...createInitialContext(99),
       phase: Phase.IDLE,
@@ -10236,7 +10411,7 @@ describe('Combat V2 state machine', () => {
       current_phase: 3,
       settled_round_index: 2,
       settlement_id: '99:2',
-      round_resolved: true,
+      round_resolved: false,
       round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
       enemy: { hp: 160, max_hp: 200 },
       my_state: { hp: 100, submitted: false },
@@ -10247,6 +10422,73 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.entrySyncPending, false);
     assert.ok(next.shownSettlementIds.has('99:2'));
     assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('entry sync does not swallow modal when round_resolved on reconnect (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(99),
+      phase: Phase.IDLE,
+      entrySyncPending: true,
+    };
+    const { ctx: next } = syncState(ctx, {
+      combat_id: 99,
+      status: 'player_phase',
+      current_phase: 2,
+      settled_round_index: 1,
+      settlement_id: '99:1',
+      round_resolved: true,
+      round_settlement: { team_damage_dealt: 40, enemy_damage_dealt: 0, player_hits: [] },
+      enemy: { hp: 160, max_hp: 200 },
+      my_state: { hp: 100, submitted: false },
+      member_states: { s1: { hp: 100, submitted: false } },
+    });
+    assert.equal(next.entrySyncPending, false);
+    assert.ok(!next.shownSettlementIds.has('99:1'));
+  });
+
+  it('R12-D: stale victory poll dropped by monotonic guard (INV-C)', () => {
+    const ctx = {
+      ...createInitialContext(999),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 2,
+      pendingSettlementId: '999:2',
+      isKillingBlow: true,
+      hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 999,
+      settled_round_index: 1,
+      settlement_id: '999:1',
+      round_settlement: { team_damage_dealt: 10 },
+      enemy: { hp: 50, max_hp: 200 },
+      my_state: { hp: 80 },
+      member_states: {},
+    });
+    assert.equal(next.hud.enemy.hp, 0);
+    assert.equal(effects.length, 0);
+  });
+
+  it('R12-D: victory poll during SETTLEMENT does not skip to VICTORY', () => {
+    const ctx = {
+      ...createInitialContext(999),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 2,
+      pendingSettlementId: '999:2',
+      isKillingBlow: true,
+      hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 999,
+      settled_round_index: 2,
+      settlement_id: '999:2',
+      enemy: { hp: 0, max_hp: 200 },
+      my_state: { hp: 80 },
+      member_states: {},
+    });
+    assert.equal(next.phase, Phase.SETTLEMENT);
+    assert.ok(!effects.some((e) => e.type === 'SHOW_VICTORY'));
   });
 
   it('P2-5: WAITING_FOR_PLAYERS poll round_resolved → SETTLEMENT', () => {
@@ -10276,6 +10518,53 @@ describe('Combat V2 state machine', () => {
     );
     assert.equal(route.skipModal, true);
     assert.equal(route.settledRoundIndex, 3);
+  });
+
+  it('SETTLEMENT poll defeat exits to DEFEAT with settlement teardown (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(1),
+      phase: Phase.SETTLEMENT,
+      pendingSettlementId: '1:0',
+      pendingSettlement: { team_damage_dealt: 8 },
+      isKillingBlow: false,
+    };
+    const { ctx: next, effects } = transition(ctx, 'POLL_TICK', {
+      snapshot: {
+        combat_id: 1,
+        outcome: 'defeat',
+        winner: 'enemy',
+        my_state: { hp: 80 },
+        member_states: { s1: { hp: 80 } },
+      },
+    });
+    assert.equal(next.phase, Phase.DEFEAT);
+    assert.equal(next.pendingSettlement, null);
+    assert.ok(effects.some((e) => e.type === 'HIDE_SETTLEMENT'));
+    assert.ok(effects.some((e) => e.type === 'SHOW_DEFEAT'));
+  });
+
+  it('near_death_until triggers isMemberCollapsed (INV-D)', () => {
+    assert.equal(isMemberCollapsed({ hp: 50, near_death_until: '2099-01-01T00:00:00' }), true);
+    const ctx = createInitialContext(1);
+    const { ctx: failed } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 'n/a', near_death_until: '2099-01-01T00:00:00' },
+    });
+    assert.equal(failed.phase, Phase.COMBAT_FAILED);
+  });
+
+  it('defeat with dead_squad_names from DICE_CONFIRM clears modals (INV-D)', () => {
+    const ctx = { ...createInitialContext(1), phase: Phase.DICE_CONFIRM };
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      outcome: 'defeat',
+      winner: 'enemy',
+      dead_squad_names: ['Alice'],
+      member_states: { A: { display_name: 'Alice', hp: 50 } },
+      my_state: { hp: 80, submitted: false },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.ok(effects.some((e) => e.type === 'HIDE_ALL_MODALS'));
+    assert.ok(effects.some((e) => e.type === 'SHOW_FAILED'));
   });
 
   it('defeat payload with dead_squad_names → COMBAT_FAILED', () => {
@@ -11170,6 +11459,50 @@ def test_maybe_resolve_monotonic_phase_guard():
     )
 
 
+def test_solo_resolve_combat_outcome_idempotency():
+    """Solo victory uses SOLO:-scoped completion key; second resolve is idempotent."""
+    import sqlite3
+    from datetime import datetime
+
+    from models.encounter import load_encounter
+    from models.encounter_outcomes import solo_encounter_scope_id
+    from services.combat_outcomes import resolve_combat_outcome
+
+    squad_id = "PLAYER-SOLO-IDEM"
+    enc_id = "enc_iggy_01_leech"
+    now = datetime.now().isoformat()
+    scope_id = solo_encounter_scope_id(squad_id)
+
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM encounter_completions WHERE team_id = ?", (scope_id,))
+    conn.execute("DELETE FROM squads WHERE squad_id = ?", (squad_id,))
+    conn.execute(
+        """INSERT INTO squads
+           (squad_id, display_name, insight_fragments, last_update)
+           VALUES (?, 'Solo Idem', 0, ?)""",
+        (squad_id, now),
+    )
+    conn.commit()
+    conn.close()
+
+    encounter = load_encounter(enc_id)
+    first = resolve_combat_outcome("squad", None, encounter, squad_id)
+    second = resolve_combat_outcome("squad", None, encounter, squad_id)
+    ok("solo outcome first apply", first.get("applied_success") is True, str(first))
+    ok("solo outcome idempotent skip", second.get("applied_success") is False, str(second))
+
+    conn = sqlite3.connect(_test_db_path())
+    row = conn.execute(
+        "SELECT team_id FROM encounter_completions WHERE team_id = ? AND encounter_id = ?",
+        (scope_id, enc_id),
+    ).fetchone()
+    conn.execute("DELETE FROM encounter_completions WHERE team_id = ?", (scope_id,))
+    conn.execute("DELETE FROM squads WHERE squad_id = ?", (squad_id,))
+    conn.commit()
+    conn.close()
+    ok("solo completion stored under SOLO scope", row is not None, str(scope_id))
+
+
 def test_phase2_gm_override_gateway():
     """Phase 2 Backlog: 驗證 GM 權威特權覆蓋閘門與結局狀態重置一致性。"""
     import sqlite3
@@ -11228,7 +11561,24 @@ def test_phase2_gm_override_gateway():
 
     with client.session_transaction() as sess:
         establish_gm_session(sess)
-        sess["squad_id"] = "GM-CHIEF-01"
+        sess["squad_id"] = "\x00\x01\x02"
+    r_dirty = client.post(
+        "/gm/api/override_trauma_ending",
+        json={
+            "team_id": team_id,
+            "protagonist_key": proto_key,
+            "target_trauma": 0,
+        },
+    )
+    ok(
+        "GM Override Gate: 不可見字元 operator 遭 403",
+        r_dirty.status_code == 403,
+        str(r_dirty.status_code),
+    )
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+        sess["squad_id"] = "GM-CHIEF-01\x00"
 
     r_ok = client.post(
         "/gm/api/override_trauma_ending",
@@ -11255,20 +11605,34 @@ def test_phase2_gm_override_gateway():
         "SELECT ending_type FROM teams WHERE team_id = ?",
         (team_id,),
     ).fetchone()[0]
-    log_exists = conn.execute(
-        """SELECT COUNT(*) FROM protagonist_trauma_log
+    log_row = conn.execute(
+        """SELECT reason FROM protagonist_trauma_log
            WHERE team_id = ? AND reason LIKE '%GM_OVERRIDE%'""",
         (team_id,),
-    ).fetchone()[0]
-    event_exists = conn.execute(
-        "SELECT COUNT(*) FROM global_events WHERE created_by = 'GM-CHIEF-01'",
-    ).fetchone()[0]
+    ).fetchone()
+    log_exists = 1 if log_row else 0
+    event_row = conn.execute(
+        "SELECT created_by FROM global_events WHERE title LIKE '%GM 人工干預%'"
+        " AND title LIKE ? ORDER BY id DESC LIMIT 1",
+        (f"%{team_id}%",),
+    ).fetchone()
+    event_exists = 1 if event_row else 0
     conn.close()
 
     ok("GM Override Gate: 實體表主角創傷已清零 SSOT", int(trauma) == 0)
     ok("GM Override Gate: 實體表團隊結局解鎖重置", ending is None)
     ok("GM Override Gate: 歷史審計日誌留痕合規", log_exists == 1)
+    ok(
+        "GM Override Gate: operator 審計字串已清洗",
+        log_row and log_row[0] == "GM_OVERRIDE_BY_GM-CHIEF-01",
+        str(log_row),
+    )
     ok("GM Override Gate: 全營廣播通知發送成功", event_exists == 1)
+    ok(
+        "GM Override Gate: global event created_by 已清洗",
+        event_row and event_row[0] == "GM-CHIEF-01",
+        str(event_row),
+    )
 
 
 def test_phase2_narrative_orchestrator_pipeline():
@@ -12605,6 +12969,77 @@ def test_near_death_rescue_security(client, leader_id, member_id):
     update_squad(member_id, near_death_until=None, hp=100)
 
 
+def test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id):
+    """Body squad_id must not override session (IDOR prevention)."""
+    from datetime import datetime
+
+    from models.combat import clear_team_combat_id, get_combat, save_combat
+
+    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
+    login(client, leader_id)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID, "squad_id": member_id},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    ok("spoof start returns success", start.get("success"), str(start))
+    combat_id = start.get("combat_id")
+    combat = get_combat(combat_id) if combat_id else None
+    ok(
+        "combat owned by session squad not body",
+        combat and combat.get("squad_id") == leader_id,
+        f"expected {leader_id} got {(combat or {}).get('squad_id')}",
+    )
+    if combat_id:
+        save_combat(combat_id, status="ended", winner="squad", ended_at=datetime.now().isoformat())
+        clear_team_combat_id(team_id)
+
+
+def test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id):
+    """Explicit target_squad_id rescues the intended teammate when multiple are near death."""
+    from datetime import datetime, timedelta
+
+    client3 = oikonomia.app.test_client()
+    p3 = login(client3, "TestMember2")
+    ok("player3 login", p3 and p3.get("squad_id"))
+    member2_id = p3.get("squad_id")
+    join3 = client3.post("/team/join", data={"team_id": team_id}).get_json() or {}
+    ok("player3 join team", join3.get("success"), str(join3))
+
+    until_long = (datetime.now() + timedelta(minutes=30)).isoformat()
+    until_short = (datetime.now() + timedelta(minutes=10)).isoformat()
+    update_squad(member_id, near_death_until=until_long, hp=0)
+    update_squad(member2_id, near_death_until=until_short, hp=0)
+
+    login(client, leader_id)
+    update_squad(leader_id, near_death_until=None, hp=100, sanity=50)
+
+    r = client.post(
+        "/combat/rescue_near_death",
+        json={"rescue_type": "prayer", "target_squad_id": member2_id},
+    )
+    data = r.get_json() or {}
+    ok("targeted rescue success", data.get("success"), str(data))
+
+    m2 = get_squad(member2_id)
+    m1 = get_squad(member_id)
+    ok(
+        "selected target deadline shortened",
+        m2.get("near_death_until") and m2["near_death_until"] != until_short,
+        f"until={m2.get('near_death_until')}",
+    )
+    ok(
+        "non-target still near death",
+        m1.get("near_death_until") == until_long,
+        f"member1 until={m1.get('near_death_until')}",
+    )
+
+    update_squad(member_id, near_death_until=None, hp=100)
+    update_squad(member2_id, near_death_until=None, hp=100)
+
+
 def test_create_combat_record_active_guard(leader_id, team_id):
     from models.combat import (
         ActiveCombatExistsError,
@@ -12910,7 +13345,10 @@ def main():
     test_phase2_narrative_orchestrator_pipeline()
     test_maybe_resolve_ready_claim_inside_tx()
     test_maybe_resolve_monotonic_phase_guard()
+    test_solo_resolve_combat_outcome_idempotency()
     test_phase2_gm_override_gateway()
+    test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id)
+    test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id)
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")
@@ -13032,4 +13470,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v12 · 2026-07-01 · `0e2fa93`*
+*End of COMBAT_V2_AUDIT_BUNDLE v13 · 2026-07-01 · `5ea4cf8`*

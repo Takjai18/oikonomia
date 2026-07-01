@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-01 · **commit**：`649526a`  
+> **日期**：2026-07-01 · **commit**：`5ea4cf8`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -27,28 +27,29 @@
 
 ---
 
-## 建議審計輪次（2026-07 西貢營會前）
+## 建議審計輪次（R14 · 西貢營會前）
 
-| 輪次 | Bundle | 通過標準 |
-|------|--------|----------|
-| 1 | Full SSOT（僅一次） | 架構圖 + INV 表 + 模組邊界清晰 |
-| 2 | R12-D 不變式 | 0 Critical on settlement / monotonic |
-| 3 | R12-A 大廳橋接 | 0 Critical on poll 競爭 / 重連 |
-| 4 | R12-B DB 硬化 | 0 Critical on lock / orphan actions / SSOT |
-| 5 | R12-C Step4 編排 | 0 Critical on INV-E / outcome 冪等 |
-| 6 | R11 現場風險 | 0 Critical on GM override / co-op CAS |
+| 輪次 | Bundle / Scope | 狀態 |
+|------|----------------|------|
+| 1 | Full SSOT v13（僅一次） | ✅ 本生成 |
+| 2 | R12-D 不變式 | ✅ 已審已修 · `GEMINI_REVIEW.md` §20 |
+| 3 | R12-A 大廳橋接 | ✅ 已審已修 · §20 |
+| 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
+| 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 |
+| 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
+| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 |
 
 ---
 
-## 測試基線（2026-07-01 · `649526a`）
+## 測試基線（2026-07-01 · `5ea4cf8`）
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py      # 267/267
-./venv/bin/python3 scripts/test_db_hardening.py     # 11/11
+./venv/bin/python3 scripts/test_combat_flow.py      # 280/280
+./venv/bin/python3 scripts/test_db_hardening.py     # 12/12
 ./venv/bin/python3 scripts/test_combat_engine.py    # 17/17
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
 ./venv/bin/python3 scripts/test_combat_concurrency.py
-npm run test:combat                                 # 17/17
+npm run test:combat                                 # 23/23
 npm run test:e2e:v2                               # T8–T14
 bash scripts/pre_deploy_checks.sh
 ```
