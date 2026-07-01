@@ -1,7 +1,7 @@
 # COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE（局部審計 · Zoo 能力規格對齊）
 
 > **目的**：審計 **Greenfield v1.1 Zoo 權威規格** — 糾正「神智 >70 才能發動」舊誤；驗證前後端一致  
-> **日期**：2026-07-02 · **commit**：`d3539bd`  
+> **日期**：2026-07-02 · **commit**：`639d76f`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` v15 或 `combat_greenfield_final.md` §1.1  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -321,4 +321,4 @@ describe('Settlement normalization', () => {
   it('uses round_settlement when damage > 0', () => {
 
 ---
-*End of R15 Zoo · 2026-07-02 · `d3539bd`*
+*End of R15 Zoo · 2026-07-02 · `639d76f`*

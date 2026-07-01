@@ -1,11 +1,11 @@
 # COMBAT_V2_AUDIT_BUNDLE v15（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-02 · **commit**：`d3539bd`  
+> **日期**：2026-07-02 · **commit**：`639d76f`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md` v1.1（附錄內含全文）  
 > **上一輪**：Zoo 乘數邊界 `>=70/80/90/100` + AI 低神智 Zoo ✅（見 `GEMINI_REVIEW.md` §26）
-> **本輪**：v15 錨點（`d3539bd`）；日常審計用 **R15 Zoo Partial** 或 §20.3 **新 scope**
+> **本輪**：v15 錨點（`639d76f`）；日常審計用 **R15 Zoo Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
 > ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D / **R15**  
@@ -20,7 +20,7 @@
 3. **已修對照**：`GEMINI_REVIEW.md` §18–§26 — 唔好重複報已落地項（含 §26 Zoo 邊界）
 4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3 或 `COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md`
 
-### 0.1 Partial 審計狀態（`d3539bd` · 已審已修，回歸 only）
+### 0.1 Partial 審計狀態（`639d76f` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
@@ -63,7 +63,7 @@
 
 ---
 
-## 3. 測試狀態（R15 · `d3539bd`）
+## 3. 測試狀態（R15 · `639d76f`）
 
 ```bash
 npm run test:combat                                    # 26/26 pass
@@ -14687,4 +14687,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v15 · 2026-07-02 · `d3539bd`*
+*End of COMBAT_V2_AUDIT_BUNDLE v15 · 2026-07-02 · `639d76f`*
