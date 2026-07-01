@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-07-01 · local/GitHub：`15f2c37`+（Combat V2 橋接隔離）· PA：待核對 · BUG-2026-001 **resolved**
+> 最後更新：2026-07-01 · local/GitHub/PA：`223f8c6`（待 PA deploy）· BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -84,9 +84,9 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `15f2c37`+ | ✅（含 Combat V2 模組 + Step 4 後端） |
-| **GitHub `main`** | 核對 `git rev-parse --short HEAD` | 應 ≥ `15f2c37` |
-| **PythonAnywhere** | 核對 `/api/version` | 可能仍為 `12e1edd`；deploy 後應含 `combat_v2` marker |
+| **Local** | `223f8c6` | ✅ |
+| **GitHub `main`** | `223f8c6` | ✅ |
+| **PythonAnywhere** | 核對 `/api/version` | 待 deploy；應含 `combat_v2` marker（`COMBAT_V2=1`） |
 
 ```bash
 # 本地
@@ -186,7 +186,7 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 | `f267cec` | Atomic start gate、`advance_combat_from_poll`、rescuer validation |
 | `ee9a691` | INV-D defeat roster、INV-E escape、monotonic FSM、engine targeting |
 | `15f2c37` | `services/combat_flow.py`、victory `settlement_id`、piercing damage、outcome 冪等 |
-| *pending* | `index.html` V2 橋接：`isPlayerInActiveCombatV2()` 隔離 3s poll；`exitCombatScreen({fromV2})`；HP bar `transition:none` |
+| `223f8c6` | `index.html` V2 橋接：`isPlayerInActiveCombatV2()` 隔離 3s poll；`exitCombatScreen({fromV2})`；HP bar `transition:none` |
 
 **架構**：
 
@@ -603,6 +603,7 @@ python3 app.py                    # → :5001
 ## 近期 commit（參考）
 
 ```
+223f8c6 fix(combat-v2): isolate global poll from V2 FSM, instant HP bars, handoff
 15f2c37 feat(combat): Step 4 flow orchestrator, piercing damage, victory settlement_id
 ee9a691 feat(combat): Greenfield corner cases — INV-D/E, monotonic FSM
 f267cec fix(combat): atomic start gate, poll CAS resolve, rescuer validation
