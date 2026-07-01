@@ -47,6 +47,7 @@ async function init() {
     async onCombatStarted(data) {
       console.log(`[Greenfield] 接收到戰鬥啟動訊號，戰鬥ID: ${data.combat_id}`);
       if (data.combat_id) {
+        sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
         sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
       }
       root.classList.remove('hidden');

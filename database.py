@@ -7,7 +7,7 @@ from datetime import datetime
 
 from models.settings import settings
 from models.team import backfill_team_routes_from_members
-from utils.db_tx import configure_sqlite_connection, ensure_wal_mode
+from utils.db_tx import ensure_wal_mode, get_db_connection
 from utils.env import is_production_env as _is_production_env
 
 # Populated by configure_database() from app.py before bootstrap.
@@ -75,8 +75,7 @@ def bootstrap_app_data():
 
 
 def init_db():
-    conn = sqlite3.connect(_db_path(), timeout=30.0)
-    configure_sqlite_connection(conn)
+    conn = get_db_connection(_db_path())
     c = conn.cursor()
 
     c.execute('''CREATE TABLE IF NOT EXISTS squads (
@@ -204,8 +203,7 @@ def _add_column_if_missing(cursor, table, column, typedef, existing_cols):
 
 
 def migrate_db():
-    conn = sqlite3.connect(_db_path(), timeout=30.0)
-    configure_sqlite_connection(conn)
+    conn = get_db_connection(_db_path())
     c = conn.cursor()
 
     c.execute("PRAGMA table_info(squads)")

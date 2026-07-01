@@ -266,11 +266,103 @@ def test_session_restore_includes_active_combat():
         os.unlink(path)
 
 
+def test_reconcile_finished_combat_purges_actions():
+    import sqlite3
+    from datetime import datetime
+
+    from models.combat import reconcile_finished_active_combat
+    from models.settings import settings
+    from utils.db_tx import configure_sqlite_connection
+
+    path = _temp_db()
+    old_path = settings.db_path
+    settings.db_path = path
+    try:
+        from database import configure_database, init_db
+
+        configure_database(
+            db_path=path,
+            data_dir=os.path.dirname(path),
+            upload_folder=os.path.join(os.path.dirname(path), "uploads"),
+            legacy_upload_folder=os.path.join(os.path.dirname(path), "legacy_uploads"),
+            sample_items=[],
+        )
+        init_db()
+
+        conn = sqlite3.connect(path)
+        configure_sqlite_connection(conn)
+        now = datetime.now().isoformat()
+        conn.execute(
+            "INSERT INTO teams (team_id, team_name, route, created_at) VALUES (?, ?, ?, ?)",
+            ("T-PURGE", "Purge Team", "iggy", now),
+        )
+        conn.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, team_id, is_team_leader, last_update, current_combat_id)
+               VALUES ('solo1', 'Solo', 'T-PURGE', 1, ?, 99)""",
+            (now,),
+        )
+        cur = conn.execute(
+            """INSERT INTO combats
+               (squad_id, encounter_id, status, enemy_hp, current_phase, started_at)
+               VALUES ('solo1', 'enc_test', 'player_phase', 0, 1, ?)""",
+            (now,),
+        )
+        combat_id = cur.lastrowid
+        conn.execute(
+            "UPDATE squads SET current_combat_id = ? WHERE squad_id = 'solo1'",
+            (combat_id,),
+        )
+        conn.execute(
+            """INSERT INTO combat_actions
+               (combat_id, squad_id, phase, action_type, dice_result, submitted_at)
+               VALUES (?, 'solo1', 0, 'attack', 2, ?)""",
+            (combat_id, now),
+        )
+        conn.commit()
+        conn.close()
+
+        combat = {
+            "id": combat_id,
+            "status": "player_phase",
+            "enemy_hp": 0,
+            "encounter_id": "enc_test",
+        }
+        is_live, live_id, _enc = reconcile_finished_active_combat(
+            combat, team_id="T-PURGE",
+        )
+        conn = sqlite3.connect(path)
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM combat_actions WHERE combat_id = ?", (combat_id,),
+        ).fetchone()[0]
+        squad_combat = conn.execute(
+            "SELECT current_combat_id FROM squads WHERE squad_id = 'solo1'",
+        ).fetchone()[0]
+        conn.close()
+
+        if not is_live and live_id is None:
+            ok("reconcile finished combat clears active marker")
+        else:
+            fail("reconcile finished combat clears active marker", str((is_live, live_id)))
+        if remaining == 0:
+            ok("reconcile finished combat purges stale combat_actions")
+        else:
+            fail("reconcile finished combat purges stale combat_actions", f"remaining={remaining}")
+        if squad_combat is None:
+            ok("reconcile finished combat clears squad current_combat_id")
+        else:
+            fail("reconcile finished combat clears squad current_combat_id", squad_combat)
+    finally:
+        settings.db_path = old_path
+        os.unlink(path)
+
+
 def main():
     print("=== DB hardening tests ===\n")
     test_wal_mode_enabled()
     test_protagonist_ssot_from_states_table()
     test_purge_combat_actions_on_end()
+    test_reconcile_finished_combat_purges_actions()
     test_session_restore_includes_active_combat()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1

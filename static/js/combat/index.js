@@ -118,6 +118,7 @@ export class CombatApp {
     this.invRecoveryCount = 0;
 
     if (data.combat_id) {
+      sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
       sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
     }
 
@@ -559,6 +560,7 @@ export class CombatApp {
       return;
     }
 
+    sessionStorage.removeItem('OIKONOMIA_COMBAT_V2_LOCK');
     sessionStorage.removeItem('OIKONOMIA_ACTIVE_COMBAT_ID');
     this.destroy();
 

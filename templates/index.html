@@ -1334,15 +1334,18 @@
     let pendingEncounterId = null;
     let currentCombatId = null;
     const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
+    const COMBAT_V2_LOCK_KEY = 'OIKONOMIA_COMBAT_V2_LOCK';
 
     function setActiveCombatBridge(combatId) {
         if (combatId != null && combatId !== '') {
+            sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
             sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(combatId));
             currentCombatId = combatId;
         }
     }
 
     function clearActiveCombatBridge() {
+        sessionStorage.removeItem(COMBAT_V2_LOCK_KEY);
         sessionStorage.removeItem(ACTIVE_COMBAT_STORAGE_KEY);
         currentCombatId = null;
         pendingEncounterId = null;
@@ -1385,6 +1388,9 @@
 
     /** INV-C: pause global /status poll while V2 combat is authoritative */
     function isPlayerInActiveCombatV2() {
+        if (sessionStorage.getItem(COMBAT_V2_LOCK_KEY) === 'true') {
+            return true;
+        }
         if (sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY)) {
             return true;
         }
@@ -1393,6 +1399,7 @@
             if (state?.combatId) return true;
             const combatRootV2 = document.getElementById('combat-root-v2');
             if (combatRootV2 && !combatRootV2.classList.contains('hidden')) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
                 return true;
             }
         }
@@ -3469,6 +3476,11 @@
         async function finishSessionRestore(data) {
             hideSessionLoading();
             persistRestoreToken(data);
+            if (data?.current_combat_id) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+                sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(data.current_combat_id));
+                currentCombatId = data.current_combat_id;
+            }
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
@@ -3476,6 +3488,7 @@
                     console.log(`[Bridge] 偵測到進行中戰鬥 ${combatId}，啟動權威引導...`);
                     setActiveCombatBridge(combatId);
                     revealCombatV2Surface();
+                    await new Promise((r) => setTimeout(r, 100));
 
                     const ready = await waitForCombatV2Ready();
                     if (ready) {

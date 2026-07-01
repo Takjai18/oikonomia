@@ -186,20 +186,29 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     if not is_finished:
         return True, combat_id, combat.get("encounter_id")
 
-    if combat.get("status") != "ended":
-        save_combat(
-            combat_id,
-            status="ended",
-            ended_at=datetime.now().isoformat(),
-            enemy_hp=0 if enemy_hp <= 0 else combat.get("enemy_hp"),
-        )
-
-    if team_id:
-        clear_team_combat_id(team_id)
-    elif squad_id:
-        update_squad(squad_id, current_combat_id=None)
-
-    purge_combat_actions(combat_id)
+    now_str = datetime.now().isoformat()
+    with immediate_transaction() as conn:
+        if combat.get("status") != "ended":
+            conn.execute(
+                """UPDATE combats SET status = 'ended', ended_at = ?, enemy_hp = ?
+                   WHERE id = ?""",
+                (
+                    now_str,
+                    0 if enemy_hp <= 0 else combat.get("enemy_hp"),
+                    combat_id,
+                ),
+            )
+        if team_id:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE team_id = ?",
+                (team_id,),
+            )
+        elif squad_id:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE squad_id = ?",
+                (squad_id,),
+            )
+        purge_combat_actions(combat_id, conn=conn)
 
     return False, None, None
 
@@ -1303,33 +1312,55 @@ def _team_combat_defeated(combat):
 
 def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)
+    if not combat:
+        return None
+
     squad = get_squad(combat["squad_id"])
     team_id = squad.get("team_id") if squad else None
-    end_fields = {
-        "status": "ended",
-        "winner": winner,
-        "ended_at": datetime.now().isoformat(),
-        "logs": combat.get("logs"),
-    }
-    if winner == "squad":
-        end_fields["enemy_hp"] = 0
-    save_combat(combat_id, **end_fields)
     starter_id = combat.get("squad_id")
-    purge_combat_actions(combat_id)
-    if team_id:
-        clear_team_combat_id(team_id)
-    elif starter_id:
-        update_squad(starter_id, current_combat_id=None)
+    now_str = datetime.now().isoformat()
+    logs = list(combat.get("logs") or [])
+    enemy_hp_val = 0 if winner == "squad" else combat.get("enemy_hp", 100)
+
+    with immediate_transaction() as conn:
+        row = conn.execute("SELECT 1 FROM combats WHERE id = ?", (combat_id,)).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            """UPDATE combats SET status = 'ended', winner = ?, ended_at = ?, enemy_hp = ?
+               WHERE id = ?""",
+            (winner, now_str, enemy_hp_val, combat_id),
+        )
+        purge_combat_actions(combat_id, conn=conn)
+        if team_id:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE team_id = ?",
+                (team_id,),
+            )
+        else:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE squad_id = ?",
+                (starter_id,),
+            )
+
     outcome = resolve_combat_outcome(
         winner, team_id, encounter, starter_id, combat_id=combat_id,
     )
-    for entry in outcome.get("log_messages") or []:
-        combat = append_combat_log(
-            get_combat(combat_id),
-            entry.get("message", ""),
-            log_type=entry.get("log_type", "event"),
-        )
-        save_combat(combat_id, logs=combat.get("logs"))
+    log_messages = outcome.get("log_messages") or []
+    if log_messages:
+        for entry in log_messages:
+            logs.append({
+                "type": entry.get("log_type", "event"),
+                "message": entry.get("message", ""),
+                "timestamp": now_str,
+                "at": now_str,
+            })
+        with immediate_transaction() as conn:
+            conn.execute(
+                "UPDATE combats SET logs = ? WHERE id = ?",
+                (json.dumps(logs[-50:], ensure_ascii=False), combat_id),
+            )
+
     return get_combat(combat_id)
 
 def _enemy_hp_from_logs(logs):
