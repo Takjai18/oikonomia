@@ -1,26 +1,26 @@
-# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · 全棧審計錨點）
+# COMBAT_V2_AUDIT_BUNDLE v15（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-01 · **commit**：`d41f23a`  
+> **日期**：2026-07-02 · **commit**：`137dfa9`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
-> **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：弱網 `submittingActive` 排他鎖 · `TERMINAL_PHASES` SSOT ✅（見 `GEMINI_REVIEW.md` §24）
-> **本輪**：v14 錨點（PA 可部署 · `d41f23a`）；下一輪用 **Partial** 或 §20.3 **新 scope**
+> **Baseline**：`combat_greenfield_final.md` v1.1（附錄內含全文）  
+> **上一輪**：Greenfield Zoo 規格修正 — 任何神智可發動；>70/>80/>90 加成 ✅（見 `GEMINI_REVIEW.md` §25）
+> **本輪**：v15 錨點（`137dfa9`）；日常審計用 **R15 Zoo Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
-> ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
+> ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D / **R15**  
 > 生成：`python3 scripts/build_combat_v2_audit_bundle.py`
 
 ---
 
-## 0. 給 Gemini 的指令（R14 封頂 — Baseline / 錨點 Audit）
+## 0. 給 Gemini 的指令（R15 — Baseline / 錨點 Audit）
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§24 — 唔好重複報已落地項（含 §24 弱網提交鎖）
-4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§25 — 唔好重複報已落地項（含 §25 Zoo 規格）
+4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3 或 `COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md`
 
-### 0.1 Partial 審計狀態（`d41f23a` · 已審已修，回歸 only）
+### 0.1 Partial 審計狀態（`137dfa9` · 已審已修，回歸 only）
 
 | Bundle | 焦點 | 狀態 |
 |--------|------|------|
@@ -41,7 +41,7 @@
 | 功能 | 狀態 | 主要檔案 |
 |------|------|----------|
 | P2-1 戰鬥物品（power_up） | ✅ | `item_select_view.js`, `routes/items.py`, `models/item.py` |
-| P2-2 Zoo UI + 暴走提示 | ✅ | `action_view.js`, `state_machine.js` ACTION_USE_ZOO, `combat_screen.html` |
+| P2-2 Zoo UI + 暴走提示 | ✅ | 任何神智可發動；>70/>80/>90 → ×1.3/1.4/1.5；`action_view.js`, `state_machine.js`, `models/combat.py` |
 | P2-3 主角代打（隊長專屬） | ✅ | `routes/combat.py` 403 gate, `index.js` asProtagonist, `action_view.js` toggle |
 | P2-4 物品效果擴展（醫療/解控） | ✅ | `models/combat.py` use_item, `settlement_view.js` Breakdown |
 | P2-5 雙人 Co-op E2E | ✅ | `tests/combat_v2.spec.js` T12, `state_machine.js` poll settlement |
@@ -63,10 +63,10 @@
 
 ---
 
-## 3. 測試狀態（R14 · `d41f23a`）
+## 3. 測試狀態（R15 · `137dfa9`）
 
 ```bash
-npm run test:combat                                    # 25/25 pass
+npm run test:combat                                    # 26/26 pass
 ./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
 ./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
@@ -138,12 +138,13 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 | 檔案 | 版本 | 說明 |
 |------|------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v14** | Combat V2 SSOT（首次 onboarding 貼全文） |
-| **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D Partial |
+| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v15** | Combat V2 SSOT（首次 onboarding 貼全文） |
+| **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D / **R15 Zoo** Partial |
+| **`COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md`** | R15 | Zoo 規格對齊（任何神智可發動 · >70/>80/>90 加成） |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§24 已修 R11–R15 + 弱網硬化） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§25 已修 R11–R16 + Zoo 規格） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -157,7 +158,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 ### 局部審計規則
 
 1. **一次一個 scope** — 例如只審 `routes/gm.py` 嘅 `gm_override_trauma_ending_api`，或只審 `victory_view.js` `showFailed`。
-2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v14 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
+2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v15 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
 3. **戰鬥 V2** 前端已遷至 `static/js/combat/` — 審計 legacy `index.html` 戰鬥區前，先確認 `COMBAT_V2=1` 是否為現場配置。
 4. **Bug case** 仍用 `bash scripts/build_gemini_packet.sh` 生成**局部** packet（`GEMINI_PACKET.md`），唔與 v10 Bundle 混貼。
 
@@ -183,7 +184,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ```
 【審計模式】
-Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
 範圍：static/js/combat/views/victory_view.js — showFailed + GM 嵌入式面板
 焦點：gm_session 403、team_id 來源、COMBAT_RESET from COMBAT_FAILED
 請依 GEMINI_REVIEW.md §0.5 輸出。
@@ -2137,8 +2138,7 @@ const TRANSITIONS = {
     ACTION_USE_ZOO: {
       guard: (ctx) => {
         if (ctx.hud?.me?.submitted) return false;
-        if (ctx.hud?.allow_zoo === false) return false;
-        return parseInt(ctx.hud?.me?.sanity ?? 0, 10) >= 70;
+        return ctx.hud?.allow_zoo !== false;
       },
       reduce: (ctx, meta) => ({
         ...ctx,
@@ -2941,10 +2941,9 @@ import { Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { DOM_IDS } from '../selectors.js';
 
 function zooBonusMultiplier(sanity) {
-  if (sanity >= 100) return 1.8;
-  if (sanity >= 90) return 1.5;
-  if (sanity >= 80) return 1.4;
-  if (sanity >= 70) return 1.3;
+  if (sanity > 90) return 1.5;
+  if (sanity > 80) return 1.4;
+  if (sanity > 70) return 1.3;
   return 1.0;
 }
 
@@ -3015,7 +3014,7 @@ export function createActionView(rootEl, handlers = {}) {
       zooTip.innerHTML = `✨ Zoo 就緒：神智 ${sanity}，發動 Zoo 可獲 <b>×${zooMult}</b> 算力增益`;
     } else {
       zooTip.className = 'text-[10px] text-zinc-500 font-mono bg-zinc-900/40 border border-zinc-800 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `Zoo 需神智 ≥70（目前 ${sanity}）`;
+      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 >70 才有加成（目前 ×1.0）`;
     }
   }
 
@@ -3041,13 +3040,11 @@ export function createActionView(rootEl, handlers = {}) {
       const busy = BUSY_PHASES.includes(ctx.phase);
       const submitted = !!ctx.hud?.me?.submitted;
       const allowZoo = ctx.hud?.allow_zoo !== false;
-      const sanity = parseInt(ctx.hud?.me?.sanity ?? 0, 10);
-      const zooReady = allowZoo && sanity >= 70;
 
       setDisabled(absorbing || busy || submitted);
       if (zooBtn) {
-        zooBtn.disabled = absorbing || busy || submitted || !zooReady;
-        zooBtn.title = zooReady ? '' : '神智需 ≥70 才能發動 Zoo';
+        zooBtn.disabled = absorbing || busy || submitted || !allowZoo;
+        zooBtn.title = allowZoo ? '' : '此遭遇不允許 Zoo 能力';
       }
 
       updateZooTip(ctx);
@@ -5918,13 +5915,11 @@ def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, i
 
 def zoo_bonus_multiplier(sanity):
     sanity = int(sanity or 0)
-    if sanity >= 100:
-        return 1.8
-    if sanity >= 90:
+    if sanity > 90:
         return 1.5
-    if sanity >= 80:
+    if sanity > 80:
         return 1.4
-    if sanity >= 70:
+    if sanity > 70:
         return 1.3
     return 1.0
 
@@ -6021,7 +6016,7 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
     dice = roll_combat_dice()
     if sanity < 30:
         return {"action_type": "defend", "dice_result": dice}
-    if sanity >= 70 and combat_settings.get("allow_zoo", True):
+    if sanity > 70 and combat_settings.get("allow_zoo", True):
         return {"action_type": "use_zoo", "dice_result": dice}
     if sanity < 40 and dice == 0:
         return {"action_type": "pass", "dice_result": dice}
@@ -6371,7 +6366,7 @@ def resolve_player_phase(combat_id):
     """
     完整解析 Player Phase：
     - 攻擊傷害（max(力量, 智力)）+ dice multiplier
-    - Zoo 加成（70/80/90/100 → 1.3x–1.8x）
+    - Zoo 加成（>70/>80/>90 → 1.3x/1.4x/1.5x；≤70 為 1.0x，仍可發動）
     - 暴走（指定機率 + 30% 自傷）
     - 敵人反擊（韌性最低者；任一同隊 Defend → 全隊減傷 50%）
     - 瀕死檢查、日誌、Phase 狀態更新
@@ -10124,8 +10119,8 @@ def create_global_event(title, description="", effect_type=None, effect_value=0,
 
 # Oikonomia 戰鬥系統 Greenfield 重寫最終設計規格（Real-time Co-op 版）
 
-**日期**：2026-06-30  
-**版本**：Final v1.0  
+**日期**：2026-07-01  
+**版本**：Final v1.1
 **負責人**：Grok Architect（整合所有確認）  
 **目的**：為 20 人青年、西貢戶外營會設計穩定、可維護嘅全新戰鬥子系統
 
@@ -10137,7 +10132,19 @@ def create_global_event(title, description="", effect_type=None, effect_value=0,
 - 戰鬥模式：**多人實時 Co-op + AI 主角**（單人主要用測試）
 - **任何角色（包括主角）HP ≤ 0 → 戰鬥即時失敗**（絕對規則）
 - 玩家可選擇：攻擊、防御、Zoo能力、使用道具、逃跑
+- **Zoo 能力**（Greenfield 權威規格）：
+  - **任何神智值均可發動 Zoo**——唔係「神智 >70 先用得」；僅當遭遇 `combat_settings.allow_zoo === false` 時禁止
+  - Zoo 行動同樣經後端擲骰（0–3）並計入傷害結算；低神智仍有**暴走**風險（見下方暴走規則）
+  - **神智加成乘數**（只喺選擇 Zoo 行動時套用，唔影響攻擊／防禦；神智 ≤70 仍可發動，但無加成）：
+    | 神智 | Zoo 傷害乘數 |
+    |------|-------------|
+    | ≤70 | ×1.0 |
+    | >70 | ×1.3 |
+    | >80 | ×1.4 |
+    | >90 | ×1.5 |
+  - UI：**唔應**因神智不足而 disable Zoo 按鈕；神智 ≤70 顯示「可發動、無加成（×1.0）」；>70 顯示當前 tier 乘數
 - 攻擊擲骰：0-3（後端權威），乘以角色 Power
+- **暴走**（任何攻擊類行動，含 Zoo）：神智 <10→90%、<20→50%、<40→20% 機率失控（可能無敵傷害）
 - **Defense 公式**（只限主動選擇 Defense 行動時生效）：
   - Base 30% + Resilience × 0.5%，上限 90%
 - **逃跑規則**：任何人選擇逃跑 → 觸發全隊 escape 判定
@@ -11417,6 +11424,16 @@ describe('Combat V2 state machine', () => {
     const { ctx: next } = transition(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 2 });
     assert.equal(next.phase, Phase.DICE_ROLLING);
     assert.equal(next.dice.action, 'use_zoo');
+  });
+
+  it('IDLE + ACTION_USE_ZOO allowed below sanity 70 (no bonus tier)', () => {
+    const ctx = {
+      ...createInitialContext('c1'),
+      hud: { me: { submitted: false, sanity: 55 }, allow_zoo: true },
+    };
+    assert.equal(canDispatch(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 }), true);
+    const { ctx: next } = transition(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 });
+    assert.equal(next.phase, Phase.DICE_ROLLING);
   });
 });
 
@@ -14641,4 +14658,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v14 · 2026-07-01 · `d41f23a`*
+*End of COMBAT_V2_AUDIT_BUNDLE v15 · 2026-07-02 · `137dfa9`*

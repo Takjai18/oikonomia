@@ -132,27 +132,27 @@ def main():
         ref = ROOT / ".git" / "refs" / "heads" / "main"
         head = ref.read_text(encoding="utf-8").strip()[:7] if ref.exists() else "unknown"
 
-    header = f"""# COMBAT_V2_AUDIT_BUNDLE v14（營會 SSOT · 全棧審計錨點）
+    header = f"""# COMBAT_V2_AUDIT_BUNDLE v15（營會 SSOT · 全棧審計錨點）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
 > **日期**：{today} · **commit**：`{head}`  
 > **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
-> **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：弱網 `submittingActive` 排他鎖 · `TERMINAL_PHASES` SSOT ✅（見 `GEMINI_REVIEW.md` §24）
-> **本輪**：v14 錨點（PA 可部署 · `{head}`）；下一輪用 **Partial** 或 §20.3 **新 scope**
+> **Baseline**：`combat_greenfield_final.md` v1.1（附錄內含全文）  
+> **上一輪**：Greenfield Zoo 規格修正 — 任何神智可發動；>70/>80/>90 加成 ✅（見 `GEMINI_REVIEW.md` §25）
+> **本輪**：v15 錨點（`{head}`）；日常審計用 **R15 Zoo Partial** 或 §20.3 **新 scope**
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
-> ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
+> ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D / **R15**  
 > 生成：`python3 scripts/build_combat_v2_audit_bundle.py`
 
 ---
 
-## 0. 給 Gemini 的指令（R14 封頂 — Baseline / 錨點 Audit）
+## 0. 給 Gemini 的指令（R15 — Baseline / 錨點 Audit）
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
 2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
-3. **已修對照**：`GEMINI_REVIEW.md` §18–§24 — 唔好重複報已落地項（含 §24 弱網提交鎖）
-4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3
+3. **已修對照**：`GEMINI_REVIEW.md` §18–§25 — 唔好重複報已落地項（含 §25 Zoo 規格）
+4. **下一輪建議 scope**：`GEMINI_REVIEW.md` §20.3 或 `COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md`
 
 ### 0.1 Partial 審計狀態（`{head}` · 已審已修，回歸 only）
 
@@ -175,7 +175,7 @@ def main():
 | 功能 | 狀態 | 主要檔案 |
 |------|------|----------|
 | P2-1 戰鬥物品（power_up） | ✅ | `item_select_view.js`, `routes/items.py`, `models/item.py` |
-| P2-2 Zoo UI + 暴走提示 | ✅ | `action_view.js`, `state_machine.js` ACTION_USE_ZOO, `combat_screen.html` |
+| P2-2 Zoo UI + 暴走提示 | ✅ | 任何神智可發動；>70/>80/>90 → ×1.3/1.4/1.5；`action_view.js`, `state_machine.js`, `models/combat.py` |
 | P2-3 主角代打（隊長專屬） | ✅ | `routes/combat.py` 403 gate, `index.js` asProtagonist, `action_view.js` toggle |
 | P2-4 物品效果擴展（醫療/解控） | ✅ | `models/combat.py` use_item, `settlement_view.js` Breakdown |
 | P2-5 雙人 Co-op E2E | ✅ | `tests/combat_v2.spec.js` T12, `state_machine.js` poll settlement |
@@ -197,10 +197,10 @@ def main():
 
 ---
 
-## 3. 測試狀態（R14 · `{head}`）
+## 3. 測試狀態（R15 · `{head}`）
 
 ```bash
-npm run test:combat                                    # 25/25 pass
+npm run test:combat                                    # 26/26 pass
 ./venv/bin/python3 scripts/test_combat_flow.py         # 283/283 pass
 ./venv/bin/python3 scripts/test_db_hardening.py        # 13/13 pass
 ./venv/bin/python3 scripts/test_combat_engine.py       # 18/18 pass
@@ -275,7 +275,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
     for rel in BACKEND_FILES:
         append_file(buf, rel)
 
-    buf.append(f"\n\n---\n*End of COMBAT_V2_AUDIT_BUNDLE v14 · {today} · `{head}`*\n")
+    buf.append(f"\n\n---\n*End of COMBAT_V2_AUDIT_BUNDLE v15 · {today} · `{head}`*\n")
 
     OUT.write_text("".join(buf), encoding="utf-8")
     size_kb = OUT.stat().st_size / 1024

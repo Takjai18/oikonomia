@@ -1,7 +1,7 @@
 # COMBAT_V2_R11_PARTIAL_BUNDLE（局部審計 · 營會現場風險）
 
 > **用途**：Gemini **【審計模式】** — 只貼本檔，唔貼 `COMBAT_V2_AUDIT_BUNDLE.md` 全文  
-> **日期**：2026-07-01  
+> **日期**：2026-07-02  
 > **Baseline**：假設已讀 **COMBAT_V2_AUDIT_BUNDLE v11**（SSOT 在 repo，首次 onboarding 用 v11 全文）  
 > **生成**：`python3 scripts/build_combat_v2_r11_partial_bundle.py`
 
@@ -517,7 +517,7 @@ def gm_override_trauma_ending_api():
 
 ## 3. Scope C — Co-op 併發 resolve
 
-# models/combat.py (L710–L724)
+# models/combat.py (L708–L722)
 
 def _claim_player_phase_resolution(combat_id):
     with immediate_transaction() as conn:
@@ -534,7 +534,7 @@ def _claim_player_phase_resolution(combat_id):
         return cur.rowcount > 0
 
 
-# models/combat.py (L966–L1016)
+# models/combat.py (L964–L1014)
 
 def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """
@@ -631,4 +631,4 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
 
 
 ---
-*End of COMBAT_V2_R11_PARTIAL_BUNDLE · 2026-07-01*
+*End of COMBAT_V2_R11_PARTIAL_BUNDLE · 2026-07-02*

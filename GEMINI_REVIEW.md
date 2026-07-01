@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-01 · **基準 commit `d41f23a`**（弱網提交鎖 · PA 可部署 · 已修對照 §18–§24）
+> **最後更新**：2026-07-01 · **基準 commit `137dfa9`**（Greenfield Zoo 規格 · 已修對照 §18–§25）
 
 ---
 
@@ -45,12 +45,13 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 
 | 檔案 | 版本 | 說明 |
 |------|------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v14** | Combat V2 SSOT（首次 onboarding 貼全文） |
-| **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D Partial |
+| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v15** | Combat V2 SSOT（首次 onboarding 貼全文） |
+| **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D / **R15 Zoo** Partial |
+| **`COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md`** | R15 | Zoo 規格對齊（任何神智可發動 · >70/>80/>90 加成） |
 | **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
 | **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§24 已修 R11–R15 + 弱網硬化） |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§18–§25 已修 R11–R16 + Zoo 規格） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -64,7 +65,7 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 ### 局部審計規則
 
 1. **一次一個 scope** — 例如只審 `routes/gm.py` 嘅 `gm_override_trauma_ending_api`，或只審 `victory_view.js` `showFailed`。
-2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v14 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
+2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v15 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
 3. **戰鬥 V2** 前端已遷至 `static/js/combat/` — 審計 legacy `index.html` 戰鬥區前，先確認 `COMBAT_V2=1` 是否為現場配置。
 4. **Bug case** 仍用 `bash scripts/build_gemini_packet.sh` 生成**局部** packet（`GEMINI_PACKET.md`），唔與 v10 Bundle 混貼。
 
@@ -90,7 +91,7 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 
 ```
 【審計模式】
-Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
 範圍：static/js/combat/views/victory_view.js — showFailed + GM 嵌入式面板
 焦點：gm_session 403、team_id 來源、COMBAT_RESET from COMBAT_FAILED
 請依 GEMINI_REVIEW.md §0.5 輸出。
@@ -104,7 +105,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）· 或貼 COMBAT
 |------|------|
 | `README.md` | 專案概覽、**三角色分工**、**Context 管理協議** |
 | `AGENT_HANDOFF.md` | Grok Build 實作交接；戰鬥公式、API、部署、待辦 |
-| `COMBAT_V2_AUDIT_BUNDLE.md` v14 | SSOT Baseline（**首次貼全文**；其後引用唔貼） |
+| `COMBAT_V2_AUDIT_BUNDLE.md` v15 | SSOT Baseline（**首次貼全文**；其後引用唔貼） |
 | `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計（**日常貼呢個**） |
 | `CURRENT_STRUCTURE.md` | 目錄樹、模組職責快照 |
 | **本文** `GEMINI_REVIEW.md` | Review / Debug 範圍、優先級、輸出格式、已修復對照 |
@@ -1037,6 +1038,54 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v14（已讀，唔貼全文）
 已修對照：GEMINI_REVIEW.md §18–§24（唔重複報）
 基準 commit：d41f23a
 本次範圍：<§20.3 新 scope 或單一 Partial 回歸>
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 25. Greenfield Zoo 規格修正（2026-07-01 · `137dfa9`）
+
+> **性質**：糾正舊誤「神智 >70 才能發動 Zoo」；下一輪 **唔好重複報** 以下項。
+
+### 25.1 權威規格（`combat_greenfield_final.md` v1.1）
+
+| 項目 | 規格 |
+|------|------|
+| 發動條件 | **任何神智值均可發動**；僅 `combat_settings.allow_zoo === false` 禁止 |
+| 加成乘數 | ≤70 → ×1.0 · **>70** → ×1.3 · **>80** → ×1.4 · **>90** → ×1.5 |
+| UI | **唔應**因神智不足 disable Zoo 按鈕；≤70 顯示「可發動、無加成」 |
+| 暴走 | 與攻擊相同（神智 <10/20/40 → 90%/50%/20%） |
+
+### 25.2 已修對照表
+
+| 輪次 | 議題 | 狀態 | commit / 檔案 |
+|------|------|------|----------------|
+| **R17** | 移除 FSM `sanity >= 70` Zoo guard | ✅ | `048adba` `state_machine.js` |
+| **R17** | UI 低神智仍可點 Zoo；提示無加成 | ✅ | `048adba` `action_view.js` |
+| **R17** | 後端／前端乘數嚴格 `>70/>80/>90` | ✅ | `137dfa9` `models/combat.py` · `action_view.js` |
+| **R17** | Greenfield 文件 v1.1 權威表 | ✅ | `137dfa9` `combat_greenfield_final.md` |
+| **R17** | 單元測試 sanity 55 可 `ACTION_USE_ZOO` | ✅ | `048adba` `combat_state_machine.test.js` |
+
+### 25.3 測試基線（`137dfa9`）
+
+```bash
+npm run test:combat                                 # 26/26
+./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
+bash scripts/pre_deploy_checks.sh
+```
+
+### 25.4 Copy-paste 開場白（Zoo 規格審計）
+
+```
+【審計模式】
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）
+本次範圍：貼 COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md 全文
+已修對照：GEMINI_REVIEW.md §18–§25（唔重複報）
+基準 commit：137dfa9
+焦點：Zoo 任何神智可發動；>70/>80/>90 加成；前後端邊界一致
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
 ```

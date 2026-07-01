@@ -1,6 +1,6 @@
 # COMBAT_V2 Partial Audit Bundle 索引（Gemini 審計導航）
 
-> **日期**：2026-07-01 · **commit**：`d41f23a`  
+> **日期**：2026-07-02 · **commit**：`137dfa9`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
@@ -15,6 +15,7 @@
 | **R12-B DB 硬化** | `COMBAT_V2_R12_B_DB_HARDENING.md` | **20 人併發資料層** — SQLite WAL、`combat_actions` 清理、主角 SSOT、session restore 後端 | `database is locked`、500 錯誤、主角 Dashboard 與戰鬥 HP 分裂 | ~20–35 KB |
 | **R12-C Step4 編排** | `COMBAT_V2_R12_C_STEP4_ORCHESTRATION.md` | **純計算 + 戰後管線** — `combat_engine`、`combat_flow` INV-E、`combat_outcomes` 冪等 | 逃跑混合結算、勝利重複發獎、傷害公式極端值 | ~35–55 KB |
 | **R12-D 不變式** | `COMBAT_V2_R12_D_INV_MONOTONIC.md` | **弱網狀態機 INV-A～E** — `settlement_id`、monotonic guard、`entrySyncPending` | 重複 settlement 彈窗、stale round、INV 違反 | ~30–45 KB |
+| **R15 Zoo 規格** | `COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md` | **Zoo 能力權威規格** — 任何神智可發動；>70/>80/>90 傷害加成；FSM guard / 後端乘數 / UI | Greenfield 規格修正後回歸；懷疑低神智被鎖 Zoo | ~15–25 KB |
 
 ---
 
@@ -31,17 +32,18 @@
 
 | 輪次 | Bundle / Scope | 狀態 |
 |------|----------------|------|
-| 1 | Full SSOT v14（僅一次） | ✅ 本生成 |
+| 1 | Full SSOT v15（僅一次） | ✅ 本生成 |
 | 2 | R12-D 不變式 | ✅ 已審已修 · §20 · §22 |
 | 3 | R12-A 大廳橋接 | ✅ 已審已修 · §20 |
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
 | 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `d41f23a` §24 |
+| 7 | R15 Zoo 規格 | ✅ 本生成 · §25 |
+| 8 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `137dfa9` §25 |
 
 ---
 
-## 測試基線（2026-07-01 · `d41f23a`）
+## 測試基線（2026-07-02 · `137dfa9`）
 
 ```bash
 ./venv/bin/python3 scripts/test_combat_flow.py      # 283/283
@@ -49,7 +51,7 @@
 ./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5
 ./venv/bin/python3 scripts/test_combat_concurrency.py
-npm run test:combat                                 # 25/25
+npm run test:combat                                 # 26/26
 npm run test:e2e:v2                               # T8–T14
 bash scripts/pre_deploy_checks.sh
 ```
@@ -68,4 +70,4 @@ python3 scripts/build_combat_v2_partial_bundles.py
 
 ---
 
-*End of COMBAT_V2_PARTIAL_INDEX · 2026-07-01*
+*End of COMBAT_V2_PARTIAL_INDEX · 2026-07-02*

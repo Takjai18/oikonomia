@@ -147,6 +147,7 @@ def build_index(today: str, head: str) -> str:
 | **R12-B DB 硬化** | `COMBAT_V2_R12_B_DB_HARDENING.md` | **20 人併發資料層** — SQLite WAL、`combat_actions` 清理、主角 SSOT、session restore 後端 | `database is locked`、500 錯誤、主角 Dashboard 與戰鬥 HP 分裂 | ~20–35 KB |
 | **R12-C Step4 編排** | `COMBAT_V2_R12_C_STEP4_ORCHESTRATION.md` | **純計算 + 戰後管線** — `combat_engine`、`combat_flow` INV-E、`combat_outcomes` 冪等 | 逃跑混合結算、勝利重複發獎、傷害公式極端值 | ~35–55 KB |
 | **R12-D 不變式** | `COMBAT_V2_R12_D_INV_MONOTONIC.md` | **弱網狀態機 INV-A～E** — `settlement_id`、monotonic guard、`entrySyncPending` | 重複 settlement 彈窗、stale round、INV 違反 | ~30–45 KB |
+| **R15 Zoo 規格** | `COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md` | **Zoo 能力權威規格** — 任何神智可發動；>70/>80/>90 傷害加成；FSM guard / 後端乘數 / UI | Greenfield 規格修正後回歸；懷疑低神智被鎖 Zoo | ~15–25 KB |
 
 ---
 
@@ -163,13 +164,14 @@ def build_index(today: str, head: str) -> str:
 
 | 輪次 | Bundle / Scope | 狀態 |
 |------|----------------|------|
-| 1 | Full SSOT v14（僅一次） | ✅ 本生成 |
+| 1 | Full SSOT v15（僅一次） | ✅ 本生成 |
 | 2 | R12-D 不變式 | ✅ 已審已修 · §20 · §22 |
 | 3 | R12-A 大廳橋接 | ✅ 已審已修 · §20 |
 | 4 | R12-B DB 硬化 | ✅ 已審已修 · §20 |
 | 5 | R12-C Step4 編排 | ✅ 已審已修 · §20 · §22 |
 | 6 | R11 現場風險 | ✅ 已審已修 · §18–§20 |
-| 7 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `{head}` §24 |
+| 7 | R15 Zoo 規格 | ✅ 本生成 · §25 |
+| 8 | **下一輪新 scope** | 見 `GEMINI_REVIEW.md` §20.3 · 基準 `{head}` §25 |
 
 ---
 
@@ -181,7 +183,7 @@ def build_index(today: str, head: str) -> str:
 ./venv/bin/python3 scripts/test_combat_engine.py    # 18/18
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 5/5
 ./venv/bin/python3 scripts/test_combat_concurrency.py
-npm run test:combat                                 # 25/25
+npm run test:combat                                 # 26/26
 npm run test:e2e:v2                               # T8–T14
 bash scripts/pre_deploy_checks.sh
 ```
@@ -325,6 +327,71 @@ def build_r12_c_step4_orchestration(today: str, head: str) -> str:
     return "".join(buf)
 
 
+def build_r15_zoo_spec(today: str, head: str) -> str:
+    gf = read_file("combat_greenfield_final.md")
+    zoo_spec = ""
+    start = gf.find("- **Zoo 能力**")
+    end = gf.find("- 攻擊擲骰", start)
+    if start != -1 and end != -1:
+        zoo_spec = gf[start:end].strip()
+
+    header = f"""# COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE（局部審計 · Zoo 能力規格對齊）
+
+> **目的**：審計 **Greenfield v1.1 Zoo 權威規格** — 糾正「神智 >70 才能發動」舊誤；驗證前後端一致  
+> **日期**：{today} · **commit**：`{head}`  
+> **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` v15 或 `combat_greenfield_final.md` §1.1  
+> **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
+
+---
+
+## 0. 給 Gemini 的指令
+
+**權威規格（唔再報為 bug）**：
+- **任何神智值均可發動 Zoo**（僅 `allow_zoo === false` 禁止）
+- 神智加成（只影響 Zoo 傷害，不 gate 按鈕）：
+  - ≤70 → ×1.0
+  - >70 → ×1.3 · >80 → ×1.4 · >90 → ×1.5
+
+**焦點問題**：
+1. FSM `ACTION_USE_ZOO` guard 是否**只**檢查 `allow_zoo` / `submitted`，唔檢查神智？
+2. `action_view.js` Zoo 按鈕是否僅在 `!allowZoo` 時 disable（唔因神智 <70）？
+3. 前後端 `zoo_bonus_multiplier` 邊界是否一致（嚴格 `>70/>80/>90`）？
+4. `routes/combat.py` 是否無 sanity gate 拒絕 `use_zoo`？
+5. 邊界：神智恰好 70 / 80 / 90 應為哪個 tier？
+
+**輸出**：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+
+---
+
+## 1. Greenfield 規格摘錄
+
+{zoo_spec}
+
+---
+
+## 2. 後端乘數與結算
+
+"""
+    buf = [header]
+    buf.append(extract_function_block("models/combat.py", "zoo_bonus_multiplier", 20))
+    buf.append("\n")
+    buf.append(extract_function_block("models/combat.py", "choose_protagonist_auto_action", 25))
+    buf.append("\n")
+    buf.append(extract_lines("routes/combat.py", 410, 430))
+    buf.append("\n")
+    buf.append(extract_lines("models/combat.py", 1390, 1420))
+    buf.append("\n")
+    buf.append(extract_lines("models/combat.py", 1900, 1915))
+    buf.append("\n\n## 3. 前端 FSM + UI\n\n")
+    buf.append(extract_lines("static/js/combat/state_machine.js", 457, 469))
+    buf.append("\n")
+    buf.append(read_file("static/js/combat/views/action_view.js").rstrip())
+    buf.append("\n\n## 4. 單元測試\n\n")
+    buf.append(extract_lines("tests/combat_state_machine.test.js", 330, 355))
+    buf.append(f"\n\n---\n*End of R15 Zoo · {today} · `{head}`*\n")
+    return "".join(buf)
+
+
 def build_r12_d_inv_monotonic(today: str, head: str) -> str:
     header = f"""# COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
@@ -379,6 +446,7 @@ def main():
         (ROOT / "COMBAT_V2_R12_B_DB_HARDENING.md", build_r12_b_db_hardening(today, head)),
         (ROOT / "COMBAT_V2_R12_C_STEP4_ORCHESTRATION.md", build_r12_c_step4_orchestration(today, head)),
         (ROOT / "COMBAT_V2_R12_D_INV_MONOTONIC.md", build_r12_d_inv_monotonic(today, head)),
+        (ROOT / "COMBAT_V2_R15_ZOO_PARTIAL_BUNDLE.md", build_r15_zoo_spec(today, head)),
     ]
 
     for path, content in bundles:

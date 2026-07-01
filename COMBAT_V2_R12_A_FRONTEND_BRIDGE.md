@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_A_FRONTEND_BRIDGE（局部審計 · 大廳橋接與 Poll 隔離）
 
 > **目的**：審計 **Legacy `index.html` 全局腳本** 與 **Combat V2 模組** 的交界 — 防止雙 poll、重連幽靈狀態、舊 overlay 疊加  
-> **日期**：2026-07-01 · **commit**：`d41f23a`  
+> **日期**：2026-07-02 · **commit**：`137dfa9`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -546,4 +546,4 @@ if (document.readyState === 'loading') {
     }
 
 ---
-*End of R12-A · 2026-07-01*
+*End of R12-A · 2026-07-02*

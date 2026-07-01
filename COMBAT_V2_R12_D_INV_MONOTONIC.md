@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
 > **目的**：審計 **前端權威狀態機** — `settlement_id` / `settled_round_index` 單調防護、`entrySyncPending` 進場吸收、INV-D 失敗搶占  
-> **日期**：2026-07-01 · **commit**：`d41f23a`  
+> **日期**：2026-07-02 · **commit**：`137dfa9`  
 > **Baseline**：假設已讀 `combat_greenfield_final.md` §3 不變式表  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -482,8 +482,7 @@ const TRANSITIONS = {
     ACTION_USE_ZOO: {
       guard: (ctx) => {
         if (ctx.hud?.me?.submitted) return false;
-        if (ctx.hud?.allow_zoo === false) return false;
-        return parseInt(ctx.hud?.me?.sanity ?? 0, 10) >= 70;
+        return ctx.hud?.allow_zoo !== false;
       },
       reduce: (ctx, meta) => ({
         ...ctx,
@@ -944,7 +943,7 @@ export function extractHud(snapshot) {
 
 ## 4. 後端 settlement meta
 
-# models/combat.py (L2474–L2489)
+# models/combat.py (L2472–L2487)
 
 def _enrich_settlement_meta(payload, combat=None):
     """Additive COMBAT_V2 fields: stable settlement progress on every status snapshot."""
@@ -1306,6 +1305,16 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.phase, Phase.DICE_ROLLING);
     assert.equal(next.dice.action, 'use_zoo');
   });
+
+  it('IDLE + ACTION_USE_ZOO allowed below sanity 70 (no bonus tier)', () => {
+    const ctx = {
+      ...createInitialContext('c1'),
+      hud: { me: { submitted: false, sanity: 55 }, allow_zoo: true },
+    };
+    assert.equal(canDispatch(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 }), true);
+    const { ctx: next } = transition(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 });
+    assert.equal(next.phase, Phase.DICE_ROLLING);
+  });
 });
 
 describe('Settlement normalization', () => {
@@ -1471,4 +1480,4 @@ test.describe('Oikonomia Combat V2 — Resilience & Phase 2 E2E', () => {
     const diceModal = page.locator('#combat-v2-dice-modal');
 
 ---
-*End of R12-D · 2026-07-01*
+*End of R12-D · 2026-07-02*
