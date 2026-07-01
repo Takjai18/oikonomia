@@ -104,7 +104,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT
 |------|------|
 | `README.md` | 專案概覽、**三角色分工**、**Context 管理協議** |
 | `AGENT_HANDOFF.md` | Grok Build 實作交接；戰鬥公式、API、部署、待辦 |
-| `COMBAT_V2_AUDIT_BUNDLE.md` v11 | SSOT Baseline（**首次貼全文**；其後引用唔貼） |
+| `COMBAT_V2_AUDIT_BUNDLE.md` v12 | SSOT Baseline（**首次貼全文**；其後引用唔貼） |
 | `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計（**日常貼呢個**） |
 | `CURRENT_STRUCTURE.md` | 目錄樹、模組職責快照 |
 | **本文** `GEMINI_REVIEW.md` | Review / Debug 範圍、優先級、輸出格式、已修復對照 |
