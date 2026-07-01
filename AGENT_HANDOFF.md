@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 PythonAnywhere 同 local 版本一致**（見 Deploy 一節）。  
-> 最後更新：2026-07-01 · local/GitHub/PA：見 `git rev-parse --short HEAD` · BUG-2026-001 **resolved**
+> 最後更新：2026-07-01 · **commit `0e2fa93`**（R11/R12 審計封頂）· BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -22,8 +22,9 @@
 
 | 檔案 | 版本 | 生成 |
 |------|------|------|
-| `COMBAT_V2_AUDIT_BUNDLE.md` | **v11**（SSOT · Context 協議） | `python3 scripts/build_combat_v2_audit_bundle.py` |
-| `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計 A/B/C | `python3 scripts/build_combat_v2_r11_partial_bundle.py` |
+| `COMBAT_V2_AUDIT_BUNDLE.md` | **v12**（SSOT · R11/R12 封頂） | `python3 scripts/build_combat_v2_audit_bundle.py` |
+| `COMBAT_V2_PARTIAL_INDEX.md` | R11 + R12-A～D 導航 | `python3 scripts/build_combat_v2_partial_bundles.py` |
+| `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計 A/B/C | （同上腳本一併生成） |
 | `combat_greenfield_final.md` | 綠地規格 | repo 內建 |
 
 新功能（遭遇戰 JSON、GPS 任務路由、物品發放等）開發時：**假設 Baseline 已讀**，只貼本次改動嘅**單一檔案或單一函數**。
@@ -57,9 +58,11 @@
 
 | Scope | 最低驗證 |
 |-------|----------|
-| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py` |
-| DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py` |
-| Combat 前端 | `npm run test:combat` + `npm run test:e2e:v2` |
+| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（267/267） |
+| DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（11/11） |
+| 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
+| Combat 前端 | `npm run test:combat`（17/17）+ `npm run test:e2e:v2` |
+| Co-op 併發 | `./venv/bin/python3 scripts/test_combat_concurrency.py` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |
 | Deploy 前 | `bash scripts/pre_deploy_checks.sh` |
@@ -85,8 +88,8 @@
 
 | 環境 | Commit | 狀態 |
 |------|--------|------|
-| **Local** | `223f8c6` | ✅ |
-| **GitHub `main`** | `223f8c6` | ✅ |
+| **Local** | `0e2fa93` | ✅ R11/R12 審計修復已合併 |
+| **GitHub `main`** | `0e2fa93` | ✅ |
 | **PythonAnywhere** | 核對 `/api/version` | 待 deploy；應含 `combat_v2` marker（`COMBAT_V2=1`） |
 
 ```bash
@@ -176,7 +179,20 @@ GEMINI_REVIEW.md          # 外部 code review 指引
 
 ---
 
-## 本輪已完成（2026-07-01 最新 — Combat V2 Greenfield + BUG-2026-001 **resolved**）
+## 本輪已完成（2026-07-01 — R11/R12 審計封頂 · `0e2fa93`）
+
+### R11 現場風險 + R12 四向修復（`7823a95` → `0e2fa93`）
+
+| Commit | Scope | 摘要 |
+|--------|-------|------|
+| `7823a95` | **R11 A/B/C** | GM `resolveAuthoritativeTeamId` 人工核對；`gm_operator` 403；timeout mutex + `performActionDirectly`；`_wait_after_peer_resolve` monotonic |
+| `b931b37` | **R12-A** | `OIKONOMIA_COMBAT_V2_LOCK` + `ACTIVE_COMBAT_ID` sessionStorage；`finishSessionRestore` DOM-first；單向 `exitCombatScreen` |
+| `3bd8d36` | **R12-B** | `get_db_connection` in `init_db`；atomic `_end_combat` / `reconcile_finished_active_combat` + purge actions |
+| `0e2fa93` | **R12-C** | `resolve_combat_outcome` 移除外層 retry race；piercing floor；`failed_escape` 零傷害 guard |
+
+**測試基線（`0e2fa93`）**：`test_combat_flow` 267/267 · `test_db_hardening` 11/11 · `test_combat_engine` 17/17 · `npm run test:combat` 17/17 · `test_combat_concurrency` OK
+
+**下一輪 Gemini 審計**：貼 `COMBAT_V2_PARTIAL_INDEX.md` + **單一** R12/R11 Partial（regression / 新功能 only）；對照 `GEMINI_REVIEW.md` §18 唔重複報已修項。
 
 ### Combat V2 前端模組化（`7029bfd` → `15f2c37`+）
 
@@ -212,8 +228,9 @@ static/js/combat/
 | `determineSettlementRoute` | Monotonic guard — 拒絕 stale `settled_round_index` |
 | `deriveSettlementId` | `{combat_id}:{settled_round_index}` |
 | `ResilientPollingManager` | 動態 poll；取代舊 inline 3s timer（戰鬥中） |
-| `isPlayerInActiveCombatV2()` | `index.html` — V2 可見時暫停全局 `/status` poll |
-| `exitCombatScreen({ fromV2 })` | 橋接退出；`fromV2:true` 防與 `exitToLobby` 遞迴 |
+| `isPlayerInActiveCombatV2()` | `index.html` — sessionStorage lock + DOM fallback；暫停全局 3s `/status` poll |
+| `OIKONOMIA_COMBAT_V2_LOCK` | sessionStorage 權威鎖（F5 / 斷線重連空窗期） |
+| `exitCombatScreen` | 單向清理：`destroy()` + 清除 lock；`exitToLobby` 委派 `{fromV2:true}` |
 
 **後端 Step 4**（`services/combat_flow.py` + `combat_outcomes.py`）：
 
@@ -222,7 +239,8 @@ static/js/combat/
 | `normalize_failed_escape_actions` | INV-E — 逃跑失敗者留分母、零輸出 |
 | `process_mixed_round_actions` | 純編排（單元測試）；生產路徑仍用 `models/combat.py` resolve body |
 | `build_victory_outcome_payload` | 含 `settlement_id` + `settled_round_index` |
-| `resolve_combat_outcome` | `encounter_already_completed` 冪等 + `with_db_retry` |
+| `resolve_combat_outcome` | Pipeline 內建 `immediate_transaction` 冪等；**無**外層 `with_db_retry` race |
+| `_end_combat` | 單一 `immediate_transaction`：ended + purge actions + clear squad locks |
 
 **Feature flag**：`COMBAT_V2=1`（env）→ `/api/version` → `markers.combat_v2`；`bootstrap.js` 掛載 `CombatApp`。
 
@@ -464,7 +482,7 @@ GM stat：>100 唔被全營事件/item cap 壓返 100
 
 - `#combat-root-v2` — V2 根節點；`combat-v2-*` ID 與舊大廳隔離
 - Poll：`ResilientPollingManager`（IDLE 1200ms / WAITING 800ms）
-- 全局 `/status` 3s poll 在 V2 戰鬥中**暫停**（`isPlayerInActiveCombatV2`）
+- 全局 `/status` 3s poll 在 V2 戰鬥中**暫停**（`OIKONOMIA_COMBAT_V2_LOCK` + `isPlayerInActiveCombatV2`）
 
 **Legacy inline（`12e1edd` · 已移除主路徑）** — `templates/index.html` 仍保留大廳橋接：
 
@@ -504,7 +522,7 @@ GM stat：>100 唔被全營事件/item cap 壓返 100
 ```bash
 # 1. 本地：驗證 + commit + push
 cd /Users/mingtakyau/Documents/oikonomia
-./venv/bin/python3 scripts/test_combat_flow.py   # 預期 66/66
+./venv/bin/python3 scripts/test_combat_flow.py   # 預期 267/267
 git add -A && git commit -m "描述改動" && git push origin main
 
 # 2. PA Bash console（用戶帳號 takjai）— Agent 無 SSH 時請用戶代跑

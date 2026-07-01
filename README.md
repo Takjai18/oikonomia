@@ -57,6 +57,51 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 
 **避免**：三個角色同時改同一功能；Gemini review 應對準已 push 嘅 commit，唔好對未落地嘅計劃 review。
 
+### Context 管理協議（防溢出 · 全角色必守）
+
+長對話唔需要開新 Chat，但**唔好再貼整份大 Bundle**。穩固 Baseline 已封存於 repo，後續只交局部範圍。
+
+| Baseline（只讀引用，唔貼全文） | 用途 |
+|-------------------------------|------|
+| **`COMBAT_V2_AUDIT_BUNDLE.md` v12** | Combat V2 SSOT（首次 onboarding）· commit `0e2fa93` |
+| **`COMBAT_V2_PARTIAL_INDEX.md`** | 選 R11 / R12-A～D Partial Bundle |
+| **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | 營會現場高風險 A/B/C |
+| **`COMBAT_V2_R12_*_*.md`** | 大廳橋接 / DB / 編排 / INV 局部審計 |
+| `combat_greenfield_final.md` | 綠地架構規格 |
+| `AGENT_HANDOFF.md` / `GEMINI_REVIEW.md` | 實作／審計流程 |
+
+**局部交付**：每次只處理**一個** Python 檔／路由函數，或**一個**前端 JS View；附專項測試即可。  
+**重新生成 Bundle**：
+```bash
+python3 scripts/build_combat_v2_audit_bundle.py       # v12 全文 SSOT + R11 partial
+python3 scripts/build_combat_v2_partial_bundles.py  # 索引 + R11 + R12 A–D
+```
+
+**進門對齊模式**（用戶或 Agent 在訊息**最開頭**標註）：
+
+| 模式 | 回應要求 |
+|------|----------|
+| **【開發模式】** | 零前言 → 100% 可 Copy-and-Paste 的生產級代碼 + 專項單元測試 |
+| **【審計模式】** | 依標準結構輸出 **【Critical】→【High/Medium】→【Low】→ 健康度總評** |
+
+**建議提交範本**：
+
+```
+【開發模式】
+目標：<一句話>
+檔案：<path 或單一函數>
+約束：<不變式 / 不可動 API>
+```
+
+```
+【審計模式】
+範圍：<單檔 / 單函數>
+焦點：<例如 INV-D、GM session>
+Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+```
+
+詳見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**（Grok Build）與 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)**（Gemini）。
+
 ### Update Log（必讀）
 
 **[UPDATE_LOG.md](./UPDATE_LOG.md)** 記錄：
@@ -145,5 +190,5 @@ python3 test_combat.py          # 需本地 DB / 環境
 | 角色 | 先讀 |
 |------|------|
 | **Grok**（方向） | `README.md` → **[UPDATE_LOG.md](./UPDATE_LOG.md)** → **[bug_log/INDEX.md](./bug_log/INDEX.md)**（若有 active case）→ `ARCHITECTURE_ROADMAP.md` |
-| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → **UPDATE_LOG.md** → **bug_log**（若改緊相關模組） |
-| **Gemini**（review / debug） | **UPDATE_LOG.md** → **bug_log/cases/…/REPORT.md** + `attachments/` → **GEMINI_REVIEW.md** |
+| **Grok Build**（實作） | **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)** → **Context 管理協議** → **UPDATE_LOG.md** → **bug_log**（若改緊相關模組） |
+| **Gemini**（review / debug） | **GEMINI_REVIEW.md** §Context 管理 → **UPDATE_LOG.md** → **bug_log/cases/…/REPORT.md**；局部檔案 only |

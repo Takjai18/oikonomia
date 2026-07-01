@@ -64,13 +64,37 @@ export function createVictoryView(rootEl) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function resolveAuthoritativeTeamId(app) {
-    const teamId = app.ctx.hud?.me?.team_id || app.ctx.hud?.team_id;
-    if (!teamId || String(teamId).toUpperCase() === 'TEAM-01') {
-      showToast('無法自動拉齊小隊編號，請 GM 登入後台手動處理', 'error');
+  async function resolveAuthoritativeTeamId(app) {
+    const hint = String(
+      app.ctx.hud?.me?.team_id || app.ctx.hud?.team_id || '',
+    ).trim().toUpperCase();
+    const inputFn = typeof window.showInputModal === 'function' ? window.showInputModal : null;
+    const confirmFn = typeof window.showConfirmModal === 'function' ? window.showConfirmModal : null;
+    if (!inputFn || !confirmFn) {
+      showToast('無法開啟 GM 核對視窗，請登入後台手動處理', 'error');
       return null;
     }
-    return teamId;
+
+    const raw = await inputFn({
+      title: 'GM 現場救援 — 小隊編號核對',
+      placeholder: '例如 TEAM-02',
+      defaultValue: hint,
+      maxLength: 32,
+    });
+    const clean = String(raw || '').trim().toUpperCase();
+    if (!clean) {
+      showToast('操作已取消，未執行任何修改。', 'warn');
+      return null;
+    }
+
+    const agreed = await confirmFn({
+      title: '最終確認',
+      message: `確定要對小隊【${clean}】執行高特權覆蓋？請務必核對現場玩家識別證。`,
+      confirmLabel: '確認執行',
+      danger: true,
+    });
+    if (!agreed) return null;
+    return clean;
   }
 
   async function resolveProtagonistKeyForOverride(app) {
@@ -204,10 +228,10 @@ export function createVictoryView(rootEl) {
         if (btn) btn.textContent = '📢 已發送救援請求';
       });
 
-      failedPanel.querySelector('#gm-btn-clear-ending')?.addEventListener('click', () => {
+      failedPanel.querySelector('#gm-btn-clear-ending')?.addEventListener('click', async () => {
         const app = document.getElementById('combat-root-v2')?.__combat_app_instance__;
         if (!app) return;
-        const teamId = resolveAuthoritativeTeamId(app);
+        const teamId = await resolveAuthoritativeTeamId(app);
         if (!teamId) return;
         void app.executeGmOverride({ teamId, targetEndingType: 'clear' });
       });
@@ -215,7 +239,7 @@ export function createVictoryView(rootEl) {
       failedPanel.querySelector('#gm-btn-clear-trauma')?.addEventListener('click', async () => {
         const app = document.getElementById('combat-root-v2')?.__combat_app_instance__;
         if (!app) return;
-        const teamId = resolveAuthoritativeTeamId(app);
+        const teamId = await resolveAuthoritativeTeamId(app);
         if (!teamId) return;
         const protagonistKey = await resolveProtagonistKeyForOverride(app);
         if (!protagonistKey) return;
@@ -239,7 +263,7 @@ export function createVictoryView(rootEl) {
 
 ===== EXCERPT: static/js/combat/index.js — executeGmOverride =====
 
-# static/js/combat/index.js (L519–L537)
+# static/js/combat/index.js (L595–L613)
 
   async executeGmOverride(opts) {
     try {
@@ -264,7 +288,7 @@ export function createVictoryView(rootEl) {
 
 ===== EXCERPT: static/js/combat/api_client.js — overrideTraumaEnding =====
 
-# static/js/combat/api_client.js (L64–L93)
+# static/js/combat/api_client.js (L65–L94)
 
   async overrideTraumaEnding({ teamId, protagonistKey, targetTrauma, targetEndingType }) {
     return fetchJson('/gm/api/override_trauma_ending', {
@@ -300,7 +324,7 @@ export class ResilientPollingManager {
 
 ===== EXCERPT: routes/gm.py — gm_override_trauma_ending_api =====
 
-# routes/gm.py (L765–L904)
+# routes/gm.py (L765–L909)
 
 def gm_override_trauma_ending_api():
     """
@@ -344,7 +368,12 @@ def gm_override_trauma_ending_api():
         return jsonify({"success": False, "error": "缺少有效的覆蓋變更指令"}), 400
 
     now = datetime.now().isoformat()
-    gm_operator = session.get("squad_id") or "GM_ANONYMOUS"
+    gm_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    if not gm_operator:
+        return jsonify({
+            "success": False,
+            "error": "資安審計攔截：未能識別當前工作人員身分，操作已遭封鎖",
+        }), 403
 
     def _override_tx(conn):
         c = conn.cursor()
@@ -446,18 +475,25 @@ def gm_override_trauma_ending_api():
 
 ## 2. Scope B — 超時自動防禦
 
-# static/js/combat/index.js (L311–L319)
+# static/js/combat/index.js (L340–L355)
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
-    if (this.ctx.phase !== Phase.IDLE) return;
-    if (this.ctx.hud?.me?.submitted) return;
 
-    this.hasTriggeredTimeoutDefense = true;
-    showToast('操作超時！系統已自動為你選擇「防禦」。', 'warn');
-    this.performAction('defend');
-  }
-# static/js/combat/index.js (L321–L332)
+    const protectedPhases = [
+      Phase.DICE_ROLLING,
+      Phase.DICE_CONFIRM,
+      Phase.SUBMITTING,
+      Phase.SETTLEMENT,
+      Phase.WAITING_FOR_PLAYERS,
+    ];
+    if (protectedPhases.includes(this.ctx.phase)) return;
+
+    if (this.ctx.hud?.me?.submitted) {
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
+# static/js/combat/index.js (L399–L410)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
@@ -475,7 +511,7 @@ def gm_override_trauma_ending_api():
 
 ## 3. Scope C — Co-op 併發 resolve
 
-# models/combat.py (L667–L681)
+# models/combat.py (L676–L690)
 
 def _claim_player_phase_resolution(combat_id):
     with immediate_transaction() as conn:
@@ -492,9 +528,9 @@ def _claim_player_phase_resolution(combat_id):
         return cur.rowcount > 0
 
 
-# models/combat.py (L893–L931)
+# models/combat.py (L928–L978)
 
-def maybe_resolve_player_phase(combat_id, combat_settings=None):
+def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """
     Authoritative resolve gate for routes: re-read DB snapshot, resolve at most once.
     Readiness is validated inside _claim_ready_player_phase_resolution (CAS + TX).
@@ -505,23 +541,35 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None):
     if not combat:
         return None, None
 
+    initial_phase = int(combat.get("current_phase") or 0)
     status = combat.get("status")
     if status == "ended":
         return combat, combat.get("winner")
     if status == COMBAT_STATUS_RESOLVING:
-        return _wait_for_resolution_complete(combat_id)
+        return _wait_after_peer_resolve(combat_id, initial_phase)
     if status != "player_phase":
         return combat, None
 
     encounter = load_encounter(combat.get("encounter_id") or "")
     settings = combat_settings or (encounter or {}).get("combat_settings", {})
 
-    claimed, snapshot = _claim_ready_player_phase_resolution(combat_id, settings)
+    if cached_participants is None:
+        cached_participants = get_combat_participants(combat) or []
+    claimed, snapshot = _claim_ready_player_phase_resolution(
+        combat_id, settings, cached_participants=cached_participants,
+    )
     if not claimed:
         combat = get_combat(combat_id) or snapshot
+        if combat and int(combat.get("current_phase") or 0) > initial_phase:
+            return combat, combat.get("winner") if combat.get("status") == "ended" else None
         if combat and combat.get("status") == COMBAT_STATUS_RESOLVING:
-            return _wait_for_resolution_complete(combat_id)
+            return _wait_after_peer_resolve(combat_id, initial_phase)
         return combat, None
+
+    snap_phase = int((snapshot or {}).get("current_phase") or initial_phase)
+    if snap_phase != initial_phase:
+        _release_player_phase_resolution(combat_id)
+        return get_combat(combat_id), None
 
     try:
         combat, winner = _resolve_player_phase_body(combat_id)
@@ -529,7 +577,7 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None):
         _release_player_phase_resolution(combat_id)
         raise
     if combat and combat.get("status") == COMBAT_STATUS_RESOLVING and winner is None:
-        return _wait_for_resolution_complete(combat_id)
+        return _wait_after_peer_resolve(combat_id, initial_phase)
     return combat, winner
 
 
@@ -538,6 +586,12 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None):
 ## 4. E2E 參考 — T14 特權阻斷
 
 # tests/combat_v2.spec.js (L498–L560)
+
+    const toast = page.locator('[data-testid="combat-toast"]');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText('只有隊長特權才能啟動主角代打模式');
+    await expect(page.locator('#combat-v2-attack-btn')).toBeEnabled();
+  });
 
   test('T14: rogue player GM override endpoint hard-blocked', async ({ page }) => {
     await page.route('**/gm/api/override_trauma_ending', async (route) => {

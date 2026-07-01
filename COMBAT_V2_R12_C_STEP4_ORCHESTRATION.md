@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_C_STEP4_ORCHESTRATION（局部審計 · 純計算層與戰後編排）
 
 > **目的**：審計 **Greenfield Step 4** — `combat_engine` 純函式、`combat_flow` INV-E 混合結算、`combat_outcomes` 冪等與 `settlement_id`  
-> **日期**：2026-07-01 · **commit**：`3a02205`  
+> **日期**：2026-07-01 · **commit**：`0e2fa93`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md` + `combat_greenfield_final.md` §1.1 INV-E  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -104,8 +104,8 @@ def calculate_incoming_damage(
     if multiplier is None:
         multiplier = DEFEND_TEAM_DAMAGE_FACTOR if defending else 1.0
     if multiplier < 1.0:
-        damage = max(piercing, math.floor(damage * multiplier))
-    return damage
+        damage = math.floor(damage * multiplier)
+    return max(piercing, damage)
 
 
 def dice_multiplier(
@@ -369,7 +369,7 @@ def process_mixed_round_actions(
 
 ## 3. 生產路徑 escape 接入
 
-# models/combat.py (L932–L1021)
+# models/combat.py (L979–L1068)
 
 def _resolve_player_phase_body(combat_id):
     combat = get_combat(combat_id)
@@ -444,6 +444,15 @@ def _resolve_player_phase_body(combat_id):
             )
             continue
 
+        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
+        if action_type == "failed_escape":
+            combat = append_combat_log(
+                combat,
+                f"{display} 由於逃跑失敗，本回合陷入破防僵直，無法輸出任何傷害。",
+                log_type="failed_escape_stuck",
+            )
+            continue
+
         if is_berserk(sanity):
             berserk_players.append(player_squad_id)
             if random.random() < 0.30:
@@ -452,22 +461,12 @@ def _resolve_player_phase_body(combat_id):
                 combat = append_combat_log(
                     combat,
                     f"{display} 暴走！攻擊自己，造成 {self_dmg} 點傷害",
-                    log_type="berserk",
-                )
-            else:
-                combat = append_combat_log(
-                    combat,
-                    f"{display} 神智不清，行動失控",
-                    log_type="berserk",
-                )
-            continue
 
 ## 4. 戰後編排與 settlement_id
 
 """Orchestrate post-combat rewards, trauma, and ending side effects."""
 from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
-from utils.db_tx import with_db_retry
 
 
 def _outcome_already_recorded(team_id, encounter_id):
@@ -480,8 +479,8 @@ def _outcome_already_recorded(team_id, encounter_id):
 
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
     """
-    已重構：跨模組編排層管線 (INV-B/E 最終保障)
-    透過中央原子 Transaction 鎖保護發放劇情獎勵與能帶更新。
+    Post-combat orchestration — idempotency enforced by encounter_completions SSOT.
+    No outer with_db_retry: pipeline / completion checks must not race on dirty snapshots.
     """
     from models.encounter_outcomes import (
         apply_encounter_failure,
@@ -512,56 +511,54 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         return result
 
     if winner == "squad":
+        ending = judge_ending(team_id) if team_id else {}
+        result["ending"] = ending
+        trauma_total = int(ending.get("protagonist_trauma_total") or 0)
 
-        def _apply_squad_outcome():
-            squad_result = dict(result)
-            ending = judge_ending(team_id) if team_id else {}
-            squad_result["ending"] = ending
-            trauma_total = int(ending.get("protagonist_trauma_total") or 0)
-            already = _outcome_already_recorded(team_id, encounter_id)
-
-            if team_id and ending.get("should_apply_bad_ending_victory"):
-                if not already:
-                    apply_trauma_bad_ending_victory(team_id, encounter)
-                squad_result["trauma_bad_ending"] = True
-                squad_result["log_messages"] = squad_result["log_messages"] + [{
-                    "message": (
-                        f"主角心理創傷過深（累計 {trauma_total}）——"
-                        "勝利無法帶來真正救贖"
-                    ),
-                    "log_type": "trauma_ending",
-                }]
-            elif team_id:
+        if team_id and ending.get("should_apply_bad_ending_victory"):
+            if not _outcome_already_recorded(team_id, encounter_id):
+                apply_trauma_bad_ending_victory(team_id, encounter)
+                result["applied_success"] = True
+            result["trauma_bad_ending"] = True
+            result["log_messages"].append({
+                "message": (
+                    f"主角心理創傷過深（累計 {trauma_total}）——"
+                    "勝利無法帶來真正救贖"
+                ),
+                "log_type": "trauma_ending",
+            })
+        elif team_id:
+            try:
                 snap = execute_post_combat_success_pipeline(
                     team_id, encounter_id, starter_id,
                 )
-                squad_result["applied_success"] = "拒絕重複" not in snap.log_message
-                squad_result["log_messages"] = squad_result["log_messages"] + [{
+                result["applied_success"] = "拒絕重複" not in snap.log_message
+                result["log_messages"].append({
                     "message": snap.log_message,
                     "log_type": "story_progression",
-                }]
-            elif starter_id and not already:
-                apply_encounter_success_solo(starter_id, encounter)
-                squad_result["applied_success"] = True
-            return squad_result
-
-        return with_db_retry(_apply_squad_outcome)
+                })
+            except Exception as exc:
+                result["log_messages"].append({
+                    "message": f"劇情推進管線觸發等冪保護: {exc}",
+                    "log_type": "idempotent_blocked",
+                })
+        elif starter_id and not _outcome_already_recorded(starter_id, encounter_id):
+            apply_encounter_success_solo(starter_id, encounter)
+            result["applied_success"] = True
+        return result
 
     if winner == "enemy":
-
-        def _apply_enemy_outcome():
-            fail_result = dict(result)
-            if team_id and not _outcome_already_recorded(team_id, encounter_id):
+        id_key = team_id or starter_id
+        if id_key and not _outcome_already_recorded(id_key, encounter_id):
+            if team_id:
                 apply_encounter_failure(team_id, encounter)
-                fail_result["applied_failure"] = True
+                result["applied_failure"] = True
             elif starter_id:
                 apply_encounter_failure_solo(starter_id, encounter)
-                fail_result["applied_failure"] = True
-            if team_id:
-                fail_result["ending"] = judge_ending(team_id)
-            return fail_result
-
-        return with_db_retry(_apply_enemy_outcome)
+                result["applied_failure"] = True
+        if team_id:
+            result["ending"] = judge_ending(team_id)
+        return result
 
     return result
 
@@ -577,10 +574,7 @@ def build_victory_outcome_payload(
     trauma_bad = bool(ending.get("trauma_bad_ending"))
     safe_combat_id = int(combat_id) if combat_id is not None else 0
     round_idx = max(0, int(current_round or 0))
-    if round_idx > 0:
-        settled_round_index = round_idx - 1
-    else:
-        settled_round_index = 0
+    settled_round_index = max(0, round_idx - 1)
 
     payload = {
         "success": True,
@@ -873,6 +867,19 @@ def test_incoming_damage_piercing_floor():
         fail("incoming damage piercing floor", f"got {dmg}")
 
 
+def test_incoming_damage_extreme_team_defend():
+    """INV-D: 10% piercing floor survives extreme team-defend multipliers."""
+    base = 5
+    dmg = calculate_incoming_damage(
+        base, 0, team_defend_multiplier=0.001,
+    )
+    piercing = max(1, base // 10)
+    if dmg >= piercing and dmg > 0:
+        ok("incoming damage extreme defend cannot zero out piercing")
+    else:
+        fail("incoming damage extreme defend cannot zero out piercing", f"got {dmg}")
+
+
 def test_select_enemy_counter_target_engine():
     participants = [
         {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
@@ -893,6 +900,7 @@ def main():
     test_count_team_defenders()
     test_resolve_round_calculation_with_defend()
     test_incoming_damage_piercing_floor()
+    test_incoming_damage_extreme_team_defend()
     test_select_enemy_counter_target_engine()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1

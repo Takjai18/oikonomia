@@ -126,7 +126,8 @@ def git_head() -> str:
             text=True,
         ).strip()
     except Exception:
-        return "unknown"
+        ref = ROOT / ".git" / "refs" / "heads" / "main"
+        return ref.read_text(encoding="utf-8").strip()[:7] if ref.exists() else "unknown"
 
 
 def build_index(today: str, head: str) -> str:
@@ -175,11 +176,12 @@ def build_index(today: str, head: str) -> str:
 ## 測試基線（{today} · `{head}`）
 
 ```bash
-./venv/bin/python3 scripts/test_combat_flow.py      # 264/264
-./venv/bin/python3 scripts/test_db_hardening.py     # 8/8
-./venv/bin/python3 scripts/test_combat_engine.py    # 16/16
+./venv/bin/python3 scripts/test_combat_flow.py      # 267/267
+./venv/bin/python3 scripts/test_db_hardening.py     # 11/11
+./venv/bin/python3 scripts/test_combat_engine.py    # 17/17
 ./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4
-npm run test:combat                                 # 15/15
+./venv/bin/python3 scripts/test_combat_concurrency.py
+npm run test:combat                                 # 17/17
 npm run test:e2e:v2                               # T8–T14
 bash scripts/pre_deploy_checks.sh
 ```

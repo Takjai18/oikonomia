@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-06-30 · 現行 commit 以 `git rev-parse --short HEAD` 為準（戰鬥 UX 見 §16）
+> **最後更新**：2026-07-01 · **基準 commit `0e2fa93`**（R11/R12 審計封頂 · 戰鬥 UX 見 §16）
 
 ---
 
@@ -37,12 +37,75 @@ Grok（方向） → Grok Build（實作） → Gemini（review / debug） → G
 
 ---
 
+## 0.5 Context 管理協議（Gemini 必守 · 2026-06-30）
+
+> **目的**：防 context 溢出導致 review 腰斬或幻覺。長對話**唔使**開新 Chat。
+
+### Baseline（假設已讀，用戶唔會再貼全文）
+
+| 檔案 | 版本 | 說明 |
+|------|------|------|
+| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v12** | Combat V2 SSOT（首次 onboarding 貼全文） |
+| **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D Partial |
+| **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
+| **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
+| `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§17 已修 R11/R12） |
+
+用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
+
+### 進門對齊模式
+
+| 模式 | Gemini 輸出 |
+|------|-------------|
+| **【審計模式】**（預設） | **【Critical】→【High/Medium】→【Low】→ 健康度總評**（1–10）；每項附檔名＋符號＋ exploit／重現步驟 |
+| **【開發模式】** | 唔係你嘅主戰場；若用戶誤標，提醒交 Grok Build，並只給架構／風險備註 |
+
+### 局部審計規則
+
+1. **一次一個 scope** — 例如只審 `routes/gm.py` 嘅 `gm_override_trauma_ending_api`，或只審 `victory_view.js` `showFailed`。
+2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v12 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
+3. **戰鬥 V2** 前端已遷至 `static/js/combat/` — 審計 legacy `index.html` 戰鬥區前，先確認 `COMBAT_V2=1` 是否為現場配置。
+4. **Bug case** 仍用 `bash scripts/build_gemini_packet.sh` 生成**局部** packet（`GEMINI_PACKET.md`），唔與 v10 Bundle 混貼。
+
+### 【審計模式】輸出範本（複製結構）
+
+```markdown
+## 健康度總評：X/10
+
+### 【Critical】
+- （無則寫「無」）
+
+### 【High/Medium】
+- [High] 檔案:符號 — 問題 — 重現 — 建議修復
+
+### 【Low】
+- …
+
+### 已確認安全（本 scope）
+- …
+```
+
+### 用戶開場白範本（審計局部 scope）
+
+```
+【審計模式】
+Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
+範圍：static/js/combat/views/victory_view.js — showFailed + GM 嵌入式面板
+焦點：gm_session 403、team_id 來源、COMBAT_RESET from COMBAT_FAILED
+請依 GEMINI_REVIEW.md §0.5 輸出。
+```
+
+---
+
 ## 1. Review 前必讀（5 分鐘）
 
 | 檔案 | 用途 |
 |------|------|
-| `README.md` | 專案概覽、**三角色分工**、本地／PA 網址 |
+| `README.md` | 專案概覽、**三角色分工**、**Context 管理協議** |
 | `AGENT_HANDOFF.md` | Grok Build 實作交接；戰鬥公式、API、部署、待辦 |
+| `COMBAT_V2_AUDIT_BUNDLE.md` v11 | SSOT Baseline（**首次貼全文**；其後引用唔貼） |
+| `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計（**日常貼呢個**） |
 | `CURRENT_STRUCTURE.md` | 目錄樹、模組職責快照 |
 | **本文** `GEMINI_REVIEW.md` | Review / Debug 範圍、優先級、輸出格式、已修復對照 |
 
@@ -694,4 +757,55 @@ High 項要寫清 exploit 或 bug 重現步驟，同具體修復建議（交 Gro
 
 請確認 v12 修復是否覆蓋根因；指出 race／edge case；建議自動化 assert。
 格式：根因 → 重現 → 最小修復 → 測試。
+```
+
+---
+
+## 18. R11/R12 Combat V2 審計封頂（2026-07-01 · `0e2fa93`）
+
+> **用途**：下一輪 Gemini **唔好重複報**以下已落地修復。新審計請用 `COMBAT_V2_PARTIAL_INDEX.md` 選 **單一** Partial（regression / 新 scope only）。
+
+### 18.1 已修對照表（唔重複報）
+
+| 審計輪次 | 議題 | 狀態 | 主要檔案 / commit |
+|----------|------|------|-------------------|
+| **R11-A** | GM 特權 `team_id` 客戶端篡改 | ✅ | `victory_view.js` `resolveAuthoritativeTeamId` · `routes/gm.py` `gm_operator` 403 · `7823a95` |
+| **R11-B** | 超時自動防禦 double-submit | ✅ | `index.js` `triggerTimeoutAutomaticDefense` + `performActionDirectly` · `7823a95` |
+| **R11-C** | Co-op 同秒 resolve 重複結算 | ✅ | `models/combat.py` `_wait_after_peer_resolve` monotonic · `7823a95` |
+| **R12-A** | 大廳 3s poll 與 V2 FSM 競爭 | ✅ | `OIKONOMIA_COMBAT_V2_LOCK` sessionStorage · `finishSessionRestore` DOM-first · `b931b37` |
+| **R12-B** | `_end_combat` 多連線 lock / 髒 actions | ✅ | atomic `_end_combat` + `reconcile` purge · `database.py` `get_db_connection` · `3bd8d36` |
+| **R12-C** | outcome 外層 retry race / piercing / failed_escape | ✅ | `combat_outcomes.py` · `combat_engine.py` · `_resolve_player_phase_body` · `0e2fa93` |
+| **R12-D** | settlement monotonic / entrySyncPending | ✅ | `state_machine.js` · `settlement.js`（早前 `7029bfd`+） |
+
+### 18.2 測試基線（`0e2fa93`）
+
+```bash
+./venv/bin/python3 scripts/test_combat_flow.py              # 267/267
+./venv/bin/python3 scripts/test_db_hardening.py             # 11/11
+./venv/bin/python3 scripts/test_combat_engine.py            # 17/17
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py # 4/4
+npm run test:combat                                         # 17/17
+./venv/bin/python3 scripts/test_combat_concurrency.py
+```
+
+### 18.3 下一輪審計建議 scope
+
+| 優先 | 方向 | Bundle |
+|------|------|--------|
+| 1 | 新 encounter / 劇情內容接入 | 單檔 + `test_encounter_catalog` |
+| 2 | PA 部署後實機弱網重連 | R12-A regression |
+| 3 | 20 人 HTTP 壓測擴展 | 新腳本（非現有 smoke） |
+| 4 | `get_team_protagonists` 常數化（Low） | `models/team.py` |
+
+### 18.4 Copy-paste 開場白（R12 後下一輪）
+
+```
+你是 Oikonomia 第三方 Engineer（Gemini）。Grok 方向、Grok Build 實作；你 review/debug，唔改 repo。
+
+Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）
+已修對照：GEMINI_REVIEW.md §18（R11/R12 唔重複報）
+本次範圍：<貼 COMBAT_V2_PARTIAL_INDEX 所指單一 Partial 或單檔>
+基準 commit：0e2fa93
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
 ```

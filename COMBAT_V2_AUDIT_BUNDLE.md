@@ -1,32 +1,34 @@
-# COMBAT_V2_AUDIT_BUNDLE v11（營會 SSOT · Context 協議版）
+# COMBAT_V2_AUDIT_BUNDLE v12（營會 SSOT · R11/R12 封頂版）
 
 > **用途**：**首次 onboarding** 或重大版本錨點 — Copy 全文到 Gemini 建立 Baseline  
-> **日期**：2026-07-01（R11）  
-> **實作者**：Grok Build（Combat V2 + P1.5 + GM Override + UI Bridge · Phase 2 封頂）  
+> **日期**：2026-07-01 · **commit**：`0e2fa93`  
+> **實作者**：Grok Build（Combat V2 Greenfield · Phase 2 封頂）  
 > **Baseline**：`combat_greenfield_final.md`（附錄內含全文）  
-> **上一輪**：R10 GM UI Bridge ✅ · 249/249 · T8–T14 ✅  
-> **本輪**：**Context 管理協議** 寫入 README / HANDOFF / GEMINI_REVIEW  
+> **上一輪**：R11 現場風險 A/B/C ✅ · R12-A～D 橋接/DB/編排/INV ✅  
+> **本輪**：R11/R12 審計修復已落地；下一輪用 **Partial Bundle** 做 regression 審計  
 > **Feature Flag**：`COMBAT_V2=1` · `OIKONOMIA_SHOW_TEST_ENCOUNTERS=0`（production）
 
-> ⚠️ **後續局部審計唔貼本檔全文** — 改用 `COMBAT_V2_R11_PARTIAL_BUNDLE.md`  
-> 生成：`python3 scripts/build_combat_v2_r11_partial_bundle.py`
+> ⚠️ **後續局部審計唔貼本檔全文** — 見 `COMBAT_V2_PARTIAL_INDEX.md` 選 R11 / R12-A～D  
+> 生成：`python3 scripts/build_combat_v2_partial_bundles.py`
 
 ---
 
-## 0. 給 Gemini 的指令（R11 — 首次 Baseline / 錨點 Audit）
+## 0. 給 Gemini 的指令（R12 封頂 — Baseline / 錨點 Audit）
 
 1. **PASS/FAIL** 總評 + 健康度 **X/10**
-2. **Context 協議**：後續用戶只貼單檔；本檔作 SSOT 引用
-3. **GM UI Bridge** + **Override 後端** + **P1.5 編排** + **T8–T14 / INV-A～E**
-4. **R11 建議下一輪局部 scope**（見 §0.1）— 用 Partial Bundle 送審
+2. **Context 協議**：後續用戶只貼單檔 Partial；本檔作 SSOT 引用
+3. **已修對照**：`GEMINI_REVIEW.md` §17（R11/R12）— 唔好重複報已落地項
+4. **下一輪建議 scope**（見 §0.1）— 新功能或 regression only
 
-### 0.1 R11 建議局部審計（用 Partial Bundle，唔貼全文）
+### 0.1 建議局部審計（用 Partial Bundle，唔貼全文）
 
-| Scope | 檔案 | 焦點 |
-|-------|------|------|
-| **A** GM 現場 | `victory_view.js` + `routes/gm.py` | session 403、team_id、COMBAT_RESET |
-| **B** 戶外 poll | `index.js` timeout defense | double-submit、phase_expired |
-| **C** Co-op | `models/combat.py` maybe_resolve | CAS、stale resolving |
+| Bundle | 焦點 | 狀態（`0e2fa93`） |
+|--------|------|------------------|
+| **R12-D** | settlement monotonic · INV-A～E | ✅ 已審已修 |
+| **R12-A** | sessionStorage lock · restore 時序 | ✅ 已審已修 |
+| **R12-B** | atomic `_end_combat` · WAL · purge actions | ✅ 已審已修 |
+| **R12-C** | piercing floor · failed_escape · outcome 冪等 | ✅ 已審已修 |
+| **R11** | GM override · timeout mutex · co-op CAS | ✅ 已審已修 |
 
 **測試帳號**：Henry `PLAYER-75406`  
 **Encounter**：`practice_iggy_04_marathon` · `test_protagonist_control`
@@ -60,13 +62,17 @@
 
 ---
 
-## 3. 測試狀態（R11）
+## 3. 測試狀態（R12 · `0e2fa93`）
 
 ```bash
-npm run test:combat                              # 12/12 pass
-./venv/bin/python3 scripts/test_combat_flow.py # 249/249 pass
-scripts/test_ending_flow.py                      # 23/23 pass
-npm run test:e2e:v2                              # 7/7 pass (T8–T14)
+npm run test:combat                                    # 17/17 pass
+./venv/bin/python3 scripts/test_combat_flow.py         # 267/267 pass
+./venv/bin/python3 scripts/test_db_hardening.py        # 11/11 pass
+./venv/bin/python3 scripts/test_combat_engine.py       # 17/17 pass
+./venv/bin/python3 scripts/test_combat_flow_orchestrator.py  # 4/4 pass
+./venv/bin/python3 scripts/test_combat_concurrency.py
+scripts/test_ending_flow.py                            # 23/23 pass
+npm run test:e2e:v2                                    # T8–T14
 ```
 
 ---
@@ -104,7 +110,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ## 6. PR-6 結構（回歸）
 
-- `index.html` 4747 行 · `combat_flow.js` 已刪除
+- `index.html` 4853 行 · `combat_flow.js` 已刪除
 
 ---
 
@@ -130,10 +136,12 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 | 檔案 | 版本 | 說明 |
 |------|------|------|
-| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v11** | Combat V2 SSOT（首次 onboarding 貼全文） |
-| **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | **局部審計**（營會現場風險 A/B/C） |
+| **`COMBAT_V2_AUDIT_BUNDLE.md`** | **v12** | Combat V2 SSOT（首次 onboarding 貼全文） |
+| **`COMBAT_V2_PARTIAL_INDEX.md`** | — | 選 R11 / R12-A～D Partial |
+| **`COMBAT_V2_R11_PARTIAL_BUNDLE.md`** | R11 | 營會現場風險 A/B/C |
+| **`COMBAT_V2_R12_*_*.md`** | R12 | 大廳橋接 / DB / 編排 / INV |
 | `combat_greenfield_final.md` | — | 綠地 FSM／INV 規格 |
-| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照 |
+| `GEMINI_REVIEW.md` | 本文 | Review 格式與已修對照（§17 已修 R11/R12） |
 
 用戶提交 **【審計模式】** 時，範圍通常係**單一檔案或單一函數** — 唔期待你掃描成個 repo。
 
@@ -147,7 +155,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 ### 局部審計規則
 
 1. **一次一個 scope** — 例如只審 `routes/gm.py` 嘅 `gm_override_trauma_ending_api`，或只審 `victory_view.js` `showFailed`。
-2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v11 全文 — 用 `COMBAT_V2_R11_PARTIAL_BUNDLE.md` 或單檔即可。
+2. **唔要求** 用戶貼 `COMBAT_V2_AUDIT_BUNDLE.md` v12 全文 — 用 `COMBAT_V2_PARTIAL_INDEX.md` 所指 **一個** Partial 或單檔即可。
 3. **戰鬥 V2** 前端已遷至 `static/js/combat/` — 審計 legacy `index.html` 戰鬥區前，先確認 `COMBAT_V2=1` 是否為現場配置。
 4. **Bug case** 仍用 `bash scripts/build_gemini_packet.sh` 生成**局部** packet（`GEMINI_PACKET.md`），唔與 v10 Bundle 混貼。
 
@@ -173,7 +181,7 @@ GM 現場救援（瀕死面板）→ 三重點擊標題 → executeGmOverride()
 
 ```
 【審計模式】
-Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT_V2_R11_PARTIAL_BUNDLE
+Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）· 或貼 COMBAT_V2_PARTIAL_INDEX 所指 Partial
 範圍：static/js/combat/views/victory_view.js — showFailed + GM 嵌入式面板
 焦點：gm_session 403、team_id 來源、COMBAT_RESET from COMBAT_FAILED
 請依 GEMINI_REVIEW.md §0.5 輸出。
@@ -192,8 +200,9 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
 
 | 檔案 | 版本 | 生成 |
 |------|------|------|
-| `COMBAT_V2_AUDIT_BUNDLE.md` | **v11**（SSOT · Context 協議） | `python3 scripts/build_combat_v2_audit_bundle.py` |
-| `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計 A/B/C | `python3 scripts/build_combat_v2_r11_partial_bundle.py` |
+| `COMBAT_V2_AUDIT_BUNDLE.md` | **v12**（SSOT · R11/R12 封頂） | `python3 scripts/build_combat_v2_audit_bundle.py` |
+| `COMBAT_V2_PARTIAL_INDEX.md` | R11 + R12-A～D 導航 | `python3 scripts/build_combat_v2_partial_bundles.py` |
+| `COMBAT_V2_R11_PARTIAL_BUNDLE.md` | R11 局部審計 A/B/C | （同上腳本一併生成） |
 | `combat_greenfield_final.md` | 綠地規格 | repo 內建 |
 
 新功能（遭遇戰 JSON、GPS 任務路由、物品發放等）開發時：**假設 Baseline 已讀**，只貼本次改動嘅**單一檔案或單一函數**。
@@ -227,8 +236,11 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
 
 | Scope | 最低驗證 |
 |-------|----------|
-| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py` |
-| Combat 前端 | `npm run test:combat` + `npm run test:e2e:v2` |
+| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（267/267） |
+| DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（11/11） |
+| 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
+| Combat 前端 | `npm run test:combat`（17/17）+ `npm run test:e2e:v2` |
+| Co-op 併發 | `./venv/bin/python3 scripts/test_combat_concurrency.py` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |
 | Deploy 前 | `bash scripts/pre_deploy_checks.sh` |
@@ -304,11 +316,84 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
     // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
     let pendingEncounterId = null;
     let currentCombatId = null;
+    const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
+    const COMBAT_V2_LOCK_KEY = 'OIKONOMIA_COMBAT_V2_LOCK';
+
+    function setActiveCombatBridge(combatId) {
+        if (combatId != null && combatId !== '') {
+            sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+            sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(combatId));
+            currentCombatId = combatId;
+        }
+    }
+
+    function clearActiveCombatBridge() {
+        sessionStorage.removeItem(COMBAT_V2_LOCK_KEY);
+        sessionStorage.removeItem(ACTIVE_COMBAT_STORAGE_KEY);
+        currentCombatId = null;
+        pendingEncounterId = null;
+    }
+
+    function revealCombatV2Surface() {
+        showSection('combat', { skipCombatLobbyLoad: true });
+        setVisible(document.getElementById('combat-lobby'), false);
+        setVisible(document.getElementById('combat-result-panel'), false);
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        document.getElementById('combat-root-v2')?.classList.remove('hidden');
+    }
+
+    async function waitForCombatV2Ready(maxMs = 8000) {
+        const deadline = Date.now() + maxMs;
+        while (Date.now() < deadline) {
+            if (window.combatV2?.isEnabled?.()) return true;
+            if (window.combatV2 && typeof window.combatV2.isEnabled === 'function' && !window.combatV2.isEnabled()) {
+                return false;
+            }
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        return !!window.combatV2?.isEnabled?.();
+    }
+
+    function removeLegacyCombatGarbage() {
+        [
+            '.settlement-modal-backdrop',
+            '#combat-failed-mask',
+            '.legacy-dice-roller',
+            '#combat-round-settlement-modal',
+        ].forEach((selector) => {
+            document.querySelectorAll(selector).forEach((el) => {
+                try { el.remove(); } catch (_) { /* noop */ }
+            });
+        });
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+    }
+
+    /** INV-C: pause global /status poll while V2 combat is authoritative */
+    function isPlayerInActiveCombatV2() {
+        if (sessionStorage.getItem(COMBAT_V2_LOCK_KEY) === 'true') {
+            return true;
+        }
+        if (sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY)) {
+            return true;
+        }
+        if (window.combatV2?.isEnabled?.()) {
+            const state = window.combatV2.getState?.();
+            if (state?.combatId) return true;
+            const combatRootV2 = document.getElementById('combat-root-v2');
+            if (combatRootV2 && !combatRootV2.classList.contains('hidden')) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+                return true;
+            }
+        }
+        return false;
+    }
 
     window.AppRouter = {
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
             if (route === 'dashboard' || route === 'combat-hub') {
+                clearActiveCombatBridge();
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
                 document.getElementById('combat-root-v2')?.classList.add('hidden');
@@ -338,21 +423,20 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
 
     async function onLegacyEncounterTrigger(data) {
         if (window.combatV2?.isEnabled?.()) {
-            const lobby = document.getElementById('combat-lobby');
-            if (lobby) lobby.classList.add('hidden');
-            if (data.combat_id) currentCombatId = data.combat_id;
+            if (data.combat_id) setActiveCombatBridge(data.combat_id);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
         }
     }
 
-    function exitCombatScreen() {
-        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
+    function exitCombatScreen(options = {}) {
+        console.log('[Bridge] 執行戰鬥退出，清理殘留環境...');
+        clearActiveCombatBridge();
+        removeLegacyCombatGarbage();
 
-        if (window.combatV2?.isEnabled?.()) {
-            const app = window.combatV2.getApp?.();
-            app?.views?.endgame?.hideAll?.();
-            app?.poller?.stop();
-            app?.unmount?.();
+        const app = window.combatV2?.getApp?.();
+        if (app && typeof app.destroy === 'function') {
+            app.destroy();
         }
 
         setVisible(document.getElementById('combat-result-panel'), false);
@@ -361,8 +445,9 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
 
-        currentCombatId = null;
-        pendingEncounterId = null;
+        if (!options.fromV2) {
+            showToast('已安全退出戰場', 'info');
+        }
 
         setTimeout(async () => {
             await loadEncounters();
@@ -371,21 +456,29 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
     window.exitCombatScreen = exitCombatScreen;
 
     async function loadCombatPage(combatId) {
-        if (combatId) currentCombatId = combatId;
-        setVisible(document.getElementById('combat-lobby'), true);
-        setVisible(document.getElementById('combat-result-panel'), false);
-        setVisible(document.getElementById('combat-precheck-modal'), false);
-        setVisible(document.getElementById('combat-near-death-overlay'), false);
-        document.getElementById('combat-root-v2')?.classList.add('hidden');
+        if (combatId) {
+            setActiveCombatBridge(combatId);
+            revealCombatV2Surface();
+        } else {
+            clearActiveCombatBridge();
+            setVisible(document.getElementById('combat-lobby'), true);
+            setVisible(document.getElementById('combat-result-panel'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            document.getElementById('combat-root-v2')?.classList.add('hidden');
+        }
         const fresh = await refreshSquadFromServer();
         if (fresh) {
             initPlayerAvatar();
             updateDashboard(fresh);
         }
-        await loadEncounters();
+        if (!combatId) {
+            await loadEncounters();
+        }
         if (combatId && window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
             await window.combatV2.onCombatStarted({ combat_id: combatId });
+        } else if (combatId) {
+            await loadEncounters();
         }
     }
 
@@ -455,11 +548,11 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
                 hint.innerHTML = '⚔️ 進行中的戰鬥 — <span class="underline">點擊繼續</span>';
                 const resumeCombatId = data.active_combat_id;
                 hint.onclick = async () => {
-                    if (resumeCombatId) currentCombatId = resumeCombatId;
-                    showSection('combat', { skipCombatLobbyLoad: true });
+                    const resumeId = resumeCombatId || currentCombatId;
+                    if (resumeId) setActiveCombatBridge(resumeId);
+                    revealCombatV2Surface();
                     if (window.combatV2?.isEnabled?.()) {
-                        setVisible(document.getElementById('combat-lobby'), false);
-                        await window.combatV2.onCombatStarted({ combat_id: resumeCombatId || currentCombatId });
+                        await window.combatV2.onCombatStarted({ combat_id: resumeId });
                     } else {
                         showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
                     }
@@ -489,7 +582,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
             showToast(data.error || '無法開始', 'error');
             return;
         }
-        currentCombatId = data.combat_id;
+        setActiveCombatBridge(data.combat_id);
         showSection('combat', { skipCombatLobbyLoad: true });
         if (data.can_skip && data.status === 'precheck') {
             setVisible(document.getElementById('combat-lobby'), false);
@@ -500,7 +593,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
             return;
         }
         if (window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
             return;
         }
@@ -529,9 +622,9 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
             updateDashboard(await statusRes.json());
             return;
         }
-        currentCombatId = data.combat_id;
+        setActiveCombatBridge(data.combat_id);
         if (window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
             return;
         }
@@ -539,6 +632,7 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
     }
 
     function showCombatResult(data) {
+        clearActiveCombatBridge();
         setVisible(document.getElementById('combat-near-death-overlay'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
         setVisible(document.getElementById('combat-lobby'), false);
@@ -581,6 +675,10 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
     async function rescueNearDeath() {
 
     async function rescueNearDeath() {
+        if (isPlayerInActiveCombatV2()) {
+            showToast('瀕死救援請在戰鬥畫面操作', 'info');
+            return;
+        }
         const agreed = await showConfirmModal({
             title: '禱告救援',
             message: '為瀕死隊友發起禱告救援？（每次縮短 5 分鐘）',
@@ -606,20 +704,28 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v11（已讀，唔貼全文）· 或貼 COMBAT
         async function finishSessionRestore(data) {
             hideSessionLoading();
             persistRestoreToken(data);
+            if (data?.current_combat_id) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+                sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(data.current_combat_id));
+                currentCombatId = data.current_combat_id;
+            }
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
-                    setTimeout(async () => {
-                        showSection('combat', { skipCombatLobbyLoad: true });
-                        if (window.combatV2?.isEnabled?.()) {
-                            const lobby = document.getElementById('combat-lobby');
-                            if (lobby) lobby.classList.add('hidden');
-                            currentCombatId = data.current_combat_id;
-                            await window.combatV2.onCombatStarted({ combat_id: data.current_combat_id });
-                        } else if (typeof loadCombatPage === 'function') {
-                            await loadCombatPage(data.current_combat_id);
-                        }
-                    }, 400);
+                    const combatId = data.current_combat_id;
+                    console.log(`[Bridge] 偵測到進行中戰鬥 ${combatId}，啟動權威引導...`);
+                    setActiveCombatBridge(combatId);
+                    revealCombatV2Surface();
+                    await new Promise((r) => setTimeout(r, 100));
+
+                    const ready = await waitForCombatV2Ready();
+                    if (ready) {
+                        await window.combatV2.onCombatStarted({ combat_id: combatId });
+                    } else if (typeof loadCombatPage === 'function') {
+                        await loadCombatPage(combatId);
+                    }
+                } else {
+                    clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {
@@ -698,6 +804,10 @@ async function init() {
 
     async onCombatStarted(data) {
       console.log(`[Greenfield] 接收到戰鬥啟動訊號，戰鬥ID: ${data.combat_id}`);
+      if (data.combat_id) {
+        sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
+        sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
+      }
       root.classList.remove('hidden');
       await app.onCombatStarted(data);
     },
@@ -713,7 +823,10 @@ async function init() {
     pollTick: (data) => app.pollTick(data),
     onSubmitSuccess: (data) => app.onSubmitSuccess(data),
     getApp: () => app,
+    destroy: () => app.destroy(),
   };
+
+  window.CombatV2App = window.combatV2;
 
   console.log(
     '%c[Greenfield] Oikonomia Combat V2 核心已成功獨立掛載，Legacy 代碼完全清理完成。',
@@ -813,10 +926,27 @@ export class CombatApp {
   }
 
   unmount() {
-    this.poller.destroy();
-    this.views.endgame.hideAll();
-    this.views.items?.hide();
-    this.hideAllModals();
+    this.destroy();
+  }
+
+  destroy() {
+    try {
+      if (this.poller) {
+        this.poller.stop();
+        if (typeof this.poller.destroy === 'function') {
+          this.poller.destroy();
+        }
+      }
+      this.hideAllModals();
+      this.views?.endgame?.hideAll();
+      this.views?.items?.hide();
+      if (this.rootEl) {
+        this.rootEl.classList.add('hidden');
+      }
+      this.hasTriggeredTimeoutDefense = false;
+    } catch (err) {
+      console.error('[CombatV2] destroy failed', err);
+    }
   }
 
   getState() {
@@ -831,6 +961,11 @@ export class CombatApp {
     this.ctx.entrySyncPending = true;
     this.hasTriggeredTimeoutDefense = false;
     this.invRecoveryCount = 0;
+
+    if (data.combat_id) {
+      sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
+      sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
+    }
 
     this.hideAllModals();
     this.views.endgame.hideAll();
@@ -938,6 +1073,16 @@ export class CombatApp {
       return;
     }
 
+    const isProtagonistToggled = !!this.rootEl.querySelector(
+      `#${DOM_IDS.PROTAGONIST_TOGGLE}`,
+    )?.checked;
+    if (isProtagonistToggled && !this.ctx.hud?.me?.is_team_leader) {
+      showToast('只有隊長特權才能啟動主角代打模式', 'error');
+      const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
+      if (toggle) toggle.checked = false;
+      return;
+    }
+
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
 
@@ -950,9 +1095,6 @@ export class CombatApp {
         use_zoo: 'use_zoo',
       };
       const actionType = actionMap[this.ctx.dice.action] || 'attack';
-      const isProtagonistToggled = !!this.rootEl.querySelector(
-        `#${DOM_IDS.PROTAGONIST_TOGGLE}`,
-      )?.checked;
       const asProtagonist = isProtagonistToggled
         && !!this.ctx.hud?.controllable_protagonist_id
         && !!this.ctx.hud?.me?.is_team_leader;
@@ -1042,12 +1184,61 @@ export class CombatApp {
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
-    if (this.ctx.phase !== Phase.IDLE) return;
-    if (this.ctx.hud?.me?.submitted) return;
+
+    const protectedPhases = [
+      Phase.DICE_ROLLING,
+      Phase.DICE_CONFIRM,
+      Phase.SUBMITTING,
+      Phase.SETTLEMENT,
+      Phase.WAITING_FOR_PLAYERS,
+    ];
+    if (protectedPhases.includes(this.ctx.phase)) return;
+
+    if (this.ctx.hud?.me?.submitted) {
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
 
     this.hasTriggeredTimeoutDefense = true;
-    showToast('操作超時！系統已自動為你選擇「防禦」。', 'warn');
-    this.performAction('defend');
+    showToast('操作超時！系統已自動為您執行「防禦」指令。', 'warn');
+    void this.performActionDirectly('defend');
+  }
+
+  async performActionDirectly(actionType) {
+    if (this.ctx.phase === Phase.SUBMITTING) return;
+
+    if (this.ctx.phase === Phase.IDLE) {
+      this.ctx = {
+        ...this.ctx,
+        phase: Phase.DICE_CONFIRM,
+        dice: {
+          action: actionType,
+          value: null,
+          itemId: null,
+          cosmetic: false,
+        },
+      };
+    } else if (this.ctx.phase !== Phase.DICE_CONFIRM) {
+      return;
+    }
+
+    this.dispatch('CONFIRM_DICE');
+    this.poller.pause();
+
+    try {
+      const data = await CombatApi.submit({
+        combatId: this.ctx.combatId,
+        actionType,
+        itemId: null,
+        asProtagonist: false,
+      });
+      await this.onSubmitSuccess(data);
+    } catch (err) {
+      this.hasTriggeredTimeoutDefense = false;
+      this.dispatch('SUBMIT_ERROR', { error: err.message || '自動提交失敗' });
+    } finally {
+      if (!this.ctx.pollPaused) this.poller.resume();
+    }
   }
 
   pollTick(snapshot) {
@@ -1067,10 +1258,9 @@ export class CombatApp {
       snapshot.status === 'player_phase'
       && snapshot.remaining_seconds === 0
       && !snapshot.my_state?.submitted
-      && this.ctx.phase === Phase.IDLE
     ) {
       this.triggerTimeoutAutomaticDefense();
-      return;
+      if (this.hasTriggeredTimeoutDefense) return;
     }
 
     if (['VICTORY', 'DEFEAT', 'COMBAT_FAILED', 'ESCAPED'].includes(this.ctx.phase)) {
@@ -1209,16 +1399,15 @@ export class CombatApp {
   }
 
   exitToLobby() {
-    this.poller.stop();
-    this.unmount();
-    this.rootEl.classList.add('hidden');
-    this.views.endgame.hideAll();
-
     if (typeof window.exitCombatScreen === 'function') {
       showToast('已安全退出戰場', 'info');
-      window.exitCombatScreen();
+      window.exitCombatScreen({ fromV2: true });
       return;
     }
+
+    sessionStorage.removeItem('OIKONOMIA_COMBAT_V2_LOCK');
+    sessionStorage.removeItem('OIKONOMIA_ACTIVE_COMBAT_ID');
+    this.destroy();
 
     if (window.AppRouter && typeof window.AppRouter.navigateTo === 'function') {
       window.AppRouter.navigateTo('dashboard');
@@ -1278,6 +1467,9 @@ export { Phase };
 /** @file Pure combat FSM — zero DOM dependency */
 
 import { normalizeSettlement, deriveSettlementId } from './settlement.js';
+
+/** Fallback when HP field is missing (display / max baseline — not “alive” sentinel). */
+export const DEFAULT_COMBAT_MAX_HP = 100;
 
 export const Phase = {
   IDLE: 'IDLE',
@@ -1423,7 +1615,7 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
 /** Death preempt — INV-D highest priority */
 export function handleAnyDeath(ctx, members) {
   const dead = Object.entries(members || {})
-    .filter(([, m]) => intHp(m?.hp) <= 0)
+    .filter(([, m]) => isMemberCollapsed(m))
     .map(([id, m]) => m.display_name || id);
   if (dead.length === 0) return { ctx, effects: [] };
   if (ctx.phase === Phase.COMBAT_FAILED) return { ctx, effects: [] };
@@ -1489,6 +1681,28 @@ export function syncState(ctx, snapshot) {
   }
 
   if (snapshot.outcome === 'defeat' || snapshot.winner === 'enemy') {
+    const deadNames = snapshot.dead_squad_names?.length
+      ? snapshot.dead_squad_names
+      : (snapshot.dead_squad_ids || []).map(
+        (id) => snapshot.member_states?.[id]?.display_name || id,
+      );
+    if (deadNames.length > 0) {
+      return {
+        ctx: {
+          ...newCtx,
+          phase: Phase.COMBAT_FAILED,
+          failedMembers: deadNames,
+          pollPaused: true,
+          pendingSettlement: null,
+          pendingSettlementId: null,
+        },
+        effects: [
+          { type: 'HIDE_ALL_MODALS' },
+          { type: 'SHOW_FAILED', members: deadNames },
+          { type: 'STOP_POLL' },
+        ],
+      };
+    }
     newCtx = { ...newCtx, phase: Phase.DEFEAT, pollPaused: true };
     effects.push({ type: 'HIDE_ALL_MODALS' }, { type: 'SHOW_DEFEAT', data: snapshot }, { type: 'STOP_POLL' });
     return { ctx: newCtx, effects };
@@ -1552,7 +1766,7 @@ export function syncState(ctx, snapshot) {
     if (settlement && settlementId && !ctx.shownSettlementIds.has(settlementId)) {
       const killing = snapshot.outcome === 'victory'
         || snapshot.winner === 'squad'
-        || intHp(snapshot.enemy?.hp) <= 0;
+        || isEnemyDefeated(snapshot.enemy);
       newCtx = {
         ...newCtx,
         phase: Phase.SETTLEMENT,
@@ -1580,9 +1794,27 @@ function isHpOnlyPhase(phase) {
   return DICE_BUSY.has(phase) || phase === Phase.SUBMITTING || phase === Phase.SETTLEMENT;
 }
 
-function intHp(v) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : 999;
+/**
+ * Parse HP for display; uses member/enemy max_hp when value is absent.
+ * @param {number|string|null|undefined} value
+ * @param {number|string|null|undefined} maxHp
+ */
+export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
+  const n = parseInt(value, 10);
+  if (Number.isFinite(n)) return n;
+  const max = parseInt(maxHp, 10);
+  return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
+}
+
+/** INV-D: only finite hp ≤ 0 counts as collapsed (malformed hp → not dead). */
+export function isMemberCollapsed(member) {
+  const hp = parseInt(member?.hp, 10);
+  return Number.isFinite(hp) && hp <= 0;
+}
+
+export function isEnemyDefeated(enemy) {
+  const hp = parseInt(enemy?.hp, 10);
+  return Number.isFinite(hp) && hp <= 0;
 }
 
 const TRANSITIONS = {
@@ -1882,6 +2114,18 @@ function deriveIdx(ctx) {
 }
 
 export function determineSettlementRoute(ctx, apiData, settlement, settlementId) {
+  const apiIdx = parseInt(apiData.settled_round_index, 10);
+  if (
+    Number.isFinite(apiIdx)
+    && ctx.settledRoundIndex >= 0
+    && apiIdx < ctx.settledRoundIndex
+  ) {
+    return {
+      roundResolved: true,
+      skipModal: true,
+      settledRoundIndex: ctx.settledRoundIndex,
+    };
+  }
   if (ctx.shownSettlementIds.has(settlementId)) {
     return { roundResolved: true, skipModal: true, settledRoundIndex: apiData.settled_round_index };
   }
@@ -1905,9 +2149,10 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
 const DEFAULT_POLL_IDLE_MS = 1200;
 const DEFAULT_POLL_WAITING_MS = 800;
 
+/** Align with templates/index.html fetchNoCache (`_cb=`). */
 function appendCacheBust(url) {
   const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}_=${Date.now()}`;
+  return `${url}${sep}_cb=${Date.now()}`;
 }
 
 async function fetchJson(url, options = {}) {
@@ -2093,14 +2338,17 @@ export function normalizeSettlement(apiPayload) {
   if (!apiPayload) return null;
 
   let settlement = apiPayload.round_settlement;
-  const logs = apiPayload.log_entries || apiPayload.log || [];
 
   if (!settlement || isZeroSettlement(settlement)) {
-    const idx = apiPayload.settled_round_index ?? deriveSettledIndex(apiPayload);
-    settlement = buildSettlementFromLogs(logs, idx);
+    settlement = {
+      team_damage_dealt: apiPayload.round_enemy_damage || 0,
+      enemy_damage_dealt: apiPayload.round_player_damage || 0,
+      enemy_hp_after: apiPayload.enemy?.hp ?? null,
+      player_hits: [],
+      counter_hits: [],
+      breakdown: {},
+    };
   }
-
-  if (!settlement) return null;
 
   const teamDealt = intVal(
     settlement.team_damage_dealt ?? settlement.round_enemy_damage ?? apiPayload.round_enemy_damage,
@@ -2831,13 +3079,37 @@ export function createVictoryView(rootEl) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function resolveAuthoritativeTeamId(app) {
-    const teamId = app.ctx.hud?.me?.team_id || app.ctx.hud?.team_id;
-    if (!teamId || String(teamId).toUpperCase() === 'TEAM-01') {
-      showToast('無法自動拉齊小隊編號，請 GM 登入後台手動處理', 'error');
+  async function resolveAuthoritativeTeamId(app) {
+    const hint = String(
+      app.ctx.hud?.me?.team_id || app.ctx.hud?.team_id || '',
+    ).trim().toUpperCase();
+    const inputFn = typeof window.showInputModal === 'function' ? window.showInputModal : null;
+    const confirmFn = typeof window.showConfirmModal === 'function' ? window.showConfirmModal : null;
+    if (!inputFn || !confirmFn) {
+      showToast('無法開啟 GM 核對視窗，請登入後台手動處理', 'error');
       return null;
     }
-    return teamId;
+
+    const raw = await inputFn({
+      title: 'GM 現場救援 — 小隊編號核對',
+      placeholder: '例如 TEAM-02',
+      defaultValue: hint,
+      maxLength: 32,
+    });
+    const clean = String(raw || '').trim().toUpperCase();
+    if (!clean) {
+      showToast('操作已取消，未執行任何修改。', 'warn');
+      return null;
+    }
+
+    const agreed = await confirmFn({
+      title: '最終確認',
+      message: `確定要對小隊【${clean}】執行高特權覆蓋？請務必核對現場玩家識別證。`,
+      confirmLabel: '確認執行',
+      danger: true,
+    });
+    if (!agreed) return null;
+    return clean;
   }
 
   async function resolveProtagonistKeyForOverride(app) {
@@ -2971,10 +3243,10 @@ export function createVictoryView(rootEl) {
         if (btn) btn.textContent = '📢 已發送救援請求';
       });
 
-      failedPanel.querySelector('#gm-btn-clear-ending')?.addEventListener('click', () => {
+      failedPanel.querySelector('#gm-btn-clear-ending')?.addEventListener('click', async () => {
         const app = document.getElementById('combat-root-v2')?.__combat_app_instance__;
         if (!app) return;
-        const teamId = resolveAuthoritativeTeamId(app);
+        const teamId = await resolveAuthoritativeTeamId(app);
         if (!teamId) return;
         void app.executeGmOverride({ teamId, targetEndingType: 'clear' });
       });
@@ -2982,7 +3254,7 @@ export function createVictoryView(rootEl) {
       failedPanel.querySelector('#gm-btn-clear-trauma')?.addEventListener('click', async () => {
         const app = document.getElementById('combat-root-v2')?.__combat_app_instance__;
         if (!app) return;
-        const teamId = resolveAuthoritativeTeamId(app);
+        const teamId = await resolveAuthoritativeTeamId(app);
         if (!teamId) return;
         const protagonistKey = await resolveProtagonistKeyForOverride(app);
         if (!protagonistKey) return;
@@ -3046,7 +3318,7 @@ export function createItemSelectView(rootEl, onItemSelected) {
       listContainer.innerHTML = '<div class="text-center text-zinc-500 text-xs py-4 animate-pulse">正在盤點玩家背包…</div>';
 
       try {
-        const res = await fetch(`/api/inventory?_=${Date.now()}`, { credentials: 'same-origin' });
+        const res = await fetch(`/api/inventory?_cb=${Date.now()}`, { credentials: 'same-origin' });
         const data = await res.json();
 
         if (!data.success || !data.items?.length) {
@@ -3122,7 +3394,6 @@ from models.combat import (
     COMBAT_ACTION_TYPES,
     COMBAT_STATUS_RESOLVING,
     ActiveCombatExistsError,
-    all_phase_actions_submitted,
     append_combat_log,
     build_combat_round_preview,
     build_combat_status_response,
@@ -3131,7 +3402,6 @@ from models.combat import (
     clear_team_combat_id,
     combat_action_already_submitted,
     combat_phase_deadline,
-    combat_phase_expired,
     create_combat_record,
     get_active_combat_for_team,
     get_active_combat_member_ids,
@@ -3140,6 +3410,7 @@ from models.combat import (
     get_combat_participants,
     get_combat_phase_actions,
     get_phase_submit_required_ids,
+    advance_combat_from_poll,
     maybe_resolve_player_phase,
     resolve_player_phase,
     roll_combat_dice,
@@ -3167,7 +3438,7 @@ from models.encounter_outcomes import (
 )
 from models.protagonist import get_controllable_protagonist_squad_id, get_team_story_stage
 from models.item import apply_near_death_item_rescue
-from models.squad import get_squad, get_team_members, update_squad
+from models.squad import get_squad, get_team_members, is_near_death_active, update_squad
 from services.global_events import create_global_event
 
 combat_bp = Blueprint("combat", __name__)
@@ -3222,13 +3493,6 @@ def combat_start_api(encounter_id=None):
     ):
         return jsonify({"success": False, "error": "此 Encounter 已完成"}), 400
 
-    existing = get_active_combat_for_team(team_id)
-    if existing:
-        if existing.get("status") == "precheck" and confirm in ("skip", "fight"):
-            pass
-        else:
-            return jsonify({"success": False, "error": "已有進行中的戰鬥", "combat_id": existing["id"]}), 400
-
     route = squad.get("route")
     if not encounter_route_matches(encounter.get("route"), route):
         return jsonify({"success": False, "error": "此 Encounter 不屬於你嘅路線"}), 400
@@ -3238,18 +3502,19 @@ def combat_start_api(encounter_id=None):
         precheck.get("condition") and evaluate_precheck_condition(precheck["condition"], team_id)
     )
 
-    if existing and existing.get("status") == "precheck":
-        combat = existing
-    else:
-        status = "precheck" if precheck_passed else "player_phase"
-        try:
-            combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
-        except ActiveCombatExistsError as exc:
+    status = "precheck" if precheck_passed else "player_phase"
+    try:
+        combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
+    except ActiveCombatExistsError as exc:
+        existing = get_combat(exc.combat_id)
+        if existing and existing.get("status") == "precheck":
+            combat = existing
+        else:
             return jsonify({
                 "success": False,
                 "error": "已有進行中的戰鬥",
                 "combat_id": exc.combat_id,
-            }), 409
+            }), 409 if existing else 400
 
     if confirm == "skip" and precheck_passed:
         apply_precheck_skip(team_id, encounter)
@@ -3322,48 +3587,48 @@ def combat_status_api():
             )
             return jsonify(payload)
         if winner == "enemy":
-            return jsonify({
-                "success": True,
-                "active": False,
-                "winner": winner,
-                "outcome": "defeat",
-                "narrative": (encounter or {}).get("failure", {}).get("narrative"),
-            })
+            ended_participants = get_combat_participants(combat) if combat else None
+            return jsonify(_combat_outcome_json(
+                "enemy",
+                encounter,
+                team_id=team_id,
+                participants=ended_participants,
+            ))
         return jsonify({"success": True, "active": False, "winner": winner})
 
     encounter = load_encounter(combat["encounter_id"])
     settings = (encounter or {}).get("combat_settings", {})
 
     round_just_resolved = False
-    participants = None
-    if combat.get("status") == "player_phase":
-        participants = get_combat_participants(combat)
-        current_phase = int(combat.get("current_phase") or 0)
-        fresh = dict(combat)
-        fresh["phase_actions"] = get_combat_phase_actions(combat["id"], current_phase)
-        should_resolve = (
-            all_phase_actions_submitted(fresh, participants)
-            or combat_phase_expired(fresh, settings)
+    poll_participants = None
+    if combat.get("status") in ("player_phase", COMBAT_STATUS_RESOLVING):
+        combat, winner, round_just_resolved, poll_participants = advance_combat_from_poll(
+            combat["id"], settings,
         )
-        if should_resolve:
-            prev_phase = current_phase
-            prev_log_len = len(combat.get("logs") or [])
-            combat, winner = maybe_resolve_player_phase(combat["id"], settings)
-            actor = get_squad(session["squad_id"])
-            actor_team_id = actor.get("team_id") if actor else None
-            if winner == "squad":
-                combat = get_combat(combat["id"]) or combat
-                return jsonify(build_victory_outcome_response(
-                    combat, encounter, session["squad_id"], team_id=actor_team_id,
-                ))
-            if winner == "escaped":
-                combat = get_combat(combat["id"]) or combat
-                return jsonify(build_escape_outcome_response(
-                    combat, encounter, session["squad_id"], team_id=actor_team_id,
-                ))
-            if winner == "enemy":
-                return jsonify({**_combat_outcome_json("enemy", encounter), "active": False})
+        actor = get_squad(session["squad_id"])
+        actor_team_id = actor.get("team_id") if actor else None
+        if winner == "squad":
             combat = get_combat(combat["id"]) or combat
+            return jsonify(build_victory_outcome_response(
+                combat, encounter, session["squad_id"], team_id=actor_team_id,
+            ))
+        if winner == "escaped":
+            combat = get_combat(combat["id"]) or combat
+            return jsonify(build_escape_outcome_response(
+                combat, encounter, session["squad_id"], team_id=actor_team_id,
+            ))
+        if winner == "enemy":
+            defeat_participants = get_combat_participants(combat) if combat else None
+            return jsonify({
+                **_combat_outcome_json(
+                    "enemy",
+                    encounter,
+                    team_id=actor_team_id,
+                    participants=defeat_participants,
+                ),
+                "active": False,
+            })
+        if combat:
             finished = combat_outcome_if_finished(
                 combat,
                 encounter,
@@ -3372,14 +3637,8 @@ def combat_status_api():
             )
             if finished:
                 return jsonify({**finished, "active": False})
-            participants = None
-            round_just_resolved = (
-                int(combat.get("current_phase") or 0) > prev_phase
-                or len(combat.get("logs") or []) > prev_log_len
-            )
-
     payload = build_combat_status_response(
-        combat, encounter, session["squad_id"], participants=participants,
+        combat, encounter, session["squad_id"], participants=poll_participants,
     )
     _attach_round_settlement(payload, combat=combat)
     payload["active"] = combat.get("status") not in ("ended", "precheck")
@@ -3393,8 +3652,7 @@ def combat_status_api():
         _enrich_settlement_meta(payload, combat=combat)
         payload["full_preview"] = _build_full_preview_from_status(payload)
     elif combat.get("status") == "player_phase":
-        if participants is None:
-            participants = get_combat_participants(combat) or []
+        participants = poll_participants or get_combat_participants(combat) or []
         active_ids = get_active_combat_member_ids(participants or [])
         phase_actions = combat.get("phase_actions") or {}
         if session["squad_id"] in phase_actions and len(phase_actions) < len(active_ids):
@@ -3691,6 +3949,17 @@ def combat_rescue_near_death_api():
     squad = get_squad(session["squad_id"])
     if not squad or not squad.get("team_id"):
         return jsonify({"success": False, "error": "請先加入 Team"}), 400
+
+    if is_near_death_active(squad):
+        return jsonify({
+            "success": False,
+            "error": "你自身已陷入瀕死，無法救援隊友",
+        }), 400
+    if int(squad.get("sanity") or 0) <= 0:
+        return jsonify({
+            "success": False,
+            "error": "你的神智已崩潰，無法救援隊友",
+        }), 400
 
     participants = get_team_members(squad["team_id"])
     target = None
@@ -4613,7 +4882,12 @@ def gm_override_trauma_ending_api():
         return jsonify({"success": False, "error": "缺少有效的覆蓋變更指令"}), 400
 
     now = datetime.now().isoformat()
-    gm_operator = session.get("squad_id") or "GM_ANONYMOUS"
+    gm_operator = (session.get("gm_operator") or session.get("squad_id") or "").strip()
+    if not gm_operator:
+        return jsonify({
+            "success": False,
+            "error": "資安審計攔截：未能識別當前工作人員身分，操作已遭封鎖",
+        }), 403
 
     def _override_tx(conn):
         c = conn.cursor()
@@ -4932,8 +5206,10 @@ from services.combat_engine import (
     calculate_incoming_damage as _engine_calculate_incoming_damage,
     count_team_defenders,
     dice_multiplier as _engine_dice_multiplier,
+    select_enemy_counter_target,
     team_defend_damage_multiplier,
 )
+from services.combat_flow import normalize_failed_escape_actions
 from services.combat_outcomes import (
     build_defeat_outcome_payload,
     build_victory_outcome_payload,
@@ -5072,6 +5348,22 @@ def clear_team_combat_id(team_id):
         update_squad(member["squad_id"], current_combat_id=None)
 
 
+def purge_combat_actions(combat_id, *, conn=None):
+    """Remove orphaned phase submissions when a combat room closes."""
+    if not combat_id:
+        return 0
+    if conn is not None:
+        cur = conn.execute(
+            "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
+        )
+        return cur.rowcount
+    with immediate_transaction() as tx:
+        cur = tx.execute(
+            "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
+        )
+        return cur.rowcount
+
+
 def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     """Drop stale active markers when combat is already finished (SSOT heal)."""
     if not combat:
@@ -5084,18 +5376,29 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     if not is_finished:
         return True, combat_id, combat.get("encounter_id")
 
-    if combat.get("status") != "ended":
-        save_combat(
-            combat_id,
-            status="ended",
-            ended_at=datetime.now().isoformat(),
-            enemy_hp=0 if enemy_hp <= 0 else combat.get("enemy_hp"),
-        )
-
-    if team_id:
-        clear_team_combat_id(team_id)
-    elif squad_id:
-        update_squad(squad_id, current_combat_id=None)
+    now_str = datetime.now().isoformat()
+    with immediate_transaction() as conn:
+        if combat.get("status") != "ended":
+            conn.execute(
+                """UPDATE combats SET status = 'ended', ended_at = ?, enemy_hp = ?
+                   WHERE id = ?""",
+                (
+                    now_str,
+                    0 if enemy_hp <= 0 else combat.get("enemy_hp"),
+                    combat_id,
+                ),
+            )
+        if team_id:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE team_id = ?",
+                (team_id,),
+            )
+        elif squad_id:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE squad_id = ?",
+                (squad_id,),
+            )
+        purge_combat_actions(combat_id, conn=conn)
 
     return False, None, None
 
@@ -5425,6 +5728,30 @@ def get_active_combat_member_ids(participants):
     return active
 
 
+def get_phase_active_member_ids(combat, participants):
+    """
+    INV-E: members active for current phase resolution.
+    Escape submitters remain eligible until the round fully resolves.
+    """
+    active_ids = set(get_active_combat_member_ids(participants))
+    if not combat or not combat.get("id"):
+        return list(active_ids)
+
+    phase = int(combat.get("current_phase") or 0)
+    actions = get_combat_phase_actions(combat["id"], phase)
+    if not actions:
+        actions = (combat.get("phase_actions") or {})
+
+    for sid, action in actions.items():
+        action_type = (action.get("action_type") or action.get("action") or "")
+        if action_type != "escape":
+            continue
+        participant = next((p for p in participants if p.get("squad_id") == sid), None)
+        if participant and int(participant.get("hp") or 0) > 0:
+            active_ids.add(sid)
+    return list(active_ids)
+
+
 def get_active_combat_members(participants):
     ids = set(get_active_combat_member_ids(participants))
     return [p for p in participants if p["squad_id"] in ids]
@@ -5432,7 +5759,7 @@ def get_active_combat_members(participants):
 
 def _phase_player_control_context(combat, participants):
     """Split active combatants for player-controlled protagonist submit rules."""
-    active = get_active_combat_member_ids(participants)
+    active = get_phase_active_member_ids(combat, participants)
     team_id = _combat_team_id(combat, participants)
     encounter = load_encounter(combat.get("encounter_id")) if combat else None
     story_stage = get_team_story_stage(team_id) if team_id else 0
@@ -5570,7 +5897,9 @@ def _phase_actions_from_conn(conn, combat_id, phase, json_fallback=None):
     return dict(json_fallback or {})
 
 
-def _claim_ready_player_phase_resolution(combat_id, combat_settings=None):
+def _claim_ready_player_phase_resolution(
+    combat_id, combat_settings=None, cached_participants=None,
+):
     """
     CAS claim player_phase -> resolving only when resolve preconditions hold.
     Participant assembly runs outside TX; phase_actions are re-read inside TX.
@@ -5578,7 +5907,10 @@ def _claim_ready_player_phase_resolution(combat_id, combat_settings=None):
     combat = get_combat(combat_id)
     if not combat or combat.get("status") != "player_phase":
         return False, None
-    participants = get_combat_participants(combat) or []
+    if cached_participants is not None:
+        participants = cached_participants
+    else:
+        participants = get_combat_participants(combat) or []
     settings = combat_settings or {}
 
     with immediate_transaction() as conn:
@@ -5660,44 +5992,6 @@ def get_lowest_resilience_player(participants):
     return best or (participants[0] if participants else None)
 
 
-def _is_active_combat_participant(participant):
-    if int(participant.get("hp") or 0) <= 0:
-        return False
-    if participant.get("near_death_until"):
-        try:
-            if datetime.now() < datetime.fromisoformat(participant["near_death_until"]):
-                return False
-        except ValueError:
-            pass
-    return True
-
-
-def select_enemy_counter_target(participants, actions, enemy_base_damage):
-    """
-    Enemy counter targeting priority (Greenfield Spec 1.1):
-    1. can one-shot  2. escaping  3. HP < 50%  4. trauma  5. protagonist last
-    """
-    candidates = [p for p in participants if _is_active_combat_participant(p)]
-    if not candidates:
-        return None
-
-    def sort_key(member):
-        hp = int(member.get("hp") or 0)
-        max_hp = max(1, int(member.get("max_hp") or hp or 1))
-        sid = member.get("squad_id")
-        action_type = (actions.get(sid) or {}).get("action_type") or ""
-        trauma = int(member.get("trauma_count") or 0)
-        can_oneshot = 1 if int(enemy_base_damage) >= hp else 0
-        is_escaping = 1 if action_type == "escape" else 0
-        low_hp = 1 if (hp / max_hp) < 0.5 else 0
-        has_trauma = 1 if trauma > 0 else 0
-        non_protagonist = 0 if member.get("is_protagonist") else 1
-        return (can_oneshot, is_escaping, low_hp, has_trauma, non_protagonist)
-
-    candidates.sort(key=sort_key, reverse=True)
-    return candidates[0]
-
-
 def _escape_success_rate(combat_settings):
     try:
         rate = float((combat_settings or {}).get("escape_success_rate", 0.4))
@@ -5758,7 +6052,70 @@ def resolve_player_phase(combat_id):
         raise
 
 
-def maybe_resolve_player_phase(combat_id, combat_settings=None):
+def advance_combat_from_poll(combat_id, combat_settings=None):
+    """
+    Poll-side resolve gate — delegates to maybe_resolve_player_phase (CAS + TX).
+    Returns (combat, winner, round_just_resolved, participants_cache).
+    """
+    combat = get_combat(combat_id)
+    if not combat:
+        return None, None, False, None
+
+    if combat.get("status") == COMBAT_STATUS_RESOLVING:
+        initial_phase = int(combat.get("current_phase") or 0)
+        combat, winner = _wait_after_peer_resolve(combat_id, initial_phase)
+        resolved = bool(
+            winner
+            or (combat and combat.get("status") == "ended")
+            or (combat and int(combat.get("current_phase") or 0) > initial_phase)
+        )
+        return combat, winner, resolved, None
+
+    if combat.get("status") != "player_phase":
+        return combat, None, False, None
+
+    settings = combat_settings or {}
+    participants = get_combat_participants(combat) or []
+    phase = int(combat.get("current_phase") or 0)
+    fresh = dict(combat)
+    fresh["phase_actions"] = get_combat_phase_actions(combat_id, phase)
+    if not (
+        all_phase_actions_submitted(fresh, participants)
+        or combat_phase_expired(fresh, settings)
+    ):
+        return combat, None, False, participants
+
+    prev_phase = phase
+    prev_log_len = len(combat.get("logs") or [])
+    combat, winner = maybe_resolve_player_phase(
+        combat_id, settings, cached_participants=participants,
+    )
+    combat = get_combat(combat_id) or combat
+    round_just_resolved = (
+        int(combat.get("current_phase") or 0) > prev_phase
+        or len(combat.get("logs") or []) > prev_log_len
+    )
+    return combat, winner, round_just_resolved, participants
+
+
+def _wait_after_peer_resolve(combat_id, initial_phase, max_wait=6.0):
+    """
+    Wait for in-flight resolve; if round already advanced, skip duplicate settlement.
+    """
+    waited, winner = _wait_for_resolution_complete(combat_id, max_wait=max_wait)
+    if not waited:
+        return None, None
+    if int(waited.get("current_phase") or 0) > initial_phase:
+        return waited, winner
+    if waited.get("status") == "ended":
+        return waited, winner
+    fresh = get_combat(combat_id) or waited
+    if fresh and int(fresh.get("current_phase") or 0) > initial_phase:
+        return fresh, fresh.get("winner") if fresh.get("status") == "ended" else None
+    return waited, winner
+
+
+def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participants=None):
     """
     Authoritative resolve gate for routes: re-read DB snapshot, resolve at most once.
     Readiness is validated inside _claim_ready_player_phase_resolution (CAS + TX).
@@ -5769,23 +6126,35 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None):
     if not combat:
         return None, None
 
+    initial_phase = int(combat.get("current_phase") or 0)
     status = combat.get("status")
     if status == "ended":
         return combat, combat.get("winner")
     if status == COMBAT_STATUS_RESOLVING:
-        return _wait_for_resolution_complete(combat_id)
+        return _wait_after_peer_resolve(combat_id, initial_phase)
     if status != "player_phase":
         return combat, None
 
     encounter = load_encounter(combat.get("encounter_id") or "")
     settings = combat_settings or (encounter or {}).get("combat_settings", {})
 
-    claimed, snapshot = _claim_ready_player_phase_resolution(combat_id, settings)
+    if cached_participants is None:
+        cached_participants = get_combat_participants(combat) or []
+    claimed, snapshot = _claim_ready_player_phase_resolution(
+        combat_id, settings, cached_participants=cached_participants,
+    )
     if not claimed:
         combat = get_combat(combat_id) or snapshot
+        if combat and int(combat.get("current_phase") or 0) > initial_phase:
+            return combat, combat.get("winner") if combat.get("status") == "ended" else None
         if combat and combat.get("status") == COMBAT_STATUS_RESOLVING:
-            return _wait_for_resolution_complete(combat_id)
+            return _wait_after_peer_resolve(combat_id, initial_phase)
         return combat, None
+
+    snap_phase = int((snapshot or {}).get("current_phase") or initial_phase)
+    if snap_phase != initial_phase:
+        _release_player_phase_resolution(combat_id)
+        return get_combat(combat_id), None
 
     try:
         combat, winner = _resolve_player_phase_body(combat_id)
@@ -5793,7 +6162,7 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None):
         _release_player_phase_resolution(combat_id)
         raise
     if combat and combat.get("status") == COMBAT_STATUS_RESOLVING and winner is None:
-        return _wait_for_resolution_complete(combat_id)
+        return _wait_after_peer_resolve(combat_id, initial_phase)
     return combat, winner
 
 
@@ -5846,6 +6215,11 @@ def _resolve_player_phase_body(combat_id):
             "全隊逃跑失敗，將繼續結算戰鬥行動",
             log_type="escape_failed",
         )
+        actions = normalize_failed_escape_actions(
+            actions,
+            escape_triggered=True,
+            escape_success=False,
+        )
 
     total_damage_to_enemy = 0
     berserk_players = []
@@ -5862,6 +6236,15 @@ def _resolve_player_phase_body(combat_id):
                 combat,
                 f"{display} 已無法行動",
                 log_type="incapacitated",
+            )
+            continue
+
+        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
+        if action_type == "failed_escape":
+            combat = append_combat_log(
+                combat,
+                f"{display} 由於逃跑失敗，本回合陷入破防僵直，無法輸出任何傷害。",
+                log_type="failed_escape_stuck",
             )
             continue
 
@@ -5883,7 +6266,6 @@ def _resolve_player_phase_body(combat_id):
                 )
             continue
 
-        action_type = action_data.get("action_type") or action_data.get("action") or "pass"
         dice = action_data.get("dice_result", action_data.get("dice", 1))
         multiplier = dice_multiplier(dice)
         item_bonus = int(action_data.get("item_bonus") or 0)
@@ -6002,6 +6384,7 @@ def _resolve_player_phase_body(combat_id):
                 f"{display} 選擇逃跑{pro_tag}",
                 log_type="escape",
             )
+            continue
         elif action_type == "use_item":
             if item_effect_type in ("hp_up", "sanity_up"):
                 continue
@@ -6126,32 +6509,55 @@ def _team_combat_defeated(combat):
 
 def _end_combat(combat_id, winner, encounter):
     combat = get_combat(combat_id)
+    if not combat:
+        return None
+
     squad = get_squad(combat["squad_id"])
     team_id = squad.get("team_id") if squad else None
-    end_fields = {
-        "status": "ended",
-        "winner": winner,
-        "ended_at": datetime.now().isoformat(),
-        "logs": combat.get("logs"),
-    }
-    if winner == "squad":
-        end_fields["enemy_hp"] = 0
-    save_combat(combat_id, **end_fields)
     starter_id = combat.get("squad_id")
-    if team_id:
-        clear_team_combat_id(team_id)
-    elif starter_id:
-        update_squad(starter_id, current_combat_id=None)
+    now_str = datetime.now().isoformat()
+    logs = list(combat.get("logs") or [])
+    enemy_hp_val = 0 if winner == "squad" else combat.get("enemy_hp", 100)
+
+    with immediate_transaction() as conn:
+        row = conn.execute("SELECT 1 FROM combats WHERE id = ?", (combat_id,)).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            """UPDATE combats SET status = 'ended', winner = ?, ended_at = ?, enemy_hp = ?
+               WHERE id = ?""",
+            (winner, now_str, enemy_hp_val, combat_id),
+        )
+        purge_combat_actions(combat_id, conn=conn)
+        if team_id:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE team_id = ?",
+                (team_id,),
+            )
+        else:
+            conn.execute(
+                "UPDATE squads SET current_combat_id = NULL WHERE squad_id = ?",
+                (starter_id,),
+            )
+
     outcome = resolve_combat_outcome(
         winner, team_id, encounter, starter_id, combat_id=combat_id,
     )
-    for entry in outcome.get("log_messages") or []:
-        combat = append_combat_log(
-            get_combat(combat_id),
-            entry.get("message", ""),
-            log_type=entry.get("log_type", "event"),
-        )
-        save_combat(combat_id, logs=combat.get("logs"))
+    log_messages = outcome.get("log_messages") or []
+    if log_messages:
+        for entry in log_messages:
+            logs.append({
+                "type": entry.get("log_type", "event"),
+                "message": entry.get("message", ""),
+                "timestamp": now_str,
+                "at": now_str,
+            })
+        with immediate_transaction() as conn:
+            conn.execute(
+                "UPDATE combats SET logs = ? WHERE id = ?",
+                (json.dumps(logs[-50:], ensure_ascii=False), combat_id),
+            )
+
     return get_combat(combat_id)
 
 def _enemy_hp_from_logs(logs):
@@ -6667,11 +7073,15 @@ def build_single_player_preview(combat_id, squad_id, squad=None):
     }
 
 
-def _combat_outcome_json(winner, encounter, team_id=None):
+def _combat_outcome_json(winner, encounter, team_id=None, participants=None):
     if winner == "squad":
         return build_victory_outcome_payload(encounter, team_id=team_id)
     if winner == "enemy":
-        return build_defeat_outcome_payload(encounter)
+        return build_defeat_outcome_payload(
+            encounter,
+            participants=participants,
+            team_id=team_id,
+        )
     if winner == "escaped":
         escape_block = (encounter or {}).get("escape") or {}
         return {
@@ -6710,9 +7120,19 @@ def build_victory_outcome_response(combat, encounter, squad_id, team_id=None):
     Used on killing-blow so the client can sync HP and show the settlement modal before victory.
     """
     if not combat or not squad_id:
-        return build_victory_outcome_payload(encounter, team_id=team_id)
+        return build_victory_outcome_payload(
+            encounter,
+            team_id=team_id,
+            combat_id=(combat or {}).get("id"),
+            current_round=(combat or {}).get("current_phase"),
+        )
     round_payload = _build_round_resolved_response(combat, encounter, squad_id)
-    meta = build_victory_outcome_payload(encounter, team_id=team_id)
+    meta = build_victory_outcome_payload(
+        encounter,
+        team_id=team_id,
+        combat_id=combat.get("id"),
+        current_round=combat.get("current_phase"),
+    )
     payload = {**round_payload, **meta}
     payload["outcome"] = "victory"
     payload["winner"] = "squad"
@@ -6740,7 +7160,13 @@ def combat_outcome_if_finished(combat, encounter, team_id=None, squad_id=None):
             return build_victory_outcome_response(combat, encounter, squad_id, team_id=team_id)
         if winner == "escaped" and squad_id:
             return build_escape_outcome_response(combat, encounter, squad_id, team_id=team_id)
-        return _combat_outcome_json(winner, encounter, team_id=team_id)
+        participants = get_combat_participants(combat) if combat else None
+        return _combat_outcome_json(
+            winner,
+            encounter,
+            team_id=team_id,
+            participants=participants,
+        )
     if int(combat.get("enemy_hp") or 0) <= 0:
         combat_id = combat.get("id")
         if combat_id:
@@ -8097,10 +8523,18 @@ from models.protagonist import trauma_bad_ending_narrative
 from services.ending import judge_ending
 
 
+def _outcome_already_recorded(team_id, encounter_id):
+    if not team_id or not encounter_id:
+        return False
+    from models.encounter_outcomes import encounter_already_completed
+
+    return encounter_already_completed(team_id, encounter_id)
+
+
 def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=None):
     """
-    已重構：跨模組編排層管線 (INV-B/E 最終保障)
-    透過中央原子 Transaction 鎖保護發放劇情獎勵與能帶更新。
+    Post-combat orchestration — idempotency enforced by encounter_completions SSOT.
+    No outer with_db_retry: pipeline / completion checks must not race on dirty snapshots.
     """
     from models.encounter_outcomes import (
         apply_encounter_failure,
@@ -8136,7 +8570,9 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         trauma_total = int(ending.get("protagonist_trauma_total") or 0)
 
         if team_id and ending.get("should_apply_bad_ending_victory"):
-            apply_trauma_bad_ending_victory(team_id, encounter)
+            if not _outcome_already_recorded(team_id, encounter_id):
+                apply_trauma_bad_ending_victory(team_id, encounter)
+                result["applied_success"] = True
             result["trauma_bad_ending"] = True
             result["log_messages"].append({
                 "message": (
@@ -8145,8 +8581,8 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                 ),
                 "log_type": "trauma_ending",
             })
-        else:
-            if team_id:
+        elif team_id:
+            try:
                 snap = execute_post_combat_success_pipeline(
                     team_id, encounter_id, starter_id,
                 )
@@ -8155,32 +8591,53 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                     "message": snap.log_message,
                     "log_type": "story_progression",
                 })
-            elif starter_id:
-                apply_encounter_success_solo(starter_id, encounter)
-                result["applied_success"] = True
+            except Exception as exc:
+                result["log_messages"].append({
+                    "message": f"劇情推進管線觸發等冪保護: {exc}",
+                    "log_type": "idempotent_blocked",
+                })
+        elif starter_id and not _outcome_already_recorded(starter_id, encounter_id):
+            apply_encounter_success_solo(starter_id, encounter)
+            result["applied_success"] = True
+        return result
 
-    elif winner == "enemy":
-        if team_id:
-            apply_encounter_failure(team_id, encounter)
-            result["applied_failure"] = True
-        elif starter_id:
-            apply_encounter_failure_solo(starter_id, encounter)
-            result["applied_failure"] = True
+    if winner == "enemy":
+        id_key = team_id or starter_id
+        if id_key and not _outcome_already_recorded(id_key, encounter_id):
+            if team_id:
+                apply_encounter_failure(team_id, encounter)
+                result["applied_failure"] = True
+            elif starter_id:
+                apply_encounter_failure_solo(starter_id, encounter)
+                result["applied_failure"] = True
         if team_id:
             result["ending"] = judge_ending(team_id)
+        return result
 
     return result
 
 
-def build_victory_outcome_payload(encounter, team_id=None):
-    """Build JSON payload for combat victory responses."""
+def build_victory_outcome_payload(
+    encounter,
+    team_id=None,
+    combat_id=None,
+    current_round=0,
+):
+    """Build JSON payload for combat victory responses (INV-C monotonic fields)."""
     ending = judge_ending(team_id) if team_id else {}
     trauma_bad = bool(ending.get("trauma_bad_ending"))
+    safe_combat_id = int(combat_id) if combat_id is not None else 0
+    round_idx = max(0, int(current_round or 0))
+    settled_round_index = max(0, round_idx - 1)
+
     payload = {
         "success": True,
         "status": "ended",
         "outcome": "victory",
         "winner": "squad",
+        "combat_id": safe_combat_id or None,
+        "settled_round_index": settled_round_index,
+        "settlement_id": f"{safe_combat_id}:{settled_round_index}",
         "narrative": (encounter or {}).get("success", {}).get("narrative"),
         "reflection_prompt": (encounter or {}).get("reflection_prompt"),
         "ending_condition": ending.get("ending_condition"),
@@ -8197,13 +8654,48 @@ def build_victory_outcome_payload(encounter, team_id=None):
     return payload
 
 
-def build_defeat_outcome_payload(encounter):
+def get_collapsed_combat_members(participants):
+    """Squads that triggered INV-D (HP≤0 or active near-death)."""
+    from models.squad import is_near_death_active
+
+    collapsed = []
+    for p in participants or []:
+        if not p:
+            continue
+        if int(p.get("hp") or 0) <= 0 or is_near_death_active(p):
+            collapsed.append(p)
+    return collapsed
+
+
+def build_defeat_outcome_payload(encounter, participants=None, team_id=None):
+    dead = get_collapsed_combat_members(participants)
+    if not dead and team_id:
+        from models.squad import get_team_members
+
+        dead = get_collapsed_combat_members(get_team_members(team_id))
+
+    dead_ids = [m.get("squad_id") for m in dead if m.get("squad_id")]
+    dead_names = [
+        m.get("display_name") or m.get("squad_id")
+        for m in dead
+        if m.get("squad_id")
+    ]
+    failure = (encounter or {}).get("failure") or {}
+
     return {
         "success": True,
         "status": "ended",
         "outcome": "defeat",
+        "outcome_type": "COMBAT_FAILED",
         "winner": "enemy",
-        "narrative": (encounter or {}).get("failure", {}).get("narrative"),
+        "narrative": failure.get("narrative"),
+        "narrative_failure": failure.get("narrative")
+        or failure.get("description")
+        or "隊伍在西貢叢林中倒下了…",
+        "requires_gm": True,
+        "dead_squad_ids": dead_ids,
+        "dead_squad_names": dead_names,
+        "active": False,
     }
 
 
@@ -9631,7 +10123,11 @@ import {
   transition,
   canDispatch,
   handleAnyDeath,
+  isMemberCollapsed,
+  isEnemyDefeated,
+  parseCombatHp,
   syncState,
+  determineSettlementRoute,
 } from '../static/js/combat/state_machine.js';
 import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
 
@@ -9770,6 +10266,34 @@ describe('Combat V2 state machine', () => {
     assert.ok(effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
   });
 
+  it('monotonic guard skips stale settlement index', () => {
+    const ctx = { ...createInitialContext(1), settledRoundIndex: 3, shownSettlementIds: new Set() };
+    const route = determineSettlementRoute(
+      ctx,
+      { settled_round_index: 1, combat_id: 1 },
+      { team_damage_dealt: 5 },
+      '1:1',
+    );
+    assert.equal(route.skipModal, true);
+    assert.equal(route.settledRoundIndex, 3);
+  });
+
+  it('defeat payload with dead_squad_names → COMBAT_FAILED', () => {
+    const ctx = createInitialContext(1);
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      outcome: 'defeat',
+      winner: 'enemy',
+      dead_squad_names: ['Alice'],
+      dead_squad_ids: ['A'],
+      member_states: { A: { display_name: 'Alice', hp: 0 } },
+      my_state: { hp: 80, submitted: false },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.deepEqual(next.failedMembers, ['Alice']);
+    assert.ok(effects.some((e) => e.type === 'SHOW_FAILED'));
+  });
+
   it('IDLE + ACTION_USE_ZOO → DICE_ROLLING (P2-2)', () => {
     const ctx = {
       ...createInitialContext('c1'),
@@ -9793,6 +10317,30 @@ describe('Settlement normalization', () => {
   it('deriveSettlementId prefers API field', () => {
     assert.equal(deriveSettlementId({ settlement_id: '9:3', combat_id: 9 }), '9:3');
     assert.equal(deriveSettlementId({ combat_id: 9, settled_round_index: 2 }), '9:2');
+  });
+
+  it('malformed member hp does not trigger COMBAT_FAILED', () => {
+    const ctx = createInitialContext(1);
+    const { ctx: next } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 'n/a', max_hp: 100 },
+    });
+    assert.notEqual(next.phase, Phase.COMBAT_FAILED);
+    assert.equal(isMemberCollapsed({ hp: 'n/a' }), false);
+    assert.equal(isEnemyDefeated({ hp: undefined }), false);
+    assert.equal(parseCombatHp(null, 80), 80);
+    assert.equal(parseCombatHp('12', 80), 12);
+  });
+
+  it('falls back to authoritative round fields when settlement missing', () => {
+    const s = normalizeSettlement({
+      round_enemy_damage: 15,
+      round_player_damage: 4,
+      enemy: { hp: 85 },
+    });
+    assert.equal(s.team_damage_dealt, 15);
+    assert.equal(s.enemy_damage_dealt, 4);
+    assert.equal(s.enemy_hp_after, 85);
+    assert.deepEqual(s.player_hits, []);
   });
 });
 
@@ -10272,7 +10820,9 @@ test.describe('Oikonomia Combat V2 — Resilience & Phase 2 E2E', () => {
       },
     });
 
+    let submitCalled = false;
     await page.route('**/combat/submit_action**', async (route) => {
+      submitCalled = true;
       await route.fulfill({
         status: 403,
         contentType: 'application/json',
@@ -10285,10 +10835,14 @@ test.describe('Oikonomia Combat V2 — Resilience & Phase 2 E2E', () => {
 
     await page.evaluate(() => {
       const app = document.getElementById('combat-root-v2').__combat_app_instance__;
+      const toggle = document.getElementById('combat-v2-protagonist-toggle');
+      if (toggle) toggle.checked = true;
       app.ctx.phase = 'DICE_CONFIRM';
       app.ctx.dice = { action: 'attack', value: 3, itemId: null };
       void app.confirmDice();
     });
+
+    expect(submitCalled).toBe(false);
 
     const toast = page.locator('[data-testid="combat-toast"]');
     await expect(toast).toBeVisible();
@@ -10550,6 +11104,72 @@ def test_maybe_resolve_ready_claim_inside_tx():
     )
 
 
+def test_maybe_resolve_monotonic_phase_guard():
+    """R11 Scope C: peer resolve must not double-settle same round."""
+    import sqlite3
+    from datetime import datetime
+
+    from models.combat import get_combat, maybe_resolve_player_phase, upsert_combat_action
+
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(_test_db_path())
+    conn.execute("DELETE FROM combat_actions")
+    conn.execute(f"DELETE FROM combats WHERE encounter_id = '{TEST_ENCOUNTER_ID}'")
+    conn.execute("DELETE FROM squads WHERE squad_id IN ('mr1', 'mr2')")
+    conn.execute("DELETE FROM teams WHERE team_id = 'T-MONO'")
+    conn.execute(
+        "INSERT INTO teams (team_id, team_name, route, created_at) VALUES ('T-MONO', 'Mono', 'iggy', ?)",
+        (now,),
+    )
+    for sid, leader in (("mr1", 1), ("mr2", 0)):
+        conn.execute(
+            """INSERT INTO squads
+               (squad_id, display_name, team_id, hp, max_hp, sanity, power, intellect,
+                resilience, is_team_leader, route, zoo_skills, last_update)
+               VALUES (?, ?, 'T-MONO', 100, 100, 50, 30, 20, 20, ?, 'iggy', '[]', ?)""",
+            (sid, sid, leader, now),
+        )
+    conn.execute(
+        """INSERT INTO combats (
+               squad_id, encounter_id, status, current_phase, enemy_hp,
+               enemy_resilience, enemy_sanity, enemy_base_damage, enemy_name,
+               phase_actions, logs, phase_started_at, started_at
+           ) VALUES ('mr1', ?, 'player_phase', 0, 5000, 10, 50, 5, 'Boss', '{}', '[]', ?, ?)""",
+        (TEST_ENCOUNTER_ID, now, now),
+    )
+    combat_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "UPDATE squads SET current_combat_id = ? WHERE squad_id IN ('mr1', 'mr2')",
+        (combat_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    upsert_combat_action(combat_id, "mr1", 0, "attack", 6, None)
+    upsert_combat_action(combat_id, "mr2", 0, "attack", 6, None)
+
+    first, _ = maybe_resolve_player_phase(combat_id, {})
+    after_first = get_combat(combat_id)
+    progressed = (
+        int(after_first.get("current_phase") or 0) >= 1
+        or after_first.get("status") in ("enemy_phase", "ended")
+    )
+    ok("monotonic: first resolve progresses combat", progressed, str(after_first.get("status")))
+
+    logs_len_1 = len(after_first.get("logs") or [])
+    enemy_hp_1 = int(after_first.get("enemy_hp") or 0)
+
+    second, winner2 = maybe_resolve_player_phase(combat_id, {})
+    after_second = get_combat(combat_id)
+    ok(
+        "monotonic: second resolve does not re-run same round",
+        int(after_second.get("current_phase") or 0) == int(after_first.get("current_phase") or 0)
+        and len(after_second.get("logs") or []) == logs_len_1
+        and int(after_second.get("enemy_hp") or 0) == enemy_hp_1,
+        f"phase={after_second.get('current_phase')} logs={len(after_second.get('logs') or [])} winner2={winner2}",
+    )
+
+
 def test_phase2_gm_override_gateway():
     """Phase 2 Backlog: 驗證 GM 權威特權覆蓋閘門與結局狀態重置一致性。"""
     import sqlite3
@@ -10587,6 +11207,24 @@ def test_phase2_gm_override_gateway():
         json={"team_id": team_id, "protagonist_key": proto_key, "target_trauma": 1},
     )
     ok("GM Override Gate: 非管理員登入遭遇 403 熔斷拒絕", r403.status_code == 403)
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+
+    r_no_op = client.post(
+        "/gm/api/override_trauma_ending",
+        json={
+            "team_id": team_id,
+            "protagonist_key": proto_key,
+            "target_trauma": 0,
+            "target_ending_type": "clear",
+        },
+    )
+    ok(
+        "GM Override Gate: 有效 GM session 但無 operator 身分遭 403",
+        r_no_op.status_code == 403,
+        str(r_no_op.status_code),
+    )
 
     with client.session_transaction() as sess:
         establish_gm_session(sess)
@@ -11204,6 +11842,20 @@ def test_escape_action_type_allowed():
     from models.combat import COMBAT_ACTION_TYPES
 
     ok("escape in COMBAT_ACTION_TYPES", "escape" in COMBAT_ACTION_TYPES)
+
+
+def test_defeat_outcome_includes_dead_roster():
+    from services.combat_outcomes import build_defeat_outcome_payload
+
+    participants = [
+        {"squad_id": "A", "display_name": "Alice", "hp": 0, "max_hp": 100},
+        {"squad_id": "B", "display_name": "Bob", "hp": 80, "max_hp": 100},
+    ]
+    payload = build_defeat_outcome_payload({"failure": {"narrative": "fail"}}, participants=participants)
+    ok("defeat outcome_type COMBAT_FAILED", payload.get("outcome_type") == "COMBAT_FAILED", str(payload))
+    ok("defeat dead_squad_ids", payload.get("dead_squad_ids") == ["A"], str(payload))
+    ok("defeat dead_squad_names", payload.get("dead_squad_names") == ["Alice"], str(payload))
+    ok("defeat requires_gm", payload.get("requires_gm") is True, str(payload))
 
 
 def test_select_enemy_counter_target_priority():
@@ -11889,6 +12541,27 @@ def test_near_death_rescue_security(client, leader_id, member_id):
     update_squad(member_id, near_death_until=until, hp=0)
 
     login(client, leader_id)
+    rescuer_until = (datetime.now() + timedelta(minutes=15)).isoformat()
+    update_squad(leader_id, near_death_until=rescuer_until, hp=0)
+    r = client.post("/combat/rescue_near_death", json={"rescue_type": "prayer"})
+    blocked = r.get_json() or {}
+    ok(
+        "rescuer near_death blocked",
+        r.status_code == 400 and not blocked.get("success"),
+        str(blocked),
+    )
+    update_squad(leader_id, near_death_until=None, hp=100)
+
+    update_squad(leader_id, sanity=0)
+    r = client.post("/combat/rescue_near_death", json={"rescue_type": "prayer"})
+    sanity_blocked = r.get_json() or {}
+    ok(
+        "rescuer sanity collapse blocked",
+        r.status_code == 400 and not sanity_blocked.get("success"),
+        str(sanity_blocked),
+    )
+    update_squad(leader_id, sanity=50)
+
     r = client.post(
         "/combat/rescue_near_death",
         json={"rescue_type": "item", "item_id": 99999},
@@ -12223,6 +12896,7 @@ def main():
     test_solo_killing_blow_returns_victory(client, client2, team_id)
     test_solo_killing_blow_practice_quick()
     test_escape_action_type_allowed()
+    test_defeat_outcome_includes_dead_roster()
     test_select_enemy_counter_target_priority()
     test_escape_fail_mixed_settlement()
     test_use_item_combat_consumes_and_resolves()
@@ -12235,6 +12909,7 @@ def main():
     test_phase2_trauma_service_pipeline()
     test_phase2_narrative_orchestrator_pipeline()
     test_maybe_resolve_ready_claim_inside_tx()
+    test_maybe_resolve_monotonic_phase_guard()
     test_phase2_gm_override_gateway()
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
@@ -12316,9 +12991,11 @@ echo "Pre-deploy checks (Python: $PYTHON)"
 echo "Repo: $ROOT"
 
 run_test scripts/test_combat_engine.py "Combat engine (pure calculation unit)"
+run_test scripts/test_combat_flow_orchestrator.py "Combat flow orchestrator (INV-E)"
 run_test scripts/test_combat_flow.py "Combat flow (API + HP sync + practice)"
 run_test scripts/test_combat_audit.py "Combat audit (settlement + solo + protagonist)"
 run_test scripts/test_combat_concurrency.py "Combat concurrency smoke"
+run_test scripts/test_db_hardening.py "DB hardening (WAL, SSOT, purge, restore)"
 run_test scripts/test_ending_flow.py "Ending orchestrator regression"
 
 if ! test -f static/js/combat/index.js; then
@@ -12355,4 +13032,4 @@ echo "=========================================="
 
 
 ---
-*End of COMBAT_V2_AUDIT_BUNDLE v11 · 2026-07-01*
+*End of COMBAT_V2_AUDIT_BUNDLE v12 · 2026-07-01 · `0e2fa93`*

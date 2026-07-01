@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_A_FRONTEND_BRIDGE（局部審計 · 大廳橋接與 Poll 隔離）
 
 > **目的**：審計 **Legacy `index.html` 全局腳本** 與 **Combat V2 模組** 的交界 — 防止雙 poll、重連幽靈狀態、舊 overlay 疊加  
-> **日期**：2026-07-01 · **commit**：`3a02205`  
+> **日期**：2026-07-01 · **commit**：`0e2fa93`  
 > **Baseline**：假設已讀 `COMBAT_V2_AUDIT_BUNDLE.md`  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -24,18 +24,84 @@
     // ── Combat lobby bridge (PR-6: legacy inline combat script removed) ──
     let pendingEncounterId = null;
     let currentCombatId = null;
+    const ACTIVE_COMBAT_STORAGE_KEY = 'OIKONOMIA_ACTIVE_COMBAT_ID';
+    const COMBAT_V2_LOCK_KEY = 'OIKONOMIA_COMBAT_V2_LOCK';
 
-    /** INV-C: pause global /status poll while V2 combat root is visible */
+    function setActiveCombatBridge(combatId) {
+        if (combatId != null && combatId !== '') {
+            sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+            sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(combatId));
+            currentCombatId = combatId;
+        }
+    }
+
+    function clearActiveCombatBridge() {
+        sessionStorage.removeItem(COMBAT_V2_LOCK_KEY);
+        sessionStorage.removeItem(ACTIVE_COMBAT_STORAGE_KEY);
+        currentCombatId = null;
+        pendingEncounterId = null;
+    }
+
+    function revealCombatV2Surface() {
+        showSection('combat', { skipCombatLobbyLoad: true });
+        setVisible(document.getElementById('combat-lobby'), false);
+        setVisible(document.getElementById('combat-result-panel'), false);
+        setVisible(document.getElementById('combat-precheck-modal'), false);
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+        document.getElementById('combat-root-v2')?.classList.remove('hidden');
+    }
+
+    async function waitForCombatV2Ready(maxMs = 8000) {
+        const deadline = Date.now() + maxMs;
+        while (Date.now() < deadline) {
+            if (window.combatV2?.isEnabled?.()) return true;
+            if (window.combatV2 && typeof window.combatV2.isEnabled === 'function' && !window.combatV2.isEnabled()) {
+                return false;
+            }
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        return !!window.combatV2?.isEnabled?.();
+    }
+
+    function removeLegacyCombatGarbage() {
+        [
+            '.settlement-modal-backdrop',
+            '#combat-failed-mask',
+            '.legacy-dice-roller',
+            '#combat-round-settlement-modal',
+        ].forEach((selector) => {
+            document.querySelectorAll(selector).forEach((el) => {
+                try { el.remove(); } catch (_) { /* noop */ }
+            });
+        });
+        setVisible(document.getElementById('combat-near-death-overlay'), false);
+    }
+
+    /** INV-C: pause global /status poll while V2 combat is authoritative */
     function isPlayerInActiveCombatV2() {
-        if (!window.combatV2?.isEnabled?.()) return false;
-        const combatRootV2 = document.getElementById('combat-root-v2');
-        return combatRootV2 && !combatRootV2.classList.contains('hidden');
+        if (sessionStorage.getItem(COMBAT_V2_LOCK_KEY) === 'true') {
+            return true;
+        }
+        if (sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY)) {
+            return true;
+        }
+        if (window.combatV2?.isEnabled?.()) {
+            const state = window.combatV2.getState?.();
+            if (state?.combatId) return true;
+            const combatRootV2 = document.getElementById('combat-root-v2');
+            if (combatRootV2 && !combatRootV2.classList.contains('hidden')) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+                return true;
+            }
+        }
+        return false;
     }
 
     window.AppRouter = {
         navigateTo(route) {
             console.log(`[Router] 路由跳轉至: ${route}`);
             if (route === 'dashboard' || route === 'combat-hub') {
+                clearActiveCombatBridge();
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
                 document.getElementById('combat-root-v2')?.classList.add('hidden');
@@ -65,20 +131,21 @@
 
     async function onLegacyEncounterTrigger(data) {
         if (window.combatV2?.isEnabled?.()) {
-            const lobby = document.getElementById('combat-lobby');
-            if (lobby) lobby.classList.add('hidden');
-            if (data.combat_id) currentCombatId = data.combat_id;
+            if (data.combat_id) setActiveCombatBridge(data.combat_id);
+            revealCombatV2Surface();
             await window.combatV2.onCombatStarted(data);
         }
     }
 
     function exitCombatScreen(options = {}) {
-        if (!options.fromV2 && window.combatV2?.isEnabled?.()) {
-            window.combatV2.exitToLobby();
-            return;
-        }
+        console.log('[Bridge] 執行戰鬥退出，清理殘留環境...');
+        clearActiveCombatBridge();
+        removeLegacyCombatGarbage();
 
-        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
+        const app = window.combatV2?.getApp?.();
+        if (app && typeof app.destroy === 'function') {
+            app.destroy();
+        }
 
         setVisible(document.getElementById('combat-result-panel'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
@@ -86,8 +153,9 @@
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
 
-        currentCombatId = null;
-        pendingEncounterId = null;
+        if (!options.fromV2) {
+            showToast('已安全退出戰場', 'info');
+        }
 
         setTimeout(async () => {
             await loadEncounters();
@@ -96,21 +164,29 @@
     window.exitCombatScreen = exitCombatScreen;
 
     async function loadCombatPage(combatId) {
-        if (combatId) currentCombatId = combatId;
-        setVisible(document.getElementById('combat-lobby'), true);
-        setVisible(document.getElementById('combat-result-panel'), false);
-        setVisible(document.getElementById('combat-precheck-modal'), false);
-        setVisible(document.getElementById('combat-near-death-overlay'), false);
-        document.getElementById('combat-root-v2')?.classList.add('hidden');
+        if (combatId) {
+            setActiveCombatBridge(combatId);
+            revealCombatV2Surface();
+        } else {
+            clearActiveCombatBridge();
+            setVisible(document.getElementById('combat-lobby'), true);
+            setVisible(document.getElementById('combat-result-panel'), false);
+            setVisible(document.getElementById('combat-precheck-modal'), false);
+            setVisible(document.getElementById('combat-near-death-overlay'), false);
+            document.getElementById('combat-root-v2')?.classList.add('hidden');
+        }
         const fresh = await refreshSquadFromServer();
         if (fresh) {
             initPlayerAvatar();
             updateDashboard(fresh);
         }
-        await loadEncounters();
+        if (!combatId) {
+            await loadEncounters();
+        }
         if (combatId && window.combatV2?.isEnabled?.()) {
-            setVisible(document.getElementById('combat-lobby'), false);
             await window.combatV2.onCombatStarted({ combat_id: combatId });
+        } else if (combatId) {
+            await loadEncounters();
         }
     }
 
@@ -145,98 +221,37 @@
 
             data.encounters.forEach(enc => {
                 const card = document.createElement('div');
-                card.className = 'cartoon-box p-5';
-                const badges = [];
-                if (enc.is_practice || enc.replayable) {
-                    badges.push('<span class="text-xs px-2 py-1 bg-sky-900/50 text-sky-300 rounded-full shrink-0">可重複練習</span>');
-                } else if (enc.completed) {
-                    badges.push('<span class="text-xs px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded-full shrink-0">已完成</span>');
-                }
-                const canStart = enc.replayable || !enc.completed;
-                const btnLabel = enc.replayable && enc.completed ? '再練一次' : '開始 Encounter';
-                const btn = canStart
-                    ? `<button onclick="startEncounter('${enc.encounter_id}')" class="mt-3 px-4 py-2 theme-btn-primary rounded-xl text-sm font-medium">${btnLabel}</button>`
-                    : '';
-                const hpHint = enc.enemy_hp
-                    ? `<div class="text-xs text-zinc-500 mt-1">敵人 HP：${Number(enc.enemy_hp).toLocaleString('zh-Hant')}</div>`
-                    : '';
-                card.innerHTML = `
-                    <div class="flex items-start justify-between gap-2 mb-2 flex-wrap">
-                        <div class="font-bold text-lg">${enc.title || enc.encounter_id}</div>
-                        <div class="flex flex-wrap gap-1">${badges.join('')}</div>
-                    </div>
-                    <div class="text-xs text-zinc-500 mb-2">${enc.location_hint || ''}</div>
-                    <p class="text-sm text-zinc-300">${enc.description || ''}</p>
-                    ${enc.enemy_name ? `<div class="text-xs text-red-400/80 mt-2">敵人：${enc.enemy_name}</div>` : ''}
-                    ${hpHint}
-                    ${btn}
-                `;
-                container.appendChild(card);
-            });
-
-            if (data.active_combat) {
-                const hint = document.createElement('div');
-                hint.className = 'text-sm text-amber-400 cartoon-box p-4 cursor-pointer';
-                hint.innerHTML = '⚔️ 進行中的戰鬥 — <span class="underline">點擊繼續</span>';
-                const resumeCombatId = data.active_combat_id;
-                hint.onclick = async () => {
-                    if (resumeCombatId) currentCombatId = resumeCombatId;
-                    showSection('combat', { skipCombatLobbyLoad: true });
-                    if (window.combatV2?.isEnabled?.()) {
-                        setVisible(document.getElementById('combat-lobby'), false);
-                        await window.combatV2.onCombatStarted({ combat_id: resumeCombatId || currentCombatId });
-                    } else {
-                        showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
-                    }
-                };
-                container.prepend(hint);
-            }
-        } catch (e) {
-            container.innerHTML = '<div class="text-red-400">載入失敗</div>';
-        }
-    }
-
-    async function startEncounter(encounterId) {
-        const agreed = await showConfirmModal({
-            title: '開始遭遇戰',
-            message: '確定開始此 Encounter？',
-        });
-        if (!agreed) return;
-        pendingEncounterId = encounterId;
-        const res = await fetch('/combat/start', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ encounter_id: encounterId }),
-        });
-        const data = await res.json();
-        if (!data.success) {
-            showToast(data.error || '無法開始', 'error');
-            return;
-        }
-        currentCombatId = data.combat_id;
-        showSection('combat', { skipCombatLobbyLoad: true });
-        if (data.can_skip && data.status === 'precheck') {
-            setVisible(document.getElementById('combat-lobby'), false);
-            document.getElementById('precheck-modal-title').textContent = data.encounter?.title || '前置判定';
-            document.getElementById('combat-precheck-text').textContent =
-                data.precheck_text || '你們有足夠洞察力看穿這是情緒勒索的扭曲模式。';
 
     function isPlayerInActiveCombatV2() {
-        if (!window.combatV2?.isEnabled?.()) return false;
-        const combatRootV2 = document.getElementById('combat-root-v2');
-        return combatRootV2 && !combatRootV2.classList.contains('hidden');
+        if (sessionStorage.getItem(COMBAT_V2_LOCK_KEY) === 'true') {
+            return true;
+        }
+        if (sessionStorage.getItem(ACTIVE_COMBAT_STORAGE_KEY)) {
+            return true;
+        }
+        if (window.combatV2?.isEnabled?.()) {
+            const state = window.combatV2.getState?.();
+            if (state?.combatId) return true;
+            const combatRootV2 = document.getElementById('combat-root-v2');
+            if (combatRootV2 && !combatRootV2.classList.contains('hidden')) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+                return true;
+            }
+        }
+        return false;
     }
 
     window.AppRouter = {
 
     function exitCombatScreen(options = {}) {
-        if (!options.fromV2 && window.combatV2?.isEnabled?.()) {
-            window.combatV2.exitToLobby();
-            return;
-        }
+        console.log('[Bridge] 執行戰鬥退出，清理殘留環境...');
+        clearActiveCombatBridge();
+        removeLegacyCombatGarbage();
 
-        console.log('[Harden] 正在安全退出戰場並強制刷新遭遇列表...');
+        const app = window.combatV2?.getApp?.();
+        if (app && typeof app.destroy === 'function') {
+            app.destroy();
+        }
 
         setVisible(document.getElementById('combat-result-panel'), false);
         setVisible(document.getElementById('combat-precheck-modal'), false);
@@ -244,8 +259,9 @@
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
 
-        currentCombatId = null;
-        pendingEncounterId = null;
+        if (!options.fromV2) {
+            showToast('已安全退出戰場', 'info');
+        }
 
         setTimeout(async () => {
             await loadEncounters();
@@ -258,20 +274,28 @@
         async function finishSessionRestore(data) {
             hideSessionLoading();
             persistRestoreToken(data);
+            if (data?.current_combat_id) {
+                sessionStorage.setItem(COMBAT_V2_LOCK_KEY, 'true');
+                sessionStorage.setItem(ACTIVE_COMBAT_STORAGE_KEY, String(data.current_combat_id));
+                currentCombatId = data.current_combat_id;
+            }
             try {
                 await completeLogin({ ...data, require_set_pin: false, skip_team_prompt: true });
                 if (data?.current_combat_id) {
-                    setTimeout(async () => {
-                        showSection('combat', { skipCombatLobbyLoad: true });
-                        if (window.combatV2?.isEnabled?.()) {
-                            const lobby = document.getElementById('combat-lobby');
-                            if (lobby) lobby.classList.add('hidden');
-                            currentCombatId = data.current_combat_id;
-                            await window.combatV2.onCombatStarted({ combat_id: data.current_combat_id });
-                        } else if (typeof loadCombatPage === 'function') {
-                            await loadCombatPage(data.current_combat_id);
-                        }
-                    }, 400);
+                    const combatId = data.current_combat_id;
+                    console.log(`[Bridge] 偵測到進行中戰鬥 ${combatId}，啟動權威引導...`);
+                    setActiveCombatBridge(combatId);
+                    revealCombatV2Surface();
+                    await new Promise((r) => setTimeout(r, 100));
+
+                    const ready = await waitForCombatV2Ready();
+                    if (ready) {
+                        await window.combatV2.onCombatStarted({ combat_id: combatId });
+                    } else if (typeof loadCombatPage === 'function') {
+                        await loadCombatPage(combatId);
+                    }
+                } else {
+                    clearActiveCombatBridge();
                 }
                 return true;
             } catch (e) {
@@ -359,6 +383,10 @@ async function init() {
 
     async onCombatStarted(data) {
       console.log(`[Greenfield] 接收到戰鬥啟動訊號，戰鬥ID: ${data.combat_id}`);
+      if (data.combat_id) {
+        sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
+        sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
+      }
       root.classList.remove('hidden');
       await app.onCombatStarted(data);
     },
@@ -374,7 +402,10 @@ async function init() {
     pollTick: (data) => app.pollTick(data),
     onSubmitSuccess: (data) => app.onSubmitSuccess(data),
     getApp: () => app,
+    destroy: () => app.destroy(),
   };
+
+  window.CombatV2App = window.combatV2;
 
   console.log(
     '%c[Greenfield] Oikonomia Combat V2 核心已成功獨立掛載，Legacy 代碼完全清理完成。',
@@ -390,7 +421,7 @@ if (document.readyState === 'loading') {
 
 ## 3. exitToLobby 與 entry sync
 
-# static/js/combat/index.js (L94–L110)
+# static/js/combat/index.js (L111–L123)
 
   async onCombatStarted(data) {
     this.dispatch('COMBAT_RESET', { combatId: data.combat_id });
@@ -401,22 +432,13 @@ if (document.readyState === 'loading') {
     this.hasTriggeredTimeoutDefense = false;
     this.invRecoveryCount = 0;
 
-    this.hideAllModals();
-    this.views.endgame.hideAll();
-
-    const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
-    if (toggle) toggle.checked = false;
-    if (data.enemy || data.status) {
-      this.ctx.hud = extractHud(data);
+    if (data.combat_id) {
+      sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
+      sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
     }
-# static/js/combat/index.js (L479–L489)
+# static/js/combat/index.js (L556–L561)
 
   exitToLobby() {
-    this.poller.stop();
-    this.unmount();
-    this.rootEl.classList.add('hidden');
-    this.views.endgame.hideAll();
-
     if (typeof window.exitCombatScreen === 'function') {
       showToast('已安全退出戰場', 'info');
       window.exitCombatScreen({ fromV2: true });

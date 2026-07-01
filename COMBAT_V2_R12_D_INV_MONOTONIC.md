@@ -1,7 +1,7 @@
 # COMBAT_V2_R12_D_INV_MONOTONIC（局部審計 · 弱網狀態機與 INV-A～E）
 
 > **目的**：審計 **前端權威狀態機** — `settlement_id` / `settled_round_index` 單調防護、`entrySyncPending` 進場吸收、INV-D 失敗搶占  
-> **日期**：2026-07-01 · **commit**：`3a02205`  
+> **日期**：2026-07-01 · **commit**：`0e2fa93`  
 > **Baseline**：假設已讀 `combat_greenfield_final.md` §3 不變式表  
 > **生成**：`python3 scripts/build_combat_v2_partial_bundles.py`
 
@@ -26,6 +26,9 @@
 /** @file Pure combat FSM — zero DOM dependency */
 
 import { normalizeSettlement, deriveSettlementId } from './settlement.js';
+
+/** Fallback when HP field is missing (display / max baseline — not “alive” sentinel). */
+export const DEFAULT_COMBAT_MAX_HP = 100;
 
 export const Phase = {
   IDLE: 'IDLE',
@@ -171,7 +174,7 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
 /** Death preempt — INV-D highest priority */
 export function handleAnyDeath(ctx, members) {
   const dead = Object.entries(members || {})
-    .filter(([, m]) => intHp(m?.hp) <= 0)
+    .filter(([, m]) => isMemberCollapsed(m))
     .map(([id, m]) => m.display_name || id);
   if (dead.length === 0) return { ctx, effects: [] };
   if (ctx.phase === Phase.COMBAT_FAILED) return { ctx, effects: [] };
@@ -322,7 +325,7 @@ export function syncState(ctx, snapshot) {
     if (settlement && settlementId && !ctx.shownSettlementIds.has(settlementId)) {
       const killing = snapshot.outcome === 'victory'
         || snapshot.winner === 'squad'
-        || intHp(snapshot.enemy?.hp) <= 0;
+        || isEnemyDefeated(snapshot.enemy);
       newCtx = {
         ...newCtx,
         phase: Phase.SETTLEMENT,
@@ -350,9 +353,27 @@ function isHpOnlyPhase(phase) {
   return DICE_BUSY.has(phase) || phase === Phase.SUBMITTING || phase === Phase.SETTLEMENT;
 }
 
-function intHp(v) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : 999;
+/**
+ * Parse HP for display; uses member/enemy max_hp when value is absent.
+ * @param {number|string|null|undefined} value
+ * @param {number|string|null|undefined} maxHp
+ */
+export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
+  const n = parseInt(value, 10);
+  if (Number.isFinite(n)) return n;
+  const max = parseInt(maxHp, 10);
+  return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
+}
+
+/** INV-D: only finite hp ≤ 0 counts as collapsed (malformed hp → not dead). */
+export function isMemberCollapsed(member) {
+  const hp = parseInt(member?.hp, 10);
+  return Number.isFinite(hp) && hp <= 0;
+}
+
+export function isEnemyDefeated(enemy) {
+  const hp = parseInt(enemy?.hp, 10);
+  return Number.isFinite(hp) && hp <= 0;
 }
 
 const TRANSITIONS = {
@@ -692,14 +713,17 @@ export function normalizeSettlement(apiPayload) {
   if (!apiPayload) return null;
 
   let settlement = apiPayload.round_settlement;
-  const logs = apiPayload.log_entries || apiPayload.log || [];
 
   if (!settlement || isZeroSettlement(settlement)) {
-    const idx = apiPayload.settled_round_index ?? deriveSettledIndex(apiPayload);
-    settlement = buildSettlementFromLogs(logs, idx);
+    settlement = {
+      team_damage_dealt: apiPayload.round_enemy_damage || 0,
+      enemy_damage_dealt: apiPayload.round_player_damage || 0,
+      enemy_hp_after: apiPayload.enemy?.hp ?? null,
+      player_hits: [],
+      counter_hits: [],
+      breakdown: {},
+    };
   }
-
-  if (!settlement) return null;
 
   const teamDealt = intVal(
     settlement.team_damage_dealt ?? settlement.round_enemy_damage ?? apiPayload.round_enemy_damage,
@@ -825,7 +849,7 @@ export function extractHud(snapshot) {
 
 ## 3. poll 與 entry sync
 
-# static/js/combat/index.js (L321–L332)
+# static/js/combat/index.js (L399–L410)
 
   pollTick(snapshot) {
     if (!snapshot || snapshot.success === false) return;
@@ -839,7 +863,7 @@ export function extractHud(snapshot) {
       this.applyEffects(deathCheck.effects);
       return;
     }
-# static/js/combat/index.js (L241–L250)
+# static/js/combat/index.js (L270–L279)
 
   async onSubmitSuccess(data) {
     const deathCheck = handleAnyDeath(
@@ -854,7 +878,7 @@ export function extractHud(snapshot) {
 
 ## 4. 後端 settlement meta
 
-# models/combat.py (L2117–L2132)
+# models/combat.py (L2193–L2208)
 
 def _enrich_settlement_meta(payload, combat=None):
     """Additive COMBAT_V2 fields: stable settlement progress on every status snapshot."""
@@ -887,6 +911,9 @@ import {
   transition,
   canDispatch,
   handleAnyDeath,
+  isMemberCollapsed,
+  isEnemyDefeated,
+  parseCombatHp,
   syncState,
   determineSettlementRoute,
 } from '../static/js/combat/state_machine.js';
@@ -1078,6 +1105,30 @@ describe('Settlement normalization', () => {
   it('deriveSettlementId prefers API field', () => {
     assert.equal(deriveSettlementId({ settlement_id: '9:3', combat_id: 9 }), '9:3');
     assert.equal(deriveSettlementId({ combat_id: 9, settled_round_index: 2 }), '9:2');
+  });
+
+  it('malformed member hp does not trigger COMBAT_FAILED', () => {
+    const ctx = createInitialContext(1);
+    const { ctx: next } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 'n/a', max_hp: 100 },
+    });
+    assert.notEqual(next.phase, Phase.COMBAT_FAILED);
+    assert.equal(isMemberCollapsed({ hp: 'n/a' }), false);
+    assert.equal(isEnemyDefeated({ hp: undefined }), false);
+    assert.equal(parseCombatHp(null, 80), 80);
+    assert.equal(parseCombatHp('12', 80), 12);
+  });
+
+  it('falls back to authoritative round fields when settlement missing', () => {
+    const s = normalizeSettlement({
+      round_enemy_damage: 15,
+      round_player_damage: 4,
+      enemy: { hp: 85 },
+    });
+    assert.equal(s.team_damage_dealt, 15);
+    assert.equal(s.enemy_damage_dealt, 4);
+    assert.equal(s.enemy_hp_after, 85);
+    assert.deepEqual(s.player_hits, []);
   });
 });
 
