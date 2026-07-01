@@ -25,3 +25,11 @@ data/.gm_pin
 
 # Logs
 *.log
+
+# Node / Playwright
+node_modules/
+test-results/
+
+# Runtime locks / local test cache
+data/.db_bootstrap.lock
+encounters/cache_test.json
