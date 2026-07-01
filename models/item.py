@@ -201,11 +201,11 @@ def grant_item_to_squad(squad_id, item_id, source="story"):
             tc = tx.cursor()
             if enforce_qr_once:
                 used = tc.execute(
-                    "SELECT squad_id FROM qr_code_uses WHERE item_id = ?",
-                    (item_id,),
+                    "SELECT squad_id FROM qr_code_uses WHERE item_id = ? AND squad_id = ?",
+                    (item_id, squad_id),
                 ).fetchone()
                 if used:
-                    return False, "此 QR Code 已經被使用", None
+                    return False, "你已經使用過此 QR Code", None
 
             existing = tc.execute(
                 "SELECT id FROM player_items WHERE squad_id = ? AND item_id = ?",

@@ -12,16 +12,15 @@ from models.item import (
     serialize_item_for_client,
 )
 from models.settings import settings
+from utils.decorators import require_player
 from utils.qr import build_item_qr_payload, resolve_item_from_qr_payload
 
 items_bp = Blueprint("items", __name__)
 
 
 @items_bp.route("/my_items")
+@require_player()
 def my_items():
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     squad_id = session["squad_id"]
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
@@ -55,11 +54,9 @@ def my_items():
 
 
 @items_bp.route("/api/inventory", methods=["GET"])
+@require_player()
 def get_combat_inventory_api():
     """Combat V2: uncached inventory slice for in-battle item picker."""
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     squad_id = session["squad_id"]
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
@@ -88,10 +85,8 @@ def get_combat_inventory_api():
 
 
 @items_bp.route("/add_item", methods=["POST"])
+@require_player()
 def add_item():
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     data = request.get_json(silent=True) or {}
     source = (data.get("source") or "story").strip().lower() or "story"
     item = None
@@ -131,10 +126,8 @@ def add_item():
 
 
 @items_bp.route("/discard_item", methods=["POST"])
+@require_player()
 def discard_item():
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     data = request.get_json(silent=True) or {}
     player_item_id = data.get("player_item_id")
     try:

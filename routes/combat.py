@@ -54,6 +54,7 @@ from models.protagonist import get_controllable_protagonist_squad_id, get_team_s
 from models.item import apply_near_death_item_rescue
 from models.squad import get_squad, get_team_members, is_near_death_active, update_squad
 from services.global_events import create_global_event
+from utils.decorators import require_player
 
 combat_bp = Blueprint("combat", __name__)
 
@@ -73,10 +74,8 @@ def combat_disable_http_cache(response):
 
 
 @combat_bp.route("/combat/start", methods=["POST"])
+@require_player(response_style="combat")
 def combat_start_api(encounter_id=None):
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else {}
     is_e2e_mode = os.environ.get("COMBAT_E2E", "").lower() in ("1", "true", "yes")
     if is_e2e_mode and body.get("squad_id"):
@@ -175,10 +174,8 @@ def combat_start_api(encounter_id=None):
     })
 
 @combat_bp.route("/combat/status")
+@require_player(response_style="combat")
 def combat_status_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     combat_id = request.args.get("combat_id", type=int)
     squad_id = request.args.get("squad_id") or session["squad_id"]
 
@@ -296,10 +293,8 @@ def combat_status_api():
     return jsonify(payload)
 
 @combat_bp.route("/combat/preview_action", methods=["POST"])
+@require_player(response_style="combat")
 def combat_preview_action_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form.to_dict()
     combat_id = body.get("combat_id")
     try:
@@ -348,10 +343,8 @@ def combat_preview_action_api():
 
 @combat_bp.route("/combat/submit_action", methods=["POST"])
 @combat_bp.route("/combat/action", methods=["POST"])
+@require_player(response_style="combat")
 def combat_submit_action_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form.to_dict()
     combat_id = body.get("combat_id")
     try:
@@ -518,10 +511,8 @@ def combat_submit_action_api():
     return jsonify(payload)
 
 @combat_bp.route("/combat/resolve_phase", methods=["POST"])
+@require_player(response_style="combat")
 def combat_resolve_phase_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form
     combat_id = body.get("combat_id")
     if not combat_id:
@@ -556,10 +547,8 @@ def combat_resolve_phase_api():
     return jsonify(payload)
 
 @combat_bp.route("/combat/rescue_near_death", methods=["POST"])
+@require_player(response_style="combat")
 def combat_rescue_near_death_api():
-    if "squad_id" not in session:
-        return jsonify({"error": "未登入"}), 401
-
     body = request.json if request.is_json else request.form
     combat_id = body.get("combat_id")
     rescue_type = (body.get("rescue_type") or "prayer").strip()
@@ -659,11 +648,9 @@ def combat_rescue_near_death_api():
 
 
 @combat_bp.route("/combat/summon_gm", methods=["POST"])
+@require_player()
 def combat_summon_gm_api():
     """Broadcast GM help request to global_events and combat log."""
-    if "squad_id" not in session:
-        return jsonify({"success": False, "error": "未登入"}), 401
-
     body = request.json if request.is_json else {}
     combat_id = body.get("combat_id")
     if not combat_id:

@@ -1758,6 +1758,45 @@ def test_near_death_rescue_security(client, leader_id, member_id):
     update_squad(member_id, near_death_until=None, hp=100)
 
 
+def test_qr_code_grant_scoped_per_squad_not_global(leader_id):
+    """QR one-time use is per squad_id, not global catalog item_id."""
+    import sqlite3
+
+    from models.item import grant_item_to_squad
+
+    qr_value = f"test-qr-per-squad-{os.getpid()}"
+    outsider_id = f"PLAYER-QROUT-{os.getpid()}"
+    db = os.path.join(TEST_DIR, "oikonomia.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """INSERT INTO items
+           (name, description, icon, qr_code_value, has_ability, effect_type, effect_value, is_active, is_one_time_use)
+           VALUES ('共享 QR 測試', 'test', '🎫', ?, 1, 'power_up', 5, 1, 1)""",
+        (qr_value,),
+    )
+    conn.execute(
+        """INSERT INTO squads (squad_id, hp, max_hp, display_name)
+           VALUES (?, 100, 100, 'QR Outsider')""",
+        (outsider_id,),
+    )
+    conn.commit()
+    item_id = conn.execute(
+        "SELECT id FROM items WHERE qr_code_value = ?", (qr_value,),
+    ).fetchone()[0]
+    conn.close()
+
+    ok1, msg1, _ = grant_item_to_squad(leader_id, item_id, source="qr")
+    ok("qr per squad: leader first scan", ok1, msg1)
+    ok2, msg2, _ = grant_item_to_squad(leader_id, item_id, source="qr")
+    ok(
+        "qr per squad: leader second scan blocked",
+        not ok2 and "你已經使用過此 QR Code" in (msg2 or ""),
+        msg2,
+    )
+    ok3, msg3, _ = grant_item_to_squad(outsider_id, item_id, source="qr")
+    ok("qr per squad: other player can scan same catalog item", ok3, msg3)
+
+
 def test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id):
     """Body squad_id must not override session (IDOR prevention)."""
     from datetime import datetime
@@ -2136,6 +2175,7 @@ def main():
     test_maybe_resolve_monotonic_phase_guard()
     test_solo_resolve_combat_outcome_idempotency()
     test_phase2_gm_override_gateway()
+    test_qr_code_grant_scoped_per_squad_not_global(leader_id)
     test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id)
     test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id)
 

@@ -138,13 +138,14 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS qr_code_uses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        item_id INTEGER NOT NULL UNIQUE,
+        item_id INTEGER NOT NULL,
         squad_id TEXT NOT NULL,
         team_id TEXT,
         used_at TEXT DEFAULT CURRENT_TIMESTAMP,
         source TEXT,
         FOREIGN KEY (item_id) REFERENCES items(id),
-        FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
+        FOREIGN KEY (squad_id) REFERENCES squads(squad_id),
+        UNIQUE(item_id, squad_id)
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS player_items (
@@ -389,14 +390,42 @@ def migrate_db():
     if not c.fetchone():
         c.execute('''CREATE TABLE qr_code_uses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_id INTEGER NOT NULL UNIQUE,
+            item_id INTEGER NOT NULL,
             squad_id TEXT NOT NULL,
             team_id TEXT,
             used_at TEXT DEFAULT CURRENT_TIMESTAMP,
             source TEXT,
             FOREIGN KEY (item_id) REFERENCES items(id),
-            FOREIGN KEY (squad_id) REFERENCES squads(squad_id)
+            FOREIGN KEY (squad_id) REFERENCES squads(squad_id),
+            UNIQUE(item_id, squad_id)
         )''')
+    else:
+        c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='qr_code_uses'")
+        qr_sql_row = c.fetchone()
+        qr_sql = (qr_sql_row[0] or "") if qr_sql_row else ""
+        if (
+            "item_id INTEGER NOT NULL UNIQUE" in qr_sql
+            and "UNIQUE(item_id, squad_id)" not in qr_sql
+        ):
+            c.execute('''CREATE TABLE qr_code_uses_v2 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                squad_id TEXT NOT NULL,
+                team_id TEXT,
+                used_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                source TEXT,
+                FOREIGN KEY (item_id) REFERENCES items(id),
+                FOREIGN KEY (squad_id) REFERENCES squads(squad_id),
+                UNIQUE(item_id, squad_id)
+            )''')
+            c.execute("""
+                INSERT OR IGNORE INTO qr_code_uses_v2
+                    (id, item_id, squad_id, team_id, used_at, source)
+                SELECT id, item_id, squad_id, team_id, used_at, source
+                FROM qr_code_uses
+            """)
+            c.execute("DROP TABLE qr_code_uses")
+            c.execute("ALTER TABLE qr_code_uses_v2 RENAME TO qr_code_uses")
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='player_items'")
     if not c.fetchone():

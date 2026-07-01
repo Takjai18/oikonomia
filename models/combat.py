@@ -116,11 +116,21 @@ def get_combat_by_squad(squad_id):
 def get_active_combat_for_team(team_id):
     if not team_id:
         return None
-    for member in get_team_members(team_id):
-        combat = get_combat_by_squad(member["squad_id"])
-        if combat:
-            return combat
-    return None
+
+    conn = sqlite3.connect(_db())
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            """SELECT c.* FROM combats c
+               JOIN squads s ON c.squad_id = s.squad_id
+               WHERE UPPER(TRIM(s.team_id)) = UPPER(TRIM(?))
+                 AND c.status NOT IN ('ended')
+               ORDER BY c.started_at DESC LIMIT 1""",
+            (team_id,),
+        ).fetchone()
+        return row_to_combat(row) if row else None
+    finally:
+        conn.close()
 
 def save_combat(combat_id, **fields):
     allowed = {

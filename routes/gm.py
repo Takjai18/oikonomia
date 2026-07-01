@@ -675,13 +675,17 @@ def gm_team_members(team_id):
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT * FROM squads WHERE team_id = ? ORDER BY display_name, squad_id",
+            "SELECT squad_id FROM squads WHERE team_id = ? ORDER BY display_name, squad_id",
             (team_id,),
         ).fetchall()
     finally:
         conn.close()
 
-    members = [get_squad(row["squad_id"]) for row in rows]
+    squad_ids = [row["squad_id"] for row in rows]
+    from models.squad import fetch_squads_by_ids
+
+    members_dict = fetch_squads_by_ids(squad_ids)
+    members = [members_dict[sid] for sid in squad_ids if members_dict.get(sid)]
     return jsonify({"team": team, "members": members})
 
 

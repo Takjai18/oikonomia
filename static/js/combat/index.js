@@ -45,6 +45,8 @@ export class CombatApp {
     this.ctx = createInitialContext();
     this.invRecoveryCount = 0;
     this.hasTriggeredTimeoutDefense = false;
+    this._activeRafIds = new Set();
+    this._activeTimeoutIds = new Set();
 
     this.views = {
       hud: createHudView(rootEl),
@@ -93,6 +95,20 @@ export class CombatApp {
           this.poller.destroy();
         }
       }
+
+      if (this._activeRafIds?.size > 0) {
+        for (const rafId of this._activeRafIds) {
+          cancelAnimationFrame(rafId);
+        }
+        this._activeRafIds.clear();
+      }
+      if (this._activeTimeoutIds?.size > 0) {
+        for (const timeoutId of this._activeTimeoutIds) {
+          clearTimeout(timeoutId);
+        }
+        this._activeTimeoutIds.clear();
+      }
+
       this.hideAllModals();
       this.views?.endgame?.hideAll();
       this.views?.items?.hide();
@@ -109,6 +125,24 @@ export class CombatApp {
 
   getState() {
     return this.ctx;
+  }
+
+  safeRequestAnimationFrame(callback) {
+    const id = requestAnimationFrame((ts) => {
+      this._activeRafIds.delete(id);
+      callback(ts);
+    });
+    this._activeRafIds.add(id);
+    return id;
+  }
+
+  safeSetTimeout(callback, delayMs) {
+    const id = setTimeout(() => {
+      this._activeTimeoutIds.delete(id);
+      callback();
+    }, delayMs);
+    this._activeTimeoutIds.add(id);
+    return id;
   }
 
   async onCombatStarted(data) {
@@ -342,6 +376,15 @@ export class CombatApp {
 
   triggerTimeoutAutomaticDefense() {
     if (this.hasTriggeredTimeoutDefense) return;
+
+    const myCurrentAction = this.ctx.hud?.me?.action_type;
+    if (myCurrentAction === 'failed_escape') {
+      console.warn(
+        '[FSM] Player is in failed_escape recovery — automatic defense suppressed.',
+      );
+      this.hasTriggeredTimeoutDefense = true;
+      return;
+    }
 
     if (this.ctx.phase === Phase.DICE_CONFIRM) {
       console.warn(
