@@ -167,7 +167,7 @@ def purge_combat_actions(combat_id, *, conn=None):
             "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
         )
         return cur.rowcount
-    with immediate_transaction() as tx:
+    with immediate_transaction(settings.db_path) as tx:
         cur = tx.execute(
             "DELETE FROM combat_actions WHERE combat_id = ?", (int(combat_id),),
         )

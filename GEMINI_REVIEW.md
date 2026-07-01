@@ -809,3 +809,16 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v12（已讀，唔貼全文）
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
 ```
+
+---
+
+## 19. R13 後端安全硬化（2026-07-01）
+
+| 議題 | 狀態 | 修復 |
+|------|------|------|
+| **R13-A** `combat_start_api` body `squad_id` IDOR | ✅ | 預設 `session["squad_id"]`；僅 `COMBAT_E2E=1` 允許 body override · `routes/combat.py` |
+| **R13-B** `purge_combat_actions` 缺 db_path | ✅ | `immediate_transaction(settings.db_path)` · `models/combat.py` |
+| **R13-C** `rescue_near_death` 無法指定對象 | ✅ | 可選 `target_squad_id`（同隊 + 瀕死驗證）· `routes/combat.py` |
+| **R13-D** `gm_operator` 匿名 fallback | ⛔ 刻意不做 | R11 已改為無 operator 則 403（審計追溯） |
+
+測試：`test_combat_start_rejects_body_squad_id_spoof` · `test_rescue_near_death_target_squad_id` · `test_combat_flow.py` **274/274**

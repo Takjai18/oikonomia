@@ -1683,6 +1683,77 @@ def test_near_death_rescue_security(client, leader_id, member_id):
     update_squad(member_id, near_death_until=None, hp=100)
 
 
+def test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id):
+    """Body squad_id must not override session (IDOR prevention)."""
+    from datetime import datetime
+
+    from models.combat import clear_team_combat_id, get_combat, save_combat
+
+    prepare_test_encounter(client, team_id, TEST_ENCOUNTER_ID)
+    login(client, leader_id)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": TEST_ENCOUNTER_ID, "squad_id": member_id},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    ok("spoof start returns success", start.get("success"), str(start))
+    combat_id = start.get("combat_id")
+    combat = get_combat(combat_id) if combat_id else None
+    ok(
+        "combat owned by session squad not body",
+        combat and combat.get("squad_id") == leader_id,
+        f"expected {leader_id} got {(combat or {}).get('squad_id')}",
+    )
+    if combat_id:
+        save_combat(combat_id, status="ended", winner="squad", ended_at=datetime.now().isoformat())
+        clear_team_combat_id(team_id)
+
+
+def test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id):
+    """Explicit target_squad_id rescues the intended teammate when multiple are near death."""
+    from datetime import datetime, timedelta
+
+    client3 = oikonomia.app.test_client()
+    p3 = login(client3, "TestMember2")
+    ok("player3 login", p3 and p3.get("squad_id"))
+    member2_id = p3.get("squad_id")
+    join3 = client3.post("/team/join", data={"team_id": team_id}).get_json() or {}
+    ok("player3 join team", join3.get("success"), str(join3))
+
+    until_long = (datetime.now() + timedelta(minutes=30)).isoformat()
+    until_short = (datetime.now() + timedelta(minutes=10)).isoformat()
+    update_squad(member_id, near_death_until=until_long, hp=0)
+    update_squad(member2_id, near_death_until=until_short, hp=0)
+
+    login(client, leader_id)
+    update_squad(leader_id, near_death_until=None, hp=100, sanity=50)
+
+    r = client.post(
+        "/combat/rescue_near_death",
+        json={"rescue_type": "prayer", "target_squad_id": member2_id},
+    )
+    data = r.get_json() or {}
+    ok("targeted rescue success", data.get("success"), str(data))
+
+    m2 = get_squad(member2_id)
+    m1 = get_squad(member_id)
+    ok(
+        "selected target deadline shortened",
+        m2.get("near_death_until") and m2["near_death_until"] != until_short,
+        f"until={m2.get('near_death_until')}",
+    )
+    ok(
+        "non-target still near death",
+        m1.get("near_death_until") == until_long,
+        f"member1 until={m1.get('near_death_until')}",
+    )
+
+    update_squad(member_id, near_death_until=None, hp=100)
+    update_squad(member2_id, near_death_until=None, hp=100)
+
+
 def test_create_combat_record_active_guard(leader_id, team_id):
     from models.combat import (
         ActiveCombatExistsError,
@@ -1989,6 +2060,8 @@ def main():
     test_maybe_resolve_ready_claim_inside_tx()
     test_maybe_resolve_monotonic_phase_guard()
     test_phase2_gm_override_gateway()
+    test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id)
+    test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id)
 
     # --- 輪詢狀態（戰鬥已結束應仍回傳 outcome）---
     r = client.get(f"/combat/status?combat_id={combat_id}")

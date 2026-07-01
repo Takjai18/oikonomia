@@ -78,7 +78,11 @@ def combat_start_api(encounter_id=None):
         return jsonify({"error": "未登入"}), 401
 
     body = request.json if request.is_json else {}
-    squad_id = (body.get("squad_id") or session["squad_id"]).strip()
+    is_e2e_mode = os.environ.get("COMBAT_E2E", "").lower() in ("1", "true", "yes")
+    if is_e2e_mode and body.get("squad_id"):
+        squad_id = str(body.get("squad_id")).strip()
+    else:
+        squad_id = session["squad_id"]
     encounter_id = encounter_id or body.get("encounter_id") or request.form.get("encounter_id")
     confirm = body.get("confirm") or request.form.get("confirm")
 
@@ -576,15 +580,32 @@ def combat_rescue_near_death_api():
         }), 400
 
     participants = get_team_members(squad["team_id"])
+    target_squad_id = (body.get("target_squad_id") or "").strip() or None
     target = None
-    for p in participants:
-        if p.get("near_death_until"):
-            try:
-                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
-                    target = p
-                    break
-            except ValueError:
-                continue
+
+    def _is_near_death_active_member(member):
+        if not member or not member.get("near_death_until"):
+            return False
+        try:
+            return datetime.now() < datetime.fromisoformat(member["near_death_until"])
+        except ValueError:
+            return False
+
+    if target_squad_id:
+        candidate = next(
+            (p for p in participants if p.get("squad_id") == target_squad_id),
+            None,
+        )
+        if not candidate:
+            return jsonify({"success": False, "error": "指定隊友不在你的小隊"}), 400
+        if not _is_near_death_active_member(candidate):
+            return jsonify({"success": False, "error": "指定隊友目前不需要救援"}), 400
+        target = candidate
+    else:
+        for p in participants:
+            if _is_near_death_active_member(p):
+                target = p
+                break
 
     if not target:
         return jsonify({"success": False, "error": "沒有需要救援的隊友"}), 400
