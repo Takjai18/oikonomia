@@ -1050,6 +1050,7 @@ def _resolve_player_phase_body(combat_id):
         (a.get("action_type") or a.get("action")) == "escape"
         for a in actions.values()
     )
+    counter_target_actions = actions
     if escape_triggered:
         escape_rate = _escape_success_rate(combat_settings)
         if random.random() < escape_rate:
@@ -1070,6 +1071,7 @@ def _resolve_player_phase_body(combat_id):
             escape_triggered=True,
             escape_success=False,
         )
+        counter_target_actions = actions
 
     total_damage_to_enemy = 0
     berserk_players = []
@@ -1282,7 +1284,9 @@ def _resolve_player_phase_body(combat_id):
 
     fresh_participants = refresh_combat_participants(participants)
     target = (
-        select_enemy_counter_target(fresh_participants, actions, enemy_base_damage)
+        select_enemy_counter_target(
+            fresh_participants, counter_target_actions, enemy_base_damage,
+        )
         if escape_triggered
         else get_lowest_resilience_player(fresh_participants)
     )

@@ -181,6 +181,31 @@ describe('Combat V2 state machine', () => {
     assert.equal(effects.length, 0);
   });
 
+  it('R12-D: defeat poll during SETTLEMENT clears pending settlement (INV-A)', () => {
+    const ctx = {
+      ...createInitialContext(888),
+      phase: Phase.SETTLEMENT,
+      settledRoundIndex: 1,
+      pendingSettlement: { team_damage_dealt: 12 },
+      pendingSettlementId: '888:1',
+      hud: { enemy: { hp: 5, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'defeat',
+      winner: 'enemy',
+      combat_id: 888,
+      dead_squad_ids: ['s1'],
+      dead_squad_names: ['Alice'],
+      member_states: { s1: { display_name: 'Alice', hp: 50 } },
+      enemy: { hp: 5, max_hp: 200 },
+      my_state: { hp: 80 },
+    });
+    assert.equal(next.phase, Phase.COMBAT_FAILED);
+    assert.equal(next.pendingSettlement, null);
+    assert.equal(next.pendingSettlementId, null);
+    assert.ok(effects.some((e) => e.type === 'HIDE_SETTLEMENT'));
+  });
+
   it('R12-D: victory poll during SETTLEMENT does not skip to VICTORY', () => {
     const ctx = {
       ...createInitialContext(999),

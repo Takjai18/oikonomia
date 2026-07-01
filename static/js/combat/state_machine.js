@@ -185,11 +185,10 @@ export function handleAnyDeath(ctx, members) {
   };
   return {
     ctx: newCtx,
-    effects: [
-      { type: 'HIDE_ALL_MODALS' },
+    effects: terminalModalTeardownEffects([
       { type: 'SHOW_FAILED', members: dead },
       { type: 'STOP_POLL' },
-    ],
+    ]),
   };
 }
 

@@ -148,6 +148,20 @@ def test_select_enemy_counter_target_engine():
         fail("select_enemy_counter_target prefers escaper", str(target))
 
 
+def test_select_enemy_counter_target_failed_escape():
+    """INV-E: post-normalize failed_escape still counts as escape priority."""
+    participants = [
+        {"squad_id": "A", "hp": 80, "max_hp": 100, "resilience": 5, "is_protagonist": False},
+        {"squad_id": "B", "hp": 30, "max_hp": 100, "resilience": 3, "is_protagonist": False},
+    ]
+    actions = {"B": {"action_type": "failed_escape"}}
+    target = select_enemy_counter_target(participants, actions, enemy_base_damage=50)
+    if target and target.get("squad_id") == "B":
+        ok("select_enemy_counter_target prefers failed_escape escaper")
+    else:
+        fail("select_enemy_counter_target prefers failed_escape escaper", str(target))
+
+
 def main():
     print("=== Combat engine unit tests ===\n")
     test_calculate_attack_damage_basic()
@@ -157,6 +171,7 @@ def main():
     test_incoming_damage_piercing_floor()
     test_incoming_damage_extreme_team_defend()
     test_select_enemy_counter_target_engine()
+    test_select_enemy_counter_target_failed_escape()
     print(f"\n=== 結果：{PASS} 通過 / {FAIL} 失敗 ===\n")
     return 0 if FAIL == 0 else 1
 

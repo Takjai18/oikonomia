@@ -7,6 +7,7 @@ import random
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 from models.encounter import encounter_skips_progression, load_encounter
 from models.item import get_item_by_id, get_item_by_qr_code_value
@@ -216,6 +217,8 @@ def execute_post_combat_success_pipeline(
     team_id: str,
     encounter_id: str,
     starter_squad_id: str,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> StoryProgressionSnapshot:
     """
     權威戰後劇情解鎖管線：在單一 Atomic Transaction 內發放獎勵、解鎖故事階段、寫入遭遇完成誌。
@@ -232,12 +235,18 @@ def execute_post_combat_success_pipeline(
         raise ValueError(f"Encounter {encounter_id} not found")
 
     now = datetime.now().isoformat()
+
+    if conn is not None:
+        return _tx_body(
+            conn, clean_team, encounter, encounter_id, starter_squad_id, now,
+        )
+
     db_path = settings.db_path
 
     def _run():
-        with immediate_transaction(db_path) as conn:
+        with immediate_transaction(db_path) as new_conn:
             return _tx_body(
-                conn, clean_team, encounter, encounter_id, starter_squad_id, now,
+                new_conn, clean_team, encounter, encounter_id, starter_squad_id, now,
             )
 
     return with_db_retry(_run)
