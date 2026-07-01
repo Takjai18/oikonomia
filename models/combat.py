@@ -421,13 +421,11 @@ def upsert_combat_action(combat_id, squad_id, phase, action_type, dice_result, i
 
 def zoo_bonus_multiplier(sanity):
     sanity = int(sanity or 0)
-    if sanity >= 100:
-        return 1.8
-    if sanity >= 90:
+    if sanity > 90:
         return 1.5
-    if sanity >= 80:
+    if sanity > 80:
         return 1.4
-    if sanity >= 70:
+    if sanity > 70:
         return 1.3
     return 1.0
 
@@ -524,7 +522,7 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
     dice = roll_combat_dice()
     if sanity < 30:
         return {"action_type": "defend", "dice_result": dice}
-    if sanity >= 70 and combat_settings.get("allow_zoo", True):
+    if sanity > 70 and combat_settings.get("allow_zoo", True):
         return {"action_type": "use_zoo", "dice_result": dice}
     if sanity < 40 and dice == 0:
         return {"action_type": "pass", "dice_result": dice}
@@ -874,7 +872,7 @@ def resolve_player_phase(combat_id):
     """
     完整解析 Player Phase：
     - 攻擊傷害（max(力量, 智力)）+ dice multiplier
-    - Zoo 加成（70/80/90/100 → 1.3x–1.8x）
+    - Zoo 加成（>70/>80/>90 → 1.3x/1.4x/1.5x；≤70 為 1.0x，仍可發動）
     - 暴走（指定機率 + 30% 自傷）
     - 敵人反擊（韌性最低者；任一同隊 Defend → 全隊減傷 50%）
     - 瀕死檢查、日誌、Phase 狀態更新

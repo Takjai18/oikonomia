@@ -469,7 +469,7 @@ static/js/combat/
 resolve 鎖：player_phase → resolving（BEGIN IMMEDIATE）→ 結算 → enemy_phase/ended
 傷害：calculate_damage_simple / calculate_damage
 骰子倍率：0→0, 1→1.0, 2→1.5, 3→2.0（伺服器 roll_combat_dice）
-Zoo：任何神智可發動；加成 tier ≥70/80/90/100 → ×1.3/1.4/1.5/1.8（≤70 為 ×1.0）
+Zoo：任何神智可發動；加成 tier >70/>80/>90 → ×1.3/1.4/1.5（≤70 為 ×1.0）
 暴走：神智 <10→90%, <20→50%, <40→20%（HP≤0 唔觸發）
 敵人反擊：攻擊全隊韌性最低者；任一同隊 Defend → 反擊傷害減半
 瀕死：HP≤0 → near_death_until +15 分鐘；瀕死期間禁止道具補血
