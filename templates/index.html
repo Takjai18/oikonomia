@@ -3827,7 +3827,10 @@
 
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const res = await fetchWithTimeout('/status', { credentials: 'same-origin' });
+                    const res = await fetchWithTimeout(appendCacheBust('/status'), {
+                        credentials: 'same-origin',
+                        headers: FETCH_NO_CACHE_HEADERS,
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         if (data?.squad_id && data.success !== false && !data.error) {

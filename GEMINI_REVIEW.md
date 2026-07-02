@@ -1383,3 +1383,38 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 ```
 
 **iPhone SOP**：設定 → Safari → 進階 → 網站資料 → 刪除 `onrender.com` → 重開 → 登入。
+
+---
+
+## 32. Android Chrome 登入 audit（2026-07-02 · 批判性審視）
+
+> **症狀**：與 iOS 類似「登入失敗／網絡錯誤」。Gemini 歸因 DB lock、Ghost Cache、In-App Browser SameSite。
+
+### 32.1 逐項取捨
+
+| Gemini 建議 | 審視 | 決定 |
+|-------------|------|------|
+| SQLite `timeout=30` + busy wait | ❌ **重複** | `utils/db_tx.py` `get_db_connection` 已有 `timeout=30` + `PRAGMA busy_timeout=30000` + WAL；`database.py` 已用 |
+| 在 `database.py` 另寫 `get_db_connection` | ❌ **拒絕** | SSOT 係 `utils/db_tx.py`，唔複製 |
+| `/login` WAL + retry | ✅ **已 ship** | `a4a1248` `routes/auth.py` |
+| `/login` 加 `Cache-Control: no-store` | ✅ **採用** | `auth_bp.after_request`（含 `/session/restore` 等） |
+| `/status` 防快取 | ✅ **已 ship** + 補強 | `player_bp` 已有；`fallbackToNormalSession` 補 `appendCacheBust` |
+| `bootstrap.js` ghost cache | ✅ **已 ship** | `?v={{ deploy_version }}`（`de27bfe`） |
+| 10s 超時 | ❌ **已改** | `a4a1248` → 25s |
+| WhatsApp/LINE 內建瀏覽器 Cookie | ⚠️ **環境限制** | 指引「在 Chrome 中開啟」；`restore_token` + localStorage 為 fallback |
+| SameSite 改動 | ❌ **唔改** | 已 `Lax`；改 `None` 無助 In-App sandbox |
+
+### 32.2 本輪實作缺口
+
+| 項目 | 檔案 |
+|------|------|
+| Auth JSON 禁快取 | `routes/auth.py` `auth_dynamic_no_cache` |
+| 登入後 `get_squad` 讀取走 WAL | `models/squad.py` |
+| Session restore `/status` cache bust | `templates/index.html` `fallbackToNormalSession` |
+
+### 32.3 Android 營會 SOP
+
+1. Chrome → 網址列鎖頭 → **網站設定** → **清除並重設**
+2. **勿用** WhatsApp/LINE 內建瀏覽器 →「在 Chrome 中開啟」
+3. 核對 `/api/version` 為最新 commit
+4. 仍失敗 → 具體 toast（喚醒／逾時／忙碌）唔再一律怪 Wi‑Fi

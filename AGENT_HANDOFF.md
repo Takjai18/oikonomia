@@ -49,13 +49,17 @@
 | Low：bootstrap.js cache bust | ✅ **採用改良版**：`?v={{ deploy_version }}`（`routes/misc.py`），唔硬編碼 commit |
 | Ops：`/api/version` + `sessionStorage.clear()` | ✅ 記入文檔；唔改 code |
 
-### Safari 登入假「網絡錯誤」（Gemini audit · 見 §31）
+### Safari / Android 登入（Gemini audit · §31–§32）
 
 | Gemini 項 | 審視 |
 |-----------|------|
-| Cookie Secure/SameSite | ❌ **已 ship**（`app.py`）；curl 驗證 OK |
-| `/login` WAL + retry | ✅ **採用**（`routes/auth.py`） |
-| 25s 超時 + 具體錯誤 | ✅ **採用**（`index.html`） |
+| Cookie Secure/SameSite | ❌ **已 ship**（`app.py`） |
+| SQLite timeout=30 / WAL | ❌ **已 ship**（`utils/db_tx.py`）；唔在 `database.py` 複製 |
+| `/login` WAL + retry | ✅ `a4a1248` |
+| Auth `/login` no-cache headers | ✅ `auth_bp.after_request` |
+| `get_squad` 登入後讀取 | ✅ 改 `get_db_connection` |
+| Android ghost cache | ✅ `deploy_version` + `fetchNoCache` / fallback cache bust |
+| In-App Browser（WhatsApp） | ⚪ SOP：用 Chrome 開啟 |
 
 ---
 

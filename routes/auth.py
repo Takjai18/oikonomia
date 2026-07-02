@@ -19,6 +19,28 @@ from utils.db_tx import get_db_connection, with_db_retry
 
 auth_bp = Blueprint("auth", __name__)
 
+_AUTH_DYNAMIC_PATHS = frozenset({
+    "/login",
+    "/session/restore",
+    "/set_pin",
+    "/allocate_stats",
+})
+
+_DYNAMIC_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+@auth_bp.after_request
+def auth_dynamic_no_cache(response):
+    """Prevent Android Chrome from disk-caching session/auth JSON."""
+    if request.path in _AUTH_DYNAMIC_PATHS:
+        for key, value in _DYNAMIC_NO_CACHE_HEADERS.items():
+            response.headers[key] = value
+    return response
+
 
 @auth_bp.route("/login", methods=["POST"])
 def login():

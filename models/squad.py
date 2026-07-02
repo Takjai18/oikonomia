@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime
 
 from models.settings import default_protagonist_template, settings
+from utils.db_tx import get_db_connection
 from utils.helpers import normalize_team_id
 from utils.validators import parse_status_effects
 
@@ -136,10 +137,14 @@ def fetch_squads_by_ids(squad_ids):
 
 
 def get_squad(squad_id):
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
-    conn.close()
+    conn = get_db_connection(row_factory=sqlite3.Row)
+    try:
+        row = conn.execute(
+            "SELECT * FROM squads WHERE squad_id = ?",
+            (squad_id,),
+        ).fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -150,13 +155,14 @@ def get_squad(squad_id):
         from models.team import get_team_protagonists, official_squad_route
 
         clean_team_id = normalize_team_id(squad["team_id"])
-        conn = sqlite3.connect(settings.db_path)
-        conn.row_factory = sqlite3.Row
-        team_row = conn.execute(
-            "SELECT route, leader_squad_id FROM teams WHERE team_id = ?",
-            (clean_team_id,),
-        ).fetchone()
-        conn.close()
+        conn = get_db_connection(row_factory=sqlite3.Row)
+        try:
+            team_row = conn.execute(
+                "SELECT route, leader_squad_id FROM teams WHERE team_id = ?",
+                (clean_team_id,),
+            ).fetchone()
+        finally:
+            conn.close()
 
         if team_row:
             squad = apply_authoritative_route(

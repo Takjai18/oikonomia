@@ -70,7 +70,7 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 
 **常見 Gemini 誤判**（已發生過，勿重犯）：重複建議已 ship 嘅 `_attach_round_settlement`；fallback 指向 repo 唔存在嘅檔名；把 Linux 大小寫當主因而忽略 API 裸檔名；範例 code 用錯 JSON schema（如 `enemy_avatar` vs `enemy.avatar`）；硬編碼 `?v=df5acea` 而應用 `deploy_version` 動態 bust cache。
 
-詳見 **[GEMINI_REVIEW.md §30](./GEMINI_REVIEW.md)**（Gemini df5acea 跟進 audit 取捨表）。
+詳見 **[GEMINI_REVIEW.md §30–§32](./GEMINI_REVIEW.md)**（含 Safari / Android 登入 audit 取捨表）。
 
 **避免**：三個角色同時改同一功能；Gemini review 應對準已 push 嘅 commit，唔好對未落地嘅計劃 review。
 

@@ -100,6 +100,18 @@
 
 ---
 
+## 2026-07-02 — Android Chrome 登入 audit（批判性審視）
+
+| 項目 | 內容 |
+|------|------|
+| **Gemini 根因** | DB lock；Ghost Cache；In-App SameSite |
+| **取捨** | ❌ 重複建 `get_db_connection`（已有 `db_tx.py`）· ✅ auth no-cache headers · ✅ `get_squad` WAL · ✅ fallback `/status` cache bust |
+| **勿重複建議** | 再貼 `database.py` timeout=30 範例；10s 超時（已 25s） |
+
+見 `GEMINI_REVIEW.md` §32。
+
+---
+
 ## 2026-07-02 — iPhone Safari 登入「網絡連線」假錯誤（Gemini audit · 批判性審視）
 
 | 項目 | 內容 |
