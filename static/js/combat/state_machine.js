@@ -526,6 +526,17 @@ const TRANSITIONS = {
         if (meta.roundResolved === false) {
           return { ...ctx, phase: Phase.WAITING_FOR_PLAYERS, pollPaused: false };
         }
+        if (meta.skipToVictory) {
+          return {
+            ...ctx,
+            phase: Phase.VICTORY,
+            settledRoundIndex: meta.settledRoundIndex ?? ctx.settledRoundIndex,
+            pollPaused: true,
+            pendingSettlement: null,
+            pendingSettlementId: null,
+            isKillingBlow: false,
+          };
+        }
         if (meta.skipModal) {
           return {
             ...ctx,
@@ -555,6 +566,13 @@ const TRANSITIONS = {
         if (meta.roundResolved === false) {
           return [{ type: 'HIDE_SUBMITTING' }, { type: 'UPDATE_HUD' }, { type: 'START_POLL' }];
         }
+        if (meta.skipToVictory) {
+          return terminalModalTeardownEffects([
+            { type: 'HIDE_SUBMITTING' },
+            { type: 'SHOW_VICTORY', data: meta.data },
+            { type: 'STOP_POLL' },
+          ]);
+        }
         if (meta.skipModal) {
           return [{ type: 'HIDE_SUBMITTING' }, { type: 'START_POLL' }];
         }
@@ -576,8 +594,17 @@ const TRANSITIONS = {
     },
     ACTION_ATTACK: { reduce: (c) => c, effects: () => [{ type: 'TOAST', message: '回合提交結算中，請稍候…' }] },
     POLL_TICK: {
-      reduce: (ctx, meta) => ({ ...syncState(ctx, meta.snapshot).ctx, phase: Phase.SUBMITTING }),
-      effects: (ctx, meta) => syncState(ctx, meta.snapshot).effects.map((e) =>
+      reduce: (ctx, meta) => {
+        const synced = syncState(ctx, meta.snapshot);
+        meta._submittingPollEffects = synced.effects;
+        const keepSyncedPhase = synced.ctx.phase === Phase.SETTLEMENT
+          || TERMINAL_PHASES.includes(synced.ctx.phase);
+        return {
+          ...synced.ctx,
+          phase: keepSyncedPhase ? synced.ctx.phase : Phase.SUBMITTING,
+        };
+      },
+      effects: (_, meta) => (meta._submittingPollEffects || []).map((e) =>
         e.type === 'UPDATE_HUD' ? { ...e, hpOnly: true } : e,
       ),
     },
@@ -726,12 +753,20 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
       settledRoundIndex: ctx.settledRoundIndex,
     };
   }
-  if (ctx.shownSettlementIds.has(settlementId)) {
-    return { roundResolved: true, skipModal: true, settledRoundIndex: apiData.settled_round_index };
-  }
   const isKillingBlow = apiData.outcome === 'victory'
     || apiData.winner === 'squad'
     || (apiData.enemy?.hp ?? 1) <= 0;
+  if (ctx.shownSettlementIds.has(settlementId)) {
+    if (isKillingBlow) {
+      return {
+        roundResolved: true,
+        skipToVictory: true,
+        settledRoundIndex: apiData.settled_round_index,
+        data: apiData,
+      };
+    }
+    return { roundResolved: true, skipModal: true, settledRoundIndex: apiData.settled_round_index };
+  }
   return {
     roundResolved: true,
     settlement,

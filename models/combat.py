@@ -1,4 +1,5 @@
 """Combat persistence, resolution, preview, and status responses."""
+import os
 import json
 import math
 import random
@@ -1682,6 +1683,36 @@ def reconcile_enemy_hp(combat, persist=False):
     return combat
 
 
+def _combat_player_avatar_url(avatar, *, is_protagonist=False):
+    raw = (avatar or "").strip()
+    if not raw:
+        return "/static/avatars/default.png"
+    if raw.startswith(("http://", "https://", "/")):
+        return raw
+    safe = os.path.basename(raw)
+    if is_protagonist:
+        return f"/static/portraits/{safe}"
+    return f"/static/avatars/{safe}"
+
+
+def _combat_enemy_avatar_url(encounter=None):
+    enemy_def = (encounter or {}).get("enemy", {}) if encounter else {}
+    raw = (
+        enemy_def.get("avatar")
+        or enemy_def.get("portrait")
+        or enemy_def.get("image")
+        or ""
+    ).strip()
+    if not raw:
+        return "/static/images/enemies/parasite_shadow.svg"
+    if raw.startswith(("http://", "https://", "/")):
+        return raw
+    safe = os.path.basename(raw)
+    if safe.endswith(".svg"):
+        return f"/static/images/enemies/{safe}"
+    return f"/static/portraits/{safe}"
+
+
 def build_enemy_combat_stats(combat, encounter=None):
     """敵人 5 維數值（同玩家：生命值／神智／力量／智力／韌性）。"""
     combat = reconcile_enemy_hp(combat)
@@ -1716,6 +1747,7 @@ def build_enemy_combat_stats(combat, encounter=None):
     )
     return {
         "name": combat.get("enemy_name") or enemy_def.get("name", "敵人"),
+        "avatar": _combat_enemy_avatar_url(encounter),
         "hp": hp,
         "max_hp": max_hp,
         "sanity": sanity,
@@ -1780,7 +1812,10 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
                 item_effect_label = combat_item_effect_display_label(item_effect_type)
         member_states[sid] = {
             "display_name": p.get("display_name") or sid,
-            "avatar": p.get("avatar"),
+            "avatar": _combat_player_avatar_url(
+                p.get("avatar"),
+                is_protagonist=bool(p.get("is_protagonist")),
+            ),
             "hp": p.get("hp"),
             "max_hp": p.get("max_hp"),
             "sanity": p.get("sanity"),
@@ -1836,7 +1871,10 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "protagonists": protagonists,
         "my_state": {
             **member_states.get(squad_id, {}),
-            "avatar": me.get("avatar"),
+            "avatar": _combat_player_avatar_url(
+                me.get("avatar"),
+                is_protagonist=bool(me.get("is_protagonist")),
+            ),
             "display_name": me.get("display_name") or squad_id,
             "power": me.get("power"),
             "intellect": me.get("intellect"),

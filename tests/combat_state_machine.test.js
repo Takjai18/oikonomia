@@ -267,6 +267,54 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.settledRoundIndex, 3);
   });
 
+  it('killing blow with already-shown settlement → skipToVictory', () => {
+    const ctx = {
+      ...createInitialContext(42),
+      settledRoundIndex: 2,
+      shownSettlementIds: new Set(['42:2']),
+    };
+    const route = determineSettlementRoute(
+      ctx,
+      { outcome: 'victory', settled_round_index: 2, combat_id: 42, enemy: { hp: 0 } },
+      { team_damage_dealt: 30 },
+      '42:2',
+    );
+    assert.equal(route.skipToVictory, true);
+    assert.equal(route.skipModal, undefined);
+  });
+
+  it('SUBMITTING poll victory advances to SETTLEMENT (not pinned)', () => {
+    const ctx = { ...createInitialContext(7), phase: Phase.SUBMITTING };
+    const { ctx: next, effects } = transition(ctx, 'POLL_TICK', {
+      snapshot: {
+        outcome: 'victory',
+        combat_id: 7,
+        settled_round_index: 1,
+        settlement_id: '7:1',
+        round_settlement: { team_damage_dealt: 18, player_hits: [] },
+        enemy: { hp: 0, max_hp: 100 },
+        my_state: { hp: 80, submitted: true },
+        member_states: { s1: { hp: 80, submitted: true } },
+      },
+    });
+    assert.equal(next.phase, Phase.SETTLEMENT);
+    assert.ok(effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
+  it('SUBMIT_SUCCESS skipToVictory → VICTORY', () => {
+    let ctx = { ...createInitialContext(42), phase: Phase.SUBMITTING };
+    const victoryData = { outcome: 'victory', combat_id: 42, enemy: { hp: 0 } };
+    const { ctx: next, effects } = transition(ctx, 'SUBMIT_SUCCESS', {
+      roundResolved: true,
+      skipToVictory: true,
+      settledRoundIndex: 2,
+      data: victoryData,
+    });
+    assert.equal(next.phase, Phase.VICTORY);
+    assert.ok(effects.some((e) => e.type === 'SHOW_VICTORY'));
+    assert.ok(effects.some((e) => e.type === 'STOP_POLL'));
+  });
+
   it('SETTLEMENT poll defeat exits to DEFEAT with settlement teardown (INV-A)', () => {
     const ctx = {
       ...createInitialContext(1),

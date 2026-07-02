@@ -1,4 +1,5 @@
 import { DOM_IDS, TEST_IDS } from '../selectors.js';
+import { bindAvatarImage } from '../avatar_urls.js';
 
 export function createHudView(rootEl) {
   const enemyAvatar = rootEl.querySelector(`#${DOM_IDS.ENEMY_AVATAR}`);
@@ -29,12 +30,16 @@ export function createHudView(rootEl) {
       const me = ctx.hud?.me;
       if (enemy) {
         if (!hpOnly && enemyName) enemyName.textContent = enemy.name || '敵人';
-        if (!hpOnly && enemyAvatar && enemy.avatar) enemyAvatar.src = enemy.avatar;
+        if (!hpOnly && enemyAvatar) {
+          bindAvatarImage(enemyAvatar, enemy.avatar, { isEnemy: true });
+        }
         setHp(enemyHpBar, enemyHp, enemy.hp, enemy.max_hp);
       }
       if (me) {
         if (!hpOnly && playerName) playerName.textContent = me.display_name || '你';
-        if (!hpOnly && playerAvatar && me.avatar) playerAvatar.src = me.avatar;
+        if (!hpOnly && playerAvatar) {
+          bindAvatarImage(playerAvatar, me.avatar, { isProtagonist: !!me.is_protagonist });
+        }
         setHp(playerHpBar, playerHp, me.hp, me.max_hp);
       }
       if (!hpOnly && teamStatus) {
