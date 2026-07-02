@@ -10,6 +10,9 @@ export RENDER="${RENDER:-true}"
 export FLASK_ENV="${FLASK_ENV:-production}"
 
 echo "=== Render pre-deploy (DATA_DIR=$DATA_DIR) ==="
+DEPLOY_VER="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "$DEPLOY_VER" > "$ROOT/.deploy-version"
+echo "deploy-version: $DEPLOY_VER"
 bash "$ROOT/deploy/render-ensure-secrets.sh"
 
 echo "--- Database bootstrap ---"

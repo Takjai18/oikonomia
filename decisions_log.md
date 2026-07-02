@@ -334,6 +334,6 @@ submit_action → combat_flow.resolve_round()
 | 密鑰 | Dashboard `SECRET_KEY` + `GM_PIN`（或從 PA 匯入 `/data/.secret_key`） | ⏳ 待設定 |
 | Cutover | Phase 3 全測通過後才切流量；48h 雙線監控 | 待做 |
 
-**實測（2026-07-02）**：https://oikonomia.onrender.com TTFB ~0.27s（優於 PA ~6s），但 `db_path` 仍指向 `/opt/render/project/src/data/`（**未掛持久碟**），code 版本 `3017e16` 落後 PA `3b2843b`。
+**實測（2026-07-02）**：https://oikonomia.onrender.com TTFB ~0.15s；`db_path` → `/data/oikonomia.db` ✅；Shell 匯入 DB 完成。Secret gist `978ddde…` 已刪除。
 
 **記錄者**：Tak（升級 Starter）· Grok Build（Blueprint + deploy 腳本）
