@@ -582,6 +582,43 @@ describe('Settlement normalization', () => {
     assert.equal(merged.enemy.hp, 48);
   });
 
+  it('mergeEntryCombatPayload strips stale victory from status on fresh start', () => {
+    const merged = mergeEntryCombatPayload(
+      {
+        combat_id: 99,
+        status: 'player_phase',
+        active: true,
+        round_resolved: false,
+        waiting_for_teammates: false,
+        outcome: null,
+        winner: null,
+        enemy: { hp: 48, max_hp: 48 },
+      },
+      {
+        combat_id: 99,
+        outcome: 'victory',
+        winner: 'squad',
+        active: false,
+        round_settlement: { team_damage_dealt: 48 },
+        settlement_id: '98:2',
+        enemy: { hp: 0, max_hp: 48 },
+      },
+    );
+    assert.equal(merged.outcome, null);
+    assert.equal(merged.winner, null);
+    assert.equal(merged.active, true);
+    assert.equal(merged.round_resolved, false);
+    assert.equal(merged.enemy.hp, 48);
+    assert.equal(merged.round_settlement, undefined);
+  });
+
+  it('COMBAT_RESET works from VICTORY phase', () => {
+    const ctx = { ...createInitialContext(1), phase: Phase.VICTORY };
+    const { ctx: next } = transition(ctx, 'COMBAT_RESET', { combatId: 42 });
+    assert.equal(next.phase, Phase.IDLE);
+    assert.equal(next.combatId, 42);
+  });
+
   it('uses round_settlement when damage > 0', () => {
     const s = normalizeSettlement({
       round_settlement: { team_damage_dealt: 12, enemy_damage_dealt: 3, player_hits: [] },

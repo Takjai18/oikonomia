@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 Render.com 同 local 版本一致**（見 Deploy 一節）。PA 僅後備。  
-> 最後更新：2026-07-02 · **commit `af30b2b`**（戰鬥 FSM 等冪 + 大廳唯讀 status · §37–40）· BUG-2026-001 **monitoring**（V2 重構後待營會實機封頂）
+> 最後更新：2026-07-02 · **commit 見 `/api/version`**（重開戰鬥 remount + entry merge 修復）· BUG-2026-001 **monitoring**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -119,7 +119,7 @@
 | Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（302/302） |
 | DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（14/14） |
 | 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
-| Combat 前端 | `npm run test:combat`（40/40）+ `npm run test:e2e:v2` |
+| Combat 前端 | `npm run test:combat`（42/42）+ `npm run test:e2e:v2` |
 | Co-op 併發 | `./venv/bin/python3 scripts/test_combat_concurrency.py` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |

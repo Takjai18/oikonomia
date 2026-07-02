@@ -113,14 +113,37 @@ export function buildSettlementFromLogs(logEntries, settledRoundIndex) {
   };
 }
 
+function isFreshCombatStartPayload(start) {
+  return start?.combat_id != null
+    && start.active !== false
+    && start.round_resolved === false
+    && !start.outcome
+    && !start.winner;
+}
+
 /**
- * First paint after /combat/start — prefer start enemy HP when status returns a
- * transient 0 HP snapshot without victory (poll race / stale DB row).
+ * First paint after /combat/start — start payload wins over stale status shadows.
+ * Fixes entry races where /combat/status still carries previous battle terminal fields.
  */
 export function mergeEntryCombatPayload(startPayload, statusPayload) {
   if (!startPayload) return statusPayload || {};
   if (!statusPayload) return startPayload;
-  const merged = { ...startPayload, ...statusPayload };
+
+  const merged = { ...statusPayload, ...startPayload };
+
+  if (isFreshCombatStartPayload(startPayload)) {
+    merged.combat_id = startPayload.combat_id;
+    merged.active = startPayload.active !== false;
+    merged.round_resolved = false;
+    merged.waiting_for_teammates = startPayload.waiting_for_teammates ?? false;
+    merged.outcome = startPayload.outcome ?? null;
+    merged.winner = startPayload.winner ?? null;
+    if (!startPayload.round_settlement) {
+      delete merged.round_settlement;
+      delete merged.settlement_id;
+    }
+  }
+
   const startEnemy = startPayload.enemy;
   const statusEnemy = statusPayload.enemy;
   const active = statusPayload.active !== false

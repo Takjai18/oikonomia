@@ -65,8 +65,23 @@ function mountDisabledStub() {
   });
 }
 
+async function ensureLiveApp() {
+  await ensureInitialized();
+  const combatRoot = root();
+  if (!enabled || !combatRoot) return false;
+  if (!app) {
+    const CombatApp = await loadCombatAppClass();
+    app = CombatApp.mount(combatRoot);
+    bindLiveHandlers(combatRoot);
+    console.log('[Greenfield] Combat V2 remounted after lobby teardown');
+  }
+  return true;
+}
+
 function bindLiveHandlers(combatRoot) {
   handlers.onCombatStarted = async (data) => {
+    const ready = await ensureLiveApp();
+    if (!ready || !app) return;
     console.log(`[Greenfield] 接收到戰鬥啟動訊號，戰鬥ID: ${data.combat_id}`);
     if (data.combat_id) {
       sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');

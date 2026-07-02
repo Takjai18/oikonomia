@@ -135,6 +135,18 @@
 
 ---
 
+## 2026-07-02 — 重開戰鬥殘留上一場（需 F5）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 離開戰鬥後再開 encounter，首屏仍見上一場 HP 0／勝利殘影；F5 才正常 |
+| **根因 1** | `mergeEntryCombatPayload` 曾 `{...start, ...status}` — stale status 覆蓋 start |
+| **根因 2** | `exitCombatScreen` → `combatV2.destroy()` 將 `app=null`，下一場未 remount |
+| **根因 3** | `COMBAT_RESET` 僅 IDLE/COMBAT_FAILED 可觸發，VICTORY 等終端態殘留 |
+| **修復** | start 優先 merge；`ensureLiveApp` remount；`onCombatStarted` 硬重置 ctx；全域 `COMBAT_RESET` |
+
+---
+
 ## 2026-07-02 — 戰鬥 UX：捲動置頂 + HP 首屏 + 能力值標籤
 
 | 項目 | 內容 |

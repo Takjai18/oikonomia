@@ -152,11 +152,14 @@ export class CombatApp {
   }
 
   async onCombatStarted(data) {
-    this.dispatch('COMBAT_RESET', { combatId: data.combat_id });
-    this.ctx.combatId = data.combat_id;
-    this.ctx.settledRoundIndex = -1;
-    this.ctx.shownSettlementIds.clear();
-    this.ctx.entrySyncPending = true;
+    this.poller?.stop();
+    this.hideAllModals();
+    this.views.endgame.hideAll();
+
+    this.ctx = {
+      ...createInitialContext(data.combat_id),
+      entrySyncPending: true,
+    };
     this.hasTriggeredTimeoutDefense = false;
     this.submittingActive = false;
     this.invRecoveryCount = 0;
@@ -165,9 +168,6 @@ export class CombatApp {
       sessionStorage.setItem('OIKONOMIA_COMBAT_V2_LOCK', 'true');
       sessionStorage.setItem('OIKONOMIA_ACTIVE_COMBAT_ID', String(data.combat_id));
     }
-
-    this.hideAllModals();
-    this.views.endgame.hideAll();
 
     const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
     if (toggle) toggle.checked = false;
@@ -188,6 +188,9 @@ export class CombatApp {
         this.ctx._lastPollSnapshot = merged;
         if (!needsEntryHudRepair(this.ctx.hud, merged)) break;
         await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
+      }
+      if (String(merged.combat_id) !== String(data.combat_id)) {
+        merged = { ...merged, ...data };
       }
       this.pollTick(merged, { entrySync: true });
       renderAll(this.views, this.ctx, { snapshot: merged });
@@ -512,6 +515,13 @@ export class CombatApp {
 
   pollTick(snapshot, options = {}) {
     if (!snapshot || snapshot.success === false) return;
+    if (
+      snapshot.combat_id != null
+      && this.ctx.combatId != null
+      && String(snapshot.combat_id) !== String(this.ctx.combatId)
+    ) {
+      return;
+    }
     if (this.entrySyncInFlight && !options.entrySync) return;
 
     if (this.submittingActive) {

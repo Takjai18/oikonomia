@@ -110,6 +110,13 @@ export function blockedMessage(ctx, actionName = '此操作') {
  * @returns {{ ctx: object, effects: Effect[] }}
  */
 export function transition(ctx, event, meta = {}) {
+  if (event === 'COMBAT_RESET') {
+    return {
+      ctx: createInitialContext(meta.combatId ?? meta.combat_id ?? ctx.combatId ?? null),
+      effects: [{ type: 'HIDE_ALL_MODALS' }, { type: 'RENDER' }],
+    };
+  }
+
   const rule = resolveTransition(ctx, event);
   if (!rule) {
     return {
