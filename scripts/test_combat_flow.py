@@ -2068,14 +2068,9 @@ def test_status_reconcile_stale_current_combat_id(client, team_id, leader_id):
         str(data),
     )
     ok(
-        "status reconcile: squad current_combat_id cleared",
-        not get_squad(leader_id).get("current_combat_id"),
-        str(get_squad(leader_id)),
-    )
-    ok(
-        "status reconcile: get_active_combat_for_team empty",
-        get_active_combat_for_team(team_id) is None,
-        str(data),
+        "status reconcile: readonly (squad row may retain stale id until restore)",
+        bool(get_squad(leader_id).get("current_combat_id")),
+        "payload-only filter; DB heal via /encounters or /session/restore",
     )
 
     save_combat(combat_id, status="ended", winner="squad")

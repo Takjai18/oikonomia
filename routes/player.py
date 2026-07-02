@@ -11,7 +11,6 @@ from models.settings import settings
 from models.squad import get_squad, update_squad
 from services.player_status import build_player_status, reconcile_status_combat_fields
 from services.session_auth import attach_restore_token
-from utils.db_tx import with_db_retry
 from services.story import (
     count_team_distinct_tasks,
     get_pending_story_id,
@@ -120,9 +119,7 @@ def get_status():
         return jsonify({"success": False, "error": "未登入"}), 401
 
     status = build_player_status(squad)
-    combat_id, combat_status = with_db_retry(
-        lambda: reconcile_status_combat_fields(squad),
-    )
+    combat_id, combat_status = reconcile_status_combat_fields(squad)
     if combat_id:
         status["current_combat_id"] = combat_id
         if combat_status:

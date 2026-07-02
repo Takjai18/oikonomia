@@ -116,8 +116,9 @@
 |------|------|
 | **Gemini §37** | 戰後 `releaseCombatBridgeLock` 後，大廳 poll 可能讀到 stale `current_combat_id` → 閃爍死鎖 |
 | **根因** | `GET /status` 直接 `**squad` 展開；`/session/restore` 與 `/encounters` 已有 reconcile，lobby 缺 |
-| **修復** | `reconcile_status_combat_fields()` + `with_db_retry` 於 `routes/player.py`；fallback `[ERR_STATUS_*]` toast |
+| **修復** | `reconcile_status_combat_fields()` 於 `routes/player.py`；fallback `[ERR_STATUS_*]` toast |
 | **已 ship** | `syncState` TERMINAL `ABSORBING` 頂層攔截（`9d31b63` / R12-D 測試） |
+| **§38 跟進** | `81acdf1` 寫入改 **唯讀 payload 過濾**（高頻 GET 唔做 UPDATE）；DB heal 留 restore/encounters |
 
 ---
 

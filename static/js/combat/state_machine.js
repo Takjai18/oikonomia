@@ -300,6 +300,14 @@ export function syncState(ctx, snapshot) {
       return { ctx: newCtx, effects };
     }
 
+    // Submit in flight: poll must not skip killing-blow settlement modal.
+    if (ctx.phase === Phase.SUBMITTING || ctx.phase === Phase.WAITING_FOR_PLAYERS) {
+      return {
+        ctx: newCtx,
+        effects: [{ type: 'UPDATE_HUD', hpOnly: true }],
+      };
+    }
+
     newCtx = {
       ...newCtx,
       phase: Phase.VICTORY,

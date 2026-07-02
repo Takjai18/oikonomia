@@ -1282,6 +1282,16 @@
             });
         }
 
+        function formatToastContent(message) {
+            const str = String(message ?? '');
+            const idx = str.search(/\[ERR_/);
+            if (idx < 0) return { main: str, code: null };
+            return {
+                main: str.slice(0, idx).trim(),
+                code: str.slice(idx).trim(),
+            };
+        }
+
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             const styles = {
@@ -1292,7 +1302,19 @@
             toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-2xl text-sm shadow-lg z-[80] ${
                 styles[type] || styles.info
             }`;
-            toast.textContent = message;
+            const { main, code } = formatToastContent(message);
+            if (code) {
+                const mainEl = document.createElement('span');
+                mainEl.textContent = main || message;
+                const codeEl = document.createElement('span');
+                codeEl.className = type === 'error'
+                    ? 'text-[10px] text-white/70 block mt-1'
+                    : 'text-[10px] text-zinc-300 block mt-1';
+                codeEl.textContent = code;
+                toast.append(mainEl, codeEl);
+            } else {
+                toast.textContent = message;
+            }
             document.body.appendChild(toast);
 
             setTimeout(() => {

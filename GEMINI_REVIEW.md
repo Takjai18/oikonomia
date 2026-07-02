@@ -1578,3 +1578,33 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 
 - 大廳 3s poll **唔會**因 `current_combat_id` 單獨重設 `COMBAT_V2_LOCK`；鎖重設主要經 `finishSessionRestore`。後端清空 ID 即可切斷污染鏈。
 - `isPlayerInActiveCombatV2` 仍會在 `combat-root-v2` 可見時自保鎖定；`exitCombatScreen` 會 hide root + `clearActiveCombatBridge`。
+
+---
+
+## 38. GET /status 寫入飢餓 + SUBMITTING poll 搶占 audit（2026-07-02 · 批判性審視）
+
+> **背景**：`81acdf1` 在 3s 大廳 poll 嵌入 `reconcile_finished_active_combat` 寫入。Gemini 擔心多 worker 併發 UPDATE → SQLite 飢餓 → `[ERR_DB_LOCK]`。
+
+### 38.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| **Critical**：GET /status 不應觸發寫入事務 | ✅ **正確** | 高頻 GET 改 **唯讀過濾** payload；DB heal 留在 end combat / restore / encounters |
+| 唯讀 `_combat_is_finished_for_reconcile` 檢查 | ✅ **採用** | `reconcile_status_combat_fields` 僅 SELECT + 記憶體抹除 `current_combat_id` |
+| **High**：SETTLEMENT 時 poll 不可搶占 SHOW_VICTORY | ✅ **已 ship**（`9d31b63`） | L299 `ctx.phase === SETTLEMENT`；測試 R12-D |
+| SUBMITTING 關鍵幀 poll 搶占結算 | ✅ **部分正確** | 無 `round_settlement` 時 poll 曾直跳 VICTORY → **已修** SUBMITTING/WAITING hpOnly 護欄 |
+| **Low**：Toast 錯誤代碼小字附註 | ✅ **採用** | `formatToastContent` + `text-[10px]` 第二行 |
+
+### 38.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| `/status` 唯讀 reconcile（移除 `with_db_retry` 寫入） | `services/player_status.py` + `routes/player.py` |
+| SUBMITTING/WAITING poll 不跳 VICTORY | `state_machine.js` |
+| 測試 +1 | `combat_state_machine.test.js` |
+| Toast 代碼附註樣式 | `templates/index.html` |
+
+### 38.3 審計提醒（俾 Gemini）
+
+- 唯讀 `/status` **唔清** `squads.current_combat_id` 實體列；僅防前端重鎖。寫入 heal 仍由 `/encounters`、`/session/restore`、戰鬥結束管線負責。
+- `81acdf1` smoke test 已改為驗證 **response payload**，唔再要求 GET 清 DB 列。

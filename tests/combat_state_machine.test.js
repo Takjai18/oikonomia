@@ -347,6 +347,27 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.skipModal, undefined);
   });
 
+  it('SUBMITTING poll victory with seen settlement does not skip to SHOW_VICTORY', () => {
+    const ctx = {
+      ...createInitialContext(7),
+      phase: Phase.SUBMITTING,
+      shownSettlementIds: new Set(['7:1']),
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 7,
+      settled_round_index: 1,
+      settlement_id: '7:1',
+      round_settlement: { team_damage_dealt: 18, player_hits: [] },
+      enemy: { hp: 0, max_hp: 100 },
+      my_state: { hp: 80, submitted: true },
+      member_states: { s1: { hp: 80, submitted: true } },
+    });
+    assert.equal(next.phase, Phase.SUBMITTING);
+    assert.ok(!effects.some((e) => e.type === 'SHOW_VICTORY'));
+    assert.ok(effects.some((e) => e.type === 'UPDATE_HUD' && e.hpOnly === true));
+  });
+
   it('SUBMITTING poll victory advances to SETTLEMENT (not pinned)', () => {
     const ctx = { ...createInitialContext(7), phase: Phase.SUBMITTING };
     const { ctx: next, effects } = transition(ctx, 'POLL_TICK', {

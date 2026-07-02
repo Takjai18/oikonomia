@@ -1,9 +1,9 @@
 """Player status payload builders."""
 from models.combat import (
+    _combat_is_finished_for_reconcile,
     get_active_combat_for_team,
     get_combat,
     get_combat_by_squad,
-    reconcile_finished_active_combat,
 )
 from models.protagonist import ProtagonistLifeState, get_protagonist_life_state
 from models.team import get_team_by_id, get_team_protagonists, official_team_route
@@ -54,8 +54,10 @@ def build_player_status(squad):
 
 def reconcile_status_combat_fields(squad):
     """
-    Idempotent SSOT for lobby /status: seal finished combats and clear stale
-    current_combat_id before the payload reaches the dashboard poll.
+    Read-only lobby /status guard: strip stale current_combat_id from the
+    payload when the combat row is already finished. Does not write to SQLite
+    (high-frequency GET must stay side-effect free). DB heal remains on
+    combat end, /session/restore, and /encounters reconcile paths.
     """
     if not squad:
         return None, None
@@ -75,16 +77,7 @@ def reconcile_status_combat_fields(squad):
     if not combat:
         return None, None
 
-    is_live, live_id, _enc_id = reconcile_finished_active_combat(
-        combat,
-        team_id=team_id,
-        squad_id=squad_id if not team_id else None,
-    )
-    if not is_live or not live_id:
+    if _combat_is_finished_for_reconcile(combat) or combat.get("status") == "ended":
         return None, None
 
-    fresh = get_combat(live_id) or combat
-    if fresh.get("status") == "ended":
-        return None, None
-
-    return live_id, fresh.get("status")
+    return combat.get("id"), combat.get("status")
