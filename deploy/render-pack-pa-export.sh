@@ -6,6 +6,8 @@
 #   bash deploy/render-pack-pa-export.sh
 #   bash deploy/render-pack-pa-export.sh /path/to/oikonomia
 #
+# On PythonAnywhere (if script missing): cd ~/oikonomia && git pull origin main
+#
 # Output: /tmp/oikonomia-render-migrate.tar.gz (or $OUT)
 set -euo pipefail
 
