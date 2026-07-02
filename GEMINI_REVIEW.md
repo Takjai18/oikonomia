@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-02 · **基準 commit `df5acea`**（Render 死圖 + 勝利 FSM · 已修對照 §18–§29）
+> **最後更新**：2026-07-02 · **基準 commit `df5acea`+**（§30 批判性審視協議 · 已修對照 §18–§30）
 > **正式環境**：https://oikonomia.onrender.com（Render Starter · Singapore；PA 僅後備）
 
 ---
@@ -31,7 +31,8 @@
 2. 修復由 **Grok Build** 執行；Gemini 只出報告，唔直接改 repo。
 3. 方向性改動（例如重構範圍）先經 **Grok** 同用戶確認，再交 Grok Build。
 4. 已修復項對照本文 §9、§10、**§29**，**唔好重複報**。
-5. **唔盲目跟從自己舊建議**：先讀 `UPDATE_LOG.md`；若與 §29 已拒絕項矛盾，須說明點解仍要改。
+5. **唔盲目跟從自己舊建議**：先讀 `UPDATE_LOG.md`；若與 §29–§30 已拒絕項矛盾，須說明點解仍要改。
+6. **Grok Build 會批判性審視你嘅每份 audit**（見 README「Gemini Audit 批判性審視」、§30）— 輸出建議時請附**可驗證證據**（檔名＋符號＋重現步驟），避免與已 ship 項重複。
 
 ```
 Grok（方向） → Grok Build（實作） → Gemini（review / debug） → Grok Build（修復）
@@ -1278,4 +1279,71 @@ Baseline：GEMINI_REVIEW.md §29（唔重複報已拒絕／已修項）
 焦點：最後一擊 settlement→victory 鏈、頭像 URL、唔建議 default-enemy.svg
 
 輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```
+
+---
+
+## 30. Gemini df5acea 跟進 audit（2026-07-02 · Grok Build 批判性審視）
+
+> **用途**：示範當 Tak 提交 Gemini Audit Report 時，**Grok Build 點樣審視而唔盲目跟從**。Gemini 本輪 health **9.5/10** 大致認可 `df5acea`；以下係逐項取捨。
+
+### 30.1 審視流程（永久協議）
+
+| 步驟 | 負責 | 動作 |
+|------|------|------|
+| 1 | Tak | 提交 Gemini audit 全文或摘要 |
+| 2 | Grok Build | 對照 `UPDATE_LOG`、§29、現行 code |
+| 3 | Grok Build | `curl` / `grep` / 測試驗證每項主張 |
+| 4 | Grok Build | 分類：採用／已 ship／拒絕／延後；**只改缺口** |
+| 5 | Grok Build | 更新 §30 取捨表 + `UPDATE_LOG` + push |
+
+### 30.2 本輪 audit 逐項取捨
+
+#### 【Critical】頭像 URL SSOT（`models/combat.py`）
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| V1 用 `avatarSrc()` 拼接，V2 API 裸檔名致 `/Mike.jpg` 404 | ✅ **正確**（與 §29 一致） | 已在 `df5acea` 修 |
+| 需審計等冪性與防呆 | ✅ 合理 | 後端 `_combat_*_avatar_url` **等冪**；前端 `avatar_urls.js` 雙重防呆 |
+| 範例用 `enemy_avatar` 頂層 key、`avatar_url` 欄位 | ❌ **唔適用本 repo** | **拒絕** — schema 為 `encounter.enemy.avatar`；API 欄位 `avatar` |
+| 範例只處理 `static/images/enemies/` | ❌ 不完整 | 已實作 avatars / portraits / enemies 三路徑 |
+
+**結論**：唔改用 Gemini 範例 code；維持 `_combat_player_avatar_url` / `_combat_enemy_avatar_url`。
+
+#### 【High/Medium】FSM `skipToVictory`（`state_machine.js`）
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| `skipModal` 導致卡 IDLE、進唔到 VICTORY | ✅ **正確**（submit 路徑） | `df5acea` 已加 `skipToVictory` |
+| poll 時 `shownSettlementIds.has` 應直接 VICTORY | ✅ **已覆蓋** | `syncState` fallthrough → `Phase.VICTORY`（L315–329） |
+| SUBMITTING poll 釘 phase | ✅ 已修 | `df5acea` SUBMITTING `POLL_TICK` |
+
+**測試**：`poll victory with already-shown settlement → VICTORY`、`skipToVictory` 路徑（30/30）。
+
+#### 【Low】靜態 JS 快取（`bootstrap.js`）
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| 手機易 cache 舊 V2 JS | ✅ 合理 | **採用改良版** |
+| 硬編碼 `?v=df5acea` | ❌ 每次 deploy 要手改 | **拒絕** |
+| Grok Build 改良 | ✅ | `bootstrap.js?v={{ deploy_version }}`（`read_deploy_version()`） |
+
+#### 【Ops】實機驗證（非 code）
+
+| 建議 | 決定 |
+|------|------|
+| 核對 `/api/version` == 當前 commit | ✅ 營會 SOP |
+| 測試前 `sessionStorage.clear()` | ✅ §29.5 |
+
+### 30.3 Gemini 輸出質量備註
+
+- 認可 Grok 修復係好現象；但仍夾帶 **唔合 schema 嘅範例 code** — 以 repo 為準。
+- 審計前自問：建議是否已在 §29 標為已 ship？
+
+### 30.4 Copy-paste（Tak 提交新 audit 時俾 Grok Build）
+
+```
+Tak 提交咗 Gemini Audit Report。
+請依 README「Gemini Audit 批判性審視」+ GEMINI_REVIEW §30：
+逐項驗證、分類、只實作缺口、更新文檔，唔盲目 copy Gemini 範例 code。
 ```

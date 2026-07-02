@@ -56,7 +56,21 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 3. **Gemini** 按 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** 做 review 或追查 bug；輸出 High/Medium/Low 清單。
 4. 修復項交回 **Grok Build**；重大方向改動再諮詢 **Grok**。
 
-**Gemini 建議唔盲目跟從**：先對照 **[UPDATE_LOG.md](./UPDATE_LOG.md)** 同 **GEMINI_REVIEW.md §29**（已修／已拒絕項）。常見誤判包括：重複建議已 ship 嘅 `_attach_round_settlement`、指向 repo 唔存在嘅 fallback 檔名、或把 Linux 大小寫當根因而忽略 API 回傳裸檔名。Grok Build 應 **curl 驗證靜態 URL**、**讀現行 code** 再決定做唔做。
+### Gemini Audit 批判性審視（全角色必守）
+
+當 Tak 提交 **Gemini Audit Report** 或修復建議時，**Grok Build 唔可以盲目跟從**。必須逐項 **Critical examine**，再決定做唔做、點做。
+
+| 步驟 | Grok Build 要做咩 |
+|------|-------------------|
+| 1. 對照 SSOT | 讀 `UPDATE_LOG.md`、`GEMINI_REVIEW.md` §29–§30（已修／已拒絕項） |
+| 2. 驗證主張 | `curl` 靜態 URL、`grep` 現行 code、跑相關測試 — **唔好信 audit 文字多過 repo** |
+| 3. 分類每項建議 | ✅ 採用 · ✅ 已 ship · ❌ 拒絕（錯因／重複／範例 code 唔合 schema）· ⚪ 延後 |
+| 4. 記錄取捨 | 更新 `GEMINI_REVIEW.md` + `UPDATE_LOG.md`；實作只改真正缺口 |
+| 5. 回覆 Tak | 簡表：Gemini 講咩 → 我哋驗證結果 → 做咗咩／唔做咩 |
+
+**常見 Gemini 誤判**（已發生過，勿重犯）：重複建議已 ship 嘅 `_attach_round_settlement`；fallback 指向 repo 唔存在嘅檔名；把 Linux 大小寫當主因而忽略 API 裸檔名；範例 code 用錯 JSON schema（如 `enemy_avatar` vs `enemy.avatar`）；硬編碼 `?v=df5acea` 而應用 `deploy_version` 動態 bust cache。
+
+詳見 **[GEMINI_REVIEW.md §30](./GEMINI_REVIEW.md)**（Gemini df5acea 跟進 audit 取捨表）。
 
 **避免**：三個角色同時改同一功能；Gemini review 應對準已 push 嘅 commit，唔好對未落地嘅計劃 review。
 

@@ -267,6 +267,28 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.settledRoundIndex, 3);
   });
 
+  it('poll victory with already-shown settlement → VICTORY (syncState)', () => {
+    const ctx = {
+      ...createInitialContext(42),
+      phase: Phase.IDLE,
+      settledRoundIndex: 2,
+      shownSettlementIds: new Set(['42:2']),
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      outcome: 'victory',
+      combat_id: 42,
+      settled_round_index: 2,
+      settlement_id: '42:2',
+      round_settlement: { team_damage_dealt: 30, player_hits: [] },
+      enemy: { hp: 0, max_hp: 100 },
+      my_state: { hp: 80, submitted: true },
+      member_states: { s1: { hp: 80, submitted: true } },
+    });
+    assert.equal(next.phase, Phase.VICTORY);
+    assert.ok(effects.some((e) => e.type === 'SHOW_VICTORY'));
+    assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
+  });
+
   it('killing blow with already-shown settlement → skipToVictory', () => {
     const ctx = {
       ...createInitialContext(42),

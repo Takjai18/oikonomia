@@ -21,7 +21,7 @@ oikonomia/
 │
 ├── README.md                 # 專案入口 + AI 分工 + Context 協議
 ├── AGENT_HANDOFF.md          # Grok Build 交接（部署、測試、符號表）
-├── GEMINI_REVIEW.md          # Gemini review/debug 指引 + 已修對照 §18–§29
+├── GEMINI_REVIEW.md          # Gemini review/debug + §30 批判性審視協議
 ├── CURRENT_STRUCTURE.md      # 本檔
 ├── COMBAT_V2_AUDIT_BUNDLE.md # v12 全文 SSOT（Gemini Baseline）
 ├── COMBAT_V2_PARTIAL_INDEX.md
@@ -66,7 +66,7 @@ oikonomia/
 
 | 檔案 | 職責 |
 |------|------|
-| `bootstrap.js` | Feature flag → `window.combatV2` / `CombatV2App` |
+| `bootstrap.js` | Feature flag → `window.combatV2`；`index.html` 以 `?v={{ deploy_version }}` bust cache |
 | `index.js` | `CombatApp`、poll、timeout defense、`exitToLobby` |
 | `state_machine.js` | Phase FSM、INV-A～E、`skipToVictory`、`entrySyncPending` |
 | `avatar_urls.js` | 頭像 URL 正規化（`/static/avatars/` vs `/static/portraits/`）+ `onerror` fallback |
@@ -150,7 +150,7 @@ oikonomia/
 | `pre_deploy_checks.sh` | 部署閘門 |
 
 ```bash
-npm run test:combat          # 29/29
+npm run test:combat          # 30/30
 npm run test:e2e:v2          # Playwright T8–T14
 ```
 

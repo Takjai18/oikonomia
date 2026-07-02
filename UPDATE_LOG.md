@@ -94,6 +94,23 @@
 
 **勿重複建議**：`default-enemy.svg`／`default-avatar.svg`（無檔）；三處手動 `_attach_round_settlement`（已有 `_json_victory_outcome`）；`parasite_shadow.svg` Render 404（實測 200）。詳見 `GEMINI_REVIEW.md` §29。
 
+### 永久規則：Gemini Audit 批判性審視
+
+當 Tak 提交 Gemini Audit Report 時，**Grok Build 唔盲目跟從**。流程見 `README.md`（Gemini Audit 批判性審視）、`AGENT_HANDOFF.md` 同節、`GEMINI_REVIEW.md` §30。每輪 audit 必須：驗證 → 分類（採用／已 ship／拒絕／延後）→ 更新文檔 → 只改真正缺口。
+
+---
+
+## 2026-07-02 — Gemini df5acea 跟進 audit（批判性審視）
+
+| Gemini 項 | 審視 | 處理 |
+|-----------|------|------|
+| Critical：頭像 URL SSOT + 等冪 | ✅ 已 ship（`df5acea`） | ❌ 拒絕其 `enemy_avatar`/`avatar_url` 範例；維持 `_combat_*_avatar_url` + `avatar` 欄位 |
+| High：skipToVictory + poll→VICTORY | ✅ 已 ship | 加測試 `poll victory with already-shown settlement` |
+| Low：`bootstrap.js` cache bust | ✅ 採用改良 | `?v={{ deploy_version }}`（唔硬編碼 commit） |
+| Ops：version 核對 + sessionStorage.clear | ✅ 文檔 | 唔改 code |
+
+**勿重複建議**：再改頭像 SSOT 或 skipToVictory（已覆蓋）；唔好硬編碼 `?v=<hash>` 入 HTML。
+
 ---
 
 ## 2026-07-02 — Render ProxyFix（Gemini infra audit）

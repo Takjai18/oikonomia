@@ -14,6 +14,43 @@
 
 ---
 
+## Gemini Audit 批判性審視（Grok Build 必守 · 永久）
+
+> **觸發**：Tak 貼上 Gemini Audit Report、Critical Issues 清單、或「請照 Gemini 做」。
+
+**禁止**：未驗證就 copy-paste Gemini 範例 code、未讀 SSOT 就重複已 ship 修復。
+
+### 審視流程（每份 audit 必跑）
+
+```
+收到 Gemini 建議
+  → 讀 UPDATE_LOG + GEMINI_REVIEW §29–§30
+  → 逐項 grep / curl / 跑測試驗證
+  → 分類：採用 | 已 ship | 拒絕 | 延後
+  → 只實作缺口 + 更新文檔取捨表
+  → commit / push / 驗證 /api/version
+```
+
+### 分類標準
+
+| 標記 | 意思 | 例子 |
+|------|------|------|
+| ✅ 採用 | 驗證後確實缺失 | `avatar_urls.js` onerror |
+| ✅ 已 ship | repo 已有，Gemini 重複報 | `_json_victory_outcome`（`5e8b3b6`） |
+| ❌ 拒絕 | 錯因、錯 schema、檔案不存在 | `default-enemy.svg`；`encounter.enemy_avatar` 頂層 key |
+| ⚪ 延後 | 合理但非本輪／有更好的做法 | 硬編碼 `?v=df5acea` → 改用 `deploy_version` |
+
+### 最新範例（Gemini df5acea 跟進 audit · 見 §30）
+
+| Gemini 項 | 審視結果 |
+|-----------|----------|
+| Critical：後端頭像 URL SSOT | ✅ **已 ship**（`_combat_*_avatar_url`）；❌ 拒絕其範例（`avatar_url` 欄位名、`enemy_avatar` schema 錯） |
+| High：skipToVictory / poll→VICTORY | ✅ **已 ship**（`df5acea`）；`syncState` poll 路徑已覆蓋已看結算 |
+| Low：bootstrap.js cache bust | ✅ **採用改良版**：`?v={{ deploy_version }}`（`routes/misc.py`），唔硬編碼 commit |
+| Ops：`/api/version` + `sessionStorage.clear()` | ✅ 記入文檔；唔改 code |
+
+---
+
 ## Context 管理協議（Grok Build 必守 · 2026-06-30）
 
 > **目的**：防 context 溢出、代碼腰斬、幻覺。長對話**唔使**開新 Chat，但必須嚴格局部交付。
@@ -61,7 +98,7 @@
 | Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（297/297） |
 | DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（14/14） |
 | 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
-| Combat 前端 | `npm run test:combat`（29/29）+ `npm run test:e2e:v2` |
+| Combat 前端 | `npm run test:combat`（30/30）+ `npm run test:e2e:v2` |
 | Co-op 併發 | `./venv/bin/python3 scripts/test_combat_concurrency.py` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |

@@ -27,7 +27,11 @@ misc_bp = Blueprint("misc", __name__)
 
 @misc_bp.route("/")
 def index():
-    return render_template("index.html", combat_v2_enabled=combat_v2_active())
+    return render_template(
+        "index.html",
+        combat_v2_enabled=combat_v2_active(),
+        deploy_version=read_deploy_version(),
+    )
 
 
 @misc_bp.route("/__e2e__/combat-v2")
@@ -35,7 +39,10 @@ def combat_v2_e2e_harness():
     """Minimal Combat V2 mount for Playwright PR-7 (COMBAT_E2E=1 only)."""
     if os.environ.get("COMBAT_E2E", "").lower() not in ("1", "true", "yes"):
         abort(404)
-    return render_template("combat_v2_harness.html")
+    return render_template(
+        "combat_v2_harness.html",
+        deploy_version=read_deploy_version(),
+    )
 
 
 @misc_bp.route("/api/version")
