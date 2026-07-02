@@ -154,7 +154,9 @@ Production 必須設定環境變數：`SECRET_KEY`、`GM_PIN`。
 
 關閉時玩家端戰鬥區顯示維護提示（唔影響登入、任務、劇情等其他功能）。
 
-## 正式環境（PythonAnywhere）
+## 正式環境
+
+### PythonAnywhere（現行）
 
 | 用途 | 網址 |
 |------|------|
@@ -177,7 +179,54 @@ FORCE=1 bash ~/oikonomia/deploy/pa-update.sh
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ```
 
-確認 `success: true`，`version` 與 GitHub 最新 commit 一致，`combat_v2: true`，且 `markers` 含 `protagonist_combat`、`trauma_ending` 等（代表 running code 已重載）。
+### Render.com 付費版（預備遷移）
+
+Blueprint：`render.yaml`（**Starter $7/月**、**Singapore**、1GB 持久碟 `/data`、gunicorn）。
+
+| 項目 | 設定 |
+|------|------|
+| 資料庫 | `/data/oikonomia.db` |
+| 相片上傳 | `/data/uploads/` |
+| 密鑰 | `/data/.secret_key`、`.gm_pin`（或 Dashboard `SECRET_KEY` / `GM_PIN`） |
+| 戰鬥 V2 | `/data/.combat_v2`（預設 `1`） |
+
+**首次建立（Dashboard）**
+
+1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → 連接 GitHub `oikonomia` repo。
+2. 套用 Blueprint 前，在服務環境變數設定 **`GM_PIN`**（必填）；建議同時設定 **`SECRET_KEY`**（從 PA `data/.secret_key` 複製，保留玩家 session）。
+3. 確認 **Persistent Disk** 已掛載於 `/data`（Blueprint 已含）。
+4. Deploy 完成後驗證：
+
+```bash
+bash deploy/render-check.sh https://YOUR-SERVICE.onrender.com
+```
+
+**從 PA 搬資料（營會前建議做一次）**
+
+在 PA Bash：
+
+```bash
+bash ~/oikonomia/deploy/render-pack-pa-export.sh
+# 產出 /tmp/oikonomia-render-migrate-*.tar.gz
+```
+
+在 Render **Shell**（上傳 tarball 後）：
+
+```bash
+bash deploy/render-import-data.sh /path/to/oikonomia-render-migrate.tar.gz
+```
+
+然後把 Dashboard 的 `SECRET_KEY` / `GM_PIN` 與 PA 一致 → **Manual Deploy**。
+
+**之後每次更新**
+
+推送到 `main` 即自動 deploy；`preDeployCommand` 會跑 `deploy/render-predeploy.sh`（secrets + DB bootstrap）。
+
+本地推送前建議：
+
+```bash
+bash scripts/pre_deploy_checks.sh
+```
 
 ## 測試
 

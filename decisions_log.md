@@ -321,3 +321,19 @@ submit_action → combat_flow.resolve_round()
 - `combat_instant_settlement` 只影響 UI；trauma/ending 後端時機不變
 
 **記錄者**：Grok Architect · Tak 確認 · Grok Build 實作 Step 1
+
+---
+
+## 2026-07-02 — Render.com 遷移（Starter / Singapore）
+
+| 決策 | 內容 | 狀態 |
+|------|------|------|
+| 主機 | **Render Starter**（Singapore）取代 PA 為營會正式環境；PA 暫留後備 | 🔄 進行中 |
+| 持久化 | `DATA_DIR=/data` + 1GB disk；DB `oikonomia.db`、上傳 `uploads/` | ⏳ 待 push + Dashboard 對齊 |
+| 程序 | gunicorn `wsgi:application`；`preDeployCommand` → `render-predeploy.sh` | ✅ repo 已備 |
+| 密鑰 | Dashboard `SECRET_KEY` + `GM_PIN`（或從 PA 匯入 `/data/.secret_key`） | ⏳ 待設定 |
+| Cutover | Phase 3 全測通過後才切流量；48h 雙線監控 | 待做 |
+
+**實測（2026-07-02）**：https://oikonomia.onrender.com TTFB ~0.27s（優於 PA ~6s），但 `db_path` 仍指向 `/opt/render/project/src/data/`（**未掛持久碟**），code 版本 `3017e16` 落後 PA `3b2843b`。
+
+**記錄者**：Tak（升級 Starter）· Grok Build（Blueprint + deploy 腳本）

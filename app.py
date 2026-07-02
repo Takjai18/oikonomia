@@ -89,8 +89,11 @@ os.makedirs(DATA_DIR, exist_ok=True)
 if not os.environ.get("DATA_DIR"):
     migrate_legacy_db(DATA_DIR)
 
-# 上傳圖片固定放喺 project/uploads（PA 同 local 路徑一致，避免 data/uploads 分裂）
-UPLOAD_FOLDER = os.path.join(PROJECT_DIR, "uploads")
+# PA / local：project/uploads；Render 持久碟：/data/uploads（避免 redeploy 清走相片）
+if os.environ.get("RENDER") == "true":
+    UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
+else:
+    UPLOAD_FOLDER = os.path.join(PROJECT_DIR, "uploads")
 LEGACY_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 

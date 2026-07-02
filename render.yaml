@@ -1,19 +1,41 @@
+# Render Blueprint — Oikonomia production (paid Starter, Singapore).
+# Setup: Dashboard → New → Blueprint → connect GitHub repo → apply.
+# Before first deploy: set GM_PIN in Dashboard (or import PA data/.gm_pin via render-import-data.sh).
 services:
   - type: web
     name: oikonomia
     runtime: python
+    plan: starter
+    region: singapore
+    branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 app.py
+    preDeployCommand: bash deploy/render-predeploy.sh
+    startCommand: >-
+      gunicorn wsgi:application
+      --bind 0.0.0.0:$PORT
+      --workers 1
+      --threads 4
+      --timeout 120
+      --access-logfile -
+      --error-logfile -
+    healthCheckPath: /api/version
     disk:
       name: oikonomia-data
       mountPath: /data
       sizeGB: 1
     envVars:
-      - key: SECRET_KEY
-        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.12.8"
       - key: RENDER
         value: "true"
+      - key: FLASK_ENV
+        value: production
       - key: DATA_DIR
         value: /data
-      - key: PORT
-        value: "10000"
+      # Copy from PA data/.secret_key before go-live (keeps sessions valid).
+      # If omitted, render-predeploy.sh creates a new one on first deploy.
+      - key: SECRET_KEY
+        sync: false
+      # Required in production. Copy from PA data/.gm_pin or set a new PIN.
+      - key: GM_PIN
+        sync: false

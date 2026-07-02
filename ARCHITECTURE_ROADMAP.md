@@ -2,7 +2,27 @@
 
 > **來源**：Grok 方向建議（2026-06-29）· **對照 commit**：`d1e47d4`  
 > **讀者**：Grok（方向）、Grok Build（實作）、Gemini（review）、Tak（決策）  
-> **營會約束**：~20 人、3 日 2 夜西貢戶外、PA 單機、穩定性 > 新功能
+> **營會約束**：~20 人、3 日 2 夜西貢戶外、**Render Starter（新加坡）為主、PA 後備**、穩定性 > 新功能
+
+---
+
+## Hosting（2026-07-02）
+
+| 環境 | URL | 角色 | 資料路徑 |
+|------|-----|------|----------|
+| **Render Starter** | https://oikonomia.onrender.com | **正式（目標）** | `/data` 持久碟（`DATA_DIR=/data`） |
+| **PythonAnywhere** | https://takjai.pythonanywhere.com | 後備／cutover 前 | `~/oikonomia/data/` |
+
+**Render 服務**：`srv-d8v8i7cvikkc73fbsv0g` · repo `Takjai18/oikonomia` · branch `main` · Blueprint `render.yaml`。
+
+**遷移原則**
+
+1. SQLite + 上傳相片必須在 **Persistent Disk**（`/data`），唔好用 `project/src/data`（redeploy 會清）。
+2. 生產用 **gunicorn**（`wsgi:application`），唔用 `python3 app.py`。
+3. `SECRET_KEY` / `GM_PIN` 與 PA 一致（搬 `data/.secret_key`、`.gm_pin`），避免玩家 session 失效。
+4. Cutover 前跑完 Phase 3 checklist；PA 保留 48h 作 rollback。
+
+**腳本**：`deploy/render-pack-pa-export.sh` → `deploy/render-import-data.sh` → `deploy/render-check.sh`。
 
 ---
 

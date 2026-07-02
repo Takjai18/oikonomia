@@ -159,6 +159,8 @@ def api_version():
                 and "breakdown" in template_text,
         },
         "db_path": settings.db_path,
+        "data_dir": os.environ.get("DATA_DIR"),
+        "render": os.environ.get("RENDER") == "true",
         "upload_folder": upload_folder,
         "legacy_upload_folder": settings.legacy_upload_folder,
         "upload_file_count": upload_count,
