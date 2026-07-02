@@ -22,7 +22,11 @@ import {
   deriveSettlementId,
   mergeEntryCombatPayload,
 } from '../static/js/combat/settlement.js';
-import { resolveCombatStats } from '../static/js/combat/stats.js';
+import {
+  resolveCombatStats,
+  isStaleHudSnapshot,
+  needsEntryHudRepair,
+} from '../static/js/combat/stats.js';
 
 describe('Combat V2 state machine', () => {
   it('TERMINAL_PHASES SSOT covers endgame absorbing phases', () => {
@@ -461,6 +465,29 @@ describe('Combat V2 state machine', () => {
 });
 
 describe('Settlement normalization', () => {
+  it('isStaleHudSnapshot blocks regressing settled_round_index', () => {
+    const ctx = { settledRoundIndex: 2 };
+    assert.equal(isStaleHudSnapshot(ctx, { settled_round_index: 1 }), true);
+    assert.equal(isStaleHudSnapshot(ctx, { settled_round_index: 2 }), false);
+  });
+
+  it('needsEntryHudRepair detects transient enemy hp 0', () => {
+    assert.equal(
+      needsEntryHudRepair(
+        { enemy: { hp: 0, max_hp: 48 } },
+        { status: 'player_phase', active: true },
+      ),
+      true,
+    );
+    assert.equal(
+      needsEntryHudRepair(
+        { enemy: { hp: 48, max_hp: 48 } },
+        { status: 'player_phase', active: true },
+      ),
+      false,
+    );
+  });
+
   it('resolveCombatStats reads my_state fields', () => {
     const stats = resolveCombatStats({
       hp: 80,

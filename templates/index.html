@@ -370,6 +370,12 @@
         #combat-near-death-overlay { background: rgba(69, 10, 10, 0.92); backdrop-filter: blur(4px); }
         /* combat_instant_settlement: HP bars sync with damage numbers (no CSS lag) */
         #combat-v2-enemy-hp-bar,
+        #combat-module-container {
+            min-height: 0;
+        }
+        #combat-root-v2 {
+            scroll-margin-top: 0;
+        }
         #combat-v2-player-hp-bar {
             transition: none !important;
             -webkit-transition: none !important;
@@ -870,7 +876,7 @@
                 </div>
 
                 <!-- COMBAT V2 — Greenfield mount (PR-6) -->
-                <div id="combat-module-container" class="w-full min-h-screen bg-zinc-950 text-white">
+                <div id="combat-module-container" class="w-full bg-zinc-950 text-white">
                     {% if combat_v2_enabled %}
                         {% include 'combat_screen.html' %}
                     {% else %}
@@ -1352,6 +1358,17 @@
         pendingEncounterId = null;
     }
 
+    function scrollCombatToTop() {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        const container = document.getElementById('combat-module-container');
+        if (container) container.scrollTop = 0;
+        document.getElementById('combat')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+        document.getElementById('combat-root-v2')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+    window.scrollCombatToTop = scrollCombatToTop;
+
     function revealCombatV2Surface() {
         // DOM-first: visible combat section before V2 init (avoids 0px reflow on restore)
         showSection('combat', { skipCombatLobbyLoad: true });
@@ -1365,6 +1382,7 @@
             if (el) setVisible(el, false);
         });
         document.getElementById('combat-root-v2')?.classList.remove('hidden');
+        requestAnimationFrame(() => scrollCombatToTop());
     }
 
     function waitForCombatRepaint() {

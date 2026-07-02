@@ -20,6 +20,7 @@ import {
   extractHud,
   mergeEntryCombatPayload,
 } from './settlement.js';
+import { isStaleHudSnapshot, needsEntryHudRepair } from './stats.js';
 import { showToast } from './toast.js';
 import { renderAll } from './render.js';
 import { DOM_IDS } from './selectors.js';
@@ -171,12 +172,26 @@ export class CombatApp {
     const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
     if (toggle) toggle.checked = false;
 
+    if (data.enemy || data.my_state || data.member_states) {
+      this.ctx.hud = extractHud(data);
+      renderAll(this.views, this.ctx);
+    }
+    this.scrollCombatToTop();
+
     this.entrySyncInFlight = true;
     try {
-      const snapshot = await CombatApi.status(data.combat_id);
-      const merged = mergeEntryCombatPayload(data, snapshot);
-      this.ctx.hud = extractHud(merged);
+      let merged = data;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const snapshot = await CombatApi.status(data.combat_id);
+        merged = mergeEntryCombatPayload(data, snapshot);
+        this.ctx.hud = extractHud(merged);
+        this.ctx._lastPollSnapshot = merged;
+        if (!needsEntryHudRepair(this.ctx.hud, merged)) break;
+        await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
+      }
       this.pollTick(merged, { entrySync: true });
+      renderAll(this.views, this.ctx, { snapshot: merged });
+      this.scrollCombatToTop();
     } catch (_) {
       if (data.enemy || data.status || data.my_state) {
         this.ctx.hud = extractHud(data);
@@ -187,6 +202,12 @@ export class CombatApp {
       if (data.combat_id) {
         this.poller.start(data.combat_id);
       }
+    }
+  }
+
+  scrollCombatToTop() {
+    if (typeof window.scrollCombatToTop === 'function') {
+      window.scrollCombatToTop();
     }
   }
 
@@ -495,9 +516,18 @@ export class CombatApp {
 
     if (this.submittingActive) {
       if (this.debug) console.log('[CombatV2] poll muted during in-flight submit');
+      if (isStaleHudSnapshot(this.ctx, snapshot)) return;
       if (snapshot.enemy || snapshot.my_state || snapshot.member_states) {
-        this.ctx.hud = extractHud(snapshot);
-        this.views.hud?.update(this.ctx, { hpOnly: true });
+        const pseudoStart = {
+          enemy: this.ctx.hud?.enemy,
+          my_state: this.ctx.hud?.me,
+          member_states: this.ctx.hud?.members,
+          encounter_id: this.ctx.hud?.encounter_id,
+        };
+        const merged = mergeEntryCombatPayload(pseudoStart, snapshot);
+        this.ctx.hud = extractHud(merged);
+        this.ctx._lastPollSnapshot = merged;
+        this.views.hud?.update(this.ctx, { hpOnly: true, snapshot: merged });
       }
       return;
     }
@@ -525,6 +555,7 @@ export class CombatApp {
       return;
     }
 
+    this.ctx._lastPollSnapshot = snapshot;
     const { ctx, effects } = transition(this.ctx, 'POLL_TICK', { snapshot });
     this.ctx = ctx;
     this.poller.setPhase(ctx.phase);
@@ -625,7 +656,10 @@ export class CombatApp {
           this.views.endgame.hideAll();
           break;
         case 'UPDATE_HUD':
-          renderAll(this.views, this.ctx, { hpOnly: fx.hpOnly });
+          renderAll(this.views, this.ctx, {
+            hpOnly: fx.hpOnly,
+            snapshot: this.ctx._lastPollSnapshot,
+          });
           break;
         case 'RENDER':
           renderAll(this.views, this.ctx);

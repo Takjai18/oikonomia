@@ -17,6 +17,7 @@ export const DOM_IDS = {
   PLAYER_INTELLECT: 'combat-v2-player-intellect',
   PLAYER_RESILIENCE: 'combat-v2-player-resilience',
   PLAYER_STATS: 'combat-v2-player-stats',
+  PLAYER_STATS_LABEL: 'combat-v2-player-stats-label',
   ENEMY_SANITY: 'combat-v2-enemy-sanity',
   ENEMY_POWER: 'combat-v2-enemy-power',
   ENEMY_INTELLECT: 'combat-v2-enemy-intellect',

@@ -35,3 +35,33 @@ export function statBarPct(value, max = 100) {
   const m = parseCombatStat(max, 100) ?? 100;
   return `${Math.max(0, Math.min(100, (v / m) * 100))}%`;
 }
+
+/**
+ * INV-C: reject poll snapshots older than local settled round (hpOnly race guard).
+ * @param {{ settledRoundIndex?: number }} ctx
+ * @param {{ settled_round_index?: number|string, current_phase?: number|string }} snapshot
+ */
+export function isStaleHudSnapshot(ctx, snapshot) {
+  if (!snapshot) return false;
+  const apiIdx = parseInt(snapshot.settled_round_index, 10);
+  if (
+    Number.isFinite(apiIdx)
+    && ctx.settledRoundIndex >= 0
+    && apiIdx < ctx.settledRoundIndex
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Active player_phase with enemy max_hp>0 but hp<=0 — likely transient entry bug. */
+export function needsEntryHudRepair(hud, snapshot = {}) {
+  const enemy = hud?.enemy;
+  if (!enemy) return true;
+  const hp = parseCombatStat(enemy.hp, null);
+  const maxHp = parseCombatStat(enemy.max_hp, 100) ?? 100;
+  const active = snapshot.active !== false
+    && ['player_phase', 'precheck'].includes(snapshot.status);
+  const noOutcome = !snapshot.outcome && !snapshot.winner;
+  return !!(active && noOutcome && maxHp > 0 && (hp == null || hp <= 0));
+}

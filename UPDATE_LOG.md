@@ -100,6 +100,16 @@
 
 ---
 
+## 2026-07-02 — 戰鬥 UX：捲動置頂 + HP 首屏 + 能力值標籤
+
+| 項目 | 內容 |
+|------|------|
+| **問題** | iPhone 進戰鬥要 scroll up；HP 仍要 F5；我方能力值無「我」標籤 |
+| **修復** | `scrollCombatToTop`；entry 先畫 start payload + 3 次 status retry；`isStaleHudSnapshot`；玩家名稱標籤 |
+| **勿** | 自動 F5（改 entry repair + 即時渲染） |
+
+---
+
 ## 2026-07-02 — 戰鬥畫面能力值空白（V2 缺 UI）
 
 | 項目 | 內容 |

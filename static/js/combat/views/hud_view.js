@@ -1,7 +1,7 @@
 import { DOM_IDS } from '../selectors.js';
 import { bindAvatarImage } from '../avatar_urls.js';
 import { parseCombatHp } from '../state_machine.js';
-import { resolveCombatStats, statBarPct } from '../stats.js';
+import { resolveCombatStats, statBarPct, isStaleHudSnapshot } from '../stats.js';
 
 export function createHudView(rootEl) {
   const enemyAvatar = rootEl.querySelector(`#${DOM_IDS.ENEMY_AVATAR}`);
@@ -21,6 +21,8 @@ export function createHudView(rootEl) {
   const playerPower = rootEl.querySelector(`#${DOM_IDS.PLAYER_POWER}`);
   const playerIntellect = rootEl.querySelector(`#${DOM_IDS.PLAYER_INTELLECT}`);
   const playerResilience = rootEl.querySelector(`#${DOM_IDS.PLAYER_RESILIENCE}`);
+  const playerStatsLabel = rootEl.querySelector(`#${DOM_IDS.PLAYER_STATS_LABEL}`);
+  const playerPirLabel = rootEl.querySelector('#combat-v2-player-stats-pir-label');
   const teamStatus = rootEl.querySelector(`#${DOM_IDS.TEAM_STATUS}`);
   const logEl = rootEl.querySelector(`#${DOM_IDS.LOG}`);
   const practiceExitBtn = rootEl.querySelector(`#${DOM_IDS.PRACTICE_EXIT_BTN}`);
@@ -48,6 +50,12 @@ export function createHudView(rootEl) {
     if (el) el.textContent = String(value ?? '—');
   }
 
+  function playerStatsLabelText(me) {
+    const name = (me?.display_name || '').trim();
+    if (!name || name === '你') return '我';
+    return name.length > 6 ? `${name.slice(0, 6)}…` : name;
+  }
+
   function renderVitals(enemy, me) {
     if (enemy) {
       setHp(enemyHpBar, enemyHp, enemy.hp, enemy.max_hp);
@@ -61,6 +69,9 @@ export function createHudView(rootEl) {
     }
     if (me) {
       setHp(playerHpBar, playerHp, me.hp, me.max_hp);
+      const label = playerStatsLabelText(me);
+      if (playerStatsLabel) playerStatsLabel.textContent = label;
+      if (playerPirLabel) playerPirLabel.textContent = label;
       const pstats = resolveCombatStats(me);
       if (pstats) {
         setSanity(playerSanityBar, playerSanity, pstats.sanity);
@@ -72,11 +83,14 @@ export function createHudView(rootEl) {
   }
 
   return {
-    update(ctx, { hpOnly = false } = {}) {
+    update(ctx, { hpOnly = false, snapshot = null } = {}) {
       const enemy = ctx.hud?.enemy;
       const me = ctx.hud?.me;
+      const stale = snapshot ? isStaleHudSnapshot(ctx, snapshot) : false;
 
-      renderVitals(enemy, me);
+      if (!stale) {
+        renderVitals(enemy, me);
+      }
 
       if (enemy && !hpOnly) {
         if (enemyName) enemyName.textContent = enemy.name || '敵人';
