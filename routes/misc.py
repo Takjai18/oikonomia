@@ -17,7 +17,7 @@ from models.settings import settings
 from services.announcements import list_announcements
 from utils.app_state import DB_INIT_ERROR
 from utils.combat_v2_flag import combat_v2_active, combat_v2_module_present
-from utils.deploy import player_template_text, read_deploy_version
+from utils.deploy import player_template_text, read_deploy_version, read_render_git_commit
 from utils.helpers import list_image_files, resolve_upload_disk_path
 from utils.qr import sign_qr_token
 from utils.uploads import save_task_submission_photo
@@ -53,6 +53,7 @@ def api_version():
     return jsonify({
         "success": DB_INIT_ERROR is None,
         "version": read_deploy_version(),
+        "git_commit": read_render_git_commit(),
         "combat_v2": combat_v2_on,
         "db_init_error": DB_INIT_ERROR,
         "markers": {

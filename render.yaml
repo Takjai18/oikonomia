@@ -10,14 +10,16 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     preDeployCommand: bash deploy/render-predeploy.sh
+    # preDeploy also listed separately; startCommand runs predeploy if Dashboard omitted preDeployCommand.
     startCommand: >-
-      gunicorn wsgi:application
+      bash -c 'bash deploy/render-predeploy.sh &&
+      exec gunicorn wsgi:application
       --bind 0.0.0.0:$PORT
       --workers 1
       --threads 4
       --timeout 120
       --access-logfile -
-      --error-logfile -
+      --error-logfile -'
     healthCheckPath: /api/version
     disk:
       name: oikonomia-data

@@ -37,3 +37,6 @@ encounters/cache_test.json
 
 # Render migration artifacts (contain secrets + DB)
 deploy/artifacts/
+
+# Written at deploy time (preDeploy / pa-update); never commit
+.deploy-version

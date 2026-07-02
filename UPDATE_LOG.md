@@ -95,6 +95,17 @@
 
 **勿重複建議**：再當 PA 為主機；新功能要考慮 `/data` 持久碟同 gunicorn 多 worker。Deploy Hook URL **勿** commit（用 GitHub Secret `RENDER_DEPLOY_HOOK`）。
 
+### 2026-07-02 — Render version 顯示舊 hash（`3017e16`）假陽性
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | `/api/version` 長期 `3017e16`，與 `main` 不符；但 `render: true`、`combat_v2: true` 正常 |
+| **根因** | ① `.deploy-version` **誤 commit** 入 git（值 `3017e16`）② Dashboard **未設** `preDeployCommand`（log 無 `=== Render pre-deploy ===`） |
+| **修復** | `.deploy-version` 加入 `.gitignore` 並從 repo 移除；`read_deploy_version()` fallback `RENDER_GIT_COMMIT`；`startCommand` 開跑前執行 `render-predeploy.sh` |
+| **Dashboard** | Settings → Start Command 應與 `render.yaml` 一致（含 `render-predeploy.sh`）；建議加 Pre-deploy command |
+
+**勿重複建議**：version 舊唔代表 code 未 deploy；先查 log 有無 preDeploy、`.deploy-version` 有無被 commit。
+
 ---
 
 ## 設定與環境變數速查（易出問題）
