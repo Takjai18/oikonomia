@@ -183,16 +183,22 @@ def combat_start_api(encounter_id=None):
             )
             combat = get_combat(combat["id"])
 
+    combat = get_combat(combat["id"]) or combat
     status_slice = build_combat_status_response(combat, encounter, squad_id)
+    live_status = combat.get("status")
     return jsonify({
         "success": True,
         "combat_id": combat["id"],
         "encounter_id": encounter_id,
-        "status": combat.get("status"),
+        "status": live_status,
         "precheck_passed": precheck_passed,
         "can_skip": precheck_passed,
         "precheck_text": precheck.get("success_text") if precheck_passed else None,
-        "enemy": status_slice.get("enemy") or build_enemy_combat_stats(combat, encounter),
+        "active": live_status not in ("ended",),
+        "round_resolved": False,
+        "outcome": None,
+        "winner": None,
+        "enemy": build_enemy_combat_stats(combat, encounter),
         "my_state": status_slice.get("my_state"),
         "member_states": status_slice.get("member_states"),
         "encounter": {

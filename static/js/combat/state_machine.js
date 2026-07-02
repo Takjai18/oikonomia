@@ -147,8 +147,19 @@ function absorbStaleSettlementOnEntry(ctx, snapshot, settlementId) {
     : parseInt(snapshot.current_phase, 10) - 1;
   const shown = new Set(ctx.shownSettlementIds);
 
-  // Only mark shown when backend is in stable player_phase without an unresolved round
-  if (settlementId && snapshot.status === 'player_phase' && !snapshot.round_resolved) {
+  // Only mark stale historical settlements — never pre-absorb killing-blow breakdowns.
+  const enemyHp = parseInt(snapshot.enemy?.hp, 10);
+  const terminalOutcome = snapshot.outcome === 'victory'
+    || snapshot.outcome === 'defeat'
+    || snapshot.winner === 'squad'
+    || snapshot.winner === 'enemy';
+  if (
+    settlementId
+    && snapshot.status === 'player_phase'
+    && !snapshot.round_resolved
+    && !terminalOutcome
+    && (!Number.isFinite(enemyHp) || enemyHp > 0)
+  ) {
     shown.add(settlementId);
   }
 
@@ -273,10 +284,9 @@ export function syncState(ctx, snapshot) {
     const settlementId = deriveSettlementId(snapshot);
     const unseenKillingSettlement = settlement
       && settlementId
-      && !ctx.shownSettlementIds.has(settlementId)
-      && ctx.phase !== Phase.SETTLEMENT;
+      && !ctx.shownSettlementIds.has(settlementId);
 
-    if (unseenKillingSettlement) {
+    if (unseenKillingSettlement && ctx.phase !== Phase.SETTLEMENT) {
       newCtx = {
         ...newCtx,
         phase: Phase.SETTLEMENT,
@@ -300,7 +310,6 @@ export function syncState(ctx, snapshot) {
       return { ctx: newCtx, effects };
     }
 
-    // Submit in flight: poll must not skip killing-blow settlement modal.
     if (ctx.phase === Phase.SUBMITTING || ctx.phase === Phase.WAITING_FOR_PLAYERS) {
       return {
         ctx: newCtx,
@@ -770,6 +779,15 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
   }
   const isKillingBlow = apiData.outcome === 'victory' || apiData.winner === 'squad';
   if (ctx.shownSettlementIds.has(settlementId)) {
+    if (isKillingBlow && settlement) {
+      return {
+        roundResolved: true,
+        settlement,
+        settlementId,
+        settledRoundIndex: apiData.settled_round_index,
+        isKillingBlow: true,
+      };
+    }
     if (isKillingBlow) {
       return {
         roundResolved: true,

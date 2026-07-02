@@ -331,7 +331,7 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.settlementId, '1:0');
   });
 
-  it('killing blow with already-shown settlement → skipToVictory', () => {
+  it('killing blow with already-shown settlement still routes to SETTLEMENT when breakdown exists', () => {
     const ctx = {
       ...createInitialContext(42),
       settledRoundIndex: 2,
@@ -343,8 +343,9 @@ describe('Combat V2 state machine', () => {
       { team_damage_dealt: 30 },
       '42:2',
     );
-    assert.equal(route.skipToVictory, true);
-    assert.equal(route.skipModal, undefined);
+    assert.equal(route.isKillingBlow, true);
+    assert.equal(route.settlementId, '42:2');
+    assert.equal(route.skipToVictory, undefined);
   });
 
   it('SUBMITTING poll victory with seen settlement does not skip to SHOW_VICTORY', () => {

@@ -1608,3 +1608,34 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 
 - 唯讀 `/status` **唔清** `squads.current_combat_id` 實體列；僅防前端重鎖。寫入 heal 仍由 `/encounters`、`/session/restore`、戰鬥結束管線負責。
 - `81acdf1` smoke test 已改為驗證 **response payload**，唔再要求 GET 清 DB 列。
+
+---
+
+## 39. 勝利跳過 Breakdown + 進戰 F5 + TEAM 卡片 audit（2026-07-02 · 批判性審視）
+
+> **症狀**：秒殺敵人直接彈勝利 Modal、進戰偶爾要 F5、TEAM 改名按鈕窄螢幕歪斜。
+
+### 39.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| **Critical**：`syncState` victory 優先級擠掉 SETTLEMENT | ✅ **部分正確** | 真因係 `determineSettlementRoute` 對 killing blow 誤觸 `skipToVictory`（`shownSettlementIds` 被 entry absorb 過早標記） |
+| `absorbStaleSettlementOnEntry` 預標記 killing settlement | ✅ **正確** | 已加 terminal/enemy_hp<=0 護欄 |
+| SUBMITTING poll 應先 SHOW_SETTLEMENT | ✅ **已覆蓋** | `unseenKillingSettlement` 優先；submit in flight 仍 hpOnly 防 poll 搶 VICTORY |
+| **Critical**：`/combat/start` dirty snapshot 需 hard override | ✅ **部分正確** | 前端已帶 `combat_id` 查 status；**已加** `active/round_resolved/outcome/winner` 顯式覆蓋 + fresh `get_combat` |
+| Gunicorn worker `current_combat_id` 延遲 | ⚠️ **次要** | 顯式 start payload + `mergeEntryCombatPayload` 已防 0 HP；唔再歸因 worker session |
+| **High**：`#my-team-card` 水平對齊 | ✅ **採用** | `loadMyTeam` 改 flex row + 改名靠右 |
+| **Low**：Torrance 神學彩蛋埋入 reflection | ❌ **拒絕** | 非營會 hotfix 範圍；ARG 文案需獨立策劃 |
+
+### 39.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| killing blow 永不 skipToVictory（有 breakdown 時） | `state_machine.js` `determineSettlementRoute` |
+| entry absorb 不預標記 terminal settlement | 同上 `absorbStaleSettlementOnEntry` |
+| `/combat/start` 顯式 active/round_resolved 覆蓋 | `routes/combat.py` |
+| TEAM 卡片水平佈局 | `templates/index.html` |
+
+### 39.3 審計提醒（俾 Gemini）
+
+- SETTLEMENT 期 poll 搶 VICTORY 防線 **9d31b63 已有**（L299）；本輪修復主戰場係 **SUBMIT_SUCCESS 路由** 而非 reorder victory block。

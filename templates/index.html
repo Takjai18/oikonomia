@@ -3076,22 +3076,13 @@
                 const safeTeamName = (team.team_name || '').replace(/'/g, "\\'");
                 const currentSquadId = data.current_squad_id;
 
-                let teamNameHTML = `
-                    <div class="flex items-center gap-x-2">
-                        <div id="my-team-name" class="text-2xl font-bold">${team.team_name}</div>
-                `;
-
-                if (isLeader) {
-                    teamNameHTML += `
-                        <button onclick="editTeamName('${team.team_id}', '${safeTeamName}')"
-                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
-                            <i class="fa-solid fa-edit"></i>
-                            <span>改名</span>
-                        </button>
-                    `;
-                }
-
-                teamNameHTML += `</div>`;
+                const renameButtonHTML = isLeader ? `
+                    <button onclick="editTeamName('${team.team_id}', '${safeTeamName}')"
+                            class="shrink-0 text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl flex items-center gap-x-1 font-medium transition-colors">
+                        <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                        <span>改名</span>
+                    </button>
+                ` : '';
 
                 const teamRoute = data.route || team.route;
                 const routePickerHTML = (isLeader && !teamRoute) ? `
@@ -3117,11 +3108,14 @@
                 const teamCard = document.getElementById('my-team-card');
                 if (teamCard) {
                     teamCard.innerHTML = `
-                        <div class="flex justify-between items-start gap-3">
-                            <div class="min-w-0">
+                        <div class="flex items-center justify-between w-full gap-x-4">
+                            <div class="min-w-0 flex-1">
                                 <div class="text-xs text-emerald-400">你的隊伍</div>
-                                ${teamNameHTML}
-                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-0.5">${team.team_id}</div>
+                                <div class="flex items-center justify-between w-full gap-x-3 mt-1">
+                                    <h2 id="my-team-name" class="text-2xl font-bold truncate pr-2 text-zinc-100">${team.team_name}</h2>
+                                    ${renameButtonHTML}
+                                </div>
+                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-1">${team.team_id}</div>
                                 <div class="text-sm text-zinc-400 mt-2">${memberCount} 位隊員</div>
                             </div>
                             <div id="my-team-route-badge" class="shrink-0"></div>

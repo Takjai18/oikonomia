@@ -122,6 +122,17 @@
 
 ---
 
+## 2026-07-02 — 勝利跳過 Breakdown（skipToVictory 誤觸）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 最後一擊直接彈勝利 Modal，冇傷害結算 Breakdown |
+| **根因** | `determineSettlementRoute` 對 killing blow 在 `shownSettlementIds` 已含 id 時走 `skipToVictory`；entry absorb 曾過早標記 |
+| **修復** | killing blow 有 settlement 時強制走 SETTLEMENT；`absorbStaleSettlementOnEntry` 排除 terminal/0 HP |
+| **附帶** | `/combat/start` 顯式 `active`/`round_resolved`；`#my-team-card` 水平對齊 |
+
+---
+
 ## 2026-07-02 — 戰鬥 UX：捲動置頂 + HP 首屏 + 能力值標籤
 
 | 項目 | 內容 |
