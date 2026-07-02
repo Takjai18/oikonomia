@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 Render.com 同 local 版本一致**（見 Deploy 一節）。PA 僅後備。  
-> 最後更新：2026-07-02 · **commit `f725273`**（V2 戰鬥能力值面板 · §36）· BUG-2026-001 **resolved**
+> 最後更新：2026-07-02 · **commit `af30b2b`**（戰鬥 FSM 等冪 + 大廳唯讀 status · §37–40）· BUG-2026-001 **monitoring**（V2 重構後待營會實機封頂）
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -116,10 +116,10 @@
 
 | Scope | 最低驗證 |
 |-------|----------|
-| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（299/299） |
+| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（302/302） |
 | DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（14/14） |
 | 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
-| Combat 前端 | `npm run test:combat`（30/30）+ `npm run test:e2e:v2` |
+| Combat 前端 | `npm run test:combat`（40/40）+ `npm run test:e2e:v2` |
 | Co-op 併發 | `./venv/bin/python3 scripts/test_combat_concurrency.py` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |
@@ -138,7 +138,7 @@
 - 活躍 case 見 **`bug_log/INDEX.md`**
 - 與 `UPDATE_LOG.md`（短）、`decisions_log.md`（決策）分工
 
-**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **resolved**（`12e1edd`；Henry 實機通過 — 見 `bug_log/.../REPORT.md` §16；營會期 monitoring）
+**現有 case**：BUG-2026-001 戰鬥敵 HP／settlement → **monitoring**（legacy `12e1edd` Henry solo 已過；V2 重構 `af30b2b` 後需營會實機封頂 — 見 `bug_log/INDEX.md` · `UPDATE_LOG.md` §37–40）
 
 ---
 
@@ -201,6 +201,54 @@ bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（
 **測試基線（`df5acea`）**：`test_combat_flow` 297/297 · `npm run test:combat` 29/29
 
 **實機驗證**：硬刷新或 `sessionStorage.clear()` → `practice_iggy_01_quick` 秒殺 → 結算 Modal → 勝利畫面；`curl …/api/version` → `df5acea`
+
+---
+
+## 本輪已完成（2026-07-02 — 大廳鎖 + Breakdown 等冪 · `af30b2b`）
+
+> **背景**：Gemini §37–40 audit。詳見 `GEMINI_REVIEW.md` §37–40、`UPDATE_LOG.md` 同日期條目。
+
+| Commit | Scope | 摘要 |
+|--------|-------|------|
+| `9d31b63` | FSM + 大廳 | 終端 outcome bypass stale guard；`releaseCombatBridgeLock` on SHOW_VICTORY 等 |
+| `81acdf1` | `/status` | `reconcile_status_combat_fields` 清 payload 髒 `current_combat_id` |
+| `2e3d00e` | `/status` | 高頻 GET 改**唯讀**過濾（移除 reconcile 寫入）；`[ERR_STATUS_*]` toast |
+| `9debc8d` | FSM + start + UI | killing blow `skipToVictory` 修正；`absorbStaleSettlementOnEntry`；start 顯式 `active`；`#my-team-card` |
+| `af30b2b` | FSM 等冪 | `determineSettlementRoute` phase-aware：VICTORY/TERMINAL 已 ack → `skipModal`；僅 `SUBMITTING` 假陽性可重開 SETTLEMENT |
+
+**測試基線（`af30b2b`）**：`test_combat_flow` **302/302** · `npm run test:combat` **40/40**
+
+**Render 核對**：`curl -s https://oikonomia.onrender.com/api/version` → `version` / `git_commit` 前 7 字 = **`af30b2b`**
+
+---
+
+## 營會前實機驗收清單（`af30b2b` · 必跑）
+
+> 前置：`sessionStorage.clear()`（或 Safari 清除網站資料）→ 確認 `/api/version` = `af30b2b`。
+
+| # | 場景 | 操作 | 通過標準 |
+|---|------|------|----------|
+| 1 | 秒殺 Breakdown | `practice_iggy_01_quick` 一輪擊殺 | **先**傷害結算 Modal → 點確認 → **再**勝利畫面 |
+| 2 | 結算等冪（INV-C） | 結算 Modal 出現後**連點確認 3+ 次**，或點確認瞬間切 Wi-Fi | 唔卡死重複結算；順利進大廳 |
+| 3 | 進戰首屏 HP | 同一練習關**連續重開 5 次** | 敵 HP 正常；**唔需 F5** |
+| 4 | 戰後大廳同步 | 勝利確認回大廳 | Dashboard 數值即時更新；遭遇列表無「進行中」；**唔需 F5** |
+| 5 | 雙人隊（若可行） | 兩台手機同隊各打一場 | 結算／勝利／大廳均正常 |
+| 6 | 弱網重連 | 戰鬥中斷網 5s 再連 | 唔重複 settlement；唔閃爍大廳／戰場 |
+
+**失敗時記錄**：`/api/version`、encounter_id、Network 中 `/combat/submit` + `/combat/status` JSON、是否見 `[ERR_STATUS_*]` / `[ERR_DB_LOCK]` toast。
+
+---
+
+## 已知邊界／待觀察（非 code 缺口 · 文檔 SSOT）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| `squads.current_combat_id` DB 殘留 | ⚪ 已知邊界 | `/status` 唯讀只清 payload；實體列由 `/encounters`、`/session/restore`、戰鬥結束 heal |
+| `/combat/start` COMMIT 慢於 status SELECT | ⚪ 已知邊界 | `mergeEntryCombatPayload` + start 顯式覆蓋已緩解 |
+| Render 高併發 `[ERR_DB_LOCK]` | ⚪ 監控 | `/status` 已唯讀；login／配點等寫入仍可能撞鎖 |
+| `skipModal` 鞭屍（極端連點） | ⚪ 延後 | §35；需實機連點驗證 |
+| 雙人隊／主線 encounter | ⚪ 覆蓋不足 | Henry 主測 solo 練習 |
+| WhatsApp 內建瀏覽器 | ⚪ SOP | 改用 Chrome 開啟 |
 
 ---
 
@@ -393,14 +441,17 @@ static/js/combat/
 
 **戰鬥 V2**：預設開啟（`utils/combat_v2_flag.py` · `data/.combat_v2`）；GM `/gm/api/combat_v2` 開關；`/api/version` → `combat_v2`。
 
-**Henry 實機待驗**（V2 啟用後）：
+**Henry 實機待驗**（V2 · `af30b2b` 後 — 見上方「營會前實機驗收清單」）：
 
-| 場景 | 預期 |
-|------|------|
-| 弱網重連 | 唔重複彈 settlement modal（INV-C） |
-| A 逃跑失敗 + B 攻擊 | B 傷害正常結算（INV-E） |
-| 勝利後回大廳 | 遭遇列表唔顯示「進行中的戰鬥」 |
-| COMBAT_FAILED | `failed_panel.js` 獨佔；舊 `#combat-near-death-overlay` 唔疊加 |
+| 場景 | 預期 | 清單 # |
+|------|------|--------|
+| 秒殺 Breakdown → 勝利 | 結算先於勝利 Modal | 1 |
+| ACK 後等冪（連點／切網） | 唔重複結算彈窗 | 2 |
+| 進戰首屏 HP | 唔要 F5 | 3 |
+| 勝利後回大廳 | Dashboard 同步；無進行中戰鬥 | 4 |
+| 弱網重連 | 唔重複 settlement（INV-C） | 6 |
+| A 逃跑失敗 + B 攻擊 | B 傷害正常結算（INV-E） | 5（雙人延伸） |
+| COMBAT_FAILED | `failed_panel.js` 獨佔；舊 overlay 唔疊加 | — |
 
 ### 戰鬥流程重構（`387c89b` → `12e1edd` · legacy inline）
 
