@@ -25,7 +25,7 @@ utils/              # helpers, uploads（PIL）, qr, validators, env, deploy
 data/               # 靜態遊戲資料：locations, story_config, narrative_stories
 
 encounters/         # Encounter JSON 定義
-static/             # 頭像、物品圖、portraits
+static/             # 頭像、物品圖、portraits；`js/combat/avatar_urls.js` 戰鬥頭像 fallback
 uploads/            # 玩家上傳相片（不 commit）
 deploy/             # Render（主）+ PythonAnywhere（後備）部署腳本
 ```
@@ -55,6 +55,8 @@ Grok（方向） → Grok Build（實作 + 驗證 + push） → Gemini（review 
 2. **Grok Build** 讀 `AGENT_HANDOFF.md`，執行改動並更新版本狀態；**修復 production 問題後更新 [UPDATE_LOG.md](./UPDATE_LOG.md)**。
 3. **Gemini** 按 **[GEMINI_REVIEW.md](./GEMINI_REVIEW.md)** 做 review 或追查 bug；輸出 High/Medium/Low 清單。
 4. 修復項交回 **Grok Build**；重大方向改動再諮詢 **Grok**。
+
+**Gemini 建議唔盲目跟從**：先對照 **[UPDATE_LOG.md](./UPDATE_LOG.md)** 同 **GEMINI_REVIEW.md §29**（已修／已拒絕項）。常見誤判包括：重複建議已 ship 嘅 `_attach_round_settlement`、指向 repo 唔存在嘅 fallback 檔名、或把 Linux 大小寫當根因而忽略 API 回傳裸檔名。Grok Build 應 **curl 驗證靜態 URL**、**讀現行 code** 再決定做唔做。
 
 **避免**：三個角色同時改同一功能；Gemini review 應對準已 push 嘅 commit，唔好對未落地嘅計劃 review。
 

@@ -1,6 +1,6 @@
 # Oikonomia — Current Structure
 
-> 最後更新：2026-07-02 · Git：`2dc4c47`（Render version SSOT）  
+> 最後更新：2026-07-02 · Git：`df5acea`（Render 死圖 + 勝利 FSM）
 > 路徑：`/Users/mingtakyau/Documents/oikonomia`  
 > 備份：`Google Drive/My Drive/oikonomia`
 
@@ -21,7 +21,7 @@ oikonomia/
 │
 ├── README.md                 # 專案入口 + AI 分工 + Context 協議
 ├── AGENT_HANDOFF.md          # Grok Build 交接（部署、測試、符號表）
-├── GEMINI_REVIEW.md          # Gemini review/debug 指引 + 已修對照 §18
+├── GEMINI_REVIEW.md          # Gemini review/debug 指引 + 已修對照 §18–§29
 ├── CURRENT_STRUCTURE.md      # 本檔
 ├── COMBAT_V2_AUDIT_BUNDLE.md # v12 全文 SSOT（Gemini Baseline）
 ├── COMBAT_V2_PARTIAL_INDEX.md
@@ -68,7 +68,8 @@ oikonomia/
 |------|------|
 | `bootstrap.js` | Feature flag → `window.combatV2` / `CombatV2App` |
 | `index.js` | `CombatApp`、poll、timeout defense、`exitToLobby` |
-| `state_machine.js` | Phase FSM、INV-A～E、`entrySyncPending` |
+| `state_machine.js` | Phase FSM、INV-A～E、`skipToVictory`、`entrySyncPending` |
+| `avatar_urls.js` | 頭像 URL 正規化（`/static/avatars/` vs `/static/portraits/`）+ `onerror` fallback |
 | `settlement.js` | `settlement_id`、monotonic guard、`extractHud` |
 | `api_client.js` | `CombatApi`、`ResilientPollingManager` |
 | `render.js` / `selectors.js` / `toast.js` | 渲染與 DOM ID |
@@ -89,7 +90,7 @@ oikonomia/
 
 | 檔案 | 職責 |
 |------|------|
-| `combat.py` | 戰鬥核心：CAS resolve、`_end_combat` 原子收尾、`advance_combat_from_poll` |
+| `combat.py` | 戰鬥核心：CAS resolve、`_json_victory_outcome`、`_combat_*_avatar_url`、`advance_combat_from_poll` |
 | `protagonist.py` | 主角 HP/trauma、`protagonist_states` SSOT |
 | `encounter_outcomes.py` | 勝敗獎勵、`encounter_completions` |
 | `squad.py` / `team.py` | 玩家小隊、隊伍、主角聚合 |
@@ -139,8 +140,8 @@ oikonomia/
 
 | 腳本 | 用途 |
 |------|------|
-| `test_combat_flow.py` | 戰鬥全流程（**267/267**） |
-| `test_db_hardening.py` | WAL、purge、reconcile、SSOT（**11/11**） |
+| `test_combat_flow.py` | 戰鬥全流程（**297/297**） |
+| `test_db_hardening.py` | WAL、purge、reconcile、SSOT（**14/14**） |
 | `test_combat_engine.py` | 計算層單元（**17/17**） |
 | `test_combat_flow_orchestrator.py` | INV-E 編排（**4/4**） |
 | `test_combat_concurrency.py` | Co-op 併發 smoke |
@@ -149,7 +150,7 @@ oikonomia/
 | `pre_deploy_checks.sh` | 部署閘門 |
 
 ```bash
-npm run test:combat          # 17/17
+npm run test:combat          # 29/29
 npm run test:e2e:v2          # Playwright T8–T14
 ```
 
@@ -186,4 +187,4 @@ POST /combat/submit_action → models/combat.py
 
 **版本 SSOT**：`utils/deploy.py` → `.deploy-version`（deploy 產物）→ `RENDER_GIT_COMMIT`；`/api/version` 含 `git_commit`。詳見 README / AGENT_HANDOFF「Render Deploy 陷阱」。
 
-*End of CURRENT_STRUCTURE · 2026-07-02 · `2dc4c47`*
+*End of CURRENT_STRUCTURE · 2026-07-02 · `df5acea`*

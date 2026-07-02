@@ -82,6 +82,20 @@
 
 ---
 
+## 2026-07-02 — Render 死圖 + 勝利 FSM 卡死（Gemini 戰鬥 audit · `df5acea`）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | Render 戰鬥 HUD 破圖；最後一擊後無勝利畫面／卡在提交中 |
+| **Gemini 建議** | 三處 `_attach_round_settlement`、fallback `default-enemy.svg`、Clear Build Cache |
+| **取捨** | ① 後端勝利 payload **已在 `5e8b3b6`**，唔重做 ② fallback 檔名 **錯** ③ 真因：API 裸檔名 + V2 無 `onerror` ④ FSM `skipModal` / SUBMITTING poll 釘 phase |
+| **修復** | `avatar_urls.js`；`models/combat.py` URL 正規化；`skipToVictory`；SUBMITTING `POLL_TICK` |
+| **驗證** | `npm run test:combat` 29/29 · `test_combat_flow` 297/297 |
+
+**勿重複建議**：`default-enemy.svg`／`default-avatar.svg`（無檔）；三處手動 `_attach_round_settlement`（已有 `_json_victory_outcome`）；`parasite_shadow.svg` Render 404（實測 200）。詳見 `GEMINI_REVIEW.md` §29。
+
+---
+
 ## 2026-07-02 — Render ProxyFix（Gemini infra audit）
 
 | 項目 | 內容 |

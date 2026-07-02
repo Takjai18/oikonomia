@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 Render.com 同 local 版本一致**（見 Deploy 一節）。PA 僅後備。  
-> 最後更新：2026-07-02 · **commit `2dc4c47`**（Render version SSOT 修復）· BUG-2026-001 **resolved**
+> 最後更新：2026-07-02 · **commit `df5acea`**（Render 死圖 + 勝利 FSM）· BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -58,10 +58,10 @@
 
 | Scope | 最低驗證 |
 |-------|----------|
-| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（267/267） |
-| DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（11/11） |
+| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（297/297） |
+| DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（14/14） |
 | 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
-| Combat 前端 | `npm run test:combat`（17/17）+ `npm run test:e2e:v2` |
+| Combat 前端 | `npm run test:combat`（29/29）+ `npm run test:e2e:v2` |
 | Co-op 併發 | `./venv/bin/python3 scripts/test_combat_concurrency.py` |
 | GM override | `test_phase2_gm_override_gateway`（在 combat_flow 內） |
 | Encounter JSON | `test_encounter_catalog()` |
@@ -115,6 +115,34 @@ bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（
 ./venv/bin/python3 scripts/test_combat_flow.py           # 戰鬥 smoke（含 settlement breakdown）
 ./venv/bin/python3 scripts/test_encounter_cache.py       # 預期：3 通過 / 0 失敗
 ```
+
+---
+
+## 本輪已完成（2026-07-02 — Render 死圖 + 勝利卡死 · `df5acea`）
+
+> **背景**：Gemini Render 戰鬥 audit 報「破圖」同「勝利後卡死」。Grok Build **先驗證再改** — 見 `GEMINI_REVIEW.md` §29、`UPDATE_LOG.md` 同章。
+
+| Commit | Scope | 摘要 |
+|--------|-------|------|
+| `5e8b3b6` | 後端 | `_json_victory_outcome` 統一附 `round_settlement`（**Gemini 三處 patch 已涵蓋**） |
+| `9e6dca9` | Infra | `ProxyFix`（`RENDER=true`）；Persistent Disk **早已有** |
+| `df5acea` | 前後端 + FSM | 頭像 URL 正規化 + `onerror`；`skipToVictory`；SUBMITTING poll 唔再釘死 phase |
+
+### Gemini 建議取捨（本輪）
+
+| 建議 | 判斷 | 處理 |
+|------|------|------|
+| 三處 `build_victory_outcome_response` 後加 `_attach_round_settlement` | ❌ **重複**（`5e8b3b6` 已有 `_json_victory_outcome`） | 唔改 |
+| fallback `default-enemy.svg` / `default-avatar.svg` | ❌ **路徑錯**（repo 無檔） | 用 `/static/avatars/default.png`、`/static/images/enemies/parasite_shadow.svg` |
+| `parasite_shadow.svg` 在 Render 404 | ❌ **不成立**（線上 HTTP 200） | 唔改靜態目錄 |
+| V2 缺 `onerror` + API 裸檔名 | ✅ **根因** | `avatar_urls.js` + `models/combat.py` 正規化 |
+| FSM：`skipModal` 殺死最後一擊勝利 | ✅ **補充根因**（Gemini 未點名） | `determineSettlementRoute` → `skipToVictory` |
+| Clear Build Cache & Deploy | ⚪ **非必須** | 正常 `git push` + CI hook 即可 |
+| `OIKONOMIA_ENDING_ENABLED=1` | ⚪ **與戰鬥卡死無直接關係** | 結局功能要開先設 |
+
+**測試基線（`df5acea`）**：`test_combat_flow` 297/297 · `npm run test:combat` 29/29
+
+**實機驗證**：硬刷新或 `sessionStorage.clear()` → `practice_iggy_01_quick` 秒殺 → 結算 Modal → 勝利畫面；`curl …/api/version` → `df5acea`
 
 ---
 
@@ -276,7 +304,8 @@ templates/combat_screen.html  # V2 DOM 骨架（combat-v2-* ID）
 static/js/combat/
   bootstrap.js                # COMBAT_V2 feature flag → window.combatV2
   index.js                    # CombatApp + ResilientPollingManager
-  state_machine.js            # Phase FSM + INV-A/C/D/E
+  state_machine.js            # Phase FSM + INV-A/C/D/E + skipToVictory
+  avatar_urls.js              # 頭像 URL 正規化 + onerror fallback
   settlement.js               # settlement_id / monotonic guard
   api_client.js               # Passive poll（IDLE 1200ms / WAITING 800ms）
   views/*.js                  # escape_result / failed_panel / settlement / victory
