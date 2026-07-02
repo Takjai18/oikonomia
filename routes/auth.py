@@ -3,6 +3,7 @@ import os
 import re
 import sqlite3
 import time
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request, session
 
@@ -15,7 +16,7 @@ from models.settings import settings
 from models.squad import get_squad, update_squad
 from services.player_status import build_player_status
 from services.session_auth import attach_restore_token, establish_player_session, verify_restore_token
-from utils.db_tx import get_db_connection, with_db_retry
+from utils.db_tx import get_db_connection, immediate_transaction, with_db_retry
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -220,16 +221,34 @@ def allocate_stats():
     if not os.path.isfile(avatar_path) or avatar_filename == "default.png":
         return jsonify({"success": False, "error": "頭像不存在"}), 400
 
-    update_squad(
-        session["squad_id"],
-        power=power,
-        intellect=intellect,
-        resilience=resilience,
-        stats_allocated=1,
-        avatar=avatar_filename,
-    )
+    squad_id = session["squad_id"]
 
-    squad = get_squad(session["squad_id"])
+    def _write_allocation():
+        with immediate_transaction() as conn:
+            conn.execute(
+                """UPDATE squads
+                   SET power = ?, intellect = ?, resilience = ?,
+                       avatar = ?, stats_allocated = 1, last_update = ?
+                   WHERE squad_id = ?""",
+                (
+                    power,
+                    intellect,
+                    resilience,
+                    avatar_filename,
+                    datetime.now().isoformat(),
+                    squad_id,
+                ),
+            )
+
+    try:
+        with_db_retry(_write_allocation)
+    except sqlite3.OperationalError:
+        return jsonify({
+            "success": False,
+            "error": "伺服器忙碌，請再點一次「確認分配」",
+        }), 503
+
+    squad = get_squad(squad_id)
     status = build_player_status(squad)
     attach_restore_token(status, session["squad_id"])
     return jsonify({"success": True, "message": "能力值分配成功", **status})

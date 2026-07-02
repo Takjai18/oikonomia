@@ -107,7 +107,7 @@
 
 | Scope | 最低驗證 |
 |-------|----------|
-| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（297/297） |
+| Combat 後端 | `./venv/bin/python3 scripts/test_combat_flow.py`（299/299） |
 | DB 併發/SSOT | `./venv/bin/python3 scripts/test_db_hardening.py`（14/14） |
 | 計算層/編排 | `./venv/bin/python3 scripts/test_combat_engine.py` + `test_combat_flow_orchestrator.py` |
 | Combat 前端 | `npm run test:combat`（30/30）+ `npm run test:e2e:v2` |

@@ -100,6 +100,19 @@
 
 ---
 
+## 2026-07-02 — allocate_stats「分配失敗」（Gemini audit · 批判性審視）
+
+| 項目 | 內容 |
+|------|------|
+| **Gemini 稱** | `player.py` 缺路由 → 404；或 DB lock → 500 |
+| **實際** | 路由在 **`routes/auth.py`**（非 404）；痛點係 `update_squad` 無 retry |
+| **修復** | `immediate_transaction` + `with_db_retry`；前端具體錯誤；測試 299/299 |
+| **勿重複建議** | 把 `/allocate_stats` 複製到 `player.py`；Gemini 範例裸 `sqlite3.connect` |
+
+見 `GEMINI_REVIEW.md` §33。
+
+---
+
 ## 2026-07-02 — Android Chrome 登入 audit（批判性審視）
 
 | 項目 | 內容 |

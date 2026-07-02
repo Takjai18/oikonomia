@@ -2273,6 +2273,26 @@ def main():
     ok("combat_v2 marker key present", "combat_v2" in (ver.get("markers") or {}))
     ok("encounter_logs marker", ver.get("markers", {}).get("encounter_logs") is True)
 
+    alloc_client = oikonomia.app.test_client()
+    login(alloc_client, "AllocStatFlowTest")
+    alloc_r = alloc_client.post(
+        "/allocate_stats",
+        json={
+            "power": 40,
+            "intellect": 10,
+            "resilience": 10,
+            "avatar": "Mike.jpg",
+        },
+        content_type="application/json",
+    )
+    alloc_data = alloc_r.get_json() or {}
+    ok(
+        "allocate_stats route (auth.py)",
+        alloc_r.status_code == 200 and alloc_data.get("success"),
+        str(alloc_data)[:200],
+    )
+    ok("allocate_stats marks stats_allocated", alloc_data.get("stats_allocated") == 1)
+
     r = client.get("/encounter_logs")
     enc_logs = r.get_json() or {}
     ok("encounter_logs API", enc_logs.get("success") and enc_logs.get("has_team"), str(enc_logs)[:200])

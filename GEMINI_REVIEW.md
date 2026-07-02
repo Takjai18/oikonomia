@@ -1418,3 +1418,33 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 2. **勿用** WhatsApp/LINE 內建瀏覽器 →「在 Chrome 中開啟」
 3. 核對 `/api/version` 為最新 commit
 4. 仍失敗 → 具體 toast（喚醒／逾時／忙碌）唔再一律怪 Wi‑Fi
+
+---
+
+## 33. allocate_stats「分配失敗」audit（2026-07-02 · 批判性審視）
+
+> **症狀**：配點畫面 toast「分配失敗，請稍後再試」。Gemini 先後給兩份矛盾報告。
+
+### 33.1 逐項取捨（兩份 Gemini 報告對照）
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| **路由在 `player.py` 完全缺失 → 404** | ❌ **錯誤** | 路由在 **`routes/auth.py`** `@auth_bp.route("/allocate_stats")`；`grep` 可證；**唔**複製到 `player.py` |
+| DB lock 導致 500 | ⚠️ **部分成立** | `update_squad()` 曾用裸 `sqlite3.connect`（無 WAL retry） |
+| 應在 `player.py` 底部貼 Gemini 範例 | ❌ **拒絕** | 範例用裸 connect + `true` 小寫 bug；應用 `immediate_transaction` + `with_db_retry` |
+| 前端應顯示 `data.error` | ⚠️ **半已做** | `!data.success` 已有；`catch` 仍模糊 → **已改** |
+| 確認按鈕 `animate-pulse` | ✅ **採用**（Low） | 剩餘 0 點且已選頭像時 |
+
+### 33.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| 配點寫入 `BEGIN IMMEDIATE` + `with_db_retry` | `routes/auth.py` `allocate_stats` |
+| lock 時 503「伺服器忙碌，請再點一次」 | 同上 |
+| 前端 timeout + JSON 錯誤分流 | `templates/index.html` `submitStatAllocation` |
+| Smoke：`allocate_stats route (auth.py)` | `scripts/test_combat_flow.py` |
+
+### 33.3 審計提醒（俾 Gemini）
+
+- **`/allocate_stats` 從未在 `player.py`**；審計前應 `rg allocate_stats routes/`。
+- 健康度 5/10（路由缺失）**不成立** — 實際為寫入路徑未硬化。

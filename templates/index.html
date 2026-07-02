@@ -3477,7 +3477,11 @@
                 remEl.classList.toggle('text-amber-400', remaining >= 0);
             }
             const btn = document.getElementById('alloc-submit-btn');
-            if (btn) btn.disabled = remaining !== 0 || !selectedAllocAvatar;
+            const ready = remaining === 0 && !!selectedAllocAvatar;
+            if (btn) {
+                btn.disabled = !ready;
+                btn.classList.toggle('animate-pulse', ready);
+            }
         }
 
         function selectAllocAvatar(filename, element) {
@@ -3538,16 +3542,20 @@
                 showToast('請分配完所有 30 點', 'error');
                 return;
             }
+            let res;
             try {
-                const res = await fetch('/allocate_stats', {
+                res = await fetchWithTimeout('/allocate_stats', {
                     method: 'POST',
                     credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...FETCH_NO_CACHE_HEADERS,
+                    },
                     body: JSON.stringify({ ...allocStats, avatar: selectedAllocAvatar }),
-                });
-                const data = await res.json();
+                }, LOGIN_FETCH_TIMEOUT_MS);
+                const data = await parseLoginJsonResponse(res);
                 if (!data.success) {
-                    showToast(data.error || '分配失敗', 'error');
+                    showToast(data.error || '分配失敗，請重試', 'error');
                     return;
                 }
                 persistRestoreToken(data);
@@ -3556,7 +3564,7 @@
                 await enterDashboardAfterOnboarding({ skip_team_prompt: false });
             } catch (e) {
                 console.error('allocate_stats failed', e);
-                showToast('分配失敗，請稍後再試', 'error');
+                showToast(describeLoginFetchError(e, res), 'error');
             }
         }
 
