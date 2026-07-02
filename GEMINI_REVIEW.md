@@ -1662,3 +1662,21 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 |------|------|
 | `determineSettlementRoute` phase-aware 等冪 | `state_machine.js` |
 | 測試：SUBMITTING 假陽性 + VICTORY 不重彈 | `combat_state_machine.test.js` |
+
+---
+
+## 41. 營會前終極 checklist + 程式建議 audit（2026-07-02 · 批判性審視）
+
+> **性質**：Gemini 認可 `9d31b63`→`af30b2b` 修復鏈，並補充雙人併發／隊員大廳同步實機項；另附三處「最終化」程式範例。
+
+### 41.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| 雙人同時攻擊 `upsert` race | ⚠️ **部分成立** | 同玩家：`combat_action_already_submitted`→400 + `ON CONFLICT` upsert；**唔使** IMMEDIATE 包 upsert 除非實機 500 |
+| 隊員漏 poll 短暫見戰鬥鎖 | ⚪ **已知邊界** | `/status` 唯讀過濾 + 3s poll；清單 **#5b** 實機驗 |
+| 終極 4+2 項實機 checklist | ✅ **採用** | 已併入 `AGENT_HANDOFF.md` 營會前驗收清單 |
+| 替換 `determineSettlementRoute`（`skipModal: !isTerminal`） | ❌ **拒絕** | 會拆掉 `af30b2b` `SUBMITTING` 假陽性首次 Breakdown 路徑 |
+| 替換 `syncState` TERMINAL/SETTLEMENT 片段 | ✅ **已 ship** | `ABSORBING` L210；`SETTLEMENT` victory L309；唔重複貼 |
+| `/combat/start` 顯式 `active`/`my_state` | ✅ **已 ship**（`9debc8d`） | 本輪補 `waiting_for_teammates: false` |
+| `SESSION_FETCH_TIMEOUT_MS` 改 20s | ❌ **拒絕** | 已 **25000ms** |

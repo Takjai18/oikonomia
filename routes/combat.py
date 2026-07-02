@@ -196,6 +196,7 @@ def combat_start_api(encounter_id=None):
         "precheck_text": precheck.get("success_text") if precheck_passed else None,
         "active": live_status not in ("ended",),
         "round_resolved": False,
+        "waiting_for_teammates": False,
         "outcome": None,
         "winner": None,
         "enemy": build_enemy_combat_stats(combat, encounter),

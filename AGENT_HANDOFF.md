@@ -222,20 +222,39 @@ bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（
 
 ---
 
-## 營會前實機驗收清單（`af30b2b` · 必跑）
+## 營會前實機驗收清單（終極防禦版 · `af30b2b`+）
 
-> 前置：`sessionStorage.clear()`（或 Safari 清除網站資料）→ 確認 `/api/version` = `af30b2b`。
+> **前置（現場技術人員）**：Safari/Chrome 清除網站資料，或控制台執行：
+>
+> ```javascript
+> sessionStorage.clear();
+> localStorage.removeItem('oikonomia_restore_token'); // 可選；全清用 localStorage.clear()
+> ```
+>
+> 確認 `curl -s https://oikonomia.onrender.com/api/version` → `version` ≥ **`af30b2b`**（doc commit 可能為 `3fc065e`）。
 
 | # | 場景 | 操作 | 通過標準 |
 |---|------|------|----------|
-| 1 | 秒殺 Breakdown | `practice_iggy_01_quick` 一輪擊殺 | **先**傷害結算 Modal → 點確認 → **再**勝利畫面 |
-| 2 | 結算等冪（INV-C） | 結算 Modal 出現後**連點確認 3+ 次**，或點確認瞬間切 Wi-Fi | 唔卡死重複結算；順利進大廳 |
-| 3 | 進戰首屏 HP | 同一練習關**連續重開 5 次** | 敵 HP 正常；**唔需 F5** |
-| 4 | 戰後大廳同步 | 勝利確認回大廳 | Dashboard 數值即時更新；遭遇列表無「進行中」；**唔需 F5** |
-| 5 | 雙人隊（若可行） | 兩台手機同隊各打一場 | 結算／勝利／大廳均正常 |
+| 1 | 秒殺時序鏈 | 力量 ≥40 進 `practice_iggy_01_quick` 一輪擊殺 | **先** Breakdown（Rice/Iggy 輸出統計）→ 確定 → **再**勝利 → 回大廳 Dashboard 對齊；**唔**直跳勝利／大廳 |
+| 2 | ACK 暴力等冪 | 結算 Modal 用**三指連點確定 5+ 次**，或點擊瞬間切 Wi-Fi/5G | 唔卡死、唔重複彈窗、唔拋 `[ERR_STATUS_*]`；完成後才進勝利 |
+| 3 | 連續開局重置 | **唔關頁**，同一練習關完成並重開 **5 次** | 第 2–5 次首屏敵 HP 為滿血；能力值唔顯示 `—`；全程**唔需 F5** |
+| 4 | 戰後大廳同步 | 隊長最後一擊 → 結算 → 勝利 → 回大廳 | 3s 內 Dashboard／遭遇列表更新；無「進行中」；**唔需 F5** |
+| 5 | 雙人同隊併發 | 兩台手機同 Team，倒數 **3-2-1 同時按攻擊** | 一台成功提交；另一台 **400「本回合行動已提交」** 或「等待隊友」；**唔** 500／SQLite 鎖死 |
+| 5b | 隊長先退、隊員跟隨 | 隊長勝利離開後，隊員**唔 F5** 等 3s poll | 隊員大廳自動解鎖、Dashboard 對齊（`/status` 唯讀過濾） |
 | 6 | 弱網重連 | 戰鬥中斷網 5s 再連 | 唔重複 settlement；唔閃爍大廳／戰場 |
 
-**失敗時記錄**：`/api/version`、encounter_id、Network 中 `/combat/submit` + `/combat/status` JSON、是否見 `[ERR_STATUS_*]` / `[ERR_DB_LOCK]` toast。
+**失敗時記錄**：`/api/version`、encounter_id、Network 中 `/combat/submit` + `/combat/status` JSON、HTTP 狀態（400 vs 500）、`[ERR_STATUS_*]` / `[ERR_DB_LOCK]` toast。
+
+### 後端併發 SSOT（審計備忘 · 唔使再 patch 除非實機 500）
+
+| 機制 | 位置 | 行為 |
+|------|------|------|
+| 重複提交攔截 | `routes/combat.py` L461 | `combat_action_already_submitted` → **400**「本回合行動已提交」 |
+| 行動 upsert 等冪 | `models/combat.py` `upsert_combat_action` | `ON CONFLICT(combat_id, squad_id, phase) DO UPDATE` — 同玩家同回合唔會雙行 |
+| 結算 resolve 護欄 | `maybe_resolve_player_phase` | 回合已前進則跳過重複 settlement（見 `models/combat.py` 註解） |
+| 大廳髒 combat id | `reconcile_status_combat_fields` | `/status` **唯讀**清 payload；DB heal：`/encounters`、`/session/restore`、`_end_combat` |
+
+**網路超時**：`SESSION_FETCH_TIMEOUT_MS` 已為 **25000**（`templates/index.html`）— 高於 Gemini 建議的 20s，唔使再改。
 
 ---
 
@@ -247,7 +266,8 @@ bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（
 | `/combat/start` COMMIT 慢於 status SELECT | ⚪ 已知邊界 | `mergeEntryCombatPayload` + start 顯式覆蓋已緩解 |
 | Render 高併發 `[ERR_DB_LOCK]` | ⚪ 監控 | `/status` 已唯讀；login／配點等寫入仍可能撞鎖 |
 | `skipModal` 鞭屍（極端連點） | ⚪ 延後 | §35；需實機連點驗證 |
-| 雙人隊／主線 encounter | ⚪ 覆蓋不足 | Henry 主測 solo 練習 |
+| 雙人隊／主線 encounter | ⚪ 覆蓋不足 | Henry 主測 solo；清單 **#5 / #5b** 為營會封頂必跑 |
+| 同隊雙擊攻擊 race | ✅ code 已有 | `ON CONFLICT` + 400 攔截；實機用清單 #5 驗證 |
 | WhatsApp 內建瀏覽器 | ⚪ SOP | 改用 Chrome 開啟 |
 
 ---
