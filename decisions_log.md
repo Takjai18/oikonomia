@@ -328,12 +328,13 @@ submit_action → combat_flow.resolve_round()
 
 | 決策 | 內容 | 狀態 |
 |------|------|------|
-| 主機 | **Render Starter**（Singapore）取代 PA 為營會正式環境；PA 暫留後備 | 🔄 進行中 |
-| 持久化 | `DATA_DIR=/data` + 1GB disk；DB `oikonomia.db`、上傳 `uploads/` | ⏳ 待 push + Dashboard 對齊 |
-| 程序 | gunicorn `wsgi:application`；`preDeployCommand` → `render-predeploy.sh` | ✅ repo 已備 |
-| 密鑰 | Dashboard `SECRET_KEY` + `GM_PIN`（或從 PA 匯入 `/data/.secret_key`） | ⏳ 待設定 |
-| Cutover | Phase 3 全測通過後才切流量；48h 雙線監控 | 待做 |
+| 主機 | **Render Starter**（Singapore）取代 PA 為營會正式環境；PA 暫留後備 | ✅ 完成 |
+| 持久化 | `DATA_DIR=/data` + 1GB disk；DB `oikonomia.db`、上傳 `uploads/` | ✅ Shell 匯入完成 |
+| 程序 | gunicorn `wsgi:application`；`preDeployCommand` → `render-predeploy.sh` | ✅ 運行中 |
+| 密鑰 | `/data/.secret_key`、`.gm_pin`（或 Dashboard env） | ✅ 已匯入 |
+| Deploy 同步 | push `main` → CI tests → Deploy Hook → `/api/version` 驗證 | ✅ CI + `render-sync.sh` |
+| Cutover | 正式流量已指向 Render；PA 保留 48h rollback | ✅ |
 
-**實測（2026-07-02）**：https://oikonomia.onrender.com TTFB ~0.15s；`db_path` → `/data/oikonomia.db` ✅；Shell 匯入 DB 完成。Secret gist `978ddde…` 已刪除。
+**實測（2026-07-02）**：https://oikonomia.onrender.com TTFB ~0.15s；`db_path` → `/data/oikonomia.db`；`render: true` ✅。Secret gist `978ddde…` 已刪除。Service ID `srv-d8v8i7cvikkc73fbsv0g`。
 
 **記錄者**：Tak（升級 Starter）· Grok Build（Blueprint + deploy 腳本）

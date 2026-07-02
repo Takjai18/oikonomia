@@ -10,8 +10,8 @@
 
 | 環境 | URL | 角色 | 資料路徑 |
 |------|-----|------|----------|
-| **Render Starter** | https://oikonomia.onrender.com | **正式（目標）** | `/data` 持久碟（`DATA_DIR=/data`） |
-| **PythonAnywhere** | https://takjai.pythonanywhere.com | 後備／cutover 前 | `~/oikonomia/data/` |
+| **Render Starter** | https://oikonomia.onrender.com | **正式（現行）** | `/data` 持久碟（`DATA_DIR=/data`） |
+| **PythonAnywhere** | https://takjai.pythonanywhere.com | 後備（rollback） | `~/oikonomia/data/` |
 
 **Render 服務**：`srv-d8v8i7cvikkc73fbsv0g` · repo `Takjai18/oikonomia` · branch `main` · Blueprint `render.yaml`。
 
@@ -20,9 +20,10 @@
 1. SQLite + 上傳相片必須在 **Persistent Disk**（`/data`），唔好用 `project/src/data`（redeploy 會清）。
 2. 生產用 **gunicorn**（`wsgi:application`），唔用 `python3 app.py`。
 3. `SECRET_KEY` / `GM_PIN` 與 PA 一致（搬 `data/.secret_key`、`.gm_pin`），避免玩家 session 失效。
-4. Cutover 前跑完 Phase 3 checklist；PA 保留 48h 作 rollback。
+4. Cutover 已完成（2026-07-02）；PA 保留 48h 作 rollback。
+5. 每次 push `main` 後 CI 觸發 Deploy Hook；Grok Build 必須 `curl /api/version` 確認與 commit 一致。
 
-**腳本**：`deploy/render-pack-pa-export.sh` → `deploy/render-import-data.sh` → `deploy/render-check.sh`。
+**腳本**：`deploy/render-predeploy.sh`、`deploy/render-sync.sh`、`deploy/render-check.sh`；PA 後備 `deploy/pa-update.sh`。
 
 ---
 

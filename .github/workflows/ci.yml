@@ -31,3 +31,20 @@ jobs:
           SECRET_KEY: test-secret-github-ci
           FLASK_ENV: development
         run: bash scripts/pre_deploy_checks.sh
+
+  deploy-render:
+    needs: pre-deploy-checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK secret not set — skipping deploy trigger"
+            exit 1
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
+          echo "Render deploy triggered for commit ${{ github.sha }}"

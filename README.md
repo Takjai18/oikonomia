@@ -14,7 +14,8 @@ Oikonomia 青年營會 ARG（另類實境遊戲）Web App。雙主角路線（Ig
 
 ```
 app.py              # Flask 入口 + DB migrate（~940 行）
-wsgi.py             # PythonAnywhere 入口
+wsgi.py             # Production 入口（Render gunicorn / PA WSGI）
+render.yaml         # Render Blueprint（Starter、Singapore、/data 持久碟）
 templates/          # index.html（玩家 UI）、claim_item.html
 
 models/             # 資料層：squad, team, item, encounter, combat
@@ -26,7 +27,7 @@ data/               # 靜態遊戲資料：locations, story_config, narrative_st
 encounters/         # Encounter JSON 定義
 static/             # 頭像、物品圖、portraits
 uploads/            # 玩家上傳相片（不 commit）
-deploy/             # PythonAnywhere 部署腳本
+deploy/             # Render（主）+ PythonAnywhere（後備）部署腳本
 ```
 
 詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。  
@@ -156,76 +157,67 @@ Production 必須設定環境變數：`SECRET_KEY`、`GM_PIN`。
 
 ## 正式環境
 
-### PythonAnywhere（現行）
+### Render.com（現行 · Starter / Singapore）
+
+| 用途 | 網址 |
+|------|------|
+| 玩家端 | https://oikonomia.onrender.com |
+| GM 後台 | https://oikonomia.onrender.com/gm |
+| Dashboard | [Render 服務](https://dashboard.render.com) · Service ID `srv-d8v8i7cvikkc73fbsv0g` |
+
+**架構約束（之後改 code 必須考慮）**
+
+| 項目 | 設定 |
+|------|------|
+| 程序 | **gunicorn** `wsgi:application`（唔用 `python3 app.py`） |
+| 持久資料 | `DATA_DIR=/data`（1GB Persistent Disk） |
+| 資料庫 | `/data/oikonomia.db` |
+| 相片上傳 | `/data/uploads/` |
+| 密鑰 | `/data/.secret_key`、`.gm_pin`（或 Dashboard `SECRET_KEY` / `GM_PIN`） |
+| 戰鬥 V2 | `/data/.combat_v2`（預設 `1`） |
+| 環境標記 | `RENDER=true`、`FLASK_ENV=production` |
+| 版本 SSOT | `/api/version` → `version`（`preDeploy` 寫入 git short hash） |
+
+Blueprint：`render.yaml` · `preDeployCommand` → `deploy/render-predeploy.sh`。
+
+**每次 code 改動後同步 Render（Grok Build 必做）**
+
+```
+改 code → pre_deploy_checks.sh → git push main
+→ CI 測試通過 → POST Deploy Hook → 等 deploy 完成
+→ curl https://oikonomia.onrender.com/api/version 確認 version 與 main 一致
+```
+
+Deploy Hook URL 存於 GitHub Secret `RENDER_DEPLOY_HOOK`（**勿 commit 到 repo**）。本機手動觸發：
+
+```bash
+RENDER_DEPLOY_HOOK='…' bash deploy/render-trigger-deploy.sh
+# 或
+bash deploy/render-sync.sh   # push 後觸發 + 輪詢 /api/version
+```
+
+驗證：
+
+```bash
+bash deploy/render-check.sh https://oikonomia.onrender.com
+curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
+```
+
+預期：`render: true`、`data_dir: "/data"`、`db_path: "/data/oikonomia.db"`、`version` 與 `git rev-parse --short HEAD` 相同。
+
+### PythonAnywhere（後備）
 
 | 用途 | 網址 |
 |------|------|
 | 玩家端 | https://takjai.pythonanywhere.com |
 | GM 後台 | https://takjai.pythonanywhere.com/gm |
 
-部署（GitHub 有更新後，在 PA Bash console）：
+僅在 Render 故障或 rollback 時使用。部署：
 
 ```bash
 FORCE=1 bash ~/oikonomia/deploy/pa-update.sh
-```
-
-請**一律**用 `FORCE=1`：PA 上常有本地改動（例如 `.deploy-version`），一般 `git pull` 可能失敗或 code 與磁碟不一致。
-
-然後到 **Web** tab → **Reload** `takjai.pythonanywhere.com`（只跑腳本不會重啟 worker；`version` 可能已更新但 `markers` 仍舊，直到 Reload）。
-
-驗證：
-
-```bash
+# Web tab → Reload takjai.pythonanywhere.com
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
-```
-
-### Render.com 付費版（預備遷移）
-
-Blueprint：`render.yaml`（**Starter $7/月**、**Singapore**、1GB 持久碟 `/data`、gunicorn）。
-
-| 項目 | 設定 |
-|------|------|
-| 資料庫 | `/data/oikonomia.db` |
-| 相片上傳 | `/data/uploads/` |
-| 密鑰 | `/data/.secret_key`、`.gm_pin`（或 Dashboard `SECRET_KEY` / `GM_PIN`） |
-| 戰鬥 V2 | `/data/.combat_v2`（預設 `1`） |
-
-**首次建立（Dashboard）**
-
-1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → 連接 GitHub `oikonomia` repo。
-2. 套用 Blueprint 前，在服務環境變數設定 **`GM_PIN`**（必填）；建議同時設定 **`SECRET_KEY`**（從 PA `data/.secret_key` 複製，保留玩家 session）。
-3. 確認 **Persistent Disk** 已掛載於 `/data`（Blueprint 已含）。
-4. Deploy 完成後驗證：
-
-```bash
-bash deploy/render-check.sh https://YOUR-SERVICE.onrender.com
-```
-
-**從 PA 搬資料（營會前建議做一次）**
-
-在 PA Bash：
-
-```bash
-bash ~/oikonomia/deploy/render-pack-pa-export.sh
-# 產出 /tmp/oikonomia-render-migrate-*.tar.gz
-```
-
-在 Render **Shell**（上傳 tarball 後）：
-
-```bash
-bash deploy/render-import-data.sh /path/to/oikonomia-render-migrate.tar.gz
-```
-
-然後把 Dashboard 的 `SECRET_KEY` / `GM_PIN` 與 PA 一致 → **Manual Deploy**。
-
-**之後每次更新**
-
-推送到 `main` 即自動 deploy；`preDeployCommand` 會跑 `deploy/render-predeploy.sh`（secrets + DB bootstrap）。
-
-本地推送前建議：
-
-```bash
-bash scripts/pre_deploy_checks.sh
 ```
 
 ## 測試

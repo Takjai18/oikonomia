@@ -82,15 +82,35 @@
 
 ---
 
+## 2026-07-02 — Render.com 遷移完成（Starter / Singapore）
+
+| 項目 | 內容 |
+|------|------|
+| **正式 URL** | https://oikonomia.onrender.com（Service `srv-d8v8i7cvikkc73fbsv0g`） |
+| **PA 角色** | 降為**後備**；營會流量走 Render |
+| **持久資料** | `/data/oikonomia.db`、`/data/uploads/`、`.secret_key`、`.gm_pin`、`.combat_v2` |
+| **Deploy** | push `main` → CI `pre_deploy_checks` → POST Deploy Hook → `preDeployCommand` |
+| **驗證** | `curl …/api/version` → `render: true`、`data_dir: /data`、`version` = git short hash |
+| **Commit** | `895405c`–`c3252df`（`render.yaml`、gunicorn、`deploy/render-*`） |
+
+**勿重複建議**：再當 PA 為主機；新功能要考慮 `/data` 持久碟同 gunicorn 多 worker。Deploy Hook URL **勿** commit（用 GitHub Secret `RENDER_DEPLOY_HOOK`）。
+
+---
+
 ## 設定與環境變數速查（易出問題）
 
 | 設定 | 位置 | 常見問題 | 正確做法 |
 |------|------|----------|----------|
-| `SECRET_KEY` | PA Web worker | Bash `export` **唔會**傳入 worker → session 失效、全站 500 | `data/.secret_key`（`deploy/pa-ensure-secret.sh`）；`wsgi.py` / `app.py` 經 `utils/production_secrets.py` 載入 |
-| `GM_PIN` | PA Web worker | 同上；GM 登入失敗 | `data/.gm_pin` 或 Web tab env |
-| `DATA_DIR` | PA | 預設應指向 `~/oikonomia/data`；錯路徑會搵錯 DB | `pa-update.sh` 會 set；WSGI 要與磁碟一致 |
-| Deploy 後未 Reload | PA Web tab | `git pull` 成功但 running code 仍舊；`/api/version` 可能仍舊或 500 | **必須** Web → Reload；用 `curl /api/version` 核對 `version` + `markers` |
-| `FORCE=1` | `pa-update.sh` | 一般 `git pull` 因 `.deploy-version` 等本地檔失敗 | PA 上一律 `FORCE=1 bash ~/oikonomia/deploy/pa-update.sh` |
+| `SECRET_KEY` | **Render** `/data/.secret_key` 或 Dashboard | 未設 → session 失效 | `deploy/render-predeploy.sh` 或 Dashboard env；`utils/production_secrets.py` |
+| `GM_PIN` | **Render** `/data/.gm_pin` 或 Dashboard | GM 登入失敗 | 同上 |
+| `DATA_DIR` | **Render** | 必須 `/data`（Persistent Disk） | `render.yaml` 已設；唔好用 `project/src/data` |
+| Render deploy 落後 | GitHub / Hook | push 後 `version` 仍舊 | 確認 CI `deploy-render` job；手動 `deploy/render-trigger-deploy.sh` |
+| `RENDER` | Render env | `true` 時上傳目錄改 `/data/uploads` | `app.py` + `utils/env.py` |
+| `SECRET_KEY` | PA Web worker（後備） | Bash `export` **唔會**傳入 worker | `data/.secret_key`（`deploy/pa-ensure-secret.sh`） |
+| `GM_PIN` | PA Web worker（後備） | 同上 | `data/.gm_pin` 或 Web tab env |
+| `DATA_DIR` | PA（後備） | 應指向 `~/oikonomia/data` | `pa-update.sh` 會 set |
+| Deploy 後未 Reload | PA Web tab | running code 仍舊 | Web → Reload（僅 PA rollback 時） |
+| `FORCE=1` | `pa-update.sh` | 一般 `git pull` 失敗 | PA 上一律 `FORCE=1 bash ~/oikonomia/deploy/pa-update.sh` |
 | `COMBAT_V2` | env / `data/.combat_v2` | **預設開啟**；GM 後台「戰鬥監控」可關閉；`COMBAT_V2=0` env 強制關 | 營會正常應 `combat_v2: true`；關閉只顯示維護提示 |
 | `OIKONOMIA_SHOW_TEST_ENCOUNTERS` | env | `1` 時非 GM 都見到測試 encounter | Production **唔好**設；僅開發／GM 測試用 |
 | `OIKONOMIA_ENDING_ENABLED` | env | `0` 停用 ending orchestrator 副作用 | 測試用；production 預設 `1` |
@@ -222,11 +242,14 @@
 ./venv/bin/python3 scripts/test_combat_flow.py
 ./venv/bin/python3 scripts/test_ending_flow.py
 
-# PA（deploy 後）
+# Render（deploy 後 · 正式）
+curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
+
+# PA（後備 · 可選）
 curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
 ```
 
-預期：`success: true`，`version` 與 `git rev-parse --short HEAD` 一致。
+預期：`success: true`，`render: true`（Render），`version` 與 `git rev-parse --short HEAD` 一致。
 
 ---
 

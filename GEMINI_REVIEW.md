@@ -2,7 +2,8 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-01 · **基準 commit `137dfa9`**（Greenfield Zoo 規格 · 已修對照 §18–§25）
+> **最後更新**：2026-07-02 · **基準 commit `c3252df`**（Render Starter 遷移 · 已修對照 §18–§26）  
+> **正式環境**：https://oikonomia.onrender.com（Render Starter · Singapore；PA 僅後備）
 
 ---
 
@@ -124,7 +125,8 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）· 或貼 COMBAT
 
 ### Layer 0 — 入口與設定
 ```
-wsgi.py                 # PA 入口；DATA_DIR=data/
+wsgi.py                 # Production 入口（Render gunicorn / PA WSGI）；DATA_DIR=/data on Render
+render.yaml             # Render Blueprint（Starter、持久碟 /data）
 app.py                  # Flask init、migrate_db、register_blueprints（~980 行，無 @app.route）
 models/settings.py      # configure_models() 注入的 runtime config
 requirements.txt
@@ -192,7 +194,8 @@ routes/*.py（除 __pycache__）
 models/*.py
 services/*.py
 utils/*.py
-deploy/pa-update.sh
+deploy/render-predeploy.sh, deploy/render-check.sh
+deploy/pa-update.sh（後備）
 scripts/test_combat_concurrency.py
 ```
 
@@ -311,13 +314,13 @@ python3 -m py_compile app.py models/*.py routes/*.py services/*.py utils/*.py
 ./venv/bin/python3 scripts/test_combat_flow.py           # 戰鬥 API 煙霧測試（66 項）
 ./venv/bin/python3 scripts/test_encounter_cache.py       # Encounter mtime cache（3 項）
 ./venv/bin/python3 scripts/test_combat_concurrency.py    # 併發 submit/resolve smoke test
-curl -s https://takjai.pythonanywhere.com/api/version | python3 -m json.tool
+curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
 ```
 
 `/api/version` 的 `markers` 可確認部署功能開關，例如：
 `server_combat_dice`, `task_photo_validation`, `qr_signed_v2`, `upload_path_hardened`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `encounter_logs`, `defend_team_buff`
 
-正式環境預期 `version` 與 GitHub `main` 一致（`curl /api/version` 核對）。
+**Render 正式環境**預期 `version` 與 GitHub `main` 一致；另核對 `render: true`、`data_dir: "/data"`、`db_path: "/data/oikonomia.db"`。改 code 時要考慮 Render 架構（gunicorn 多 worker、`/data` 持久碟、唔用 `python3 app.py` 啟動）。
 
 ---
 
@@ -422,9 +425,10 @@ Bug 描述：<用戶描述>
 | 項目 | 值 |
 |------|-----|
 | GitHub | https://github.com/Takjai18/oikonomia |
-| Production | https://takjai.pythonanywhere.com |
+| **Production（Render）** | https://oikonomia.onrender.com · Service `srv-d8v8i7cvikkc73fbsv0g` |
+| 後備（PA） | https://takjai.pythonanywhere.com |
 | 本地 | http://localhost:5001 |
-| 版本核對 | `curl /api/version` 應與 GitHub `main` 一致 |
+| 版本核對 | `curl https://oikonomia.onrender.com/api/version` 應與 GitHub `main` 一致 |
 | Grok（方向） | `README.md` § AI 開發分工 |
 | Grok Build（實作） | `AGENT_HANDOFF.md` |
 | Gemini（你） | 本文 `GEMINI_REVIEW.md` |
@@ -1124,3 +1128,40 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）
 基準 commit：<HEAD>
 本次範圍：R15 Zoo 回歸或 §20.3 新 scope
 ```
+
+---
+
+## 27. Render.com 遷移（2026-07-02 · Starter / Singapore）
+
+> **性質**：正式環境由 PythonAnywhere 遷至 **Render Starter**；之後 code review 要假設 **Render 架構**，唔好再當 PA 為主機。
+
+### 27.1 正式環境
+
+| 項目 | 值 |
+|------|-----|
+| URL | https://oikonomia.onrender.com |
+| Service ID | `srv-d8v8i7cvikkc73fbsv0g` |
+| Plan | Starter · Singapore |
+| 程序 | gunicorn `wsgi:application` |
+| 持久資料 | `/data`（`oikonomia.db`、`uploads/`、`.secret_key`、`.gm_pin`、`.combat_v2`） |
+| Env | `DATA_DIR=/data`、`RENDER=true`、`FLASK_ENV=production` |
+| PA | **後備** — https://takjai.pythonanywhere.com |
+
+### 27.2 Review 時要考慮的 Render 約束
+
+| 檢查項 | 說明 |
+|--------|------|
+| 持久化路徑 | DB／上傳／secrets 必須在 `/data`；唔好寫死 `project/src/` 或 `data/`（redeploy 會清） |
+| 多 worker | gunicorn 多進程；遊戲狀態必須在 SQLite（已有）；避免 in-memory 狀態 |
+| 啟動方式 | 唔建議 `python3 app.py` 作 production；用 `wsgi:application` |
+| Deploy 同步 | push `main` → CI tests → Deploy Hook → `/api/version` 與 commit 一致 |
+| Secrets | Deploy Hook URL 存 GitHub Secret；**勿** commit 到 repo |
+
+### 27.3 驗證指令
+
+```bash
+curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
+bash deploy/render-check.sh https://oikonomia.onrender.com
+```
+
+預期：`render: true`、`data_dir: "/data"`、`success: true`、`version` = `git rev-parse --short HEAD`。
