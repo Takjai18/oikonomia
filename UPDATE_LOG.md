@@ -130,6 +130,7 @@
 | **根因** | `determineSettlementRoute` 對 killing blow 在 `shownSettlementIds` 已含 id 時走 `skipToVictory`；entry absorb 曾過早標記 |
 | **修復** | killing blow 有 settlement 時強制走 SETTLEMENT；`absorbStaleSettlementOnEntry` 排除 terminal/0 HP |
 | **附帶** | `/combat/start` 顯式 `active`/`round_resolved`；`#my-team-card` 水平對齊 |
+| **§40 跟進** | 恢復 `shownSettlementIds` 護欄：僅 `SUBMITTING` 假陽性可重開 SETTLEMENT；VICTORY/TERMINAL 一律 `skipModal` |
 
 ---
 

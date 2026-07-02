@@ -331,9 +331,10 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.settlementId, '1:0');
   });
 
-  it('killing blow with already-shown settlement still routes to SETTLEMENT when breakdown exists', () => {
+  it('killing blow false-positive shown id during SUBMITTING still routes to SETTLEMENT', () => {
     const ctx = {
       ...createInitialContext(42),
+      phase: Phase.SUBMITTING,
       settledRoundIndex: 2,
       shownSettlementIds: new Set(['42:2']),
     };
@@ -345,6 +346,24 @@ describe('Combat V2 state machine', () => {
     );
     assert.equal(route.isKillingBlow, true);
     assert.equal(route.settlementId, '42:2');
+    assert.equal(route.skipToVictory, undefined);
+  });
+
+  it('killing blow with acked settlement during VICTORY skips modal (idempotent)', () => {
+    const ctx = {
+      ...createInitialContext(42),
+      phase: Phase.VICTORY,
+      settledRoundIndex: 2,
+      shownSettlementIds: new Set(['42:2']),
+    };
+    const route = determineSettlementRoute(
+      ctx,
+      { outcome: 'victory', settled_round_index: 2, combat_id: 42, enemy: { hp: 0 } },
+      { team_damage_dealt: 30 },
+      '42:2',
+    );
+    assert.equal(route.skipModal, true);
+    assert.equal(route.settlement, undefined);
     assert.equal(route.skipToVictory, undefined);
   });
 

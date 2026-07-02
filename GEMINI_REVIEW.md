@@ -1639,3 +1639,26 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 ### 39.3 審計提醒（俾 Gemini）
 
 - SETTLEMENT 期 poll 搶 VICTORY 防線 **9d31b63 已有**（L299）；本輪修復主戰場係 **SUBMIT_SUCCESS 路由** 而非 reorder victory block。
+
+---
+
+## 40. shownSettlementIds 等冪護欄 audit（2026-07-02 · 批判性審視）
+
+> **背景**：`9debc8d` 為修秒殺跳過 Breakdown，對 killing blow 無條件重開 SETTLEMENT（即使 id 已在 `shownSettlementIds`）。Gemini 擔心 ACK 後重試封包導致結算彈窗死循環。
+
+### 40.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| **Critical**：不可關閉 `shownSettlementIds` 單調護欄 | ✅ **正確** | `9debc8d` 無條件重開 SETTLEMENT 會令重複 `SUBMIT_SUCCESS` 在 VICTORY 後再彈 Breakdown |
+| 應維持護欄 + 修過早寫入 | ✅ **採用** | `absorbStaleSettlementOnEntry` 修正保留；路由改 **phase-aware** |
+| `ctx.phase === VICTORY` 時 `skipModal` | ✅ **採用** | TERMINAL / SETTLEMENT / VICTORY 已 ack → `skipModal`；僅 `SUBMITTING` 假陽性允許首次 SETTLEMENT |
+| `/combat/start` COMMIT 慢於 status SELECT | ⚪ **已知邊界** | `mergeEntryCombatPayload` + start 顯式覆蓋已緩解；實機留意 `[ERR_STATUS_*]` |
+| **Low**：`#my-team-card` UI | ✅ **已 ship**（`9debc8d`） | 無需再改 |
+
+### 40.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| `determineSettlementRoute` phase-aware 等冪 | `state_machine.js` |
+| 測試：SUBMITTING 假陽性 + VICTORY 不重彈 | `combat_state_machine.test.js` |

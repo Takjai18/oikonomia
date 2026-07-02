@@ -779,16 +779,24 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
   }
   const isKillingBlow = apiData.outcome === 'victory' || apiData.winner === 'squad';
   if (ctx.shownSettlementIds.has(settlementId)) {
-    if (isKillingBlow && settlement) {
-      return {
-        roundResolved: true,
-        settlement,
-        settlementId,
-        settledRoundIndex: apiData.settled_round_index,
-        isKillingBlow: true,
-      };
-    }
     if (isKillingBlow) {
+      if (TERMINAL_PHASES.includes(ctx.phase) || ctx.phase === Phase.SETTLEMENT) {
+        return {
+          roundResolved: true,
+          skipModal: true,
+          settledRoundIndex: apiData.settled_round_index,
+        };
+      }
+      // Entry absorb false-positive: first SUBMIT_SUCCESS still needs breakdown once.
+      if (ctx.phase === Phase.SUBMITTING && settlement) {
+        return {
+          roundResolved: true,
+          settlement,
+          settlementId,
+          settledRoundIndex: apiData.settled_round_index,
+          isKillingBlow: true,
+        };
+      }
       return {
         roundResolved: true,
         skipToVictory: true,
