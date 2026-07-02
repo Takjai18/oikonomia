@@ -35,16 +35,16 @@
   <section id="combat-v2-player-stats" class="shrink-0 px-3 py-1.5 border-b border-zinc-800/80 space-y-1.5"
            data-testid="combat-v2-player-stats">
     <div>
-      <div class="flex justify-between text-[10px] text-zinc-400 mb-0.5 gap-2">
-        <span><span id="combat-v2-player-stats-label" class="text-amber-400 font-semibold mr-1">我</span>🧠 神智</span>
-        <span id="combat-v2-player-sanity" class="font-mono text-purple-400 shrink-0">—/100</span>
+      <div class="flex justify-between text-[10px] text-zinc-400 mb-0.5 gap-2 min-w-0">
+        <span class="truncate whitespace-nowrap min-w-0"><span id="combat-v2-player-stats-label" class="text-amber-400 font-semibold mr-1 shrink-0">我</span>🧠 神智</span>
+        <span id="combat-v2-player-sanity" class="font-mono text-purple-400 shrink-0 whitespace-nowrap">—/100</span>
       </div>
       <div class="h-1.5 bg-zinc-800 rounded overflow-hidden">
         <div id="combat-v2-player-sanity-bar" class="h-full bg-purple-500 transition-all duration-300" style="width:0%"></div>
       </div>
     </div>
-    <div class="flex justify-between text-[10px] font-mono gap-2">
-      <span class="text-amber-400 font-semibold shrink-0" id="combat-v2-player-stats-pir-label">我</span>
+    <div class="flex justify-between text-[10px] font-mono gap-2 min-w-0">
+      <span class="text-amber-400 font-semibold shrink-0 truncate max-w-[4.5rem] whitespace-nowrap" id="combat-v2-player-stats-pir-label" title="">我</span>
       <span class="text-zinc-400">⚡ <span id="combat-v2-player-power" class="text-orange-400">—</span></span>
       <span class="text-zinc-400">📖 <span id="combat-v2-player-intellect" class="text-blue-400">—</span></span>
       <span class="text-zinc-400">🛡️ <span id="combat-v2-player-resilience" class="text-emerald-400">—</span></span>

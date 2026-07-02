@@ -70,8 +70,15 @@ export function createHudView(rootEl) {
     if (me) {
       setHp(playerHpBar, playerHp, me.hp, me.max_hp);
       const label = playerStatsLabelText(me);
-      if (playerStatsLabel) playerStatsLabel.textContent = label;
-      if (playerPirLabel) playerPirLabel.textContent = label;
+      const fullName = (me?.display_name || '').trim();
+      if (playerStatsLabel) {
+        playerStatsLabel.textContent = label;
+        if (fullName) playerStatsLabel.title = fullName;
+      }
+      if (playerPirLabel) {
+        playerPirLabel.textContent = label;
+        if (fullName) playerPirLabel.title = fullName;
+      }
       const pstats = resolveCombatStats(me);
       if (pstats) {
         setSanity(playerSanityBar, playerSanity, pstats.sanity);

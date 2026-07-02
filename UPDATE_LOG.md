@@ -100,6 +100,16 @@
 
 ---
 
+## 2026-07-02 — 戰後管線：終端封包 bypass + 勝利解鎖
+
+| 項目 | 內容 |
+|------|------|
+| **Gemini** | isStale 可能丟棄 victory 封包 → 大廳鎖死 |
+| **修復** | 終端 outcome/active:false 永不 stale-drop；`releaseCombatBridgeLock` on SHOW_VICTORY 等 |
+| **拒絕** | Gunicorn session 分裂（Flask 簽名 cookie + SECRET_KEY 已強制） |
+
+---
+
 ## 2026-07-02 — 戰鬥 UX：捲動置頂 + HP 首屏 + 能力值標籤
 
 | 項目 | 內容 |

@@ -177,27 +177,26 @@ describe('Combat V2 state machine', () => {
     assert.ok(!next.shownSettlementIds.has('99:1'));
   });
 
-  it('R12-D: stale victory poll dropped by monotonic guard (INV-C)', () => {
+  it('R12-D: terminal victory poll bypasses stale round guard (post-combat INV-C)', () => {
     const ctx = {
       ...createInitialContext(999),
-      phase: Phase.SETTLEMENT,
+      phase: Phase.IDLE,
       settledRoundIndex: 2,
-      pendingSettlementId: '999:2',
-      isKillingBlow: true,
+      shownSettlementIds: new Set(['999:2']),
       hud: { enemy: { hp: 0, max_hp: 200 }, me: { hp: 80 }, members: {}, log: [] },
     };
     const { ctx: next, effects } = syncState(ctx, {
       outcome: 'victory',
       combat_id: 999,
       settled_round_index: 1,
-      settlement_id: '999:1',
-      round_settlement: { team_damage_dealt: 10 },
-      enemy: { hp: 50, max_hp: 200 },
+      settlement_id: '999:2',
+      round_settlement: { team_damage_dealt: 10, player_hits: [] },
+      enemy: { hp: 0, max_hp: 200 },
       my_state: { hp: 80 },
       member_states: {},
     });
-    assert.equal(next.hud.enemy.hp, 0);
-    assert.equal(effects.length, 0);
+    assert.equal(next.phase, Phase.VICTORY);
+    assert.ok(effects.some((e) => e.type === 'SHOW_VICTORY'));
   });
 
   it('R12-D: defeat poll during SETTLEMENT clears pending settlement (INV-A)', () => {
@@ -469,6 +468,22 @@ describe('Settlement normalization', () => {
     const ctx = { settledRoundIndex: 2 };
     assert.equal(isStaleHudSnapshot(ctx, { settled_round_index: 1 }), true);
     assert.equal(isStaleHudSnapshot(ctx, { settled_round_index: 2 }), false);
+  });
+
+  it('isStaleHudSnapshot never drops terminal outcome payloads', () => {
+    const ctx = { settledRoundIndex: 5 };
+    assert.equal(
+      isStaleHudSnapshot(ctx, { settled_round_index: 1, outcome: 'victory' }),
+      false,
+    );
+    assert.equal(
+      isStaleHudSnapshot(ctx, { settled_round_index: 0, winner: 'squad', active: false }),
+      false,
+    );
+    assert.equal(
+      isStaleHudSnapshot(ctx, { settled_round_index: 1, status: 'ended' }),
+      false,
+    );
   });
 
   it('needsEntryHudRepair detects transient enemy hp 0', () => {

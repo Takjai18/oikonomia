@@ -43,6 +43,16 @@ export function statBarPct(value, max = 100) {
  */
 export function isStaleHudSnapshot(ctx, snapshot) {
   if (!snapshot) return false;
+  // Terminal payloads must never be dropped — post-combat pipeline / VICTORY routing (INV-C).
+  if (
+    snapshot.outcome === 'victory'
+    || snapshot.outcome === 'defeat'
+    || snapshot.winner
+    || snapshot.status === 'ended'
+    || snapshot.active === false
+  ) {
+    return false;
+  }
   const apiIdx = parseInt(snapshot.settled_round_index, 10);
   if (
     Number.isFinite(apiIdx)

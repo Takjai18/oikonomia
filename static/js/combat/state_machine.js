@@ -1,6 +1,7 @@
 /** @file Pure combat FSM — zero DOM dependency */
 
 import { normalizeSettlement, deriveSettlementId, extractHud } from './settlement.js';
+import { isStaleHudSnapshot } from './stats.js';
 
 /** Fallback when HP field is missing (display / max baseline — not “alive” sentinel). */
 export const DEFAULT_COMBAT_MAX_HP = 100;
@@ -199,8 +200,8 @@ export function syncState(ctx, snapshot) {
     return { ctx, effects: [] };
   }
 
-  const apiIdx = parseInt(snapshot.settled_round_index, 10);
-  if (Number.isFinite(apiIdx) && ctx.settledRoundIndex >= 0 && apiIdx < ctx.settledRoundIndex) {
+  if (isStaleHudSnapshot(ctx, snapshot)) {
+    const apiIdx = parseInt(snapshot.settled_round_index, 10);
     console.warn(
       `[FSM] Stale snapshot dropped (API round ${apiIdx} < local ${ctx.settledRoundIndex})`,
     );

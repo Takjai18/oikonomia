@@ -594,6 +594,14 @@ export class CombatApp {
     }
   }
 
+  releaseCombatBridgeLock() {
+    sessionStorage.removeItem('OIKONOMIA_COMBAT_V2_LOCK');
+    sessionStorage.removeItem('OIKONOMIA_ACTIVE_COMBAT_ID');
+    if (typeof window.clearActiveCombatBridge === 'function') {
+      window.clearActiveCombatBridge();
+    }
+  }
+
   hideAllModals() {
     this.views.dice.hide();
     this.views.settlement.hide();
@@ -636,15 +644,19 @@ export class CombatApp {
           this.views.settlement.hide();
           break;
         case 'SHOW_VICTORY':
+          this.releaseCombatBridgeLock();
           this.views.endgame.showVictory(fx.data || this.ctx.hud);
           break;
         case 'SHOW_DEFEAT':
+          this.releaseCombatBridgeLock();
           this.views.endgame.showDefeat(fx.data);
           break;
         case 'SHOW_FAILED':
+          this.releaseCombatBridgeLock();
           this.views.endgame.showFailed(fx.members);
           break;
         case 'SHOW_ESCAPED':
+          this.releaseCombatBridgeLock();
           this.views.escape.onContinue(() => this.exitToLobby());
           this.views.escape.show({
             success: true,
