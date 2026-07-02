@@ -47,6 +47,12 @@ app.config.update(
     MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
 
+# Render (and similar reverse proxies): restore client IP / HTTPS from X-Forwarded-* headers.
+if os.environ.get("RENDER") == "true":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
 
 @app.errorhandler(413)
 def upload_too_large(_exc):

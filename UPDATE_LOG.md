@@ -82,6 +82,19 @@
 
 ---
 
+## 2026-07-02 — Render ProxyFix（Gemini infra audit）
+
+| 項目 | 內容 |
+|------|------|
+| **建議** | Render 反向代理後 `request.remote_addr` 會是內網 IP |
+| **實際影響** | GPS 驗證用客戶端 lat/lng，**唔依賴 IP**；GM audit log（`routes/gm.py`）會受影響 |
+| **修復** | `RENDER=true` 時 `app.wsgi_app = ProxyFix(..., x_for=1, ...)` |
+| **持久碟** | 已存在：`render.yaml` disk `/data` + `DATA_DIR`；`/api/version` 已驗證 |
+
+**勿重複建議**：再建 Persistent Disk / `DATA_DIR=/data`（已配置）；`combat/status` 已只在 `player_phase`/`resolving` 才 `advance_combat_from_poll`。
+
+---
+
 ## 2026-07-02 — 最後一擊跳過結算 Modal + reconcile winner 遺漏（Gemini audit）
 
 | 項目 | 內容 |
