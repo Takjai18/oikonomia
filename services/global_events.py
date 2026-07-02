@@ -58,6 +58,24 @@ def apply_global_effect(effect_type, effect_value=0):
         conn.close()
 
 
+def list_global_events_log(limit=50, *, db_path=None):
+    """Read-only snapshot of recent global events (GM / audit; no writes)."""
+    path = db_path or settings.db_path
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """SELECT id, title, description, effect_type, effect_value, created_by, timestamp
+               FROM global_events
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (max(1, min(int(limit), 100)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def create_global_event(title, description="", effect_type=None, effect_value=0, created_by="GM"):
     conn = sqlite3.connect(settings.db_path)
     try:

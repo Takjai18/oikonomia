@@ -784,7 +784,9 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
       settledRoundIndex: ctx.settledRoundIndex,
     };
   }
-  const isKillingBlow = apiData.outcome === 'victory' || apiData.winner === 'squad';
+  const isKillingBlow = apiData.outcome === 'victory'
+    || apiData.winner === 'squad'
+    || (apiData.enemy?.hp ?? 0) <= 0;
   if (ctx.shownSettlementIds.has(settlementId)) {
     if (isKillingBlow) {
       if (TERMINAL_PHASES.includes(ctx.phase) || ctx.phase === Phase.SETTLEMENT) {

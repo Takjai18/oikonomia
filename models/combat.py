@@ -1482,6 +1482,7 @@ def _resolve_player_phase_body(combat_id):
 
     combat["enemy_hp"] = new_enemy_hp
     combat["phase_actions"] = {}
+    enemy_is_slain = new_enemy_hp <= 0
     write_buffers = dict(
         items_to_delete=items_to_delete,
         squad_updates=squad_updates,
@@ -1489,18 +1490,7 @@ def _resolve_player_phase_body(combat_id):
         trauma_events=trauma_events,
     )
 
-    if new_enemy_hp <= 0:
-        _commit_resolve_phase_state(
-            combat_id,
-            **write_buffers,
-            combat_fields={
-                "enemy_hp": new_enemy_hp,
-                "logs": combat.get("logs"),
-                "phase_actions": {},
-            },
-        )
-        return _end_combat(combat_id, "squad", encounter), "squad"
-
+    # Simultaneous exchange: enemy always counters once per round, even on killing blow.
     fresh_participants = _participants_with_buffers(participants, squad_updates, protagonist_updates)
     target = (
         select_enemy_counter_target(
@@ -1531,11 +1521,23 @@ def _resolve_player_phase_body(combat_id):
                     else "（全隊防禦，減半）"
                 )
             pro_note = "（主角）" if target.get("is_protagonist") else ""
+            target_display = target.get("display_name", target_id)
+            if enemy_is_slain:
+                counter_msg = (
+                    f"{enemy_name} 在被擊碎前發動了臨死反撲！"
+                    f"對 {target_display} 造成 {incoming} 點致命反擊傷害"
+                    + defend_note
+                    + pro_note
+                )
+            else:
+                counter_msg = (
+                    f"{enemy_name} 反擊 {target_display}，造成 {incoming} 點傷害"
+                    + defend_note
+                    + pro_note
+                )
             combat = append_combat_log(
                 combat,
-                f"{enemy_name} 反擊 {target.get('display_name', target_id)}，造成 {incoming} 點傷害"
-                + defend_note
-                + pro_note,
+                counter_msg,
                 log_type="enemy_attack",
             )
             merged_target = _participants_with_buffers([target], squad_updates, protagonist_updates)[0]
@@ -1545,7 +1547,7 @@ def _resolve_player_phase_body(combat_id):
                     trauma_note = f"（心理創傷 +1，累計 {merged_target.get('trauma_count')}）"
                 combat = append_combat_log(
                     combat,
-                    f"{target.get('display_name', target_id)} 陷入瀕死！"
+                    f"{target_display} 陷入瀕死！"
                     f"{settings.near_death_minutes} 分鐘內需救援{trauma_note}",
                     log_type="near_death",
                 )
@@ -1557,6 +1559,20 @@ def _resolve_player_phase_body(combat_id):
         trauma_events=trauma_events,
     )
     defeated_participants = _participants_with_buffers(participants, squad_updates, protagonist_updates)
+
+    # INV-D/E tragic victory: slaying the enemy wins even if counter collapses the squad.
+    if enemy_is_slain:
+        _commit_resolve_phase_state(
+            combat_id,
+            **write_buffers,
+            combat_fields={
+                "enemy_hp": 0,
+                "logs": combat.get("logs"),
+                "phase_actions": {},
+            },
+        )
+        return _end_combat(combat_id, "squad", encounter), "squad"
+
     if _team_defeated_from_participants(defeated_participants):
         _commit_resolve_phase_state(
             combat_id,
@@ -2462,15 +2478,17 @@ def _round_settlement_from_logs(logs, participants=None, viewer_squad_id=None):
         etype = entry.get("type")
         if etype in ("near_death", "event", "incapacitated"):
             continue
-        if etype != "enemy_attack":
+        if etype not in ("enemy_attack", "counter_attack"):
             break
         msg = entry.get("message") or ""
-        match = re.search(r"造成\s*(\d+)\s*點傷害", msg)
+        match = re.search(r"造成\s*(\d+)\s*點", msg)
         if not match:
             continue
         dmg = int(match.group(1))
         enemy_dealt += dmg
-        target_match = re.search(r"反擊\s*([^，]+)", msg)
+        target_match = re.search(r"對\s*(.+?)\s*造成", msg)
+        if not target_match:
+            target_match = re.search(r"反擊\s*([^，]+)", msg)
         target_name = target_match.group(1).strip() if target_match else "?"
         participant = _find_participant_by_display(participants, target_name)
         counter_hits.append({

@@ -319,16 +319,17 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.entrySyncPending, false);
   });
 
-  it('determineSettlementRoute: enemy hp 0 alone is not killing blow', () => {
+  it('determineSettlementRoute: enemy hp 0 marks killing blow for settlement', () => {
     const ctx = { ...createInitialContext(1), settledRoundIndex: 0, shownSettlementIds: new Set() };
     const route = determineSettlementRoute(
       ctx,
       { settled_round_index: 0, combat_id: 1, enemy: { hp: 0 } },
-      { team_damage_dealt: 5 },
+      { team_damage_dealt: 5, enemy_damage_dealt: 10 },
       '1:0',
     );
-    assert.equal(route.isKillingBlow, false);
+    assert.equal(route.isKillingBlow, true);
     assert.equal(route.settlementId, '1:0');
+    assert.equal(route.settlement.enemy_damage_dealt, 10);
   });
 
   it('killing blow false-positive shown id during SUBMITTING still routes to SETTLEMENT', () => {

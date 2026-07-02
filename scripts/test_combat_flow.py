@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """P1: 本地 combat 全流程測試（Team + Iggy → enc_iggy_01_leech）"""
+import json
 import os
 import shutil
 import sys
@@ -421,6 +422,38 @@ def test_phase2_gm_override_gateway():
         "GM Override Gate: global event created_by 已清洗",
         event_row and event_row[0] == "GM-CHIEF-01",
         str(event_row),
+    )
+
+
+def test_gm_global_events_log_api():
+    """GM-only read-only global events log — no unauthenticated access."""
+    from services.global_events import create_global_event
+    from services.gm_auth import establish_gm_session
+
+    create_global_event(
+        "測試日誌事件",
+        "GM 後台唯讀快照驗證",
+        "announcement",
+        0,
+        "TEST-GM-LOG",
+    )
+
+    client = oikonomia.app.test_client()
+    r403 = client.get("/gm/api/global_events_log")
+    ok("GM events log: unauthenticated 403", r403.status_code == 403)
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+
+    r = client.get("/gm/api/global_events_log")
+    data = r.get_json() or {}
+    ok("GM events log: success", r.status_code == 200 and data.get("success"), str(data)[:200])
+    events = data.get("events") or []
+    ok("GM events log: capped list", len(events) <= 50, str(len(events)))
+    ok(
+        "GM events log: includes seeded row",
+        any(e.get("created_by") == "TEST-GM-LOG" for e in events),
+        str(events[:2]),
     )
 
 
@@ -991,6 +1024,60 @@ def test_solo_killing_blow_returns_victory(client, client2, team_id):
     teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
     clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", is_active=1)
+
+
+def test_killing_blow_death_throes_counter():
+    """INV-D/E: slaying the enemy still triggers death-throes counter; squad wins anyway."""
+    from models.combat import save_combat
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "practice_iggy_03_boundary"
+    client = oikonomia.app.test_client()
+    solo_name = "DeathThroesSolo"
+    login_info = login(client, solo_name) or {}
+    leader_id = login_info.get("squad_id") or solo_name
+    r = client.post("/team/create", data={"team_name": solo_name})
+    team_id = (r.get_json() or {}).get("team_id")
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    update_protagonist_state(team_id, "iggy", is_active=0)
+    update_squad(leader_id, hp=15, max_hp=100, power=80, intellect=80, resilience=8)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    r = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    )
+    start = r.get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("death throes: start combat", start.get("success") and combat_id, str(start)[:120])
+    save_combat(combat_id, enemy_hp=5)
+
+    hp_before = int((get_squad(leader_id) or {}).get("hp") or 0)
+    with patch("routes.combat.roll_combat_dice", return_value=2):
+        data = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        ).get_json() or {}
+
+    ok("death throes: victory outcome", data.get("outcome") == "victory", str(data)[:240])
+    settlement = data.get("round_settlement") or {}
+    enemy_dealt = int(settlement.get("enemy_damage_dealt") or 0)
+    ok("death throes: enemy counter damage > 0", enemy_dealt > 0, str(settlement))
+    logs_blob = json.dumps(data.get("log_entries") or data.get("log") or [], ensure_ascii=False)
+    ok("death throes: log mentions 臨死反撲", "臨死反撲" in logs_blob, logs_blob[:300])
+    hp_after = int((get_squad(leader_id) or {}).get("hp") or 0)
+    ok(
+        "death throes: player hp reduced after counter",
+        hp_after < hp_before,
+        f"{hp_before} -> {hp_after}",
+    )
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
 
 
 def test_solo_killing_blow_practice_quick():
@@ -2266,6 +2353,7 @@ def main():
     test_protagonist_player_control(client, client2, team_id, route="iggy")
     test_non_leader_as_protagonist_rejected()
     test_solo_killing_blow_returns_victory(client, client2, team_id)
+    test_killing_blow_death_throes_counter()
     test_solo_killing_blow_practice_quick()
     test_escape_action_type_allowed()
     test_defeat_outcome_includes_dead_roster()
@@ -2284,6 +2372,7 @@ def main():
     test_maybe_resolve_monotonic_phase_guard()
     test_solo_resolve_combat_outcome_idempotency()
     test_phase2_gm_override_gateway()
+    test_gm_global_events_log_api()
     test_qr_code_grant_scoped_per_squad_not_global(leader_id)
     test_combat_start_rejects_body_squad_id_spoof(client, leader_id, member_id, team_id)
     test_rescue_near_death_target_squad_id(client, leader_id, member_id, team_id)

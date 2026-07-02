@@ -373,6 +373,23 @@ GM_DASHBOARD_HTML = """
             </div>
         </div>
 
+        <!-- Global Events Audit Log -->
+        <div class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 mt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg flex items-center gap-x-2 text-red-400">
+                    <i class="fa-solid fa-history"></i>
+                    <span>🌍 全球事件與工作人員操作日誌</span>
+                </h3>
+                <button type="button" onclick="refreshGmGlobalEventsLog()"
+                        class="text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl transition-colors">
+                    🔄 刷新日誌
+                </button>
+            </div>
+            <div id="gm-global-events-container" class="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                <div class="text-zinc-500 text-sm py-4 text-center">點擊刷新載入事件日誌...</div>
+            </div>
+        </div>
+
         <!-- Danger Zone -->
         <div class="mt-8 border border-red-500/30 rounded-3xl p-6">
             <div class="flex items-center gap-x-2 mb-4">
@@ -476,6 +493,60 @@ GM_DASHBOARD_HTML = """
         </div>
 
         <script>
+        function gmEscapeHtml(s) {
+            return String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function refreshGmGlobalEventsLog() {
+            const container = document.getElementById('gm-global-events-container');
+            if (!container) return;
+            container.innerHTML = '<div class="text-zinc-500 text-sm py-4 text-center">載入中...</div>';
+
+            try {
+                const res = await fetch('/gm/api/global_events_log', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.success) {
+                    container.innerHTML = `<div class="text-red-400 text-sm py-4 text-center">載入失敗: ${gmEscapeHtml(data.error || '未知錯誤')}</div>`;
+                    return;
+                }
+                if (!data.events || data.events.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-500 text-sm py-4 text-center">暫無任何全球事件記錄</div>';
+                    return;
+                }
+
+                container.innerHTML = data.events.map((ev) => {
+                    const badgeColor = ev.effect_type === 'announcement'
+                        ? 'bg-blue-900/40 text-blue-300'
+                        : 'bg-amber-900/40 text-amber-400';
+                    const title = gmEscapeHtml(ev.title);
+                    const desc = ev.description ? `<p class="text-zinc-400 mt-1 leading-relaxed">${gmEscapeHtml(ev.description)}</p>` : '';
+                    const effectType = gmEscapeHtml(ev.effect_type || '指令');
+                    const createdBy = gmEscapeHtml(ev.created_by || '系統');
+                    const ts = gmEscapeHtml(ev.timestamp);
+                    const effectValue = ev.effect_value ?? 0;
+                    return `
+                        <div class="text-xs bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-x-2 flex-wrap gap-y-1">
+                                    <span class="font-bold text-zinc-200 text-sm">${title}</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] ${badgeColor}">${effectType}</span>
+                                </div>
+                                ${desc}
+                                <div class="text-[10px] text-zinc-500 mt-1">執行者: <span class="font-mono text-zinc-400">${createdBy}</span> | 數值: ${effectValue}</div>
+                            </div>
+                            <div class="text-[10px] text-zinc-500 font-mono text-right shrink-0">${ts}</div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                container.innerHTML = '<div class="text-red-400 text-sm py-4 text-center">網路連線超時，請重試</div>';
+            }
+        }
+
         function sendAnnouncement() {
             const message = document.getElementById('announcement-input').value.trim();
             if (!message) {
@@ -493,9 +564,14 @@ GM_DASHBOARD_HTML = """
                 if (data.success) {
                     showGmToast('公告已發送', 'success');
                     document.getElementById('announcement-input').value = '';
+                    refreshGmGlobalEventsLog();
                 }
             });
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(refreshGmGlobalEventsLog, 500);
+        });
         </script>
 
         <script>
@@ -517,9 +593,9 @@ GM_DASHBOARD_HTML = """
             .then(data => {
                 if (data.success) {
                     showGmToast(data.message || '事件已觸發', 'success');
-                    location.reload();
+                    refreshGmGlobalEventsLog();
                 } else {
-                    showGmToast('觸發失敗', 'success');
+                    showGmToast('觸發失敗', 'error');
                 }
             });
         }
@@ -548,8 +624,9 @@ GM_DASHBOARD_HTML = """
                 document.getElementById('custom-event-description').value = '';
                 document.getElementById('custom-event-effect-type').value = '';
                 document.getElementById('custom-event-effect-value').value = '5';
+                refreshGmGlobalEventsLog();
             } else {
-                showGmToast(data.error || '建立失敗', 'success');
+                showGmToast(data.error || '建立失敗', 'error');
             }
         }
 

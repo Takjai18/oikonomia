@@ -299,26 +299,31 @@ def gm_create_global_event():
 
 @gm_bp.route("/global_events")
 def gm_get_global_events():
+    """Legacy GM events list — prefer /gm/api/global_events_log."""
     denied = _require_gm()
     if denied:
         return denied
+    return _gm_global_events_log_response()
 
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
+
+@gm_bp.route("/api/global_events_log")
+def gm_global_events_log_api():
+    """GM-only read-only global events audit log (no blind player polling)."""
+    denied = _require_gm()
+    if denied:
+        return denied
+    return _gm_global_events_log_response()
+
+
+def _gm_global_events_log_response():
+    from services.global_events import list_global_events_log
+
     try:
-        events = conn.execute("""
-            SELECT id, title, description, effect_type, effect_value, created_by, timestamp
-            FROM global_events
-            ORDER BY timestamp DESC
-            LIMIT 50
-        """).fetchall()
-    finally:
-        conn.close()
-
-    return jsonify({
-        "success": True,
-        "events": [dict(e) for e in events],
-    })
+        events = list_global_events_log(50)
+        return jsonify({"success": True, "events": events})
+    except sqlite3.Error as exc:
+        current_app.logger.warning("gm_global_events_log: db busy — %s", exc)
+        return jsonify({"success": False, "error": f"資料庫繁忙: {exc}"}), 500
 
 
 @gm_bp.route("/teams_overview")
@@ -493,6 +498,15 @@ def gm_adjust():
 
     update_squad(squad_id, **{field: value})
     squad = get_squad(squad_id)
+    display = (squad or {}).get("display_name") or squad_id
+    operator = (session.get("gm_operator") or session.get("squad_id") or "GM").strip()
+    create_global_event(
+        title=f"GM 調整：{display}",
+        description=f"欄位 {field} 設為 {value}",
+        effect_type="gm_adjust",
+        effect_value=value,
+        created_by=operator or "GM",
+    )
     return jsonify({
         "success": True,
         "message": f"{squad_id} 的 {field} 已更新為 {value}",
