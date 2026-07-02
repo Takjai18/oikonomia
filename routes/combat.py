@@ -58,6 +58,21 @@ from utils.decorators import require_player
 
 combat_bp = Blueprint("combat", __name__)
 
+
+def _json_victory_outcome(combat, encounter, squad_id, team_id=None, **extra):
+    """Victory JSON with round_settlement for V2 SETTLEMENT before VICTORY (killing blow)."""
+    combat_id = (combat or {}).get("id")
+    if combat_id:
+        combat = get_combat(combat_id) or combat
+    payload = build_victory_outcome_response(
+        combat, encounter, squad_id, team_id=team_id,
+    )
+    _attach_round_settlement(payload, combat=combat)
+    _enrich_settlement_meta(payload, combat=combat)
+    payload.update(extra)
+    return jsonify(payload)
+
+
 _DYNAMIC_NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -194,13 +209,14 @@ def combat_status_api():
     if combat.get("status") == "ended":
         encounter = load_encounter(combat["encounter_id"])
         winner = combat.get("winner")
+        if winner is None and int(combat.get("enemy_hp") or 0) <= 0:
+            winner = "squad"
         squad = get_squad(session["squad_id"])
         team_id = squad.get("team_id") if squad else None
         if winner == "squad":
-            payload = build_victory_outcome_response(
+            return _json_victory_outcome(
                 combat, encounter, session["squad_id"], team_id=team_id,
             )
-            return jsonify(payload)
         if winner == "enemy":
             ended_participants = get_combat_participants(combat) if combat else None
             return jsonify(_combat_outcome_json(
@@ -224,9 +240,9 @@ def combat_status_api():
         actor_team_id = actor.get("team_id") if actor else None
         if winner == "squad":
             combat = get_combat(combat["id"]) or combat
-            return jsonify(build_victory_outcome_response(
+            return _json_victory_outcome(
                 combat, encounter, session["squad_id"], team_id=actor_team_id,
-            ))
+            )
         if winner == "escaped":
             combat = get_combat(combat["id"]) or combat
             return jsonify(build_escape_outcome_response(
@@ -446,11 +462,13 @@ def combat_submit_action_api():
 
     if winner == "squad":
         combat = get_combat(combat_id) or combat
-        payload = build_victory_outcome_response(
-            combat, encounter, session["squad_id"], team_id=squad.get("team_id"),
+        return _json_victory_outcome(
+            combat,
+            encounter,
+            session["squad_id"],
+            team_id=squad.get("team_id"),
+            dice_result=dice_result,
         )
-        payload["dice_result"] = dice_result
-        return jsonify(payload)
     if winner == "escaped":
         combat = get_combat(combat_id) or combat
         payload = build_escape_outcome_response(

@@ -82,6 +82,19 @@
 
 ---
 
+## 2026-07-02 — 最後一擊跳過結算 Modal + reconcile winner 遺漏（Gemini audit）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 秒殺／Session restore 後無傷害結算 Modal、卡死無勝利畫面 |
+| **根因** | ① 勝利路徑未保證 `round_settlement` ② `reconcile_finished_active_combat` 設 `ended` 但 `winner=NULL` |
+| **修復** | `_json_victory_outcome` + reconcile `winner='squad'` + `combat_outcome_if_finished` 推斷 winner；`api_client` `isFetching` 鎖 |
+| **驗證** | `test_combat_flow` 297/297 · `test_db_hardening` 14/14 |
+
+**勿重複建議**：V2 前端在 `static/js/combat/`（唔係 `index.html` inline）；正式環境為 **Render** https://oikonomia.onrender.com
+
+---
+
 ## 2026-07-02 — Render.com 遷移完成（Starter / Singapore）
 
 | 項目 | 內容 |

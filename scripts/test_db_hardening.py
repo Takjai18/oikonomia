@@ -400,12 +400,20 @@ def test_reconcile_finished_combat_purges_actions():
         squad_combat = conn.execute(
             "SELECT current_combat_id FROM squads WHERE squad_id = 'solo1'",
         ).fetchone()[0]
+        row = conn.execute(
+            "SELECT status, winner, enemy_hp FROM combats WHERE id = ?",
+            (combat_id,),
+        ).fetchone()
         conn.close()
 
         if not is_live and live_id is None:
             ok("reconcile finished combat clears active marker")
         else:
             fail("reconcile finished combat clears active marker", str((is_live, live_id)))
+        if row and row[0] == "ended" and row[1] == "squad" and int(row[2] or 0) == 0:
+            ok("reconcile finished combat sets winner=squad when enemy_hp<=0")
+        else:
+            fail("reconcile finished combat sets winner=squad when enemy_hp<=0", str(row))
         if remaining == 0:
             ok("reconcile finished combat purges stale combat_actions")
         else:

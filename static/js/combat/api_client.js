@@ -91,6 +91,7 @@ export class ResilientPollingManager {
     this.backoffMs = 0;
     this.maxBackoffMs = 16000;
     this.phase = 'IDLE';
+    this.isFetching = false;
     this._onVisibility = this._onVisibility.bind(this);
     document.addEventListener('visibilitychange', this._onVisibility);
   }
@@ -137,9 +138,11 @@ export class ResilientPollingManager {
   async tick() {
     if (this.stopped || !this.combatId) return;
     if (document.hidden) return;
+    if (this.isFetching) return;
 
     this._abortInflight();
     this.abortController = new AbortController();
+    this.isFetching = true;
 
     try {
       const data = await CombatApi.status(this.combatId, this.abortController.signal);
@@ -153,6 +156,7 @@ export class ResilientPollingManager {
       );
       this.handlers.onError?.(err);
     } finally {
+      this.isFetching = false;
       if (!this.stopped) {
         const wait = this.intervalForPhase(this.phase) + this.backoffMs;
         this._schedule(wait);
@@ -173,7 +177,7 @@ export class ResilientPollingManager {
   }
 
   _onVisibility() {
-    if (!document.hidden && !this.stopped) {
+    if (!document.hidden && !this.stopped && !this.isFetching) {
       this._schedule(0);
     }
   }

@@ -225,12 +225,14 @@ def reconcile_finished_active_combat(combat, team_id=None, squad_id=None):
     now_str = datetime.now().isoformat()
     with immediate_transaction(settings.db_path) as conn:
         if combat.get("status") != "ended":
+            winner_val = "squad" if enemy_hp <= 0 else combat.get("winner")
             conn.execute(
-                """UPDATE combats SET status = 'ended', ended_at = ?, enemy_hp = ?
+                """UPDATE combats SET status = 'ended', ended_at = ?, enemy_hp = ?, winner = ?
                    WHERE id = ?""",
                 (
                     now_str,
                     0 if enemy_hp <= 0 else enemy_hp,
+                    winner_val,
                     int(combat_id),
                 ),
             )
@@ -2247,6 +2249,8 @@ def combat_outcome_if_finished(combat, encounter, team_id=None, squad_id=None):
     squad_id = squad_id or combat.get("squad_id")
     if combat.get("status") == "ended":
         winner = combat.get("winner")
+        if winner is None and int(combat.get("enemy_hp") or 0) <= 0:
+            winner = "squad"
         if winner == "squad" and squad_id:
             return build_victory_outcome_response(combat, encounter, squad_id, team_id=team_id)
         if winner == "escaped" and squad_id:

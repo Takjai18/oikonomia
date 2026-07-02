@@ -975,6 +975,19 @@ def test_solo_killing_blow_returns_victory(client, client2, team_id):
         str(finished)[:200],
     )
 
+    save_combat(combat_id, status="ended", enemy_hp=0, winner=None)
+    status_payload = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    ok(
+        "ended null winner status: victory outcome",
+        status_payload.get("outcome") == "victory",
+        str(status_payload)[:240],
+    )
+    ok(
+        "ended null winner status: round_settlement present",
+        bool(status_payload.get("round_settlement")),
+        str(status_payload.get("round_settlement"))[:200],
+    )
+
     teardown_test_combat(team_id, TEST_ENCOUNTER_ID)
     clear_encounter_completion(team_id, TEST_ENCOUNTER_ID)
     update_protagonist_state(team_id, "iggy", is_active=1)
