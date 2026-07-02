@@ -22,6 +22,7 @@ import {
   deriveSettlementId,
   mergeEntryCombatPayload,
 } from '../static/js/combat/settlement.js';
+import { resolveCombatStats } from '../static/js/combat/stats.js';
 
 describe('Combat V2 state machine', () => {
   it('TERMINAL_PHASES SSOT covers endgame absorbing phases', () => {
@@ -460,6 +461,31 @@ describe('Combat V2 state machine', () => {
 });
 
 describe('Settlement normalization', () => {
+  it('resolveCombatStats reads my_state fields', () => {
+    const stats = resolveCombatStats({
+      hp: 80,
+      max_hp: 100,
+      sanity: 72,
+      power: 28,
+      intellect: 22,
+      resilience: 18,
+    });
+    assert.equal(stats.hp, 80);
+    assert.equal(stats.sanity, 72);
+    assert.equal(stats.power, 28);
+    assert.equal(stats.intellect, 22);
+    assert.equal(stats.resilience, 18);
+  });
+
+  it('mergeEntryCombatPayload keeps start my_state when status omits it', () => {
+    const merged = mergeEntryCombatPayload(
+      { my_state: { hp: 90, max_hp: 100, sanity: 80, power: 30, intellect: 25, resilience: 20 } },
+      { status: 'player_phase', active: true },
+    );
+    assert.equal(merged.my_state.sanity, 80);
+    assert.equal(merged.my_state.power, 30);
+  });
+
   it('mergeEntryCombatPayload prefers start HP when status returns transient 0', () => {
     const merged = mergeEntryCombatPayload(
       { enemy: { hp: 48, max_hp: 48, name: '速戰殘影' }, combat_id: 10 },

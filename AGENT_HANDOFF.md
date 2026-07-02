@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 Render.com 同 local 版本一致**（見 Deploy 一節）。PA 僅後備。  
-> 最後更新：2026-07-02 · **commit `43e9706`**（HP 0 需 F5 · ES module 快取 · §35）· BUG-2026-001 **resolved**
+> 最後更新：2026-07-02 · **commit TBD**（V2 戰鬥能力值面板 · §36）· BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|

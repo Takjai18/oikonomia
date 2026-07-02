@@ -145,6 +145,12 @@ export function mergeEntryCombatPayload(startPayload, statusPayload) {
       merged.enemy = { ...statusEnemy, ...startEnemy, hp };
     }
   }
+
+  const startMe = startPayload.my_state;
+  const statusMe = statusPayload.my_state;
+  if (startMe && (!statusMe || statusMe.hp == null)) {
+    merged.my_state = { ...startMe, ...statusMe };
+  }
   return merged;
 }
 

@@ -1519,3 +1519,33 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 1. 核對 `/api/version` == 最新 commit  
 2. 異常時 Safari/Chrome **清除網站資料**（唔止 `sessionStorage.clear()`）  
 3. 練習關用 HUD「⚙ 離開戰鬥」後可再開；後端會清 `enemy_hp<=0` 殭屍紀錄
+
+---
+
+## 36. 戰鬥畫面能力值空白 audit（2026-07-02 · 批判性審視）
+
+> **症狀**：V2 戰鬥介面完全無玩家能力值（神智／力量／智力／韌性）。Gemini 歸因快取 + `hp_value` fallback。
+
+### 36.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| 根因 1：CDN 快取舊 `hud_view.js` | ⚠️ **次要** | `43e9706` 已有 `deploy_version` + combat JS `no-store`；**非主因** |
+| 根因 2：`isHpOnlyPhase` 鎖死能力值更新 | ❌ **不成立** | 即使 UPDATE_HUD 觸發，**DOM 節點根本不存在** |
+| 硬編碼 `?v=41b9da1` | ❌ **拒絕** | 用 `deploy_version` |
+| `hp_value` / `squad.power` fallback | ❌ **拒絕** | 後端 `my_state` 已有 `hp`/`sanity`/`power`/`intellect`/`resilience` |
+| `renderPlayerStatsSafely` 範例 | ⚠️ **方向對、實作錯** | 需先 **補 `combat_screen.html` 節點** 再渲染 |
+
+### 36.2 真實根因
+
+**Greenfield V2 `combat_screen.html` 只實作了 HP 條**（`combat-v2-player-hp`），從未遷移 V1 的 `combat-player-sanity`／`combat-m-power` 等面板。後端資料齊全，前端缺 UI + `hud_view` 繪製邏輯。
+
+### 36.3 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| 玩家神智條 + 三維值列 | `templates/combat_screen.html` |
+| 敵人能力值列 | 同上 |
+| `resolveCombatStats` + vitals 永遠更新（含 `hpOnly` poll） | `stats.js` + `hud_view.js` |
+| entry 保留 `my_state` | `settlement.js` `mergeEntryCombatPayload` |
+| marker `combat_stats_v2` | `routes/misc.py` → `combat-v2-player-power` |

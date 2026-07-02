@@ -100,6 +100,19 @@
 
 ---
 
+## 2026-07-02 — 戰鬥畫面能力值空白（V2 缺 UI）
+
+| 項目 | 內容 |
+|------|------|
+| **Gemini 稱** | 快取舊 hud_view；`isHpOnly` 鎖死；`hp_value` fallback |
+| **實際** | `combat_screen.html` **從未有能力值 DOM**；後端 `my_state` 已齊 |
+| **修復** | 神智條 + 力/智/韌面板；`stats.js`；`hud_view` vitals 永遠更新 |
+| **勿重複建議** | 硬編碼 commit cache bust；`hp_value` 欄位 |
+
+見 `GEMINI_REVIEW.md` §36。
+
+---
+
 ## 2026-07-02 — HP 0 需 F5（ES module 快取 + entry 競態）
 
 | 項目 | 內容 |

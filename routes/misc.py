@@ -82,7 +82,7 @@ def api_version():
             "task_photo_validation": callable(save_task_submission_photo),
             "model_layer_phase1": True,
             "model_combat_layer": True,
-            "combat_stats_v2": "combatStatValue" in template_text,
+            "combat_stats_v2": "combat-v2-player-power" in template_text,
             "combat_ui_safe": "safeSetText" in template_text,
             "input_modal": "input-modal-overlay" in template_text,
             "routes_refactored": True,
