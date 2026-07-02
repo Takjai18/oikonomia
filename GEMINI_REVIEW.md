@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-02 · **基準 commit `c3252df`**（Render Starter 遷移 · 已修對照 §18–§26）  
+> **最後更新**：2026-07-02 · **基準 commit `2dc4c47`**（Render version SSOT · 已修對照 §18–§28）  
 > **正式環境**：https://oikonomia.onrender.com（Render Starter · Singapore；PA 僅後備）
 
 ---
@@ -320,7 +320,9 @@ curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
 `/api/version` 的 `markers` 可確認部署功能開關，例如：
 `server_combat_dice`, `task_photo_validation`, `qr_signed_v2`, `upload_path_hardened`, `protagonist_combat`, `trauma_ending`, `confirm_modal`, `protagonist_player_control`, `encounter_logs`, `defend_team_buff`
 
-**Render 正式環境**預期 `version` 與 GitHub `main` 一致；另核對 `render: true`、`data_dir: "/data"`、`db_path: "/data/oikonomia.db"`。改 code 時要考慮 Render 架構（gunicorn 多 worker、`/data` 持久碟、唔用 `python3 app.py` 啟動）。
+**Render 正式環境**預期 `version` 與 GitHub `main` 一致；`git_commit` 前 7 字元應與 `version` 相同；另核對 `render: true`、`data_dir: "/data"`、`db_path: "/data/oikonomia.db"`。
+
+**Review deploy 相關改動時**（見 §28）：唔好建議 commit `.deploy-version`；若 `version` 舊但 `git_commit` 新，先查 UPDATE_LOG § version 假陽性，唔好當成 code 未 deploy。
 
 ---
 
@@ -1156,12 +1158,59 @@ Baseline：COMBAT_V2_AUDIT_BUNDLE v15（已讀，唔貼全文）
 | 啟動方式 | 唔建議 `python3 app.py` 作 production；用 `wsgi:application` |
 | Deploy 同步 | push `main` → CI tests → Deploy Hook → `/api/version` 與 commit 一致 |
 | Secrets | Deploy Hook URL 存 GitHub Secret；**勿** commit 到 repo |
+| `.deploy-version` | **勿** commit（`.gitignore`）；誤 commit 會令 `version` 假陽性（§28） |
+| preDeploy | Events log 應見 `=== Render pre-deploy ===`；否則 Dashboard 未對齊 `render.yaml` |
 
 ### 27.3 驗證指令
 
 ```bash
+LOCAL=$(git rev-parse --short HEAD)
 curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
 bash deploy/render-check.sh https://oikonomia.onrender.com
 ```
 
-預期：`render: true`、`data_dir: "/data"`、`success: true`、`version` = `git rev-parse --short HEAD`。
+預期：`render: true`、`data_dir: "/data"`、`success: true`、`version` == `$LOCAL`，`git_commit[:7]` == `version`。
+
+---
+
+## 28. Render `/api/version` 假陽性（2026-07-02 · `2dc4c47`）
+
+> **用途**：Gemini review deploy／infra 改動時 **唔好重複報** 以下已修項；新 audit 應識別同類回歸。
+
+### 28.1 已發生過的問題
+
+| 項目 | 說明 | 狀態 |
+|------|------|------|
+| **誤 commit `.deploy-version`** | 檔內容卡 `3017e16`，`/api/version` 長期舊 hash | ✅ 已從 repo 移除 + `.gitignore` |
+| **Dashboard 無 preDeploy** | Build 成功但 log 跳過 `render-predeploy.sh` | ✅ `startCommand` 補跑；文檔要求 Dashboard 對齊 |
+| **`RENDER_GIT_COMMIT` fallback** | 無 `.deploy-version` 時仍顯示正確 hash | ✅ `utils/deploy.py` |
+| **`git_commit` 欄位** | `/api/version` 暴露完整 SHA 方便對照 | ✅ `routes/misc.py` |
+
+### 28.2 Review 檢查清單（deploy／infra scope）
+
+| 檢查 | 通過標準 |
+|------|----------|
+| `.deploy-version` 不在 git | `git ls-files .deploy-version` 為空 |
+| `.gitignore` 含 `.deploy-version` | 已列 |
+| `read_deploy_version()` | 有 `RENDER_GIT_COMMIT` fallback |
+| `render.yaml` | `preDeployCommand` + `startCommand` 均含 `render-predeploy.sh` |
+| 文檔 | README / AGENT_HANDOFF 有「Deploy 陷阱」一節 |
+
+### 28.3 診斷步驟（用戶報 version 唔啱時）
+
+1. `curl /api/version` → 比較 `version` vs `git_commit[:7]` vs `git rev-parse --short HEAD`
+2. Render Events → 有無 `=== Render pre-deploy ===`
+3. `git ls-files .deploy-version` → 唔應有輸出
+4. 若 hook Accepted 但 version 未變 → 等 2–5 分或查 Failed deploy
+
+### 28.4 Copy-paste 開場白（deploy 回歸審計）
+
+```
+【審計模式】
+Baseline：GEMINI_REVIEW.md §27–§28（Render deploy SSOT，唔重複報已修項）
+範圍：utils/deploy.py、render.yaml、deploy/render-predeploy.sh、.gitignore
+基準 commit：2dc4c47
+焦點：.deploy-version 唔入 git、preDeploy 必跑、version/git_commit 一致
+
+輸出：【Critical】→【High/Medium】→【Low】→ 健康度 X/10
+```

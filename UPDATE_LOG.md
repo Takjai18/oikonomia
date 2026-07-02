@@ -106,6 +106,8 @@
 
 **勿重複建議**：version 舊唔代表 code 未 deploy；先查 log 有無 preDeploy、`.deploy-version` 有無被 commit。
 
+**文檔**：詳見 `README.md`（Deploy 陷阱）、`AGENT_HANDOFF.md`（Render Deploy 陷阱）、`GEMINI_REVIEW.md` §28。
+
 ---
 
 ## 設定與環境變數速查（易出問題）

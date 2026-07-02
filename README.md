@@ -176,9 +176,44 @@ Production 必須設定環境變數：`SECRET_KEY`、`GM_PIN`。
 | 密鑰 | `/data/.secret_key`、`.gm_pin`（或 Dashboard `SECRET_KEY` / `GM_PIN`） |
 | 戰鬥 V2 | `/data/.combat_v2`（預設 `1`） |
 | 環境標記 | `RENDER=true`、`FLASK_ENV=production` |
-| 版本 SSOT | `/api/version` → `version`（`preDeploy` 寫入 git short hash） |
+| 版本 SSOT | 見下方「版本核對」；**勿 commit** `.deploy-version` |
 
-Blueprint：`render.yaml` · `preDeployCommand` → `deploy/render-predeploy.sh`。
+Blueprint：`render.yaml` · `preDeployCommand` + `startCommand` 均會跑 `deploy/render-predeploy.sh`。
+
+**版本核對（避免假陽性）**
+
+| 優先 | 來源 | 說明 |
+|------|------|------|
+| 1 | `.deploy-version` | `preDeploy` / 啟動時由 `render-predeploy.sh` 寫入（**僅 deploy 產物，在 `.gitignore`**） |
+| 2 | `RENDER_GIT_COMMIT` | Render 自動注入；`utils/deploy.py` 在無 `.deploy-version` 時取前 7 字元 |
+| 3 | `/api/version` → `git_commit` | 完整 SHA，用於對照 Dashboard deploy 的 commit |
+
+```bash
+LOCAL=$(git rev-parse --short HEAD)
+curl -s https://oikonomia.onrender.com/api/version | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+v, gc = d.get('version'), (d.get('git_commit') or '')[:7]
+print('version:', v, 'git_commit[:7]:', gc, 'render:', d.get('render'))
+assert v == '$LOCAL', f'version mismatch: {v} != $LOCAL'
+"
+```
+
+**Deploy 陷阱（2026-07-02 實例 — 勿重犯）**
+
+| 陷阱 | 後果 | 預防 |
+|------|------|------|
+| **commit `.deploy-version`** | `/api/version` 長期顯示舊 hash（曾卡 `3017e16`） | 已在 `.gitignore`；`git status` 見到即 **勿 add** |
+| **Dashboard 未跑 preDeploy** | log 無 `=== Render pre-deploy ===`；DB bootstrap／secrets 可能漏跑 | Settings 設 Pre-deploy **或** Start Command 含 `render-predeploy.sh`（見 `render.yaml`） |
+| **只睇 `version` 以為未 deploy** | code 可能已新，只是 version 字串舊 | 對照 `git_commit` 與 Render Events log |
+
+**Dashboard 建議設定**（Settings → Build & Deploy，與 `render.yaml` 對齊）：
+
+| 欄位 | 值 |
+|------|-----|
+| Pre-deploy command | `bash deploy/render-predeploy.sh` |
+| Start command | `bash -c 'bash deploy/render-predeploy.sh && exec gunicorn wsgi:application …'`（全文見 `render.yaml`） |
+| Branch | `main` · Auto-Deploy **Yes** |
 
 **每次 code 改動後同步 Render（Grok Build 必做）**
 
@@ -203,7 +238,7 @@ bash deploy/render-check.sh https://oikonomia.onrender.com
 curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
 ```
 
-預期：`render: true`、`data_dir: "/data"`、`db_path: "/data/oikonomia.db"`、`version` 與 `git rev-parse --short HEAD` 相同。
+預期：`render: true`、`data_dir: "/data"`、`db_path: "/data/oikonomia.db"`、`version` 與 `git rev-parse --short HEAD` 相同，`git_commit` 前 7 字元與 `version` 一致。Deploy log 應見 `=== Render pre-deploy ===`。
 
 ### PythonAnywhere（後備）
 

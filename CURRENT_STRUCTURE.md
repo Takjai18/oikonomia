@@ -1,6 +1,6 @@
 # Oikonomia — Current Structure
 
-> 最後更新：2026-07-02 · Git：`c3252df`（Render Starter 遷移）  
+> 最後更新：2026-07-02 · Git：`2dc4c47`（Render version SSOT）  
 > 路徑：`/Users/mingtakyau/Documents/oikonomia`  
 > 備份：`Google Drive/My Drive/oikonomia`
 
@@ -46,7 +46,7 @@ oikonomia/
 ├── encounters/               # Encounter JSON
 │
 ├── deploy/                   # Render（主）+ PA（後備）部署
-│   ├── render-predeploy.sh   # preDeploy：secrets、DB bootstrap、.deploy-version
+│   ├── render-predeploy.sh   # preDeploy/start：secrets、DB bootstrap、.deploy-version（勿 commit）
 │   ├── render-check.sh       # 驗證 /api/version
 │   ├── render-trigger-deploy.sh  # POST Deploy Hook
 │   ├── render-sync.sh        # push 後觸發 + 輪詢 version
@@ -184,4 +184,6 @@ POST /combat/submit_action → models/combat.py
 
 ---
 
-*End of CURRENT_STRUCTURE · 2026-07-02 · `c3252df`*
+**版本 SSOT**：`utils/deploy.py` → `.deploy-version`（deploy 產物）→ `RENDER_GIT_COMMIT`；`/api/version` 含 `git_commit`。詳見 README / AGENT_HANDOFF「Render Deploy 陷阱」。
+
+*End of CURRENT_STRUCTURE · 2026-07-02 · `2dc4c47`*
