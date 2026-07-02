@@ -3,7 +3,15 @@
  * @description COMBAT_V2 綠地架構啟動器 — 同步 skeleton 防止弱網重連競態
  */
 
-import { CombatApp } from './index.js';
+/** Versioned dynamic import so all combat ES modules bust cache with bootstrap. */
+async function loadCombatAppClass() {
+  const el = document.querySelector('script[data-combat-bootstrap]');
+  const src = el?.getAttribute('src') || '';
+  const match = src.match(/[?&]v=([^&]+)/);
+  const v = match ? decodeURIComponent(match[1]) : String(Date.now());
+  const mod = await import(`./index.js?v=${encodeURIComponent(v)}`);
+  return mod.CombatApp;
+}
 
 let app = null;
 let enabled = null;
@@ -124,6 +132,7 @@ async function init() {
       return;
     }
 
+    const CombatApp = await loadCombatAppClass();
     app = CombatApp.mount(combatRoot);
     bindLiveHandlers(combatRoot);
 

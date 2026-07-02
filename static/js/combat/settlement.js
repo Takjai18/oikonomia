@@ -113,6 +113,41 @@ export function buildSettlementFromLogs(logEntries, settledRoundIndex) {
   };
 }
 
+/**
+ * First paint after /combat/start — prefer start enemy HP when status returns a
+ * transient 0 HP snapshot without victory (poll race / stale DB row).
+ */
+export function mergeEntryCombatPayload(startPayload, statusPayload) {
+  if (!startPayload) return statusPayload || {};
+  if (!statusPayload) return startPayload;
+  const merged = { ...startPayload, ...statusPayload };
+  const startEnemy = startPayload.enemy;
+  const statusEnemy = statusPayload.enemy;
+  const active = statusPayload.active !== false
+    && ['player_phase', 'precheck'].includes(statusPayload.status);
+  const noOutcome = !statusPayload.outcome && !statusPayload.winner;
+
+  if (!statusEnemy && startEnemy) {
+    merged.enemy = startEnemy;
+    return merged;
+  }
+
+  if (active && noOutcome && startEnemy && statusEnemy) {
+    const statusHp = parseInt(statusEnemy.hp, 10);
+    const startHp = parseInt(startEnemy.hp, 10);
+    const maxHp = parseInt(statusEnemy.max_hp ?? startEnemy.max_hp, 10);
+    if (
+      Number.isFinite(statusHp)
+      && statusHp <= 0
+      && ((Number.isFinite(startHp) && startHp > 0) || (Number.isFinite(maxHp) && maxHp > 0))
+    ) {
+      const hp = Number.isFinite(startHp) && startHp > 0 ? startHp : maxHp;
+      merged.enemy = { ...statusEnemy, ...startEnemy, hp };
+    }
+  }
+  return merged;
+}
+
 export function extractHud(snapshot) {
   if (!snapshot) return { enemy: null, me: null, members: {}, log: [] };
   const teamId = snapshot.team_id || null;

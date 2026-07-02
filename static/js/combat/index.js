@@ -18,6 +18,7 @@ import {
   normalizeSettlement,
   deriveSettlementId,
   extractHud,
+  mergeEntryCombatPayload,
 } from './settlement.js';
 import { showToast } from './toast.js';
 import { renderAll } from './render.js';
@@ -47,6 +48,7 @@ export class CombatApp {
     this.invRecoveryCount = 0;
     this.hasTriggeredTimeoutDefense = false;
     this.submittingActive = false;
+    this.entrySyncInFlight = false;
     this._activeRafIds = new Set();
     this._activeTimeoutIds = new Set();
 
@@ -169,16 +171,22 @@ export class CombatApp {
     const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
     if (toggle) toggle.checked = false;
 
-    this.poller.start(data.combat_id);
+    this.entrySyncInFlight = true;
     try {
       const snapshot = await CombatApi.status(data.combat_id);
-      this.ctx.hud = extractHud({ ...data, ...snapshot });
-      this.pollTick(snapshot);
+      const merged = mergeEntryCombatPayload(data, snapshot);
+      this.ctx.hud = extractHud(merged);
+      this.pollTick(merged, { entrySync: true });
     } catch (_) {
       if (data.enemy || data.status || data.my_state) {
         this.ctx.hud = extractHud(data);
       }
       renderAll(this.views, this.ctx);
+    } finally {
+      this.entrySyncInFlight = false;
+      if (data.combat_id) {
+        this.poller.start(data.combat_id);
+      }
     }
   }
 
@@ -481,8 +489,9 @@ export class CombatApp {
     }
   }
 
-  pollTick(snapshot) {
+  pollTick(snapshot, options = {}) {
     if (!snapshot || snapshot.success === false) return;
+    if (this.entrySyncInFlight && !options.entrySync) return;
 
     if (this.submittingActive) {
       if (this.debug) console.log('[CombatV2] poll muted during in-flight submit');

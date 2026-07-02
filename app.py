@@ -13,7 +13,7 @@ from utils.production_secrets import load_production_secrets
 
 load_production_secrets(PROJECT_DIR)
 
-from flask import Flask, jsonify, session
+from flask import Flask, jsonify, request, session
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import json
 import shutil
@@ -432,6 +432,16 @@ def refresh_player_session():
 def prevent_html_cache(response):
     """避免手機瀏覽器快取舊版內嵌 HTML/JS。"""
     if response.content_type and "text/html" in response.content_type:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.after_request
+def prevent_combat_module_cache(response):
+    """ES module graph is cached per URL — combat JS must not stick across deploys."""
+    path = request.path or ""
+    if path.startswith("/static/js/combat/") and path.endswith(".js"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
     return response

@@ -100,6 +100,19 @@
 
 ---
 
+## 2026-07-02 — HP 0 需 F5（ES module 快取 + entry 競態）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 首進戰鬥敵人 HP 0；F5 後正常 |
+| **根因** | ES module 依賴鏈快取舊 FSM；poller 與 entry status 競態；status 覆蓋 start payload |
+| **修復** | 動態 `import(index.js?v=)`；combat JS `no-store`；`mergeEntryCombatPayload`；poller 延後；練習殭屍戰 ended |
+| **勿重複建議** | 硬編碼 `?v=41b9da1`（用 `deploy_version`） |
+
+見 `GEMINI_REVIEW.md` §35。
+
+---
+
 ## 2026-07-02 — 戰鬥 HP 0 卡死 + HUD 空白 + 劇情破圖（Gemini audit · 批判性審視）
 
 | 項目 | 內容 |

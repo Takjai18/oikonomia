@@ -1484,3 +1484,38 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 
 - V2 HUD **只渲染 HP 條**（非 dashboard 全屬性條）；神智等顯示在 dashboard／隊伍面板，唔係本輪 schema 錯位。
 - 唔建議再引入 `hp_value`/`power_value` 平行欄位 — 會加劇前後端摩擦。
+
+---
+
+## 35. 41b9da1 跟進：HP 0 需 F5 + ES module 快取 audit（2026-07-02）
+
+> **症狀**：部署 `41b9da1` 後，首進戰鬥仍見敵人 HP 0；**F5 後正常**。Gemini 建議硬編碼 `?v=41b9da1`。
+
+### 35.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| 手動 `bootstrap.js?v=41b9da1` | ❌ **拒絕硬編碼** | 已有 `?v={{ deploy_version }}`（`read_deploy_version()`） |
+| ES module 子圖快取導致舊 `state_machine.js` | ✅ **正確根因** | 只 bust entry 唔 bust `./index.js` 依賴鏈 → **動態 `import(\`./index.js?v=\`)`** + `/static/js/combat/*.js` `no-store` |
+| entry 時 poller 與手動 status 競態 | ✅ **正確** | **先** `await status` + `mergeEntryCombatPayload`，**後** `poller.start` |
+| status 覆蓋 start 的 0 HP snapshot | ✅ **邊界** | `mergeEntryCombatPayload`：active `player_phase` 無 outcome 時保留 start HP |
+| practice 重開 `shownSettlementIds` 隔離 | ✅ 已覆蓋 | `COMBAT_RESET` 清空 Set；殭屍戰鬥 **後端** 練習關卡 `enemy_hp<=0` 自動 `ended` |
+| skipModal 鞭屍 | ⚪ **延後** | 需實機連點驗證；本輪先修 entry 0 HP |
+| `/combat/start` 抽離 `combat_flow.py` | ⚪ **Phase 1.5** | 合理，非營會 hotfix |
+
+### 35.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| Entry merge + poller 延後啟動 | `index.js` |
+| `mergeEntryCombatPayload` | `settlement.js` |
+| 動態 versioned import | `bootstrap.js` + `data-combat-bootstrap` |
+| Combat JS `no-store` | `app.py` |
+| 新戰 phase≤1 防 0 HP | `models/combat.py` `build_enemy_combat_stats` |
+| 練習殭屍戰自動結束 | `routes/combat.py` |
+
+### 35.3 現場 SOP（仍有效）
+
+1. 核對 `/api/version` == 最新 commit  
+2. 異常時 Safari/Chrome **清除網站資料**（唔止 `sessionStorage.clear()`）  
+3. 練習關用 HUD「⚙ 離開戰鬥」後可再開；後端會清 `enemy_hp<=0` 殭屍紀錄

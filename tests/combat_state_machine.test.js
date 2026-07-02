@@ -17,7 +17,11 @@ import {
   syncState,
   determineSettlementRoute,
 } from '../static/js/combat/state_machine.js';
-import { normalizeSettlement, deriveSettlementId } from '../static/js/combat/settlement.js';
+import {
+  normalizeSettlement,
+  deriveSettlementId,
+  mergeEntryCombatPayload,
+} from '../static/js/combat/settlement.js';
 
 describe('Combat V2 state machine', () => {
   it('TERMINAL_PHASES SSOT covers endgame absorbing phases', () => {
@@ -456,6 +460,19 @@ describe('Combat V2 state machine', () => {
 });
 
 describe('Settlement normalization', () => {
+  it('mergeEntryCombatPayload prefers start HP when status returns transient 0', () => {
+    const merged = mergeEntryCombatPayload(
+      { enemy: { hp: 48, max_hp: 48, name: '速戰殘影' }, combat_id: 10 },
+      {
+        combat_id: 10,
+        status: 'player_phase',
+        active: true,
+        enemy: { hp: 0, max_hp: 48, name: '速戰殘影' },
+      },
+    );
+    assert.equal(merged.enemy.hp, 48);
+  });
+
   it('uses round_settlement when damage > 0', () => {
     const s = normalizeSettlement({
       round_settlement: { team_damage_dealt: 12, enemy_damage_dealt: 3, player_hits: [] },

@@ -1725,6 +1725,18 @@ def build_enemy_combat_stats(combat, encounter=None):
     else:
         hp = int(enemy_def.get("hp") or 0)
     max_hp = int(combat.get("enemy_max_hp") if combat.get("enemy_max_hp") is not None else enemy_def.get("hp") or hp)
+    summaries = [
+        e for e in (combat.get("logs") or [])
+        if isinstance(e, dict) and e.get("type") == "summary"
+    ]
+    if (
+        int(combat.get("current_phase") or 0) <= 1
+        and not summaries
+        and hp <= 0
+        and max_hp > 0
+        and combat.get("status") in (None, "player_phase", "precheck")
+    ):
+        hp = max_hp
     sanity = int(
         combat.get("enemy_sanity") if combat.get("enemy_sanity") is not None
         else enemy_def.get("sanity") or 0

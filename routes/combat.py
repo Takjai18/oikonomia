@@ -135,6 +135,16 @@ def combat_start_api(encounter_id=None):
     )
 
     status = "precheck" if precheck_passed else "player_phase"
+    if encounter_is_replayable(encounter):
+        stale = get_active_combat_for_team(team_id)
+        if stale and int(stale.get("enemy_hp") or 0) <= 0:
+            save_combat(
+                stale["id"],
+                status="ended",
+                winner="squad",
+                ended_at=datetime.now().isoformat(),
+            )
+            clear_team_combat_id(team_id)
     try:
         combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
     except ActiveCombatExistsError as exc:
