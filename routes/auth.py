@@ -15,6 +15,7 @@ from models.settings import settings
 from models.squad import get_squad, update_squad
 from services.player_status import build_player_status
 from services.session_auth import attach_restore_token, establish_player_session, verify_restore_token
+from utils.db_tx import get_db_connection, with_db_retry
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -27,62 +28,73 @@ def login():
     if not name:
         return jsonify({"error": "請輸入名稱"}), 400
 
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
+    def _login_lookup_and_maybe_create():
+        conn = get_db_connection(row_factory=sqlite3.Row)
+        try:
+            row = conn.execute(
+                "SELECT * FROM squads WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?))",
+                (name,),
+            ).fetchone()
+            if not row:
+                row = conn.execute(
+                    "SELECT * FROM squads WHERE squad_id = ?",
+                    (name,),
+                ).fetchone()
 
-    row = conn.execute(
-        "SELECT * FROM squads WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?))",
-        (name,),
-    ).fetchone()
-    if not row:
-        row = conn.execute(
-            "SELECT * FROM squads WHERE squad_id = ?",
-            (name,),
-        ).fetchone()
+            if row:
+                stored_pin = str(row["pin"] or "").strip()
+                has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
 
-    if row:
-        stored_pin = str(row["pin"] or "").strip()
-        has_pin = len(stored_pin) == 4 and stored_pin.isdigit()
+                if has_pin:
+                    if not input_pin:
+                        return {"require_pin": True, "message": "請輸入 PIN"}
+                    if len(input_pin) != 4:
+                        return {"success": False, "error": "PIN 必須為 4 位數字"}
+                    if input_pin != stored_pin:
+                        return {"success": False, "error": "PIN 錯誤"}
 
-        if has_pin:
-            if not input_pin:
-                conn.close()
-                return jsonify({
-                    "success": False,
-                    "require_pin": True,
-                    "message": "請輸入 PIN",
-                })
-            if len(input_pin) != 4:
-                conn.close()
-                return jsonify({
-                    "success": False,
-                    "error": "PIN 必須為 4 位數字",
-                })
-            if input_pin != stored_pin:
-                conn.close()
-                return jsonify({
-                    "success": False,
-                    "error": "PIN 錯誤",
-                })
+                squad_id = row["squad_id"]
+            else:
+                squad_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
+                while get_squad(squad_id):
+                    squad_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
 
-        squad_id = row["squad_id"]
-    else:
-        squad_id = f"PLAYER-{int(time.time() * 1000) % 100000}"
-        while get_squad(squad_id):
-            squad_id = f"PLAYER-{(int(time.time() * 1000) + int(time.time() * 1000000) % 9999) % 100000}"
+                conn.execute(
+                    """INSERT INTO squads
+                       (squad_id, display_name, power, intellect, resilience, stats_allocated)
+                       VALUES (?, ?, 10, 10, 10, 0)""",
+                    (squad_id, name),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM squads WHERE squad_id = ?",
+                    (squad_id,),
+                ).fetchone()
 
-        c = conn.cursor()
-        c.execute(
-            """INSERT INTO squads
-               (squad_id, display_name, power, intellect, resilience, stats_allocated)
-               VALUES (?, ?, 10, 10, 10, 0)""",
-            (squad_id, name),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM squads WHERE squad_id = ?", (squad_id,)).fetchone()
+            establish_player_session(squad_id)
+            return {"squad_id": squad_id, "row": row}
+        finally:
+            conn.close()
 
-    establish_player_session(squad_id)
-    conn.close()
+    try:
+        outcome = with_db_retry(_login_lookup_and_maybe_create)
+    except sqlite3.OperationalError:
+        return jsonify({
+            "success": False,
+            "error": "伺服器忙碌，請稍後再試",
+        }), 503
+
+    if outcome.get("require_pin"):
+        return jsonify({
+            "success": False,
+            "require_pin": True,
+            "message": outcome.get("message", "請輸入 PIN"),
+        })
+    if outcome.get("success") is False:
+        return jsonify(outcome), 400
+
+    squad_id = outcome["squad_id"]
+    row = outcome["row"]
 
     squad = get_squad(squad_id)
     status = build_player_status(squad)
@@ -112,8 +124,6 @@ def session_restore():
 
     team_id = squad.get("team_id")
     if team_id:
-        from utils.db_tx import with_db_retry
-
         def _restore_active_combat_hint():
             active_combat = get_active_combat_for_team(team_id)
             if not active_combat:

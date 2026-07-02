@@ -100,6 +100,19 @@
 
 ---
 
+## 2026-07-02 — iPhone Safari 登入「網絡連線」假錯誤（Gemini audit · 批判性審視）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | Safari 顯示「登入失敗，請重試或檢查網絡連線」 |
+| **Gemini 根因** | Cookie 缺 Secure/SameSite；DB lock；10s 超時 |
+| **取捨** | ❌ Cookie **已配置**（curl 驗證 Set-Cookie）· ❌ 唔用 `DATA_DIR` 判 Cookie · ✅ `/login` 改 WAL+retry · ✅ 25s 超時+具體錯誤文案 |
+| **勿重複建議** | 再貼 `app.py` Cookie 區塊（L40–47 已有） |
+
+詳見 `GEMINI_REVIEW.md` §31。
+
+---
+
 ## 2026-07-02 — Gemini df5acea 跟進 audit（批判性審視）
 
 | Gemini 項 | 審視 | 處理 |

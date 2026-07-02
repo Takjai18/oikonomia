@@ -37,6 +37,7 @@ if _is_production_env() and not app.secret_key:
     raise RuntimeError("SECRET_KEY environment variable is required in production")
 if _is_production_env() and not os.environ.get("GM_PIN"):
     raise RuntimeError("GM_PIN environment variable is required in production")
+# Safari / iOS: Secure + SameSite=Lax + HttpOnly (Render HTTPS). Do not gate on DATA_DIR alone.
 app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") == "production",
     SESSION_COOKIE_SAMESITE="Lax",

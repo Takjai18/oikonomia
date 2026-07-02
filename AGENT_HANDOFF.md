@@ -49,6 +49,14 @@
 | Low：bootstrap.js cache bust | ✅ **採用改良版**：`?v={{ deploy_version }}`（`routes/misc.py`），唔硬編碼 commit |
 | Ops：`/api/version` + `sessionStorage.clear()` | ✅ 記入文檔；唔改 code |
 
+### Safari 登入假「網絡錯誤」（Gemini audit · 見 §31）
+
+| Gemini 項 | 審視 |
+|-----------|------|
+| Cookie Secure/SameSite | ❌ **已 ship**（`app.py`）；curl 驗證 OK |
+| `/login` WAL + retry | ✅ **採用**（`routes/auth.py`） |
+| 25s 超時 + 具體錯誤 | ✅ **採用**（`index.html`） |
+
 ---
 
 ## Context 管理協議（Grok Build 必守 · 2026-06-30）

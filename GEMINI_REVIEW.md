@@ -2,7 +2,7 @@
 
 > **用途**：畀 **Gemini** 做第三方 Engineer 的 **Code Review** 同 **Debug** 時，請**先讀本文**，再按指引睇檔案。  
 > **專案**：Summer Camp 2026 ARG · Flask + SQLite · 玩家 ~20 人 · 營會現場 3 日  
-> **最後更新**：2026-07-02 · **基準 commit `df5acea`+**（§30 批判性審視協議 · 已修對照 §18–§30）
+> **最後更新**：2026-07-02 · **§31 Safari 登入 audit**（已修對照 §18–§31）
 > **正式環境**：https://oikonomia.onrender.com（Render Starter · Singapore；PA 僅後備）
 
 ---
@@ -1347,3 +1347,39 @@ Tak 提交咗 Gemini Audit Report。
 請依 README「Gemini Audit 批判性審視」+ GEMINI_REVIEW §30：
 逐項驗證、分類、只實作缺口、更新文檔，唔盲目 copy Gemini 範例 code。
 ```
+
+---
+
+## 31. iPhone Safari「登入失敗／檢查網絡」audit（2026-07-02）
+
+> **症狀**：iPhone Safari 顯示「登入失敗，請重試或檢查網絡連線」，Wi‑Fi/5G 正常。  
+> **審視**：Gemini 歸因 Cookie + DB lock + 10s 超時；**須 curl 驗證後取捨**。
+
+### 31.1 逐項取捨
+
+| Gemini 建議 | 審視 | 決定 |
+|-------------|------|------|
+| **根因 A**：Safari 吞 Cookie（缺 Secure/SameSite） | ❌ **不成立** | `app.py` L40–47 **已有** `Secure`+`Lax`+`HttpOnly`（`RENDER=true`）；`curl -D - POST /login` 見 `Set-Cookie: … Secure; SameSite=Lax` |
+| 用 `DATA_DIR` 判定生產環境加 Cookie | ❌ **錯誤條件** | 應用 `RENDER` / `FLASK_ENV`（已用） |
+| **根因 B**：SQLite `database is locked` | ⚠️ **部分成立** | `/login` 曾用裸 `sqlite3.connect`（無 WAL/busy_timeout）→ **已改** `get_db_connection` + `with_db_retry` |
+| **10s → 25s** session 超時 | ✅ **採用** | `SESSION_FETCH_TIMEOUT_MS` / boot safety 25–28s |
+| 登入表單 `fetch` 無超時 | ✅ **補充** | 改 `fetchWithTimeout` + 非 JSON/502/503 **具體錯誤**（唔再一律「網絡連線」） |
+| 清除 Safari 網站資料 | ✅ **Ops SOP** | 舊 ghost cookie／快取時有效 |
+| CORS 問題 | ❌ **不成立** | 同源 `credentials: 'same-origin'` |
+
+### 31.2 真實根因（綜合）
+
+1. **誤導性 UI**：`login()` `catch` 將逾時、502 HTML、JSON 解析失敗統稱「網絡連線」  
+2. **登入 DB 路徑未硬化**：熱寫入競爭時 `/login` 可能 503（現回「伺服器忙碌」）  
+3. **Render cold start**：偶發 502/503 → 應提示「伺服器喚醒」  
+4. Cookie 配置 **非** 本輪缺口（已 ship）
+
+### 31.3 驗證
+
+```bash
+curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad_id=test&pin="
+# 預期：HTTP 200；Set-Cookie 含 Secure; SameSite=Lax
+./venv/bin/python3 scripts/test_combat_flow.py   # 297/297
+```
+
+**iPhone SOP**：設定 → Safari → 進階 → 網站資料 → 刪除 `onrender.com` → 重開 → 登入。

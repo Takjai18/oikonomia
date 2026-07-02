@@ -3695,7 +3695,35 @@
             } catch (e) { /* ignore */ }
         }
 
-        const SESSION_FETCH_TIMEOUT_MS = 10000;
+        const SESSION_FETCH_TIMEOUT_MS = 25000;
+        const LOGIN_FETCH_TIMEOUT_MS = 25000;
+
+        function describeLoginFetchError(err, res = null) {
+            if (err?.name === 'AbortError') {
+                return '連線逾時，伺服器可能正在喚醒，請稍後再試';
+            }
+            if (res && (res.status === 502 || res.status === 503)) {
+                return '伺服器正在喚醒，請等數秒後再試';
+            }
+            if (res && !res.ok) {
+                return `登入失敗（HTTP ${res.status}），請稍後再試`;
+            }
+            if (String(err?.message || '').startsWith('non-json:')) {
+                const code = err.message.split(':')[1] || '';
+                return code === '502' || code === '503'
+                    ? '伺服器正在喚醒，請等數秒後再試'
+                    : '伺服器回應異常，請稍後再試';
+            }
+            return '登入失敗，請重試；若仍失敗請清除 Safari 網站資料後再試';
+        }
+
+        async function parseLoginJsonResponse(res) {
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error(`non-json:${res.status}`);
+            }
+            return res.json();
+        }
 
         async function fetchWithTimeout(url, options = {}, timeoutMs = SESSION_FETCH_TIMEOUT_MS) {
             const controller = new AbortController();
@@ -3869,7 +3897,7 @@
                 console.warn('session restore safety timeout');
                 showLoginScreenAfterFailedRestore(loadLocalSession());
                 sessionBootDone = true;
-            }, 12000);
+            }, 28000);
             try {
                 await restoreSession();
             } catch (e) {
@@ -3963,22 +3991,29 @@
                 showToast('請輸入 4 位數字 PIN', 'error');
                 return;
             }
-            const res = await fetch('/login', {
-                method: 'POST',
-                credentials: 'same-origin',
-                body: new URLSearchParams({squad_id: name, pin: cleanPin})
-            });
-            const data = await res.json();
-            if (data.success !== false && data.squad_id) {
-                persistRestoreToken(data);
-                await completeLogin(data);
-            } else {
-                showToast(data.error || data.message || 'PIN 錯誤', 'error');
+            let res;
+            try {
+                res = await fetchWithTimeout('/login', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({ squad_id: name, pin: cleanPin }),
+                }, LOGIN_FETCH_TIMEOUT_MS);
+                const data = await parseLoginJsonResponse(res);
+                if (data.success !== false && data.squad_id) {
+                    persistRestoreToken(data);
+                    await completeLogin(data);
+                } else {
+                    showToast(data.error || data.message || 'PIN 錯誤', 'error');
+                }
+            } catch (err) {
+                console.error('loginWithPin failed', err);
+                showToast(describeLoginFetchError(err, res), 'error');
             }
         }
 
         async function login(e) {
             e.preventDefault();
+            let res;
             try {
                 const name = document.getElementById('squad_id').value.trim();
                 const pin = normalizeLoginPin(document.getElementById('login_pin').value);
@@ -3988,12 +4023,12 @@
                     document.getElementById('login_pin')?.focus();
                     return;
                 }
-                const res = await fetch('/login', {
+                res = await fetchWithTimeout('/login', {
                     method: 'POST',
                     credentials: 'same-origin',
-                    body: new URLSearchParams({squad_id: name, pin: pin})
-                });
-                const data = await res.json();
+                    body: new URLSearchParams({ squad_id: name, pin: pin }),
+                }, LOGIN_FETCH_TIMEOUT_MS);
+                const data = await parseLoginJsonResponse(res);
 
                 if (data.success !== false && data.squad_id) {
                     persistRestoreToken(data);
@@ -4019,7 +4054,7 @@
                 }
             } catch (err) {
                 console.error('login failed', err);
-                showToast('登入失敗，請重試或檢查網絡連線', 'error');
+                showToast(describeLoginFetchError(err, res), 'error');
             }
         }
 
