@@ -2,7 +2,7 @@
 
 > **本檔給 Grok Build**（實作 Agent）。用戶會開新 tab 繼續開發；請**直接執行**，唔好只係話用戶點做。  
 > **你的責任**：改 code → 驗證 → commit/push GitHub → **確保 Render.com 同 local 版本一致**（見 Deploy 一節）。PA 僅後備。  
-> 最後更新：2026-07-02 · **commit `df5acea`**（Render 死圖 + 勝利 FSM）· BUG-2026-001 **resolved**
+> 最後更新：2026-07-02 · **commit TBD**（戰鬥 entry HUD + 劇情肖像 · §34）· BUG-2026-001 **resolved**
 
 | 角色 | 文檔 | 職責 |
 |------|------|------|
@@ -48,6 +48,15 @@
 | High：skipToVictory / poll→VICTORY | ✅ **已 ship**（`df5acea`）；`syncState` poll 路徑已覆蓋已看結算 |
 | Low：bootstrap.js cache bust | ✅ **採用改良版**：`?v={{ deploy_version }}`（`routes/misc.py`），唔硬編碼 commit |
 | Ops：`/api/version` + `sessionStorage.clear()` | ✅ 記入文檔；唔改 code |
+
+### 戰鬥 HP 0 卡死 + HUD + 劇情破圖（Gemini audit · §34）
+
+| Gemini 項 | 審視 |
+|-----------|------|
+| FSM 殘留 `enemy_hp:0` + `skipModal` | ✅ `buildHudFromSnapshot`；`isKillingBlow` 僅 `outcome/winner` |
+| `power_value` / `hp_value` mismatch | ❌ 欄位不存在；真因係 `/combat/start` 缺 `my_state` |
+| 劇情 portrait 404 | ✅ `showCurrentStoryLine` 路徑 + `onerror` |
+| 練習離開戰鬥 | ✅ `practice_*` HUD 按鈕 |
 
 ### Safari / Android 登入（Gemini audit · §31–§32）
 

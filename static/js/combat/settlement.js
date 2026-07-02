@@ -125,6 +125,7 @@ export function extractHud(snapshot) {
     me,
     team_id: teamId,
     route,
+    encounter_id: snapshot.encounter_id || null,
     members: snapshot.member_states || {},
     log: snapshot.log_entries || snapshot.log || [],
     waiting: !!snapshot.waiting_for_teammates,

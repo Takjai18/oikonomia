@@ -168,15 +168,18 @@ export class CombatApp {
 
     const toggle = this.rootEl.querySelector(`#${DOM_IDS.PROTAGONIST_TOGGLE}`);
     if (toggle) toggle.checked = false;
-    if (data.enemy || data.status) {
-      this.ctx.hud = extractHud(data);
-    }
-    renderAll(this.views, this.ctx);
+
     this.poller.start(data.combat_id);
     try {
       const snapshot = await CombatApi.status(data.combat_id);
+      this.ctx.hud = extractHud({ ...data, ...snapshot });
       this.pollTick(snapshot);
-    } catch (_) { /* noop */ }
+    } catch (_) {
+      if (data.enemy || data.status || data.my_state) {
+        this.ctx.hud = extractHud(data);
+      }
+      renderAll(this.views, this.ctx);
+    }
   }
 
   dispatch(event, meta = {}) {
@@ -515,9 +518,6 @@ export class CombatApp {
 
     const { ctx, effects } = transition(this.ctx, 'POLL_TICK', { snapshot });
     this.ctx = ctx;
-    if (this.ctx.entrySyncPending) {
-      this.ctx.entrySyncPending = false;
-    }
     this.poller.setPhase(ctx.phase);
     this.applyEffects(effects);
 

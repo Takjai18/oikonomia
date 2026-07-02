@@ -289,6 +289,40 @@ describe('Combat V2 state machine', () => {
     assert.ok(!effects.some((e) => e.type === 'SHOW_SETTLEMENT'));
   });
 
+  it('entry sync ignores stale ctx enemy hp when snapshot has fresh values', () => {
+    const ctx = {
+      ...createInitialContext(100),
+      phase: Phase.IDLE,
+      entrySyncPending: true,
+      hud: { enemy: { hp: 0, max_hp: 200, name: 'Stale' }, me: null, members: {}, log: [] },
+    };
+    const { ctx: next } = syncState(ctx, {
+      combat_id: 100,
+      status: 'player_phase',
+      current_phase: 1,
+      settled_round_index: 0,
+      round_resolved: false,
+      enemy: { hp: 180, max_hp: 200, name: 'Fresh' },
+      my_state: { hp: 90, max_hp: 100, submitted: false },
+      member_states: { s1: { hp: 90, submitted: false } },
+    });
+    assert.equal(next.hud.enemy.hp, 180);
+    assert.equal(next.hud.me.hp, 90);
+    assert.equal(next.entrySyncPending, false);
+  });
+
+  it('determineSettlementRoute: enemy hp 0 alone is not killing blow', () => {
+    const ctx = { ...createInitialContext(1), settledRoundIndex: 0, shownSettlementIds: new Set() };
+    const route = determineSettlementRoute(
+      ctx,
+      { settled_round_index: 0, combat_id: 1, enemy: { hp: 0 } },
+      { team_damage_dealt: 5 },
+      '1:0',
+    );
+    assert.equal(route.isKillingBlow, false);
+    assert.equal(route.settlementId, '1:0');
+  });
+
   it('killing blow with already-shown settlement → skipToVictory', () => {
     const ctx = {
       ...createInitialContext(42),

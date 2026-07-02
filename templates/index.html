@@ -2008,7 +2008,16 @@
                 }
             } else {
                 if (portraitSection) setVisible(portraitSection, true);
-                if (portraitEl && line.portrait) portraitEl.src = line.portrait;
+                if (portraitEl && line.portrait) {
+                    const raw = String(line.portrait).trim();
+                    portraitEl.src = (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/'))
+                        ? raw
+                        : `/static/portraits/${raw}`;
+                    portraitEl.onerror = () => {
+                        portraitEl.onerror = null;
+                        portraitEl.src = '/static/avatars/default.png';
+                    };
+                }
                 if (nameEl) nameEl.textContent = line.character || '';
                 if (textEl) {
                     textEl.style.fontStyle = 'normal';

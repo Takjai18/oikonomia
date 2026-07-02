@@ -34,6 +34,7 @@ export const DOM_IDS = {
   VICTORY_PANEL: 'combat-v2-result-panel',
   FAILED_PANEL: 'combat-v2-failed-panel',
   TOAST: 'combat-v2-toast',
+  PRACTICE_EXIT_BTN: 'combat-v2-practice-exit-btn',
 };
 
 export const TEST_IDS = {

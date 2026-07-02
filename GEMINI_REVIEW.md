@@ -1448,3 +1448,39 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 
 - **`/allocate_stats` 從未在 `player.py`**；審計前應 `rg allocate_stats routes/`。
 - 健康度 5/10（路由缺失）**不成立** — 實際為寫入路徑未硬化。
+
+---
+
+## 34. 戰鬥 HP 0 卡死 + HUD 空白 + 劇情破圖 audit（2026-07-02 · 批判性審視）
+
+> **症狀**：進入戰鬥敵人 HP 顯示 0 且無法行動；HUD 能力值空白；劇情 Iggy 頭像藍色問號。
+
+### 34.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| **Critical**：`determineSettlementRoute` + 舊 `enemy_hp:0` 快照鎖死 FSM | ✅ **部分正確** | `syncState` 用 `snapshot.enemy \|\| ctx.hud.enemy` 在 entry 時可保留殘留 HP；`isKillingBlow` 曾把 `enemy.hp<=0` 當勝利信號 → **已修** `buildHudFromSnapshot` + 僅 `outcome/winner` 判定 killing |
+| `createInitialContext` 加 `entrySyncPending: true` | ⚠️ **半重複** | `index.js` `onCombatStarted` 已設；維持 `false` 預設，由 entry 事件開啟 |
+| **Critical**：`power_value` / `hp_value` 欄位不一致 | ❌ **不成立** | `grep` 全 repo 無此欄位；後端仍用 `hp`/`max_hp`/`sanity` |
+| HUD 空白真因：`/combat/start` 缺 `my_state` | ✅ **正確** | start 只回 `enemy` → 首屏 `me: null`；**已修** start 附 `my_state` + `member_states` |
+| `renderPlayerStatsSafely` 讀 `hp_value` | ❌ **拒絕** | 改 `hud_view` 用 `parseCombatHp` 防禦性解析既有欄位 |
+| **High**：劇情 `line.portrait` 無正規化 / onerror | ✅ **正確** | `showCurrentStoryLine` 直接賦 `src` → **已修** 路徑拼接 + `onerror` 降級 `default.png` |
+| **Low**：練習模式「離開戰鬥」 | ✅ **採用** | `combat_screen.html` `practice_*` 顯示 ⚙ 離開 → `exitCombatScreen({fromV2:true})` |
+
+### 34.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| Entry HUD 嚴格覆蓋（唔 merge 舊 enemy） | `state_machine.js` `buildHudFromSnapshot` |
+| `isKillingBlow` 僅勝利信號；`skipModal` 清 `isKillingBlow` | 同上 `determineSettlementRoute` / `SUBMIT_SUCCESS` |
+| 開局先 `/combat/status` 再渲染 | `index.js` `onCombatStarted` |
+| start API 附 `my_state` | `routes/combat.py` |
+| HP bar `parseCombatHp` | `views/hud_view.js` |
+| 劇情肖像 fallback | `templates/index.html` |
+| 練習離開按鈕 | `combat_screen.html` + `hud_view.js` |
+| FSM 測試 +2 | `tests/combat_state_machine.test.js`（32/32） |
+
+### 34.3 審計提醒（俾 Gemini）
+
+- V2 HUD **只渲染 HP 條**（非 dashboard 全屬性條）；神智等顯示在 dashboard／隊伍面板，唔係本輪 schema 錯位。
+- 唔建議再引入 `hp_value`/`power_value` 平行欄位 — 會加劇前後端摩擦。

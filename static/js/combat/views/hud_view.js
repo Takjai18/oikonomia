@@ -1,5 +1,6 @@
 import { DOM_IDS, TEST_IDS } from '../selectors.js';
 import { bindAvatarImage } from '../avatar_urls.js';
+import { parseCombatHp } from '../state_machine.js';
 
 export function createHudView(rootEl) {
   const enemyAvatar = rootEl.querySelector(`#${DOM_IDS.ENEMY_AVATAR}`);
@@ -12,16 +13,19 @@ export function createHudView(rootEl) {
   const playerHpBar = rootEl.querySelector(`#${DOM_IDS.PLAYER_HP_BAR}`);
   const teamStatus = rootEl.querySelector(`#${DOM_IDS.TEAM_STATUS}`);
   const logEl = rootEl.querySelector(`#${DOM_IDS.LOG}`);
+  const practiceExitBtn = rootEl.querySelector(`#${DOM_IDS.PRACTICE_EXIT_BTN}`);
 
   function hpPct(hp, max) {
-    const h = parseInt(hp, 10);
-    const m = parseInt(max, 10) || 1;
+    const h = parseCombatHp(hp, max);
+    const m = parseCombatHp(max, 100);
     return `${Math.max(0, Math.min(100, (h / m) * 100))}%`;
   }
 
   function setHp(bar, text, hp, max) {
-    if (bar) bar.style.width = hpPct(hp, max);
-    if (text) text.textContent = `${hp ?? '—'}/${max ?? '—'}`;
+    const maxVal = parseCombatHp(max, 100);
+    const hpVal = parseCombatHp(hp, maxVal);
+    if (bar) bar.style.width = hpPct(hpVal, maxVal);
+    if (text) text.textContent = `${hpVal}/${maxVal}`;
   }
 
   return {
@@ -63,6 +67,11 @@ export function createHudView(rootEl) {
           const msg = typeof e === 'string' ? e : (e.message || '');
           return `<div class="text-zinc-400 text-xs py-0.5">${escapeHtml(msg)}</div>`;
         }).join('');
+      }
+      if (practiceExitBtn) {
+        const encounterId = ctx.hud?.encounter_id || '';
+        const showPracticeExit = typeof encounterId === 'string' && encounterId.startsWith('practice_');
+        practiceExitBtn.classList.toggle('hidden', !showPracticeExit);
       }
     },
   };

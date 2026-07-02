@@ -100,6 +100,19 @@
 
 ---
 
+## 2026-07-02 — 戰鬥 HP 0 卡死 + HUD 空白 + 劇情破圖（Gemini audit · 批判性審視）
+
+| 項目 | 內容 |
+|------|------|
+| **Gemini 稱** | FSM 殘留 `enemy_hp:0`；`power_value` 欄位不一致；劇情 portrait 404 |
+| **取捨** | ✅ entry HUD merge + killing blow 判定 · ❌ `power_value`（不存在）· ✅ start 補 `my_state` · ✅ story onerror |
+| **修復** | `buildHudFromSnapshot`；`determineSettlementRoute`；`onCombatStarted` 先 status；`combat/start`；劇情肖像；練習離開鈕 |
+| **驗證** | `npm run test:combat` 32/32 · `test_combat_flow` 299/299 |
+
+見 `GEMINI_REVIEW.md` §34。
+
+---
+
 ## 2026-07-02 — allocate_stats「分配失敗」（Gemini audit · 批判性審視）
 
 | 項目 | 內容 |

@@ -1,6 +1,6 @@
 /** @file Pure combat FSM — zero DOM dependency */
 
-import { normalizeSettlement, deriveSettlementId } from './settlement.js';
+import { normalizeSettlement, deriveSettlementId, extractHud } from './settlement.js';
 
 /** Fallback when HP field is missing (display / max baseline — not “alive” sentinel). */
 export const DEFAULT_COMBAT_MAX_HP = 100;
@@ -207,20 +207,7 @@ export function syncState(ctx, snapshot) {
     return { ctx, effects: [] };
   }
 
-  const hud = {
-    enemy: snapshot.enemy || ctx.hud.enemy,
-    me: snapshot.my_state || ctx.hud.me,
-    members: snapshot.member_states || ctx.hud.members,
-    log: snapshot.log_entries || snapshot.log || ctx.hud.log,
-    waiting: !!snapshot.waiting_for_teammates,
-    submittedCount: snapshot.submitted_count,
-    totalActive: snapshot.total_active,
-    currentPhase: snapshot.current_phase,
-    combatId: snapshot.combat_id,
-    status: snapshot.status,
-    outcome: snapshot.outcome,
-    winner: snapshot.winner,
-  };
+  const hud = buildHudFromSnapshot(ctx, snapshot);
 
   let newCtx = { ...ctx, hud, combatId: snapshot.combat_id || ctx.combatId };
   let effects = [{ type: 'UPDATE_HUD', hpOnly: isHpOnlyPhase(ctx.phase) }];
@@ -344,9 +331,7 @@ export function syncState(ctx, snapshot) {
     const settlement = normalizeSettlement(snapshot);
     const settlementId = deriveSettlementId(snapshot);
     if (settlement && settlementId && !ctx.shownSettlementIds.has(settlementId)) {
-      const killing = snapshot.outcome === 'victory'
-        || snapshot.winner === 'squad'
-        || isEnemyDefeated(snapshot.enemy);
+      const killing = snapshot.outcome === 'victory' || snapshot.winner === 'squad';
       newCtx = {
         ...newCtx,
         phase: Phase.SETTLEMENT,
@@ -372,6 +357,26 @@ export function syncState(ctx, snapshot) {
 
 function isHpOnlyPhase(phase) {
   return DICE_BUSY.has(phase) || phase === Phase.SUBMITTING || phase === Phase.SETTLEMENT;
+}
+
+/** Entry / combat-id change — never merge stale enemy_hp_after or settlement caches. */
+function buildHudFromSnapshot(ctx, snapshot) {
+  const freshCombat = snapshot.combat_id != null
+    && ctx.combatId != null
+    && String(snapshot.combat_id) !== String(ctx.combatId);
+  if (ctx.entrySyncPending || freshCombat) {
+    return extractHud(snapshot);
+  }
+  const extracted = extractHud(snapshot);
+  return {
+    ...extracted,
+    enemy: extracted.enemy ?? ctx.hud?.enemy ?? null,
+    me: extracted.me ?? ctx.hud?.me ?? null,
+    members: Object.keys(extracted.members || {}).length
+      ? extracted.members
+      : (ctx.hud?.members || {}),
+    log: (extracted.log?.length ? extracted.log : ctx.hud?.log) || [],
+  };
 }
 
 /**
@@ -543,6 +548,7 @@ const TRANSITIONS = {
             phase: Phase.IDLE,
             settledRoundIndex: meta.settledRoundIndex ?? ctx.settledRoundIndex,
             pollPaused: false,
+            isKillingBlow: false,
           };
         }
         return {
@@ -753,9 +759,7 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
       settledRoundIndex: ctx.settledRoundIndex,
     };
   }
-  const isKillingBlow = apiData.outcome === 'victory'
-    || apiData.winner === 'squad'
-    || (apiData.enemy?.hp ?? 1) <= 0;
+  const isKillingBlow = apiData.outcome === 'victory' || apiData.winner === 'squad';
   if (ctx.shownSettlementIds.has(settlementId)) {
     if (isKillingBlow) {
       return {

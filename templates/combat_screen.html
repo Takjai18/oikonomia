@@ -1,6 +1,10 @@
 {# Combat V2 mount skeleton — included when COMBAT_V2 enabled #}
-<div id="combat-root-v2" class="combat-v2 flex flex-col min-h-[70vh] max-w-md lg:max-w-6xl mx-auto px-1 sm:px-0 hidden"
+<div id="combat-root-v2" class="combat-v2 relative flex flex-col min-h-[70vh] max-w-md lg:max-w-6xl mx-auto px-1 sm:px-0 hidden"
      data-testid="combat-v2-screen">
+  <button type="button" id="combat-v2-practice-exit-btn"
+          class="hidden absolute top-2 right-2 z-10 px-2 py-1 rounded-lg bg-zinc-800/90 border border-zinc-600 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white"
+          onclick="exitCombatScreen({ fromV2: true })"
+          title="離開練習戰鬥">⚙ 離開戰鬥</button>
   <section id="combat-v2-hud" class="shrink-0 px-3 py-2 grid grid-cols-2 gap-2 max-h-20">
     <div class="flex items-center gap-2 min-w-0">
       <img id="combat-v2-enemy-avatar" src="/static/images/enemies/parasite_shadow.svg"
