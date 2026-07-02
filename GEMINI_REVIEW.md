@@ -1549,3 +1549,32 @@ curl -s -D - -o /dev/null -X POST https://oikonomia.onrender.com/login -d "squad
 | `resolveCombatStats` + vitals 永遠更新（含 `hpOnly` poll） | `stats.js` + `hud_view.js` |
 | entry 保留 `my_state` | `settlement.js` `mergeEntryCombatPayload` |
 | marker `combat_stats_v2` | `routes/misc.py` → `combat-v2-player-power` |
+
+---
+
+## 37. 大廳 /status 髒快照 + 終端 poll 重複 audit（2026-07-02 · 批判性審視）
+
+> **背景**：`9d31b63` 已釋放終端 stale guard 與 `releaseCombatBridgeLock()`。Gemini 擔心 SQLite 多 worker 下 `/status` 讀到未 COMMIT 的 `current_combat_id`，導致大廳/戰場閃爍死鎖。
+
+### 37.1 逐項取捨
+
+| Gemini 說法 | 審視 | 決定 |
+|-------------|------|------|
+| **Critical**：`/status` 回傳 ended 戰鬥的 `current_combat_id` | ✅ **正確** | `build_player_status` 直接 `**squad` 展開；`/session/restore` 與 `/encounters` 已有 reconcile，**`/status` 缺** → **已修** |
+| 應強制清空 ended 的 `current_combat_id` | ✅ **採用** | `reconcile_status_combat_fields()` + `with_db_retry` 於 `GET /status` |
+| Gunicorn worker Session 分裂 | ❌ **不成立**（本輪） | Flask signed cookie session；非本輪根因 |
+| **High**：`syncState` 需 TERMINAL_PHASES 頂層攔截 | ✅ **已出貨** | `state_machine.js` L199 `ABSORBING.has(ctx.phase)` → `{ ctx, effects: [] }`；測試 `R12-D` |
+| **Low**：大廳 `/status` fallback 加錯誤代碼 | ✅ **採用** | `describeStatusFetchError` + `[ERR_STATUS_*]` / `[ERR_DB_LOCK]` toast |
+
+### 37.2 本輪修復
+
+| 項目 | 檔案 |
+|------|------|
+| `/status` reconcile（與 restore/encounters 同 SSOT） | `services/player_status.py` + `routes/player.py` |
+| Smoke：`test_status_reconcile_stale_current_combat_id` | `scripts/test_combat_flow.py` |
+| Fallback 錯誤代碼 toast | `templates/index.html` |
+
+### 37.3 審計提醒（俾 Gemini）
+
+- 大廳 3s poll **唔會**因 `current_combat_id` 單獨重設 `COMBAT_V2_LOCK`；鎖重設主要經 `finishSessionRestore`。後端清空 ID 即可切斷污染鏈。
+- `isPlayerInActiveCombatV2` 仍會在 `combat-root-v2` 可見時自保鎖定；`exitCombatScreen` 會 hide root + `clearActiveCombatBridge`。

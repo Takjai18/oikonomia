@@ -2037,6 +2037,51 @@ def test_encounters_reconcile_stale_active_combat(client, team_id, leader_id):
     clear_team_combat_id(team_id)
 
 
+def test_status_reconcile_stale_current_combat_id(client, team_id, leader_id):
+    """GET /status must not return stale current_combat_id after combat finished."""
+    from models.combat import (
+        clear_team_combat_id,
+        create_combat_record,
+        get_active_combat_for_team,
+        save_combat,
+        set_team_combat_id,
+    )
+    from models.encounter import load_encounter
+    from models.squad import get_squad
+
+    enc = load_encounter("practice_iggy_01_quick")
+    clear_team_combat_id(team_id)
+    combat = create_combat_record(
+        leader_id, enc["encounter_id"], enc, initial_status="player_phase",
+    )
+    combat_id = combat["id"]
+
+    save_combat(combat_id, status="player_phase", enemy_hp=0)
+    set_team_combat_id(team_id, combat_id)
+
+    r = client.get("/status")
+    data = r.get_json() or {}
+    ok("status reconcile: success", data.get("success"), str(data)[:200])
+    ok(
+        "status reconcile: no stale current_combat_id",
+        not data.get("current_combat_id"),
+        str(data),
+    )
+    ok(
+        "status reconcile: squad current_combat_id cleared",
+        not get_squad(leader_id).get("current_combat_id"),
+        str(get_squad(leader_id)),
+    )
+    ok(
+        "status reconcile: get_active_combat_for_team empty",
+        get_active_combat_for_team(team_id) is None,
+        str(data),
+    )
+
+    save_combat(combat_id, status="ended", winner="squad")
+    clear_team_combat_id(team_id)
+
+
 def test_practice_boundary_settlement_enemy_hp(client, team_id):
     """Round settlement must include enemy_hp_after matching DB after damage."""
     from models.protagonist import update_protagonist_state
@@ -2161,6 +2206,7 @@ def main():
 
     test_encounter_list_hides_test_for_players(client, team_id)
     test_encounters_reconcile_stale_active_combat(client, team_id, leader_id)
+    test_status_reconcile_stale_current_combat_id(client, team_id, leader_id)
     test_practice_encounter_replayable(client, team_id)
     test_practice_boundary_settlement_enemy_hp(client, team_id)
 

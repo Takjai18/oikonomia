@@ -3734,6 +3734,32 @@
         const SESSION_FETCH_TIMEOUT_MS = 25000;
         const LOGIN_FETCH_TIMEOUT_MS = 25000;
 
+        function describeStatusFetchError(err, res = null) {
+            if (err?.name === 'AbortError') {
+                return '連線逾時 [ERR_STATUS_TIMEOUT]，請檢查網絡連線';
+            }
+            if (res?.status === 503) {
+                return '伺服器忙碌 [ERR_DB_LOCK]，請再試';
+            }
+            if (res?.status === 502) {
+                return '伺服器正在喚醒 [ERR_STATUS_502]，請等數秒後再試';
+            }
+            if (res?.status === 404) {
+                return '登入失敗 [ERR_STATUS_404]，請檢查網絡連線';
+            }
+            if (res && !res.ok) {
+                return `登入失敗 [ERR_STATUS_${res.status}]，請檢查網絡連線`;
+            }
+            if (String(err?.message || '').startsWith('non-json:')) {
+                const code = err.message.split(':')[1] || '';
+                if (code === '502' || code === '503') {
+                    return `伺服器忙碌 [ERR_STATUS_${code}]，請稍後再試`;
+                }
+                return `伺服器回應異常 [ERR_STATUS_${code || 'NON_JSON'}]，請稍後再試`;
+            }
+            return '登入失敗 [ERR_STATUS_UNKNOWN]，請檢查網絡連線';
+        }
+
         function describeLoginFetchError(err, res = null) {
             if (err?.name === 'AbortError') {
                 return '連線逾時，伺服器可能正在喚醒，請稍後再試';
@@ -3776,8 +3802,11 @@
             if (loading) setVisible(loading, false);
         }
 
-        function showLoginScreenAfterFailedRestore(stored) {
+        function showLoginScreenAfterFailedRestore(stored, statusError = null) {
             hideSessionLoading();
+            if (statusError) {
+                showToast(statusError, 'error');
+            }
             const loginScreen = document.getElementById('login-screen');
             if (loginScreen) setVisible(loginScreen, true);
             const nameEl = document.getElementById('squad_id');
@@ -3860,6 +3889,7 @@
 
         async function fallbackToNormalSession() {
             const stored = loadLocalSession();
+            let lastStatusError = '登入失敗 [ERR_STATUS_UNKNOWN]，請檢查網絡連線';
 
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
@@ -3873,9 +3903,15 @@
                             persistRestoreToken(data);
                             return await finishSessionRestore(data);
                         }
+                        lastStatusError = data?.error
+                            ? `${data.error} [ERR_STATUS_PAYLOAD]`
+                            : '登入失敗 [ERR_STATUS_PAYLOAD]，請檢查網絡連線';
+                    } else {
+                        lastStatusError = describeStatusFetchError(null, res);
                     }
                 } catch (e) {
                     console.log('fallbackToNormalSession attempt failed', attempt + 1, e);
+                    lastStatusError = describeStatusFetchError(e, null);
                 }
                 if (attempt < 2) {
                     await new Promise(r => setTimeout(r, 800));
@@ -3894,7 +3930,7 @@
                 }
             }
 
-            showLoginScreenAfterFailedRestore(stored);
+            showLoginScreenAfterFailedRestore(stored, lastStatusError);
             return false;
         }
 
