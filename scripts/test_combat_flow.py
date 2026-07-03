@@ -2402,6 +2402,24 @@ def main():
     ok("confirm_modal marker", ver.get("markers", {}).get("confirm_modal") is True)
     ok("combat_v2 marker key present", "combat_v2" in (ver.get("markers") or {}))
     ok("encounter_logs marker", ver.get("markers", {}).get("encounter_logs") is True)
+    template_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "templates",
+        "index.html",
+    )
+    with open(template_path, encoding="utf-8") as f:
+        template_html = f.read()
+    enc_anchor = template_html.find('data-log-section="encounter"')
+    list_anchor = template_html.find('id="encounter-logs-list"')
+    ok(
+        "encounter logs DOM mount chain",
+        enc_anchor != -1
+        and list_anchor != -1
+        and enc_anchor < list_anchor
+        and "loadEncounterLogs" in template_html
+        and "log-section-body" in template_html[enc_anchor:list_anchor],
+        f"enc={enc_anchor} list={list_anchor}",
+    )
 
     alloc_client = oikonomia.app.test_client()
     login(alloc_client, "AllocStatFlowTest")

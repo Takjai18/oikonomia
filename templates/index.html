@@ -294,6 +294,7 @@
             min-height: 2.75rem;
         }
         .log-section.is-collapsed .log-section-body { display: none; }
+        .log-section:not(.is-collapsed) .log-section-body { display: block; }
         .log-section.is-collapsed .log-section-header { margin-bottom: 0; }
         .log-section-header {
             display: flex;
@@ -2269,12 +2270,17 @@
             if (label) label.textContent = expanded ? '收起' : '展開';
         }
 
-        function toggleLogSection(key) {
+        function setLogSectionExpanded(key, expanded) {
             const state = getLogSectionState();
-            const next = !state[key];
-            state[key] = next;
+            state[key] = !!expanded;
             saveLogSectionState(state);
-            applyLogSectionExpanded(key, next);
+            applyLogSectionExpanded(key, expanded);
+        }
+
+        function toggleLogSection(key) {
+            const section = document.querySelector(`.log-section[data-log-section="${key}"]`);
+            const currentlyExpanded = section ? !section.classList.contains('is-collapsed') : true;
+            setLogSectionExpanded(key, !currentlyExpanded);
         }
 
         function initLogSections() {
@@ -2473,9 +2479,18 @@
         async function loadEncounterLogs() {
             const container = document.getElementById('encounter-logs-list');
             if (!container) return;
+            setLogSectionExpanded('encounter', true);
             container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
             try {
                 const res = await fetch('/encounter_logs', { credentials: 'same-origin' });
+                if (res.status === 401) {
+                    container.innerHTML = '<div class="text-zinc-400 text-center py-6">請重新登入後再查看 Encounter 記錄</div>';
+                    return;
+                }
+                if (!res.ok) {
+                    container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+                    return;
+                }
                 const data = await res.json();
                 if (!data.success) {
                     container.innerHTML = '<div class="text-red-400">載入失敗</div>';
