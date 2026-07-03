@@ -3686,8 +3686,28 @@
             }
         }
 
+        function clearRestoreToken() {
+            try { localStorage.removeItem('oikonomia_restore_token'); } catch (e) { /* ignore */ }
+        }
+
         function clearLocalSession() {
             try { localStorage.removeItem(OIKONOMIA_STORAGE_KEY); } catch (e) { /* ignore */ }
+            clearRestoreToken();
+        }
+
+        function hasLocalSessionArtifacts(stored = null) {
+            const snap = stored || loadLocalSession();
+            return !!(
+                snap?.squad_id
+                || snap?.restore_token
+                || localStorage.getItem('oikonomia_restore_token')
+            );
+        }
+
+        function isSilentAuthFailure(res, data = null) {
+            if (res?.status === 401) return true;
+            const err = String(data?.error || '');
+            return err.includes('未登入') || err.includes('無效') || err.includes('過期');
         }
 
         async function tryRestoreWithToken(stored) {
@@ -3818,9 +3838,10 @@
             if (loading) setVisible(loading, false);
         }
 
-        function showLoginScreenAfterFailedRestore(stored, statusError = null) {
+        function showLoginScreenAfterFailedRestore(stored, statusError = null, options = {}) {
+            const { silent = false } = options;
             hideSessionLoading();
-            if (statusError) {
+            if (statusError && !silent) {
                 showToast(statusError, 'error');
             }
             const loginScreen = document.getElementById('login-screen');
@@ -3898,14 +3919,21 @@
             } catch (e) {
                 isSessionRestoringCombatLock = false;
                 console.error('finishSessionRestore 遭遇競態崩潰:', e);
-                showLoginScreenAfterFailedRestore(loadLocalSession());
+                showLoginScreenAfterFailedRestore(loadLocalSession(), null, { silent: true });
                 return false;
             }
         }
 
-        async function fallbackToNormalSession() {
+        async function fallbackToNormalSession(options = {}) {
+            const { silent = false } = options;
             const stored = loadLocalSession();
-            let lastStatusError = '登入失敗 [ERR_STATUS_UNKNOWN]，請檢查網絡連線';
+
+            if (!hasLocalSessionArtifacts(stored)) {
+                showLoginScreenAfterFailedRestore(null, null, { silent: true });
+                return false;
+            }
+
+            let lastStatusError = null;
 
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
@@ -3919,9 +3947,17 @@
                             persistRestoreToken(data);
                             return await finishSessionRestore(data);
                         }
+                        if (isSilentAuthFailure(res, data)) {
+                            lastStatusError = null;
+                            break;
+                        }
                         lastStatusError = data?.error
                             ? `${data.error} [ERR_STATUS_PAYLOAD]`
                             : '登入失敗 [ERR_STATUS_PAYLOAD]，請檢查網絡連線';
+                    } else if (isSilentAuthFailure(res)) {
+                        console.warn('[Auth] /status unauthenticated during silent restore — expected');
+                        lastStatusError = null;
+                        break;
                     } else {
                         lastStatusError = describeStatusFetchError(null, res);
                     }
@@ -3946,7 +3982,7 @@
                 }
             }
 
-            showLoginScreenAfterFailedRestore(stored, lastStatusError);
+            showLoginScreenAfterFailedRestore(stored, silent ? null : lastStatusError, { silent });
             return false;
         }
 
@@ -3955,7 +3991,7 @@
                 || localStorage.getItem('oikonomia_restore_token');
 
             if (!token) {
-                await fallbackToNormalSession();
+                await fallbackToNormalSession({ silent: true });
                 return;
             }
 
@@ -3972,11 +4008,24 @@
                     await finishSessionRestore(data);
                     return;
                 }
+
+                if (isSilentAuthFailure(res, data)) {
+                    console.warn('[Auth] Restore token expired or invalid — clearing cached credentials');
+                    clearRestoreToken();
+                    try {
+                        const raw = localStorage.getItem(OIKONOMIA_STORAGE_KEY);
+                        if (raw) {
+                            const parsed = JSON.parse(raw);
+                            delete parsed.restore_token;
+                            localStorage.setItem(OIKONOMIA_STORAGE_KEY, JSON.stringify(parsed));
+                        }
+                    } catch (e) { /* ignore */ }
+                }
             } catch (e) {
                 console.error('restoreSession with token failed', e);
             }
 
-            await fallbackToNormalSession();
+            await fallbackToNormalSession({ silent: true });
         }
 
         let sessionBootDone = false;
@@ -3986,7 +4035,7 @@
             const safetyTimer = setTimeout(() => {
                 if (sessionBootDone) return;
                 console.warn('session restore safety timeout');
-                showLoginScreenAfterFailedRestore(loadLocalSession());
+                showLoginScreenAfterFailedRestore(loadLocalSession(), null, { silent: true });
                 sessionBootDone = true;
             }, 28000);
             try {
@@ -3994,7 +4043,7 @@
             } catch (e) {
                 console.error('bootApp restoreSession failed', e);
                 if (!sessionBootDone) {
-                    showLoginScreenAfterFailedRestore(loadLocalSession());
+                    showLoginScreenAfterFailedRestore(loadLocalSession(), null, { silent: true });
                 }
             } finally {
                 sessionBootDone = true;
