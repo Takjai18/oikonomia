@@ -104,10 +104,15 @@ def start_practice_combat(client, team_id, encounter_id="practice_iggy_02_leech"
     return data.get("combat_id"), data
 
 
-def normalize_team_combat_stats(team_id, power=12, intellect=12):
-    """Keep audit fights multi-round (default squad power=100 one-shots practice enemies)."""
+def normalize_team_combat_stats(team_id, power=12, intellect=12, player_resilience=99):
+    """Keep audit fights multi-round; high player resilience so counter targets protagonist (90)."""
     for member in get_team_members(team_id):
-        update_squad(member["squad_id"], power=power, intellect=intellect)
+        update_squad(
+            member["squad_id"],
+            power=power,
+            intellect=intellect,
+            resilience=player_resilience,
+        )
 
 
 def test_settlement_every_round_two_player(team_id, client, client2):
@@ -204,9 +209,21 @@ def test_protagonist_joins_and_deals_damage(team_id, client, route="iggy"):
 
     pro_state = get_protagonist_state(team_id, route)
     pro_hp_after = int(pro_state.get("hp") or 0)
-    enemy_dealt = int((d.get("round_settlement") or {}).get("enemy_damage_dealt") or 0)
-    if enemy_dealt > 0:
+    settlement = d.get("round_settlement") or {}
+    enemy_dealt = int(settlement.get("enemy_damage_dealt") or 0)
+    counter_hits = settlement.get("counter_hits") or []
+    pro_countered = any(
+        pro_name and (h.get("target") == pro_name or pro_name in (h.get("target") or ""))
+        for h in counter_hits
+    )
+    if enemy_dealt > 0 and pro_countered:
         ok("主角 HP 可被反擊影響", pro_hp_after < pro_hp_before, f"{pro_hp_before}->{pro_hp_after}")
+    elif enemy_dealt > 0:
+        ok(
+            "本回合反擊命中隊員（非主角）",
+            True,
+            str(counter_hits)[:120],
+        )
     else:
         ok("本回合敵方反擊為 0（記錄）", True, "no counter this round")
 
