@@ -295,6 +295,38 @@
         }
         .log-section.is-collapsed .log-section-body { display: none; }
         .log-section.is-collapsed .log-section-header { margin-bottom: 0; }
+        .log-section-header {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+        }
+        .log-section-header > h3 {
+            min-width: 0;
+        }
+        .log-section-header > h3 span {
+            white-space: nowrap;
+        }
+        .log-section-header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            flex-shrink: 0;
+            align-self: flex-end;
+            width: 100%;
+        }
+        @media (min-width: 640px) {
+            .log-section-header {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .log-section-header-actions {
+                align-self: auto;
+                width: auto;
+            }
+        }
         .log-section-toggle-icon { transition: transform 0.2s ease; }
         .log-section.is-collapsed .log-section-toggle-icon { transform: rotate(180deg); }
         #available-teams-list .team-join-card {
@@ -771,16 +803,18 @@
                 </div>
 
                 <div class="cartoon-box p-6 mb-8 log-section" data-log-section="story">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-book text-amber-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-book text-amber-400 shrink-0"></i>
                             <span>故事進度</span>
                         </h3>
-                        <button type="button" onclick="toggleLogSection('story')"
-                                class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
-                            <span class="log-section-toggle-label">收起</span>
-                            <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
-                        </button>
+                        <div class="log-section-header-actions">
+                            <button type="button" onclick="toggleLogSection('story')"
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                <span class="log-section-toggle-label">收起</span>
+                                <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="log-section-body">
                         <div id="story-log-content"></div>
@@ -788,18 +822,18 @@
                 </div>
 
                 <div class="cartoon-box p-6 mb-8 log-section" data-log-section="encounter">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-skull-crossbones text-red-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-skull-crossbones text-red-400 shrink-0"></i>
                             <span>Encounter 記錄</span>
                         </h3>
-                        <div class="flex items-center gap-2">
+                        <div class="log-section-header-actions">
                             <button onclick="loadEncounterLogs()"
-                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl shrink-0">
                                 刷新
                             </button>
                             <button type="button" onclick="toggleLogSection('encounter')"
-                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5 shrink-0">
                                 <span class="log-section-toggle-label">收起</span>
                                 <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
                             </button>
@@ -811,18 +845,18 @@
                 </div>
 
                 <div class="cartoon-box p-6 mb-8 log-section" data-log-section="tasks">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-tasks text-amber-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-tasks text-amber-400 shrink-0"></i>
                             <span id="team-task-logs-title">任務記錄</span>
                         </h3>
-                        <div class="flex items-center gap-2">
+                        <div class="log-section-header-actions">
                             <button onclick="loadTeamTaskLogs()"
-                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl shrink-0 whitespace-nowrap">
                                 刷新記錄
                             </button>
                             <button type="button" onclick="toggleLogSection('tasks')"
-                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5 shrink-0">
                                 <span class="log-section-toggle-label">收起</span>
                                 <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
                             </button>
@@ -835,18 +869,18 @@
 
                 <!-- 全球事件記錄（日誌頁最底部） -->
                 <div class="cartoon-box p-6 log-section" data-log-section="global">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-globe text-amber-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-globe text-amber-400 shrink-0"></i>
                             <span>全球事件記錄</span>
                         </h3>
-                        <div class="flex items-center gap-2">
+                        <div class="log-section-header-actions">
                             <button onclick="loadGlobalEvents()"
-                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl shrink-0">
                                 刷新
                             </button>
                             <button type="button" onclick="toggleLogSection('global')"
-                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5 shrink-0">
                                 <span class="log-section-toggle-label">收起</span>
                                 <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
                             </button>
@@ -966,13 +1000,17 @@
                 <!-- 已加入隊伍：你的隊伍 + 隊友 -->
                 <div id="has-team-box" class="hidden">
                     <div id="my-team-card" class="cartoon-box p-6 mb-6">
-                        <div class="flex justify-between items-center">
-                            <div>
+                        <div class="flex justify-between items-start gap-3 w-full">
+                            <div class="min-w-0 flex-1">
                                 <div class="text-xs text-emerald-400">你的隊伍</div>
-                                <div id="my-team-name" class="text-2xl font-bold"></div>
-                                <div id="my-team-id" class="font-mono text-xs text-zinc-500"></div>
+                                <div id="my-team-name" class="text-2xl font-bold mt-1"></div>
+                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-1"></div>
                             </div>
-                            <div id="my-team-route-badge"></div>
+                            <div id="my-team-rename-slot" class="shrink-0"></div>
+                        </div>
+                        <div class="flex justify-between items-end mt-4 pt-3 border-t border-zinc-800/40 gap-3">
+                            <div id="my-team-member-count" class="text-xs text-zinc-400"></div>
+                            <div id="my-team-route-badge" class="shrink-0"></div>
                         </div>
                     </div>
                     <div id="team-ending-banner" class="hidden mb-6 px-4 py-3 rounded-xl border text-sm"></div>
@@ -986,15 +1024,17 @@
                     <div id="team-members-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
 
                     <div class="cartoon-box p-5 mt-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-bold flex items-center gap-x-2">
-                                <i class="fa-solid fa-clipboard-list text-amber-400"></i>
-                                <span>全隊任務日誌</span>
+                        <div class="log-section-header mb-4">
+                            <h3 class="font-bold flex items-center gap-x-2 min-w-0 text-base sm:text-lg">
+                                <i class="fa-solid fa-clipboard-list text-amber-400 shrink-0"></i>
+                                <span class="whitespace-nowrap">全隊任務日誌</span>
                             </h3>
-                            <button onclick="loadTeamTaskLogs()"
-                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">
-                                刷新
-                            </button>
+                            <div class="log-section-header-actions">
+                                <button onclick="loadTeamTaskLogs()"
+                                        class="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-xl shrink-0">
+                                    刷新
+                                </button>
+                            </div>
                         </div>
                         <div id="team-task-logs-list" class="space-y-3 max-h-[400px] overflow-auto pr-1"></div>
                     </div>
@@ -3108,16 +3148,16 @@
                 const teamCard = document.getElementById('my-team-card');
                 if (teamCard) {
                     teamCard.innerHTML = `
-                        <div class="flex items-center justify-between w-full gap-x-4">
+                        <div class="flex justify-between items-start gap-3 w-full">
                             <div class="min-w-0 flex-1">
                                 <div class="text-xs text-emerald-400">你的隊伍</div>
-                                <div class="flex items-center justify-between w-full gap-x-3 mt-1">
-                                    <h2 id="my-team-name" class="text-2xl font-bold truncate pr-2 text-zinc-100">${team.team_name}</h2>
-                                    ${renameButtonHTML}
-                                </div>
+                                <h2 id="my-team-name" class="text-2xl font-bold mt-1 truncate text-zinc-100">${team.team_name}</h2>
                                 <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-1">${team.team_id}</div>
-                                <div class="text-sm text-zinc-400 mt-2">${memberCount} 位隊員</div>
                             </div>
+                            <div id="my-team-rename-slot" class="shrink-0 mt-1">${renameButtonHTML}</div>
+                        </div>
+                        <div class="flex justify-between items-end mt-4 pt-3 border-t border-zinc-800/40 gap-3">
+                            <div id="my-team-member-count" class="text-xs text-zinc-400">${memberCount} 位隊員</div>
                             <div id="my-team-route-badge" class="shrink-0"></div>
                         </div>
                         ${routePickerHTML}
@@ -3127,11 +3167,11 @@
                 const routeBadge = document.getElementById('my-team-route-badge');
                 if (routeBadge) {
                     if (teamRoute === 'iggy') {
-                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 路線</div>';
+                        routeBadge.innerHTML = '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-950/40 text-amber-400 border border-amber-900/40 whitespace-nowrap">🔥 Iggy 路線</span>';
                     } else if (teamRoute === 'marah') {
-                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 路線</div>';
+                        routeBadge.innerHTML = '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-950/40 text-sky-300 border border-sky-900/40 whitespace-nowrap">🌊 Marah 路線</span>';
                     } else {
-                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未選路線</div>';
+                        routeBadge.innerHTML = '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 whitespace-nowrap">未選路線</span>';
                     }
                 }
 
