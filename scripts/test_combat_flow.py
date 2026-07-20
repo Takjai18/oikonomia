@@ -1026,6 +1026,102 @@ def test_solo_killing_blow_returns_victory(client, client2, team_id):
     update_protagonist_state(team_id, "iggy", is_active=1)
 
 
+def test_timeout_auto_defend_for_idle_teammate():
+    """T10: after 10s idle, server auto-submits defend for unsubmitted human teammates."""
+    from datetime import datetime, timedelta
+
+    from models.combat import (
+        get_combat_phase_actions,
+        inject_timeout_defend_for_players,
+        player_action_timeout_seconds,
+        remaining_action_seconds,
+        save_combat,
+    )
+    from models.protagonist import update_protagonist_state
+
+    assert player_action_timeout_seconds({}) == 10
+    assert player_action_timeout_seconds({"player_action_timeout_seconds": 15}) == 15
+
+    client = oikonomia.app.test_client()
+    client2 = oikonomia.app.test_client()
+    leader = login(client, "TimeoutDefendLeader") or {}
+    member = login(client2, "TimeoutDefendMember") or {}
+    leader_id = leader.get("squad_id") or "TimeoutDefendLeader"
+    member_id = member.get("squad_id") or "TimeoutDefendMember"
+    r = client.post("/team/create", data={"team_name": "TimeoutDefendTeam"})
+    team_id = (r.get_json() or {}).get("team_id")
+    client2.post("/team/join", data={"team_id": team_id})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    enc_id = TEST_ENCOUNTER_ID
+    prepare_test_encounter(client, team_id, enc_id)
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("timeout defend: start combat", start.get("success") and combat_id, str(start)[:120])
+
+    # Leader acts immediately; member stays idle
+    with patch("routes.combat.roll_combat_dice", return_value=1), patch(
+        "models.combat.roll_combat_dice", return_value=1
+    ):
+        client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "attack"},
+            content_type="application/json",
+        )
+
+    combat = get_combat(combat_id)
+    phase = int((combat or {}).get("current_phase") or 0)
+    actions_before = get_combat_phase_actions(combat_id, phase) or {}
+    ok(
+        "timeout defend: member not submitted yet",
+        member_id not in actions_before,
+        str(actions_before.keys()),
+    )
+
+    # Backdate phase start so action timeout (10s) has elapsed
+    past = (datetime.now() - timedelta(seconds=12)).isoformat()
+    save_combat(combat_id, phase_started_at=past)
+    combat = get_combat(combat_id)
+    rem = remaining_action_seconds(combat, {})
+    ok("timeout defend: remaining_seconds is 0", rem == 0, f"remaining={rem}")
+
+    combat, injected = inject_timeout_defend_for_players(
+        combat_id, combat=combat, settings={},
+    )
+    ok("timeout defend: injected count >= 1", injected >= 1, f"injected={injected}")
+    actions_after = get_combat_phase_actions(combat_id, phase) or {}
+    member_act = actions_after.get(member_id) or {}
+    ok(
+        "timeout defend: member action is defend",
+        member_act.get("action_type") == "defend",
+        str(member_act),
+    )
+
+    # Status poll should report remaining_seconds 0 and member submitted
+    status = client2.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    ok(
+        "timeout defend: status remaining_seconds is 0",
+        status.get("remaining_seconds") == 0,
+        str(status.get("remaining_seconds")),
+    )
+    ok(
+        "timeout defend: status action_timeout_seconds is 10",
+        status.get("action_timeout_seconds") == 10,
+        str(status.get("action_timeout_seconds")),
+    )
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+
 def test_killing_blow_death_throes_counter():
     """INV-D/E: slaying the enemy still triggers death-throes counter; squad wins anyway."""
     from models.combat import save_combat
@@ -2354,6 +2450,7 @@ def main():
     test_non_leader_as_protagonist_rejected()
     test_solo_killing_blow_returns_victory(client, client2, team_id)
     test_killing_blow_death_throes_counter()
+    test_timeout_auto_defend_for_idle_teammate()
     test_solo_killing_blow_practice_quick()
     test_escape_action_type_allowed()
     test_defeat_outcome_includes_dead_roster()

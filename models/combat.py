@@ -459,6 +459,108 @@ def combat_phase_expired(combat, settings):
         return False
     return datetime.now() >= datetime.fromisoformat(deadline)
 
+
+# T10 / outdoor co-op: idle teammates auto-defend after this many seconds.
+DEFAULT_PLAYER_ACTION_TIMEOUT_SECONDS = 10
+
+
+def player_action_timeout_seconds(settings=None):
+    """Seconds a human has to act before server auto-submits defend (default 10)."""
+    settings = settings or {}
+    raw = settings.get("player_action_timeout_seconds")
+    if raw is None:
+        return DEFAULT_PLAYER_ACTION_TIMEOUT_SECONDS
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_PLAYER_ACTION_TIMEOUT_SECONDS
+
+
+def player_action_timeout_expired(combat, settings=None):
+    started = (combat or {}).get("phase_started_at")
+    if not started:
+        return False
+    try:
+        start_dt = datetime.fromisoformat(started)
+    except (TypeError, ValueError):
+        return False
+    limit = player_action_timeout_seconds(settings)
+    return datetime.now() >= start_dt + timedelta(seconds=limit)
+
+
+def remaining_action_seconds(combat, settings=None):
+    """Countdown for action timeout (drives client auto-defend UI)."""
+    started = (combat or {}).get("phase_started_at")
+    if not started:
+        return None
+    try:
+        start_dt = datetime.fromisoformat(started)
+    except (TypeError, ValueError):
+        return None
+    limit = player_action_timeout_seconds(settings)
+    return max(0, int((start_dt + timedelta(seconds=limit) - datetime.now()).total_seconds()))
+
+
+def inject_timeout_defend_for_players(
+    combat_id, combat=None, participants=None, settings=None,
+):
+    """
+    After player_action_timeout (default 10s), auto-submit defend for human
+    players (and player-controlled protagonists) who have not acted yet.
+
+    Returns (combat, injected_count).
+    """
+    combat = combat or get_combat(combat_id)
+    if not combat or combat.get("status") != "player_phase":
+        return combat, 0
+    settings = settings or {}
+    if not player_action_timeout_expired(combat, settings):
+        return combat, 0
+
+    participants = participants or get_combat_participants(combat) or []
+    phase = int(combat.get("current_phase") or 0)
+    actions = get_combat_phase_actions(combat_id, phase) or dict(
+        combat.get("phase_actions") or {}
+    )
+    ctx = _phase_player_control_context(combat, participants)
+    required_ids = list(ctx["non_protagonist"]) + list(ctx["player_control_protagonists"])
+    if not required_ids:
+        return combat, 0
+
+    injected = 0
+    display_by_id = {
+        p.get("squad_id"): (p.get("display_name") or p.get("squad_id"))
+        for p in participants
+        if p.get("squad_id")
+    }
+    for sid in required_ids:
+        if sid in actions:
+            continue
+        dice = roll_combat_dice()
+        upsert_combat_action(combat_id, sid, phase, "defend", dice, None)
+        actions[sid] = {
+            "action_type": "defend",
+            "dice_result": dice,
+            "auto": True,
+            "reason": "timeout",
+        }
+        display = display_by_id.get(sid) or sid
+        combat = append_combat_log(
+            combat,
+            f"{display} 操作超時，系統自動選擇防禦",
+            log_type="timeout_defend",
+        )
+        injected += 1
+
+    if injected:
+        save_combat(
+            combat_id,
+            phase_actions=actions,
+            logs=combat.get("logs"),
+        )
+        combat = get_combat(combat_id) or combat
+    return combat, injected
+
 def _combat_team_id(combat, participants=None):
     if participants:
         for p in participants:
@@ -925,12 +1027,22 @@ def advance_combat_from_poll(combat_id, combat_settings=None):
 
     settings = combat_settings or {}
     participants = get_combat_participants(combat) or []
+    # T10: after 10s idle, server auto-defend for unsubmitted teammates
+    combat, _injected = inject_timeout_defend_for_players(
+        combat_id,
+        combat=combat,
+        participants=participants,
+        settings=settings,
+    )
+    if _injected:
+        participants = get_combat_participants(combat) or participants
     phase = int(combat.get("current_phase") or 0)
     fresh = dict(combat)
     fresh["phase_actions"] = get_combat_phase_actions(combat_id, phase)
     if not (
         all_phase_actions_submitted(fresh, participants)
         or combat_phase_expired(fresh, settings)
+        or player_action_timeout_expired(fresh, settings)
     ):
         return combat, None, False, participants
 
@@ -991,6 +1103,13 @@ def maybe_resolve_player_phase(combat_id, combat_settings=None, cached_participa
 
     if cached_participants is None:
         cached_participants = get_combat_participants(combat) or []
+    # Fill timeout defends before readiness check so idle teammates don't stall the round
+    combat, _ = inject_timeout_defend_for_players(
+        combat_id,
+        combat=combat,
+        participants=cached_participants,
+        settings=settings,
+    )
     claimed, snapshot = _claim_ready_player_phase_resolution(
         combat_id, settings, cached_participants=cached_participants,
     )
@@ -1890,10 +2009,10 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "phase_started_at": combat.get("phase_started_at"),
         "phase_deadline": combat.get("phase_deadline"),
         "phase_expired": combat_phase_expired(combat, combat_settings),
-        "remaining_seconds": max(
-            0,
-            int((datetime.fromisoformat(combat["phase_deadline"]) - datetime.now()).total_seconds())
-        ) if combat.get("phase_deadline") else None,
+        "action_timeout_seconds": player_action_timeout_seconds(combat_settings),
+        "action_timeout_expired": player_action_timeout_expired(combat, combat_settings),
+        # Countdown for T10 auto-defend (default 10s), not the long phase_deadline
+        "remaining_seconds": remaining_action_seconds(combat, combat_settings),
         "enemy": build_enemy_combat_stats(combat, encounter),
         "member_states": member_states,
         "protagonists": protagonists,

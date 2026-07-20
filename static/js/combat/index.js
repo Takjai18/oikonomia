@@ -489,7 +489,19 @@ export class CombatApp {
         },
       };
     } else if (this.ctx.phase !== Phase.DICE_CONFIRM) {
-      return;
+      // Still force-submit defend if we are mid-choice (e.g. dice rolling UI)
+      if (actionType !== 'defend') return;
+      this.ctx = {
+        ...this.ctx,
+        phase: Phase.DICE_CONFIRM,
+        dice: {
+          action: 'defend',
+          value: null,
+          itemId: null,
+          cosmetic: false,
+        },
+      };
+      this.views?.dice?.hide?.();
     }
 
     this.dispatch('CONFIRM_DICE');
@@ -505,6 +517,19 @@ export class CombatApp {
       });
       await this.onSubmitSuccess(data);
     } catch (err) {
+      const msg = String(err?.message || '');
+      // Server may already have injected timeout defend for this player
+      if (
+        err?.status === 400
+        && (msg.includes('已提交') || msg.includes('結算中'))
+      ) {
+        this.hasTriggeredTimeoutDefense = true;
+        try {
+          const snap = await CombatApi.status(this.ctx.combatId);
+          this.pollTick(snap);
+        } catch (_) { /* ignore */ }
+        return;
+      }
       this.hasTriggeredTimeoutDefense = false;
       this.dispatch('SUBMIT_ERROR', { error: err.message || '自動提交失敗' });
     } finally {
@@ -552,13 +577,28 @@ export class CombatApp {
       return;
     }
 
+    // T10: 10s action timeout — reset flag each new phase; auto-defend if still idle
+    if (
+      snapshot.current_phase != null
+      && this._lastTimeoutPhase !== snapshot.current_phase
+    ) {
+      this.hasTriggeredTimeoutDefense = false;
+      this._lastTimeoutPhase = snapshot.current_phase;
+    }
+
+    const timedOut =
+      snapshot.action_timeout_expired === true
+      || snapshot.phase_expired === true
+      || (typeof snapshot.remaining_seconds === 'number'
+        && snapshot.remaining_seconds <= 0);
+
     if (
       snapshot.status === 'player_phase'
-      && snapshot.remaining_seconds === 0
+      && timedOut
       && !snapshot.my_state?.submitted
     ) {
       this.triggerTimeoutAutomaticDefense();
-      if (this.hasTriggeredTimeoutDefense) return;
+      // Continue poll processing so HUD / wait state still updates
     }
 
     if (TERMINAL_PHASES.includes(this.ctx.phase)) {
