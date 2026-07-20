@@ -294,7 +294,40 @@
             min-height: 2.75rem;
         }
         .log-section.is-collapsed .log-section-body { display: none; }
+        .log-section:not(.is-collapsed) .log-section-body { display: block; }
         .log-section.is-collapsed .log-section-header { margin-bottom: 0; }
+        .log-section-header {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+        }
+        .log-section-header > h3 {
+            min-width: 0;
+        }
+        .log-section-header > h3 span {
+            white-space: nowrap;
+        }
+        .log-section-header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            flex-shrink: 0;
+            align-self: flex-end;
+            width: 100%;
+        }
+        @media (min-width: 640px) {
+            .log-section-header {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .log-section-header-actions {
+                align-self: auto;
+                width: auto;
+            }
+        }
         .log-section-toggle-icon { transition: transform 0.2s ease; }
         .log-section.is-collapsed .log-section-toggle-icon { transform: rotate(180deg); }
         #available-teams-list .team-join-card {
@@ -370,6 +403,12 @@
         #combat-near-death-overlay { background: rgba(69, 10, 10, 0.92); backdrop-filter: blur(4px); }
         /* combat_instant_settlement: HP bars sync with damage numbers (no CSS lag) */
         #combat-v2-enemy-hp-bar,
+        #combat-module-container {
+            min-height: 0;
+        }
+        #combat-root-v2 {
+            scroll-margin-top: 0;
+        }
         #combat-v2-player-hp-bar {
             transition: none !important;
             -webkit-transition: none !important;
@@ -454,7 +493,7 @@
             </div>
 
             <!-- 手機版：設定 + 漢堡按鈕（<768px 先顯示） -->
-            <div class="flex items-center gap-x-1">
+            <div class="flex items-center gap-x-1 md:hidden">
                 <button type="button" onclick="openSettingsModal()"
                         class="text-xl text-zinc-400 hover:text-white px-2" aria-label="設定">
                     <i class="fa-solid fa-gear"></i>
@@ -765,16 +804,18 @@
                 </div>
 
                 <div class="cartoon-box p-6 mb-8 log-section" data-log-section="story">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-book text-amber-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-book text-amber-400 shrink-0"></i>
                             <span>故事進度</span>
                         </h3>
-                        <button type="button" onclick="toggleLogSection('story')"
-                                class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
-                            <span class="log-section-toggle-label">收起</span>
-                            <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
-                        </button>
+                        <div class="log-section-header-actions">
+                            <button type="button" onclick="toggleLogSection('story')"
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                <span class="log-section-toggle-label">收起</span>
+                                <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="log-section-body">
                         <div id="story-log-content"></div>
@@ -782,18 +823,18 @@
                 </div>
 
                 <div class="cartoon-box p-6 mb-8 log-section" data-log-section="encounter">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-skull-crossbones text-red-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-skull-crossbones text-red-400 shrink-0"></i>
                             <span>Encounter 記錄</span>
                         </h3>
-                        <div class="flex items-center gap-2">
+                        <div class="log-section-header-actions">
                             <button onclick="loadEncounterLogs()"
-                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl shrink-0">
                                 刷新
                             </button>
                             <button type="button" onclick="toggleLogSection('encounter')"
-                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5 shrink-0">
                                 <span class="log-section-toggle-label">收起</span>
                                 <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
                             </button>
@@ -805,18 +846,18 @@
                 </div>
 
                 <div class="cartoon-box p-6 mb-8 log-section" data-log-section="tasks">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-tasks text-amber-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-tasks text-amber-400 shrink-0"></i>
                             <span id="team-task-logs-title">任務記錄</span>
                         </h3>
-                        <div class="flex items-center gap-2">
+                        <div class="log-section-header-actions">
                             <button onclick="loadTeamTaskLogs()"
-                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl shrink-0 whitespace-nowrap">
                                 刷新記錄
                             </button>
                             <button type="button" onclick="toggleLogSection('tasks')"
-                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5 shrink-0">
                                 <span class="log-section-toggle-label">收起</span>
                                 <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
                             </button>
@@ -829,18 +870,18 @@
 
                 <!-- 全球事件記錄（日誌頁最底部） -->
                 <div class="cartoon-box p-6 log-section" data-log-section="global">
-                    <div class="flex items-center justify-between mb-4 log-section-header">
-                        <h3 class="font-bold text-xl flex items-center gap-x-2">
-                            <i class="fa-solid fa-globe text-amber-400"></i>
+                    <div class="log-section-header mb-4">
+                        <h3 class="font-bold text-xl flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-globe text-amber-400 shrink-0"></i>
                             <span>全球事件記錄</span>
                         </h3>
-                        <div class="flex items-center gap-2">
+                        <div class="log-section-header-actions">
                             <button onclick="loadGlobalEvents()"
-                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl">
+                                    class="text-xs px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-2xl shrink-0">
                                 刷新
                             </button>
                             <button type="button" onclick="toggleLogSection('global')"
-                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5">
+                                    class="log-section-toggle text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-2xl inline-flex items-center gap-1.5 shrink-0">
                                 <span class="log-section-toggle-label">收起</span>
                                 <i class="fa-solid fa-chevron-up log-section-toggle-icon text-[10px]"></i>
                             </button>
@@ -870,12 +911,12 @@
                 </div>
 
                 <!-- COMBAT V2 — Greenfield mount (PR-6) -->
-                <div id="combat-module-container" class="w-full min-h-screen bg-zinc-950 text-white">
+                <div id="combat-module-container" class="w-full bg-zinc-950 text-white">
                     {% if combat_v2_enabled %}
                         {% include 'combat_screen.html' %}
                     {% else %}
                         <div id="combat-v1-deprecated-fallback" class="p-6 text-center text-zinc-500">
-                            <p>戰鬥系統正在升級中，請聯繫 GM 開啟 COMBAT_V2 特性標記。</p>
+                            <p>戰鬥系統暫時關閉。請聯繫 GM 在後台「戰鬥監控」分頁開啟戰鬥系統。</p>
                         </div>
                     {% endif %}
                 </div>
@@ -960,13 +1001,17 @@
                 <!-- 已加入隊伍：你的隊伍 + 隊友 -->
                 <div id="has-team-box" class="hidden">
                     <div id="my-team-card" class="cartoon-box p-6 mb-6">
-                        <div class="flex justify-between items-center">
-                            <div>
+                        <div class="flex justify-between items-start gap-3 w-full">
+                            <div class="min-w-0 flex-1">
                                 <div class="text-xs text-emerald-400">你的隊伍</div>
-                                <div id="my-team-name" class="text-2xl font-bold"></div>
-                                <div id="my-team-id" class="font-mono text-xs text-zinc-500"></div>
+                                <div id="my-team-name" class="text-2xl font-bold mt-1"></div>
+                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-1"></div>
                             </div>
-                            <div id="my-team-route-badge"></div>
+                            <div id="my-team-rename-slot" class="shrink-0"></div>
+                        </div>
+                        <div class="flex justify-between items-end mt-4 pt-3 border-t border-zinc-800/40 gap-3">
+                            <div id="my-team-member-count" class="text-xs text-zinc-400"></div>
+                            <div id="my-team-route-badge" class="shrink-0"></div>
                         </div>
                     </div>
                     <div id="team-ending-banner" class="hidden mb-6 px-4 py-3 rounded-xl border text-sm"></div>
@@ -980,15 +1025,17 @@
                     <div id="team-members-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
 
                     <div class="cartoon-box p-5 mt-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-bold flex items-center gap-x-2">
-                                <i class="fa-solid fa-clipboard-list text-amber-400"></i>
-                                <span>全隊任務日誌</span>
+                        <div class="log-section-header mb-4">
+                            <h3 class="font-bold flex items-center gap-x-2 min-w-0 text-base sm:text-lg">
+                                <i class="fa-solid fa-clipboard-list text-amber-400 shrink-0"></i>
+                                <span class="whitespace-nowrap">全隊任務日誌</span>
                             </h3>
-                            <button onclick="loadTeamTaskLogs()"
-                                    class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">
-                                刷新
-                            </button>
+                            <div class="log-section-header-actions">
+                                <button onclick="loadTeamTaskLogs()"
+                                        class="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-xl shrink-0">
+                                    刷新
+                                </button>
+                            </div>
                         </div>
                         <div id="team-task-logs-list" class="space-y-3 max-h-[400px] overflow-auto pr-1"></div>
                     </div>
@@ -1276,6 +1323,16 @@
             });
         }
 
+        function formatToastContent(message) {
+            const str = String(message ?? '');
+            const idx = str.search(/\[ERR_/);
+            if (idx < 0) return { main: str, code: null };
+            return {
+                main: str.slice(0, idx).trim(),
+                code: str.slice(idx).trim(),
+            };
+        }
+
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             const styles = {
@@ -1286,7 +1343,19 @@
             toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-2xl text-sm shadow-lg z-[80] ${
                 styles[type] || styles.info
             }`;
-            toast.textContent = message;
+            const { main, code } = formatToastContent(message);
+            if (code) {
+                const mainEl = document.createElement('span');
+                mainEl.textContent = main || message;
+                const codeEl = document.createElement('span');
+                codeEl.className = type === 'error'
+                    ? 'text-[10px] text-white/70 block mt-1'
+                    : 'text-[10px] text-zinc-300 block mt-1';
+                codeEl.textContent = code;
+                toast.append(mainEl, codeEl);
+            } else {
+                toast.textContent = message;
+            }
             document.body.appendChild(toast);
 
             setTimeout(() => {
@@ -1351,6 +1420,18 @@
         currentCombatId = null;
         pendingEncounterId = null;
     }
+    window.clearActiveCombatBridge = clearActiveCombatBridge;
+
+    function scrollCombatToTop() {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        const container = document.getElementById('combat-module-container');
+        if (container) container.scrollTop = 0;
+        document.getElementById('combat')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+        document.getElementById('combat-root-v2')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+    window.scrollCombatToTop = scrollCombatToTop;
 
     function revealCombatV2Surface() {
         // DOM-first: visible combat section before V2 init (avoids 0px reflow on restore)
@@ -1365,6 +1446,7 @@
             if (el) setVisible(el, false);
         });
         document.getElementById('combat-root-v2')?.classList.remove('hidden');
+        requestAnimationFrame(() => scrollCombatToTop());
     }
 
     function waitForCombatRepaint() {
@@ -2008,7 +2090,16 @@
                 }
             } else {
                 if (portraitSection) setVisible(portraitSection, true);
-                if (portraitEl && line.portrait) portraitEl.src = line.portrait;
+                if (portraitEl && line.portrait) {
+                    const raw = String(line.portrait).trim();
+                    portraitEl.src = (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/'))
+                        ? raw
+                        : `/static/portraits/${raw}`;
+                    portraitEl.onerror = () => {
+                        portraitEl.onerror = null;
+                        portraitEl.src = '/static/avatars/default.png';
+                    };
+                }
                 if (nameEl) nameEl.textContent = line.character || '';
                 if (textEl) {
                     textEl.style.fontStyle = 'normal';
@@ -2179,12 +2270,17 @@
             if (label) label.textContent = expanded ? '收起' : '展開';
         }
 
-        function toggleLogSection(key) {
+        function setLogSectionExpanded(key, expanded) {
             const state = getLogSectionState();
-            const next = !state[key];
-            state[key] = next;
+            state[key] = !!expanded;
             saveLogSectionState(state);
-            applyLogSectionExpanded(key, next);
+            applyLogSectionExpanded(key, expanded);
+        }
+
+        function toggleLogSection(key) {
+            const section = document.querySelector(`.log-section[data-log-section="${key}"]`);
+            const currentlyExpanded = section ? !section.classList.contains('is-collapsed') : true;
+            setLogSectionExpanded(key, !currentlyExpanded);
         }
 
         function initLogSections() {
@@ -2383,9 +2479,18 @@
         async function loadEncounterLogs() {
             const container = document.getElementById('encounter-logs-list');
             if (!container) return;
+            setLogSectionExpanded('encounter', true);
             container.innerHTML = '<div class="text-zinc-400">載入中...</div>';
             try {
                 const res = await fetch('/encounter_logs', { credentials: 'same-origin' });
+                if (res.status === 401) {
+                    container.innerHTML = '<div class="text-zinc-400 text-center py-6">請重新登入後再查看 Encounter 記錄</div>';
+                    return;
+                }
+                if (!res.ok) {
+                    container.innerHTML = '<div class="text-red-400">載入失敗</div>';
+                    return;
+                }
                 const data = await res.json();
                 if (!data.success) {
                     container.innerHTML = '<div class="text-red-400">載入失敗</div>';
@@ -3026,22 +3131,13 @@
                 const safeTeamName = (team.team_name || '').replace(/'/g, "\\'");
                 const currentSquadId = data.current_squad_id;
 
-                let teamNameHTML = `
-                    <div class="flex items-center gap-x-2">
-                        <div id="my-team-name" class="text-2xl font-bold">${team.team_name}</div>
-                `;
-
-                if (isLeader) {
-                    teamNameHTML += `
-                        <button onclick="editTeamName('${team.team_id}', '${safeTeamName}')"
-                                class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl flex items-center gap-x-1">
-                            <i class="fa-solid fa-edit"></i>
-                            <span>改名</span>
-                        </button>
-                    `;
-                }
-
-                teamNameHTML += `</div>`;
+                const renameButtonHTML = isLeader ? `
+                    <button onclick="editTeamName('${team.team_id}', '${safeTeamName}')"
+                            class="shrink-0 text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl flex items-center gap-x-1 font-medium transition-colors">
+                        <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                        <span>改名</span>
+                    </button>
+                ` : '';
 
                 const teamRoute = data.route || team.route;
                 const routePickerHTML = (isLeader && !teamRoute) ? `
@@ -3067,13 +3163,16 @@
                 const teamCard = document.getElementById('my-team-card');
                 if (teamCard) {
                     teamCard.innerHTML = `
-                        <div class="flex justify-between items-start gap-3">
-                            <div class="min-w-0">
+                        <div class="flex justify-between items-start gap-3 w-full">
+                            <div class="min-w-0 flex-1">
                                 <div class="text-xs text-emerald-400">你的隊伍</div>
-                                ${teamNameHTML}
-                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-0.5">${team.team_id}</div>
-                                <div class="text-sm text-zinc-400 mt-2">${memberCount} 位隊員</div>
+                                <h2 id="my-team-name" class="text-2xl font-bold mt-1 truncate text-zinc-100">${team.team_name}</h2>
+                                <div id="my-team-id" class="font-mono text-xs text-zinc-500 mt-1">${team.team_id}</div>
                             </div>
+                            <div id="my-team-rename-slot" class="shrink-0 mt-1">${renameButtonHTML}</div>
+                        </div>
+                        <div class="flex justify-between items-end mt-4 pt-3 border-t border-zinc-800/40 gap-3">
+                            <div id="my-team-member-count" class="text-xs text-zinc-400">${memberCount} 位隊員</div>
                             <div id="my-team-route-badge" class="shrink-0"></div>
                         </div>
                         ${routePickerHTML}
@@ -3083,11 +3182,11 @@
                 const routeBadge = document.getElementById('my-team-route-badge');
                 if (routeBadge) {
                     if (teamRoute === 'iggy') {
-                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-red-900/50 text-red-300">🔥 Iggy 路線</div>';
+                        routeBadge.innerHTML = '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-950/40 text-amber-400 border border-amber-900/40 whitespace-nowrap">🔥 Iggy 路線</span>';
                     } else if (teamRoute === 'marah') {
-                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-blue-900/50 text-blue-300">🌊 Marah 路線</div>';
+                        routeBadge.innerHTML = '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-950/40 text-sky-300 border border-sky-900/40 whitespace-nowrap">🌊 Marah 路線</span>';
                     } else {
-                        routeBadge.innerHTML = '<div class="text-xs px-3 py-1 rounded-full bg-zinc-700 text-zinc-400">未選路線</div>';
+                        routeBadge.innerHTML = '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 whitespace-nowrap">未選路線</span>';
                     }
                 }
 
@@ -3364,6 +3463,253 @@
             }
         }
 
+        function persistRestoreToken(data) {
+            if (!data?.restore_token) return;
+            try {
+                localStorage.setItem('oikonomia_restore_token', data.restore_token);
+            } catch (e) {
+                console.warn('restore_token save failed', e);
+            }
+        }
+
+        let pinModalResolver = null;
+
+        function showPinModal({ title, desc, skippable = true }) {
+            return new Promise(resolve => {
+                pinModalResolver = resolve;
+                const modal = document.getElementById('pin-modal');
+                document.getElementById('pin-modal-title').textContent = title || '輸入 PIN';
+                document.getElementById('pin-modal-desc').textContent = desc || '請輸入 4 位數字 PIN';
+                const cancelBtn = document.getElementById('pin-modal-cancel');
+                if (cancelBtn) cancelBtn.style.display = skippable ? '' : 'none';
+                const input = document.getElementById('pin-modal-input');
+                if (input) {
+                    input.value = '';
+                    input.onkeydown = (e) => {
+                        if (e.key === 'Enter') confirmPinModal();
+                    };
+                }
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                setTimeout(() => input?.focus(), 120);
+            });
+        }
+
+        function hidePinModal() {
+            const modal = document.getElementById('pin-modal');
+            if (modal) {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }
+            if (pinModalResolver) {
+                const done = pinModalResolver;
+                pinModalResolver = null;
+                done(null);
+            }
+        }
+
+        function confirmPinModal() {
+            const input = document.getElementById('pin-modal-input');
+            const val = normalizeLoginPin(input?.value || '');
+            const modal = document.getElementById('pin-modal');
+            if (modal) {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }
+            if (pinModalResolver) {
+                const done = pinModalResolver;
+                pinModalResolver = null;
+                done(val);
+            }
+        }
+
+        const STAT_ALLOC_BASE = 10;
+        const STAT_ALLOC_FREE = 30;
+        let allocStats = { power: 10, intellect: 10, resilience: 10 };
+        let selectedAllocAvatar = null;
+
+        function readAllocStatsFromSliders() {
+            return {
+                power: parseInt(document.getElementById('alloc-power')?.value || '10', 10),
+                intellect: parseInt(document.getElementById('alloc-intellect')?.value || '10', 10),
+                resilience: parseInt(document.getElementById('alloc-resilience')?.value || '10', 10),
+            };
+        }
+
+        function writeAllocStatsToSliders(stats) {
+            ['power', 'intellect', 'resilience'].forEach(stat => {
+                const slider = document.getElementById(`alloc-${stat}`);
+                if (slider) slider.value = stats[stat];
+            });
+        }
+
+        function resetAllocStats() {
+            allocStats = { power: 10, intellect: 10, resilience: 10 };
+            selectedAllocAvatar = null;
+            writeAllocStatsToSliders(allocStats);
+            updateAllocUi();
+        }
+
+        function onAllocSliderInput(changedStat) {
+            allocStats = readAllocStatsFromSliders();
+            let used = (allocStats.power - STAT_ALLOC_BASE)
+                + (allocStats.intellect - STAT_ALLOC_BASE)
+                + (allocStats.resilience - STAT_ALLOC_BASE);
+            if (used > STAT_ALLOC_FREE) {
+                const excess = used - STAT_ALLOC_FREE;
+                allocStats[changedStat] = Math.max(STAT_ALLOC_BASE, allocStats[changedStat] - excess);
+                writeAllocStatsToSliders(allocStats);
+            }
+            updateAllocUi();
+        }
+
+        function updateAllocUi() {
+            allocStats = readAllocStatsFromSliders();
+            ['power', 'intellect', 'resilience'].forEach(stat => {
+                const el = document.getElementById(`alloc-${stat}-value`);
+                if (el) el.textContent = allocStats[stat];
+            });
+            const used = (allocStats.power - STAT_ALLOC_BASE)
+                + (allocStats.intellect - STAT_ALLOC_BASE)
+                + (allocStats.resilience - STAT_ALLOC_BASE);
+            const remaining = STAT_ALLOC_FREE - used;
+            const remEl = document.getElementById('alloc-remaining');
+            if (remEl) {
+                remEl.textContent = remaining;
+                remEl.classList.toggle('text-red-400', remaining < 0);
+                remEl.classList.toggle('text-amber-400', remaining >= 0);
+            }
+            const btn = document.getElementById('alloc-submit-btn');
+            const ready = remaining === 0 && !!selectedAllocAvatar;
+            if (btn) {
+                btn.disabled = !ready;
+                btn.classList.toggle('animate-pulse', ready);
+            }
+        }
+
+        function selectAllocAvatar(filename, element) {
+            selectedAllocAvatar = filename;
+            document.querySelectorAll('#alloc-avatar-grid > div[data-avatar]').forEach(el => {
+                el.classList.remove('border-amber-500', 'ring-2', 'ring-amber-500/40');
+                el.classList.add('border-transparent');
+            });
+            if (element) {
+                element.classList.remove('border-transparent');
+                element.classList.add('border-amber-500', 'ring-2', 'ring-amber-500/40');
+            }
+            updateAllocUi();
+        }
+
+        async function initAllocAvatarSelection() {
+            const grid = document.getElementById('alloc-avatar-grid');
+            if (!grid) return;
+            grid.innerHTML = '<div class="col-span-full text-center text-zinc-500 text-sm py-4">載入頭像中…</div>';
+            try {
+                const res = await fetch('/available_avatars', { credentials: 'same-origin' });
+                const data = await res.json();
+                grid.innerHTML = '';
+                if (!data.avatars?.length) {
+                    grid.innerHTML = '<div class="col-span-full text-center text-zinc-400 py-4">暫無可用頭像</div>';
+                    return;
+                }
+                data.avatars.forEach(filename => {
+                    const div = document.createElement('div');
+                    div.dataset.avatar = filename;
+                    div.className = 'aspect-square rounded-2xl overflow-hidden border-2 border-transparent cursor-pointer transition-all';
+                    div.innerHTML = `<img src="${avatarSrc(filename)}" class="w-full h-full object-cover" alt="">`;
+                    div.onclick = () => selectAllocAvatar(filename, div);
+                    grid.appendChild(div);
+                });
+            } catch (e) {
+                grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-4">載入頭像失敗</div>';
+            }
+        }
+
+        function showStatsAllocationScreen() {
+            setVisible(document.getElementById('login-screen'), false);
+            setVisible(document.getElementById('game-content'), false);
+            setVisible(document.getElementById('stats-allocation-screen'), true);
+            resetAllocStats();
+            initAllocAvatarSelection();
+        }
+
+        async function submitStatAllocation() {
+            if (!selectedAllocAvatar) {
+                showToast('請先選擇頭像', 'error');
+                return;
+            }
+            const used = (allocStats.power - STAT_ALLOC_BASE)
+                + (allocStats.intellect - STAT_ALLOC_BASE)
+                + (allocStats.resilience - STAT_ALLOC_BASE);
+            if (STAT_ALLOC_FREE - used !== 0) {
+                showToast('請分配完所有 30 點', 'error');
+                return;
+            }
+            let res;
+            try {
+                res = await fetchWithTimeout('/allocate_stats', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...FETCH_NO_CACHE_HEADERS,
+                    },
+                    body: JSON.stringify({ ...allocStats, avatar: selectedAllocAvatar }),
+                }, LOGIN_FETCH_TIMEOUT_MS);
+                const data = await parseLoginJsonResponse(res);
+                if (!data.success) {
+                    showToast(data.error || '分配失敗，請重試', 'error');
+                    return;
+                }
+                persistRestoreToken(data);
+                currentSquad = data;
+                saveLocalSession(data);
+                await enterDashboardAfterOnboarding({ skip_team_prompt: false });
+            } catch (e) {
+                console.error('allocate_stats failed', e);
+                showToast(describeLoginFetchError(e, res), 'error');
+            }
+        }
+
+        async function enterDashboardAfterOnboarding(data = {}) {
+            setVisible(document.getElementById('stats-allocation-screen'), false);
+            setVisible(document.getElementById('game-content'), true);
+            showSection('dashboard');
+            updateDashboard(currentSquad);
+            initPlayerAvatar();
+            loadMyItems();
+            loadAnnouncements();
+
+            setTimeout(() => {
+                const picker = document.getElementById('route-picker');
+                if (!picker) return;
+                if (currentSquad.route) {
+                    setVisible(picker, false);
+                } else if (currentSquad.is_team_leader !== 1) {
+                    setVisible(picker, false);
+                }
+            }, 400);
+
+            if (!data.skip_team_prompt) {
+                try {
+                    const teamRes = await fetchNoCache('/my_team');
+                    const teamData = await teamRes.json();
+                    if (!teamData.has_team) {
+                        setTimeout(async () => {
+                            const goTeam = await showConfirmModal({
+                                title: '加入隊伍',
+                                message: '你尚未加入任何 Team。是否立即建立或加入一個 Team？',
+                                confirmLabel: '前往隊伍頁',
+                            });
+                            if (goTeam) showSection('team');
+                        }, 1200);
+                    }
+                } catch (teamErr) {
+                    console.error('team check failed', teamErr);
+                }
+            }
+        }
+
         const OIKONOMIA_STORAGE_KEY = 'oikonomia_session_v1';
 
         function saveLocalSession(data) {
@@ -3399,8 +3745,28 @@
             }
         }
 
+        function clearRestoreToken() {
+            try { localStorage.removeItem('oikonomia_restore_token'); } catch (e) { /* ignore */ }
+        }
+
         function clearLocalSession() {
             try { localStorage.removeItem(OIKONOMIA_STORAGE_KEY); } catch (e) { /* ignore */ }
+            clearRestoreToken();
+        }
+
+        function hasLocalSessionArtifacts(stored = null) {
+            const snap = stored || loadLocalSession();
+            return !!(
+                snap?.squad_id
+                || snap?.restore_token
+                || localStorage.getItem('oikonomia_restore_token')
+            );
+        }
+
+        function isSilentAuthFailure(res, data = null) {
+            if (res?.status === 401) return true;
+            const err = String(data?.error || '');
+            return err.includes('未登入') || err.includes('無效') || err.includes('過期');
         }
 
         async function tryRestoreWithToken(stored) {
@@ -3460,7 +3826,61 @@
             } catch (e) { /* ignore */ }
         }
 
-        const SESSION_FETCH_TIMEOUT_MS = 10000;
+        const SESSION_FETCH_TIMEOUT_MS = 25000;
+        const LOGIN_FETCH_TIMEOUT_MS = 25000;
+
+        function describeStatusFetchError(err, res = null) {
+            if (err?.name === 'AbortError') {
+                return '連線逾時 [ERR_STATUS_TIMEOUT]，請檢查網絡連線';
+            }
+            if (res?.status === 503) {
+                return '伺服器忙碌 [ERR_DB_LOCK]，請再試';
+            }
+            if (res?.status === 502) {
+                return '伺服器正在喚醒 [ERR_STATUS_502]，請等數秒後再試';
+            }
+            if (res?.status === 404) {
+                return '登入失敗 [ERR_STATUS_404]，請檢查網絡連線';
+            }
+            if (res && !res.ok) {
+                return `登入失敗 [ERR_STATUS_${res.status}]，請檢查網絡連線`;
+            }
+            if (String(err?.message || '').startsWith('non-json:')) {
+                const code = err.message.split(':')[1] || '';
+                if (code === '502' || code === '503') {
+                    return `伺服器忙碌 [ERR_STATUS_${code}]，請稍後再試`;
+                }
+                return `伺服器回應異常 [ERR_STATUS_${code || 'NON_JSON'}]，請稍後再試`;
+            }
+            return '登入失敗 [ERR_STATUS_UNKNOWN]，請檢查網絡連線';
+        }
+
+        function describeLoginFetchError(err, res = null) {
+            if (err?.name === 'AbortError') {
+                return '連線逾時，伺服器可能正在喚醒，請稍後再試';
+            }
+            if (res && (res.status === 502 || res.status === 503)) {
+                return '伺服器正在喚醒，請等數秒後再試';
+            }
+            if (res && !res.ok) {
+                return `登入失敗（HTTP ${res.status}），請稍後再試`;
+            }
+            if (String(err?.message || '').startsWith('non-json:')) {
+                const code = err.message.split(':')[1] || '';
+                return code === '502' || code === '503'
+                    ? '伺服器正在喚醒，請等數秒後再試'
+                    : '伺服器回應異常，請稍後再試';
+            }
+            return '登入失敗，請重試；若仍失敗請清除 Safari 網站資料後再試';
+        }
+
+        async function parseLoginJsonResponse(res) {
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error(`non-json:${res.status}`);
+            }
+            return res.json();
+        }
 
         async function fetchWithTimeout(url, options = {}, timeoutMs = SESSION_FETCH_TIMEOUT_MS) {
             const controller = new AbortController();
@@ -3477,8 +3897,12 @@
             if (loading) setVisible(loading, false);
         }
 
-        function showLoginScreenAfterFailedRestore(stored) {
+        function showLoginScreenAfterFailedRestore(stored, statusError = null, options = {}) {
+            const { silent = false } = options;
             hideSessionLoading();
+            if (statusError && !silent) {
+                showToast(statusError, 'error');
+            }
             const loginScreen = document.getElementById('login-screen');
             if (loginScreen) setVisible(loginScreen, true);
             const nameEl = document.getElementById('squad_id');
@@ -3554,26 +3978,51 @@
             } catch (e) {
                 isSessionRestoringCombatLock = false;
                 console.error('finishSessionRestore 遭遇競態崩潰:', e);
-                showLoginScreenAfterFailedRestore(loadLocalSession());
+                showLoginScreenAfterFailedRestore(loadLocalSession(), null, { silent: true });
                 return false;
             }
         }
 
-        async function fallbackToNormalSession() {
+        async function fallbackToNormalSession(options = {}) {
+            const { silent = false } = options;
             const stored = loadLocalSession();
+
+            if (!hasLocalSessionArtifacts(stored)) {
+                showLoginScreenAfterFailedRestore(null, null, { silent: true });
+                return false;
+            }
+
+            let lastStatusError = null;
 
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const res = await fetchWithTimeout('/status', { credentials: 'same-origin' });
+                    const res = await fetchWithTimeout(appendCacheBust('/status'), {
+                        credentials: 'same-origin',
+                        headers: FETCH_NO_CACHE_HEADERS,
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         if (data?.squad_id && data.success !== false && !data.error) {
                             persistRestoreToken(data);
                             return await finishSessionRestore(data);
                         }
+                        if (isSilentAuthFailure(res, data)) {
+                            lastStatusError = null;
+                            break;
+                        }
+                        lastStatusError = data?.error
+                            ? `${data.error} [ERR_STATUS_PAYLOAD]`
+                            : '登入失敗 [ERR_STATUS_PAYLOAD]，請檢查網絡連線';
+                    } else if (isSilentAuthFailure(res)) {
+                        console.warn('[Auth] /status unauthenticated during silent restore — expected');
+                        lastStatusError = null;
+                        break;
+                    } else {
+                        lastStatusError = describeStatusFetchError(null, res);
                     }
                 } catch (e) {
                     console.log('fallbackToNormalSession attempt failed', attempt + 1, e);
+                    lastStatusError = describeStatusFetchError(e, null);
                 }
                 if (attempt < 2) {
                     await new Promise(r => setTimeout(r, 800));
@@ -3592,7 +4041,7 @@
                 }
             }
 
-            showLoginScreenAfterFailedRestore(stored);
+            showLoginScreenAfterFailedRestore(stored, silent ? null : lastStatusError, { silent });
             return false;
         }
 
@@ -3601,7 +4050,7 @@
                 || localStorage.getItem('oikonomia_restore_token');
 
             if (!token) {
-                await fallbackToNormalSession();
+                await fallbackToNormalSession({ silent: true });
                 return;
             }
 
@@ -3618,11 +4067,24 @@
                     await finishSessionRestore(data);
                     return;
                 }
+
+                if (isSilentAuthFailure(res, data)) {
+                    console.warn('[Auth] Restore token expired or invalid — clearing cached credentials');
+                    clearRestoreToken();
+                    try {
+                        const raw = localStorage.getItem(OIKONOMIA_STORAGE_KEY);
+                        if (raw) {
+                            const parsed = JSON.parse(raw);
+                            delete parsed.restore_token;
+                            localStorage.setItem(OIKONOMIA_STORAGE_KEY, JSON.stringify(parsed));
+                        }
+                    } catch (e) { /* ignore */ }
+                }
             } catch (e) {
                 console.error('restoreSession with token failed', e);
             }
 
-            await fallbackToNormalSession();
+            await fallbackToNormalSession({ silent: true });
         }
 
         let sessionBootDone = false;
@@ -3632,15 +4094,15 @@
             const safetyTimer = setTimeout(() => {
                 if (sessionBootDone) return;
                 console.warn('session restore safety timeout');
-                showLoginScreenAfterFailedRestore(loadLocalSession());
+                showLoginScreenAfterFailedRestore(loadLocalSession(), null, { silent: true });
                 sessionBootDone = true;
-            }, 12000);
+            }, 28000);
             try {
                 await restoreSession();
             } catch (e) {
                 console.error('bootApp restoreSession failed', e);
                 if (!sessionBootDone) {
-                    showLoginScreenAfterFailedRestore(loadLocalSession());
+                    showLoginScreenAfterFailedRestore(loadLocalSession(), null, { silent: true });
                 }
             } finally {
                 sessionBootDone = true;
@@ -3728,22 +4190,29 @@
                 showToast('請輸入 4 位數字 PIN', 'error');
                 return;
             }
-            const res = await fetch('/login', {
-                method: 'POST',
-                credentials: 'same-origin',
-                body: new URLSearchParams({squad_id: name, pin: cleanPin})
-            });
-            const data = await res.json();
-            if (data.success !== false && data.squad_id) {
-                persistRestoreToken(data);
-                await completeLogin(data);
-            } else {
-                showToast(data.error || data.message || 'PIN 錯誤', 'error');
+            let res;
+            try {
+                res = await fetchWithTimeout('/login', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({ squad_id: name, pin: cleanPin }),
+                }, LOGIN_FETCH_TIMEOUT_MS);
+                const data = await parseLoginJsonResponse(res);
+                if (data.success !== false && data.squad_id) {
+                    persistRestoreToken(data);
+                    await completeLogin(data);
+                } else {
+                    showToast(data.error || data.message || 'PIN 錯誤', 'error');
+                }
+            } catch (err) {
+                console.error('loginWithPin failed', err);
+                showToast(describeLoginFetchError(err, res), 'error');
             }
         }
 
         async function login(e) {
             e.preventDefault();
+            let res;
             try {
                 const name = document.getElementById('squad_id').value.trim();
                 const pin = normalizeLoginPin(document.getElementById('login_pin').value);
@@ -3753,12 +4222,12 @@
                     document.getElementById('login_pin')?.focus();
                     return;
                 }
-                const res = await fetch('/login', {
+                res = await fetchWithTimeout('/login', {
                     method: 'POST',
                     credentials: 'same-origin',
-                    body: new URLSearchParams({squad_id: name, pin: pin})
-                });
-                const data = await res.json();
+                    body: new URLSearchParams({ squad_id: name, pin: pin }),
+                }, LOGIN_FETCH_TIMEOUT_MS);
+                const data = await parseLoginJsonResponse(res);
 
                 if (data.success !== false && data.squad_id) {
                     persistRestoreToken(data);
@@ -3784,7 +4253,7 @@
                 }
             } catch (err) {
                 console.error('login failed', err);
-                showToast('登入失敗，請重試或檢查網絡連線', 'error');
+                showToast(describeLoginFetchError(err, res), 'error');
             }
         }
 
@@ -4957,6 +5426,6 @@
         </div>
     </div>
 
-    <script type="module" src="/static/js/combat/bootstrap.js"></script>
+    <script type="module" data-combat-bootstrap src="/static/js/combat/bootstrap.js?v={{ deploy_version }}"></script>
 </body>
 </html>
