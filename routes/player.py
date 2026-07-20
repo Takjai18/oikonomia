@@ -52,6 +52,27 @@ def submit_task():
     if not team_id:
         return jsonify({"error": "你未加入任何 Team，無法提交任務"}), 400
 
+    loc = LOCATIONS.get(task_id) or {}
+    requires_team_photo = loc.get("task_type") == "gps"
+
+    photo_path = None
+    photo = request.files.get("photo") if "photo" in request.files else None
+    if photo and photo.filename:
+        upload_result = save_task_submission_photo(photo, session["squad_id"])
+        if not upload_result["ok"]:
+            return jsonify({
+                "success": False,
+                "error": upload_result["error"],
+            }), upload_result["status"]
+        photo_path = upload_result["photo_path"]
+
+    # GPS 任務：定位之外必須影相（相片需有所有組員樣子，作現場證明）
+    if requires_team_photo and not photo_path:
+        return jsonify({
+            "success": False,
+            "error": "GPS 任務必須上傳相片。由於定位有時唔準，相片需清楚顯示所有組員樣子，以確認大家到現場。",
+        }), 400
+
     conn = sqlite3.connect(settings.db_path)
     try:
         c = conn.cursor()
@@ -62,18 +83,6 @@ def submit_task():
             )
         """, (task_id, team_id))
         already_submitted = c.fetchone()
-
-        photo_path = None
-        if "photo" in request.files:
-            photo = request.files["photo"]
-            if photo.filename:
-                upload_result = save_task_submission_photo(photo, session["squad_id"])
-                if not upload_result["ok"]:
-                    return jsonify({
-                        "success": False,
-                        "error": upload_result["error"],
-                    }), upload_result["status"]
-                photo_path = upload_result["photo_path"]
 
         c.execute(
             """INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)

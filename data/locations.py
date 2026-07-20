@@ -8,7 +8,7 @@ LOCATIONS = {
         "lng": 114.2700,
         "radius": 40,
         "task_type": "gps",
-        "description": "Iggy 嘅第一段記憶似乎喺呢度。"
+        "description": "Iggy 嘅第一段記憶似乎喺呢度。到達後先驗證定位，再影一張包含所有組員樣子嘅相（GPS 有時唔準，靠相片確認大家到場）。",
     },
     "loc2": {
         "name": "Judas 嘅低語",
