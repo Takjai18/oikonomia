@@ -712,17 +712,15 @@ def apply_damage_to_combat_participant(squad_id, damage, participant=None):
 
 def get_active_combat_member_ids(participants):
     """存活且可行動的隊員 squad_id（非瀕死）。"""
+    from models.squad import is_near_death_active
+
     active = []
     for p in participants:
         sid = p["squad_id"]
         if int(p.get("hp") or 0) <= 0:
             continue
-        if p.get("near_death_until"):
-            try:
-                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
-                    continue
-            except ValueError:
-                pass
+        if is_near_death_active(p):
+            continue
         active.append(sid)
     return active
 
@@ -977,15 +975,13 @@ def _wait_for_resolution_complete(combat_id, max_wait=None):
 
 
 def get_lowest_resilience_player(participants):
+    from models.squad import is_near_death_active
+
     best = None
     best_res = 999
     for p in participants:
-        if p.get("near_death_until"):
-            try:
-                if datetime.now() < datetime.fromisoformat(p["near_death_until"]):
-                    continue
-            except ValueError:
-                pass
+        if is_near_death_active(p):
+            continue
         eff = get_effective_stat(p, "resilience")
         if eff < best_res:
             best_res = eff

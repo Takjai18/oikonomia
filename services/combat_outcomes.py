@@ -141,14 +141,19 @@ def build_victory_outcome_payload(
 
 
 def get_collapsed_combat_members(participants):
-    """Squads that triggered INV-D (HP≤0 or active near-death)."""
+    """Squads that triggered INV-D (HP≤0 or active near-death while not revived)."""
     from models.squad import is_near_death_active
 
     collapsed = []
     for p in participants or []:
         if not p:
             continue
-        if int(p.get("hp") or 0) <= 0 or is_near_death_active(p):
+        try:
+            hp = int(p.get("hp") or 0)
+        except (TypeError, ValueError):
+            hp = 0
+        # is_near_death_active is false when HP>0 (revived / GM heal).
+        if hp <= 0 or is_near_death_active(p):
             collapsed.append(p)
     return collapsed
 

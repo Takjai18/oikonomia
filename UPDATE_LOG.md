@@ -495,6 +495,17 @@
 
 ---
 
+## 2026-07-21 — GM 回血後仍顯示已死亡／無法再戰
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | Zubimendi 死後 GM 改 HP，再進戰仍「已死亡／瀕死」 |
+| **根因** | 瀕死 flag `near_death_until` 未清；前端 `isMemberCollapsed` 見 flag 就判死，唔理 HP |
+| **修復** | `is_near_death_active`：HP>0 即非瀕死；`update_squad(hp>0)` 清 flag；前端對齊 |
+| **GM 操作** | 再 set 一次 HP>0 即可清 DB；或等 deploy 後舊 flag 亦唔再擋 HP>0 玩家 |
+
+---
+
 ## 驗證清單（改動後）
 
 ```bash

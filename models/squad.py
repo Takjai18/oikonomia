@@ -9,7 +9,20 @@ from utils.validators import parse_status_effects
 
 
 def is_near_death_active(squad):
-    until = (squad or {}).get("near_death_until")
+    """True only while HP is depleted and near-death timer is still running.
+
+    If HP has been restored (GM heal, rescue, etc.), the player is not collapsed
+    even if a stale near_death_until timestamp remains in the row.
+    """
+    if not squad:
+        return False
+    try:
+        hp = int(squad.get("hp") or 0)
+    except (TypeError, ValueError):
+        hp = 0
+    if hp > 0:
+        return False
+    until = squad.get("near_death_until")
     if not until:
         return False
     try:
@@ -203,6 +216,9 @@ def update_squad(squad_id, **kwargs):
             if new_hp > current_max:
                 kwargs["max_hp"] = min(HP_STAT_CEILING, new_hp)
             kwargs["hp"] = max(0, new_hp)
+            # GM / absolute HP restore revives player: clear near-death lock.
+            if kwargs["hp"] > 0 and "near_death_until" not in kwargs:
+                kwargs["near_death_until"] = None
 
     for key, val in kwargs.items():
         if key not in allowed:

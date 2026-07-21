@@ -515,6 +515,7 @@ def gm_adjust():
     except ValueError:
         return jsonify({"success": False, "error": "數值必須為整數"}), 400
 
+    # HP > 0 also clears near_death_until inside update_squad (revive).
     update_squad(squad_id, **{field: value})
     squad = get_squad(squad_id)
     display = (squad or {}).get("display_name") or squad_id
@@ -526,10 +527,14 @@ def gm_adjust():
         effect_value=value,
         created_by=operator or "GM",
     )
+    msg = f"{squad_id} 的 {field} 已更新為 {value}"
+    if field == "hp" and value > 0:
+        msg += "（已清除瀕死狀態，可再戰）"
     return jsonify({
         "success": True,
-        "message": f"{squad_id} 的 {field} 已更新為 {value}",
+        "message": msg,
         "squad": squad,
+        "near_death_until": (squad or {}).get("near_death_until"),
     })
 
 

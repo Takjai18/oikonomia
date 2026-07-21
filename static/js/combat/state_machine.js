@@ -416,14 +416,24 @@ export function parseCombatHp(value, maxHp = DEFAULT_COMBAT_MAX_HP) {
   return Number.isFinite(max) ? max : DEFAULT_COMBAT_MAX_HP;
 }
 
-/** INV-D: hp ≤ 0 or active near-death marker counts as collapsed. */
+/** INV-D: hp ≤ 0 with no revive, or active near-death while HP depleted. */
 export function isMemberCollapsed(member) {
   if (!member) return false;
-  if (member.near_death_until) return true;
   const hp = parseInt(member.hp, 10);
-  if (Number.isFinite(hp)) {
-    return hp <= 0;
+  const hasHp = Number.isFinite(hp);
+  // Restored HP means revived — ignore stale near_death_until strings.
+  if (hasHp && hp > 0) return false;
+  const until = member.near_death_until;
+  if (until) {
+    const ts = Date.parse(until);
+    if (Number.isFinite(ts)) {
+      if (ts > Date.now()) return true;
+    } else {
+      // Unparseable marker + no positive HP → treat as collapsed
+      return true;
+    }
   }
+  if (hasHp) return hp <= 0;
   return false;
 }
 

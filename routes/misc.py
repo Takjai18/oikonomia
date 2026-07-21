@@ -188,6 +188,7 @@ def api_version():
                 relative="static/js/combat/views/dice_modal_view.js",
             ),
             "combat_avatar_path_v2": True,
+            "near_death_revive_v1": True,
         },
         "forced_route": FORCED_ROUTE,
         "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),

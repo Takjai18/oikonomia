@@ -442,16 +442,13 @@ def combat_submit_action_api():
     if not actor_state:
         return jsonify({"success": False, "error": "找不到行動者或該主角未參戰"}), 400
 
-    if actor_state.get("near_death_until"):
-        try:
-            if datetime.now() < datetime.fromisoformat(actor_state["near_death_until"]):
-                label = "AI 主角" if as_protagonist else "你"
-                return jsonify({
-                    "success": False,
-                    "error": f"{label}已陷入瀕死，無法執行任何行動",
-                }), 400
-        except ValueError:
-            pass
+    # Use SSOT helper (HP>0 counts as revived even if timer string is stale).
+    if is_near_death_active(actor_state):
+        label = "AI 主角" if as_protagonist else "你"
+        return jsonify({
+            "success": False,
+            "error": f"{label}已陷入瀕死，無法執行任何行動",
+        }), 400
 
     if action_type == "use_zoo":
         from models.combat import apply_effective_combat_settings, is_zoo_unlocked_for_team

@@ -444,13 +444,19 @@ describe('Combat V2 state machine', () => {
     assert.ok(effects.some((e) => e.type === 'SHOW_DEFEAT'));
   });
 
-  it('near_death_until triggers isMemberCollapsed (INV-D)', () => {
-    assert.equal(isMemberCollapsed({ hp: 50, near_death_until: '2099-01-01T00:00:00' }), true);
+  it('near_death_until triggers isMemberCollapsed only when HP depleted (INV-D)', () => {
+    // GM heal case: restored HP must not stay collapsed on stale near_death_until.
+    assert.equal(isMemberCollapsed({ hp: 50, near_death_until: '2099-01-01T00:00:00' }), false);
+    assert.equal(isMemberCollapsed({ hp: 0, near_death_until: '2099-01-01T00:00:00' }), true);
     const ctx = createInitialContext(1);
     const { ctx: failed } = handleAnyDeath(ctx, {
-      A: { display_name: 'A', hp: 'n/a', near_death_until: '2099-01-01T00:00:00' },
+      A: { display_name: 'A', hp: 0, near_death_until: '2099-01-01T00:00:00' },
     });
     assert.equal(failed.phase, Phase.COMBAT_FAILED);
+    const { ctx: ok } = handleAnyDeath(ctx, {
+      A: { display_name: 'A', hp: 80, near_death_until: '2099-01-01T00:00:00' },
+    });
+    assert.notEqual(ok.phase, Phase.COMBAT_FAILED);
   });
 
   it('defeat with dead_squad_names from DICE_CONFIRM clears modals (INV-D)', () => {
