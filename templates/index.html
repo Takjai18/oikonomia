@@ -2676,7 +2676,15 @@
                         try {
                             const fd = new FormData();
                             fd.append('task_id', taskId);
-                            fd.append('content', JSON.stringify(payload || {}));
+                            const body = Object.assign({}, payload || {});
+                            const audioBlob = body.audioBlob;
+                            const audioFilename = body.audioFilename || 'recording.webm';
+                            delete body.audioBlob;
+                            delete body.audioFilename;
+                            fd.append('content', JSON.stringify(body));
+                            if (audioBlob) {
+                                fd.append('audio', audioBlob, audioFilename);
+                            }
                             const res = await fetch('/submit_task', {
                                 method: 'POST',
                                 credentials: 'same-origin',

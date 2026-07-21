@@ -107,4 +107,21 @@ LOCATIONS = {
             "從名單揀地方去估；每次會顯示距離、方向箭嘴同接近度 %。"
         ),
     },
+    "loc_voice_01": {
+        "name": "聲線契約",
+        "hint": "錄音 · 小遊戲",
+        **_CAMP,
+        "task_type": "minigame",
+        "minigame_id": "voice_record",
+        "minigame_config": {
+            "prompt": "請允許麥克風權限，然後大聲讀出下面句子並錄音提交。",
+            "script": "界線不會自己守住。",
+            "minSeconds": 3,
+            "maxSeconds": 60,
+        },
+        "description": (
+            "用聲音立約。讀出指定句子並錄音（最少 3 秒），"
+            "試聽滿意後提交；錄音會交俾 GM 存檔。"
+        ),
+    },
 }

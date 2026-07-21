@@ -25,7 +25,7 @@ from utils.helpers import (
     resolve_player_pick_avatar,
     PLAYER_AVATAR_SUBDIR,
 )
-from utils.uploads import save_task_submission_photo
+from utils.uploads import save_task_submission_audio, save_task_submission_photo
 
 player_bp = Blueprint("player", __name__)
 
@@ -67,20 +67,24 @@ def submit_task():
     task_type = loc.get("task_type") or ""
 
     # Minigame: client must report a win for the expected gameId.
+    minigame_payload = None
     if task_type == "minigame":
         try:
-            payload = json.loads(content) if content else {}
+            minigame_payload = json.loads(content) if content else {}
         except (TypeError, ValueError, json.JSONDecodeError):
             return jsonify({"success": False, "error": "小遊戲結果格式錯誤"}), 400
-        if not isinstance(payload, dict):
+        if not isinstance(minigame_payload, dict):
             return jsonify({"success": False, "error": "小遊戲結果格式錯誤"}), 400
         expected_game = loc.get("minigame_id")
-        if payload.get("result") != "win" or (
-            expected_game and payload.get("gameId") != expected_game
+        if minigame_payload.get("result") != "win" or (
+            expected_game and minigame_payload.get("gameId") != expected_game
         ):
             return jsonify({"success": False, "error": "小遊戲尚未過關"}), 400
 
     requires_team_photo = task_type == "gps"
+    requires_audio = (
+        task_type == "minigame" and loc.get("minigame_id") == "voice_record"
+    )
 
     photo_path = None
     photo = request.files.get("photo") if "photo" in request.files else None
@@ -93,11 +97,28 @@ def submit_task():
             }), upload_result["status"]
         photo_path = upload_result["photo_path"]
 
+    audio = request.files.get("audio") if "audio" in request.files else None
+    if audio and audio.filename:
+        audio_result = save_task_submission_audio(audio, session["squad_id"])
+        if not audio_result["ok"]:
+            return jsonify({
+                "success": False,
+                "error": audio_result["error"],
+            }), audio_result["status"]
+        # Reuse photo_path column for media attachment path (audio or photo).
+        photo_path = audio_result["audio_path"]
+
     # GPS 任務：定位之外必須影相（相片需有所有組員樣子，作現場證明）
     if requires_team_photo and not photo_path:
         return jsonify({
             "success": False,
             "error": "GPS 任務必須上傳相片。由於定位有時唔準，相片需清楚顯示所有組員樣子，以確認大家到現場。",
+        }), 400
+
+    if requires_audio and not photo_path:
+        return jsonify({
+            "success": False,
+            "error": "錄音任務必須上載錄音檔",
         }), 400
 
     conn = sqlite3.connect(settings.db_path)

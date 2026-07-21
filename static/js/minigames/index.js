@@ -7,7 +7,8 @@ export const MINIGAMES = {
     sudoku: () => import('./sudoku.js'),
     g2048: () => import('./g2048.js'),
     wordle_custom: () => import('./wordle_custom.js'),
-    mapdle_hk: () => import('./mapdle_hk.js')
+    mapdle_hk: () => import('./mapdle_hk.js'),
+    voice_record: () => import('./voice_record.js'),
 };
 
 let currentUnmount = null;
