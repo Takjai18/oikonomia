@@ -506,6 +506,16 @@
 
 ---
 
+## 2026-07-21 — 非秒殺卡喺上回合擲骰 popup
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 一擊唔死敵人時，卡喺顯示上回合骰面嘅 message box |
+| **根因** | Plan A 攻擊路徑唔經 `CONFIRM_DICE`，冇 `HIDE_DICE`；`SUBMIT_SUCCESS` 只開 settlement 唔關 dice |
+| **修復** | 所有 `SUBMIT_SUCCESS`／`SUBMIT_ERROR`／`ACK_SETTLEMENT` 加 `HIDE_DICE`；`onSubmitSuccess` 開頭強制 hide |
+
+---
+
 ## 驗證清單（改動後）
 
 ```bash

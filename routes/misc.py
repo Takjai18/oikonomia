@@ -189,6 +189,13 @@ def api_version():
             ),
             "combat_avatar_path_v2": True,
             "near_death_revive_v1": True,
+            "dice_modal_teardown_v1": _combat_js_has_marker(
+                "Always close dice before settlement",
+                relative="static/js/combat/index.js",
+            ) or _combat_js_has_marker(
+                "Plan A keeps dice modal open until submit returns",
+                relative="static/js/combat/state_machine.js",
+            ),
         },
         "forced_route": FORCED_ROUTE,
         "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),

@@ -606,27 +606,43 @@ const TRANSITIONS = {
         };
       },
       effects: (ctx, meta) => {
+        // Plan A keeps dice modal open until submit returns — always tear it down here.
         if (meta.escaped) {
           return [
+            { type: 'HIDE_DICE' },
             { type: 'HIDE_SUBMITTING' },
             { type: 'SHOW_ESCAPED', data: meta.data },
             { type: 'STOP_POLL' },
           ];
         }
         if (meta.roundResolved === false) {
-          return [{ type: 'HIDE_SUBMITTING' }, { type: 'UPDATE_HUD' }, { type: 'START_POLL' }];
+          return [
+            { type: 'HIDE_DICE' },
+            { type: 'HIDE_SUBMITTING' },
+            { type: 'UPDATE_HUD' },
+            { type: 'START_POLL' },
+          ];
         }
         if (meta.skipToVictory) {
           return terminalModalTeardownEffects([
+            { type: 'HIDE_DICE' },
             { type: 'HIDE_SUBMITTING' },
             { type: 'SHOW_VICTORY', data: meta.data },
             { type: 'STOP_POLL' },
           ]);
         }
         if (meta.skipModal) {
-          return [{ type: 'HIDE_SUBMITTING' }, { type: 'START_POLL' }];
+          return [
+            { type: 'HIDE_DICE' },
+            { type: 'HIDE_SUBMITTING' },
+            { type: 'START_POLL' },
+          ];
         }
-        return [{ type: 'HIDE_SUBMITTING' }, { type: 'SHOW_SETTLEMENT', settlement: meta.settlement, killing: meta.isKillingBlow }];
+        return [
+          { type: 'HIDE_DICE' },
+          { type: 'HIDE_SUBMITTING' },
+          { type: 'SHOW_SETTLEMENT', settlement: meta.settlement, killing: meta.isKillingBlow },
+        ];
       },
     },
     SUBMIT_ERROR: {
@@ -637,6 +653,7 @@ const TRANSITIONS = {
         pollPaused: false,
       }),
       effects: (_, meta) => [
+        { type: 'HIDE_DICE' },
         { type: 'HIDE_SUBMITTING' },
         { type: 'TOAST', message: meta.error || '提交失敗', level: 'error' },
         { type: 'START_POLL' },
@@ -706,9 +723,18 @@ const TRANSITIONS = {
       },
       effects: (ctx, meta) => {
         if (meta.killing || ctx.isKillingBlow) {
-          return [{ type: 'HIDE_SETTLEMENT' }, { type: 'SHOW_VICTORY' }, { type: 'STOP_POLL' }];
+          return [
+            { type: 'HIDE_DICE' },
+            { type: 'HIDE_SETTLEMENT' },
+            { type: 'SHOW_VICTORY' },
+            { type: 'STOP_POLL' },
+          ];
         }
-        return [{ type: 'HIDE_SETTLEMENT' }, { type: 'START_POLL' }];
+        return [
+          { type: 'HIDE_DICE' },
+          { type: 'HIDE_SETTLEMENT' },
+          { type: 'START_POLL' },
+        ];
       },
     },
     ACTION_ATTACK: { reduce: (c) => c, effects: () => [{ type: 'TOAST', message: '請先關閉當前結算彈窗' }] },

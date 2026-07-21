@@ -353,10 +353,12 @@ export class CombatApp {
           cosmetic: false,
         },
       };
+      // Always close dice before settlement / waiting / victory UI.
+      this.views.dice.hide();
       await this.onSubmitSuccess(data);
     } catch (err) {
-      this.dispatch('SUBMIT_ERROR', { error: err.message || '提交失敗' });
       this.views.dice.hide();
+      this.dispatch('SUBMIT_ERROR', { error: err.message || '提交失敗' });
     } finally {
       this.submittingActive = false;
       if (!this.ctx.pollPaused) this.poller.resume();
@@ -412,6 +414,9 @@ export class CombatApp {
   }
 
   async onSubmitSuccess(data) {
+    // Belt-and-suspenders: never leave last-turn dice modal open.
+    this.views?.dice?.hide?.();
+
     const deathCheck = handleAnyDeath(
       { ...this.ctx, hud: extractHud(data) },
       data.member_states,
