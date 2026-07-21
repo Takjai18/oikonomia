@@ -319,6 +319,7 @@
 | `OIKONOMIA_SHOW_TEST_ENCOUNTERS` | env | `1` 時非 GM 都見到測試 encounter | Production **唔好**設；僅開發／GM 測試用 |
 | `OIKONOMIA_ENDING_ENABLED` | env | `0` 停用 ending orchestrator 副作用 | 測試用；production 預設 `1` |
 | `OIKONOMIA_FORCED_ROUTE` | env · `data/route_config.py` | **預設 `iggy`**：全線強制 Iggy；空字串=` ` 恢復雙線；`marah` 強制 Marah | 營會 production 保持預設；Marah 測試先要 unset／空值 |
+| `OIKONOMIA_ZOO_UNLOCK_STAGE` | env · `data/combat_feature_config.py` | **預設 `2`**：story stage 達標先解鎖 Zoo；`0`=一開始就開 | Production 用預設；CI／pre_deploy 設 `0` |
 | `OIKONOMIA_SKIP_DB_BOOTSTRAP` | env | `1` 跳過 DB bootstrap | 僅特殊測試；唔好喺 PA 亂開 |
 | `FLASK_ENV=production` | PA | 未設可能用 dev 預設憑證 | `pa-update.sh` 會處理 |
 | 本地 port | 開發 | macOS 5000 常被佔用 | 預設 **5001**（`app.py`） |
@@ -333,6 +334,7 @@
 | **永恆崩壞影** `test_undefeatable` | HP 9999、resilience 99；`route: test` | 刻意打唔贏，測 Trauma／失敗流程 |
 | 測試 encounter 隱藏 | `route=test` 僅 GM 或 `OIKONOMIA_SHOW_TEST_ENCOUNTERS=1` 可開 | 防止玩家誤入測試戰（commit `3df7bdb`） |
 | **全線 Iggy（2026-07-21）** | `FORCED_ROUTE=iggy`：玩家唔可以揀 Marah；建隊自動 Iggy | **刻意設計**（營會設定）；唔係 picker bug |
+| **開局無 Zoo（2026-07-21）** | story stage < 2 時戰鬥隱藏 Zoo；後端拒 `use_zoo`；主角 AI 唔 Zoo | **刻意設計**；解鎖後先顯示 |
 | 骰子 **0** | `DICE_MULTIPLIERS[0]=0.0` → 該次攻擊 **0 傷害** | 設計如此；log 會寫「造成 0 點傷害」 |
 | 最低傷害 1 | `calculate_attack_damage` 喺 multiplier > 0 時 `max(1, …)` | 骰 1–3 至少 1 點（除非 multiplier≤0） |
 | 暴走 | 神智過低可能攻擊自己而唔打敵 | 檢查 log 有冇「暴走」 |

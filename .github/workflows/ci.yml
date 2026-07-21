@@ -32,6 +32,8 @@ jobs:
           FLASK_ENV: development
           # Dual-route regression; production defaults FORCED_ROUTE=iggy when unset
           OIKONOMIA_FORCED_ROUTE: ""
+          # Unlock Zoo for combat regression; production defaults stage 2 when unset
+          OIKONOMIA_ZOO_UNLOCK_STAGE: "0"
         run: bash scripts/pre_deploy_checks.sh
 
   deploy-render:

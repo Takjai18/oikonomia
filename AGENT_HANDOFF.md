@@ -563,6 +563,7 @@ static/js/combat/
 | **Legacy QR 關閉** | production 預設 `ALLOW_LEGACY_QR=0`（`utils/qr.py`） |
 | **Route SSOT** | `official_squad_route()`；`get_squad` / `get_all_squads` / 戰鬥參與者以 `teams.route` 為準 |
 | **Forced Iggy（2026-07-21）** | `FORCED_ROUTE=iggy`；啟動 `apply_forced_route_to_all()`；建隊自動 Iggy；`/api/version.forced_route` |
+| **Zoo stage gate（2026-07-21）** | `ZOO_UNLOCK_STORY_STAGE=2`；`effective_allow_zoo`；UI 隱藏；`OIKONOMIA_ZOO_UNLOCK_STAGE` |
 | **瀕死狀態** | 瀕死期間禁止道具補血；HP→0 先設 `near_death_until`；HP≤0 唔攻擊/暴走 |
 | **GM auth** | `services/gm_auth.py`：PIN 登入後 **8 小時** session 過期 |
 | **GM dashboard N+1** | submission count 改 bulk `GROUP BY` |
@@ -691,7 +692,7 @@ static/js/combat/
 resolve 鎖：player_phase → resolving（BEGIN IMMEDIATE）→ 結算 → enemy_phase/ended
 傷害：calculate_damage_simple / calculate_damage
 骰子倍率：0→0, 1→1.0, 2→1.5, 3→2.0（伺服器 roll_combat_dice）
-Zoo：任何神智可發動；加成 tier ≥70/≥80/≥90/≥100 → ×1.3/1.4/1.5/1.8（<70 為 ×1.0）
+Zoo：故事階段 ≥2 先解鎖（預設）；解鎖前 UI 隱藏、後端拒、主角 AI 唔用。解鎖後任何神智可發動；加成 tier ≥70/≥80/≥90/≥100 → ×1.3/1.4/1.5/1.8（<70 為 ×1.0）
 暴走：神智 <10→90%, <20→50%, <40→20%（HP≤0 唔觸發）
 敵人反擊：攻擊全隊韌性最低者；任一同隊 Defend → 反擊傷害減半
 瀕死：HP≤0 → near_death_until +15 分鐘；瀕死期間禁止道具補血

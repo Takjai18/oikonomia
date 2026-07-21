@@ -453,8 +453,23 @@ def combat_submit_action_api():
         except ValueError:
             pass
 
-    if action_type == "use_zoo" and not settings.get("allow_zoo", True):
-        return jsonify({"success": False, "error": "此戰鬥不允許 Zoo 能力"}), 400
+    if action_type == "use_zoo":
+        from models.combat import apply_effective_combat_settings, is_zoo_unlocked_for_team
+
+        team_for_zoo = squad.get("team_id")
+        effective = apply_effective_combat_settings(
+            team_for_zoo,
+            encounter=encounter,
+            story_stage=story_stage,
+            combat_settings=settings,
+        )
+        if not effective.get("allow_zoo", True):
+            if not is_zoo_unlocked_for_team(team_for_zoo, story_stage=story_stage):
+                return jsonify({
+                    "success": False,
+                    "error": "Zoo 能力尚未解鎖（故事階段未達）",
+                }), 400
+            return jsonify({"success": False, "error": "此戰鬥不允許 Zoo 能力"}), 400
     if as_protagonist and action_type == "use_item":
         return jsonify({"success": False, "error": "主角不可使用玩家物品"}), 400
 

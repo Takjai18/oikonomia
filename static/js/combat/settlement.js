@@ -204,5 +204,10 @@ export function extractHud(snapshot) {
     remaining_seconds: snapshot.remaining_seconds,
     berserk_chance: snapshot.berserk_chance,
     allow_zoo: snapshot.combat_settings?.allow_zoo !== false,
+    zoo_unlocked: snapshot.zoo_unlocked ?? snapshot.combat_settings?.zoo_unlocked,
+    zoo_unlock_story_stage:
+      snapshot.zoo_unlock_story_stage
+      ?? snapshot.combat_settings?.zoo_unlock_story_stage
+      ?? null,
   };
 }

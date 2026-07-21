@@ -772,8 +772,8 @@
                     </div>
                 </div>
 
-                <!-- Zoo Skills -->
-                <div>
+                <!-- Zoo Skills（故事階段未解鎖時隱藏；與戰鬥 Zoo 同一 gate） -->
+                <div id="zoo-skills-panel" class="hidden">
                     <div class="font-medium mb-3 flex items-center gap-x-2">
                         <i class="fa-solid fa-magic theme-accent-text"></i>
                         <span>Zoo 能力</span>
@@ -2977,6 +2977,12 @@
             const displayName = squad.display_name || squad.squad_id;
             document.getElementById('squad-name').textContent = displayName;
             updateDashboardAttackHint(squad);
+
+            const zooPanel = document.getElementById('zoo-skills-panel');
+            if (zooPanel) {
+                const zooOn = !!(data.zoo_unlocked || squad.zoo_unlocked);
+                setVisible(zooPanel, zooOn);
+            }
 
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');

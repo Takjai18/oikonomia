@@ -110,8 +110,16 @@ export function createActionView(rootEl, handlers = {}) {
 
       setDisabled(absorbing || busy || submitted);
       if (zooBtn) {
-        zooBtn.disabled = absorbing || busy || submitted || !allowZoo;
-        zooBtn.title = allowZoo ? '' : '此遭遇不允許 Zoo 能力';
+        // Stage-locked / encounter-disabled: hide entirely (not greyed out).
+        if (!allowZoo) {
+          zooBtn.classList.add('hidden');
+          zooBtn.disabled = true;
+          zooBtn.title = '';
+        } else {
+          zooBtn.classList.remove('hidden');
+          zooBtn.disabled = absorbing || busy || submitted;
+          zooBtn.title = '';
+        }
       }
 
       updateZooTip(ctx);

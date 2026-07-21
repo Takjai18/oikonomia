@@ -48,6 +48,7 @@ def combat_v2_e2e_harness():
 @misc_bp.route("/api/version")
 def api_version():
     from data.route_config import FORCED_ROUTE
+    from data.combat_feature_config import get_zoo_unlock_story_stage
 
     upload_folder = settings.upload_folder
     upload_count = len([
@@ -168,8 +169,10 @@ def api_version():
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
             "forced_route_iggy": FORCED_ROUTE == "iggy",
+            "zoo_stage_gate": True,
         },
         "forced_route": FORCED_ROUTE,
+        "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),
         "db_path": settings.db_path,
         "data_dir": os.environ.get("DATA_DIR"),
         "render": os.environ.get("RENDER") == "true",

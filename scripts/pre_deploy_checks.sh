@@ -16,6 +16,8 @@ export SECRET_KEY="${SECRET_KEY:-test-secret-pre-deploy}"
 # Regression suite needs dual-route (Iggy + Marah). Production defaults to
 # FORCED_ROUTE=iggy when this env is unset; empty string restores free choice.
 export OIKONOMIA_FORCED_ROUTE="${OIKONOMIA_FORCED_ROUTE-}"
+# Unlock Zoo for regression (production defaults stage 2 when this env is unset).
+export OIKONOMIA_ZOO_UNLOCK_STAGE="${OIKONOMIA_ZOO_UNLOCK_STAGE:-0}"
 
 run_test() {
     local script="$1"

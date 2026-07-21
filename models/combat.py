@@ -434,6 +434,50 @@ def zoo_bonus_multiplier(sanity):
         return 1.3
     return 1.0
 
+
+def zoo_unlock_story_stage():
+    from data.combat_feature_config import get_zoo_unlock_story_stage
+
+    return int(get_zoo_unlock_story_stage())
+
+
+def is_zoo_unlocked_for_team(team_id, story_stage=None):
+    """True when team story stage has reached the Zoo unlock threshold."""
+    if story_stage is None:
+        if not team_id:
+            return False
+        story_stage = get_team_story_stage(team_id)
+    return int(story_stage or 0) >= zoo_unlock_story_stage()
+
+
+def effective_allow_zoo(team_id, encounter=None, story_stage=None, combat_settings=None):
+    """
+    SSOT Zoo availability:
+    stage unlocked AND encounter combat_settings.allow_zoo (default True).
+    """
+    settings = combat_settings
+    if settings is None:
+        settings = (encounter or {}).get("combat_settings") or {}
+    if not settings.get("allow_zoo", True):
+        return False
+    return is_zoo_unlocked_for_team(team_id, story_stage=story_stage)
+
+
+def apply_effective_combat_settings(team_id, encounter=None, story_stage=None, combat_settings=None):
+    """Copy combat_settings with allow_zoo rewritten to effective value."""
+    base = dict(combat_settings or (encounter or {}).get("combat_settings") or {})
+    stage = story_stage
+    if stage is None and team_id:
+        stage = get_team_story_stage(team_id)
+    elif stage is None:
+        stage = 0
+    unlocked = is_zoo_unlocked_for_team(team_id, story_stage=stage)
+    encounter_allows = base.get("allow_zoo", True)
+    base["allow_zoo"] = bool(unlocked and encounter_allows)
+    base["zoo_unlocked"] = bool(unlocked)
+    base["zoo_unlock_story_stage"] = zoo_unlock_story_stage()
+    return base
+
 def berserk_probability(sanity):
     sanity = int(sanity or 0)
     if sanity < 10:
@@ -629,6 +673,7 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
     dice = roll_combat_dice()
     if sanity < 30:
         return {"action_type": "defend", "dice_result": dice}
+    # allow_zoo here must already be effective (stage + encounter).
     if combat_settings.get("allow_zoo", True) and random.random() < 0.35:
         return {"action_type": "use_zoo", "dice_result": dice}
     if sanity < 40 and dice == 0:
@@ -636,10 +681,15 @@ def choose_protagonist_auto_action(participant, combat_settings=None):
     return {"action_type": "attack", "dice_result": dice}
 
 
-def inject_protagonist_auto_actions(actions, participants, encounter, player_control_ids):
+def inject_protagonist_auto_actions(actions, participants, encounter, player_control_ids, team_id=None):
     merged = dict(actions or {})
-    combat_settings = (encounter or {}).get("combat_settings") or {}
-    player_control_ids = set(player_control_ids or [])
+    if team_id is None:
+        for p in participants or []:
+            if p.get("team_id"):
+                team_id = p.get("team_id")
+                break
+    combat_settings = apply_effective_combat_settings(team_id, encounter=encounter)
+    _ = set(player_control_ids or [])  # kept for call-site compatibility
     active_ids = set(get_active_combat_member_ids(participants))
     for p in participants:
         if not p.get("is_protagonist"):
@@ -1368,6 +1418,7 @@ def _resolve_player_phase_body(combat_id):
         participants,
         encounter,
         player_control_ids,
+        team_id=team_id,
     )
     item_consume_batch = build_combat_item_consume_batch(actions)
     items_to_delete = []
@@ -1910,7 +1961,7 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
 
     if combat:
         combat = reconcile_enemy_hp(combat, persist=True)
-    combat_settings = (encounter or {}).get("combat_settings", {})
+    raw_combat_settings = (encounter or {}).get("combat_settings", {}) or {}
     if participants is None and combat:
         participants = get_combat_participants(combat)
     participants = participants or []
@@ -1926,6 +1977,13 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         if not starter and combat.get("squad_id"):
             starter = fetch_squads_by_ids([combat["squad_id"]]).get(combat["squad_id"])
         team_id = starter.get("team_id") if starter else None
+    story_stage_for_zoo = get_team_story_stage(team_id) if team_id else 0
+    combat_settings = apply_effective_combat_settings(
+        team_id,
+        encounter=encounter,
+        story_stage=story_stage_for_zoo,
+        combat_settings=raw_combat_settings,
+    )
 
     protagonists = get_team_protagonists(team_id) if team_id else {}
     team_route = protagonists.get("active_route") or me.get("route")
@@ -2037,23 +2095,28 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "log_entries": log_entries,
         "reflection_prompt": (encounter or {}).get("reflection_prompt"),
         "combat_settings": combat_settings,
-        "available_actions": list(settings.combat_action_types),
+        "available_actions": [
+            a for a in list(settings.combat_action_types)
+            if a != "use_zoo" or combat_settings.get("allow_zoo", True)
+        ],
         "winner": combat.get("winner"),
         "enemy_description": (encounter or {}).get("enemy", {}).get("description"),
         "route": team_route or (encounter or {}).get("route"),
         "max_phases": combat_settings.get("max_phases", 5),
         "my_squad_id": squad_id,
         "team_id": team_id,
-        "story_stage": get_team_story_stage(team_id) if team_id else 0,
+        "story_stage": story_stage_for_zoo,
+        "zoo_unlocked": bool(combat_settings.get("zoo_unlocked")),
+        "zoo_unlock_story_stage": combat_settings.get("zoo_unlock_story_stage"),
         "protagonist_player_control": protagonist_player_control_enabled(
-            encounter, get_team_story_stage(team_id) if team_id else 0
+            encounter, story_stage_for_zoo
         ),
         "controllable_protagonist_id": (
             get_controllable_protagonist_squad_id(
                 team_id,
                 team_route,
                 encounter,
-                get_team_story_stage(team_id) if team_id else 0,
+                story_stage_for_zoo,
             )
             if team_id else None
         ),

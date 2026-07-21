@@ -768,6 +768,61 @@ def test_zoo_bonus_multiplier_boundaries():
         )
 
 
+def test_zoo_stage_gate_helpers():
+    """Zoo locked below unlock stage; encounter allow_zoo still gates."""
+    import os
+    from models.combat import (
+        apply_effective_combat_settings,
+        effective_allow_zoo,
+        is_zoo_unlocked_for_team,
+    )
+
+    old = os.environ.get("OIKONOMIA_ZOO_UNLOCK_STAGE")
+    try:
+        os.environ["OIKONOMIA_ZOO_UNLOCK_STAGE"] = "2"
+        ok("stage 0 locked", is_zoo_unlocked_for_team(None, story_stage=0) is False)
+        ok("stage 1 locked", is_zoo_unlocked_for_team(None, story_stage=1) is False)
+        ok("stage 2 unlocked", is_zoo_unlocked_for_team(None, story_stage=2) is True)
+        ok(
+            "effective false when locked",
+            effective_allow_zoo(None, story_stage=0, combat_settings={"allow_zoo": True}) is False,
+        )
+        ok(
+            "effective true when unlocked",
+            effective_allow_zoo(None, story_stage=2, combat_settings={"allow_zoo": True}) is True,
+        )
+        ok(
+            "encounter false wins",
+            effective_allow_zoo(None, story_stage=3, combat_settings={"allow_zoo": False}) is False,
+        )
+        settings = apply_effective_combat_settings(
+            None, story_stage=0, combat_settings={"allow_zoo": True, "max_phases": 5},
+        )
+        ok("payload allow_zoo false early", settings.get("allow_zoo") is False)
+        ok("payload zoo_unlocked false", settings.get("zoo_unlocked") is False)
+        ok("payload unlock stage 2", settings.get("zoo_unlock_story_stage") == 2)
+        settings2 = apply_effective_combat_settings(
+            None, story_stage=2, combat_settings={"allow_zoo": True},
+        )
+        ok("payload allow_zoo true late", settings2.get("allow_zoo") is True)
+        auto = __import__("models.combat", fromlist=["choose_protagonist_auto_action"])
+        # Force allow_zoo false → never zoo even if random would pick it
+        for _ in range(8):
+            act = auto.choose_protagonist_auto_action(
+                {"sanity": 80}, combat_settings={"allow_zoo": False},
+            )
+            if act.get("action_type") == "use_zoo":
+                ok("AI never zoo when locked", False, str(act))
+                break
+        else:
+            ok("AI never zoo when locked", True)
+    finally:
+        if old is None:
+            os.environ.pop("OIKONOMIA_ZOO_UNLOCK_STAGE", None)
+        else:
+            os.environ["OIKONOMIA_ZOO_UNLOCK_STAGE"] = old
+
+
 def test_defend_team_buff_helpers():
     """Unit checks for Defend team-wide damage reduction."""
     actions = {
@@ -2432,6 +2487,7 @@ def main():
 
     test_combat_v2_flag_default_and_toggle()
     test_zoo_bonus_multiplier_boundaries()
+    test_zoo_stage_gate_helpers()
     test_defend_team_buff_helpers()
     test_trauma_ending_thresholds()
     test_encounter_catalog()

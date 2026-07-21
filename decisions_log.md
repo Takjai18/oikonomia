@@ -143,6 +143,7 @@
 | 2026-06-30 | `12e1edd` | `combat_flow_v7`：勝利結算停 poll、確認後唔重彈；**BUG-2026-001 resolved**（Henry 實機） |
 | 2026-06-30 | — | Phase 1.5 Step 1 spec 鎖定；Henry instant settlement 專項 checklist（§17） |
 | 2026-07-21 | — | **全線強制 Iggy**：`FORCED_ROUTE=iggy`；`data/route_config.py` + SSOT + UI + docs |
+| 2026-07-21 | — | **Zoo 階段解鎖**：`ZOO_UNLOCK_STORY_STAGE=2`；未達階段隱藏 UI／拒絕 use_zoo／主角 AI 唔用 Zoo |
 
 ## 2026-06-30 — 取消戰鬥動畫 Delay 設計
 
@@ -368,5 +369,21 @@ submit_action → combat_flow.resolve_round()
 - 依賴 dual-route 嘅測試需設 `OIKONOMIA_FORCED_ROUTE=` 先跑 Marah case
 
 **備份**：改動前已觸發 Google Drive backup（`backup-oikonomia` skill）
+
+**記錄者**：Tak 決策 · Grok Build 實作
+
+---
+
+## 2026-07-21 — Zoo 能力按故事階段解鎖
+
+| 決策 | 內容 | 狀態 |
+|------|------|------|
+| 開局 | 玩家同主角 **唔能** 用 Zoo；戰鬥 UI **隱藏** Zoo 按鈕 | ✅ |
+| 解鎖 | Team `story_stage >= ZOO_UNLOCK_STORY_STAGE`（預設 **2**） | ✅ |
+| SSOT | `effective_allow_zoo` = stage unlocked **且** encounter `allow_zoo` | ✅ |
+| Config | `data/combat_feature_config.py`；env `OIKONOMIA_ZOO_UNLOCK_STAGE`（`0`=一開始就開） | ✅ |
+| 測試 | CI `OIKONOMIA_ZOO_UNLOCK_STAGE=0` 以免 regression 被鎖 | ✅ |
+
+**影響**：`models/combat.py`、`routes/combat.py`、`services/player_status.py`、`static/js/combat/views/action_view.js`、`settlement.js`、`templates/index.html`、`/api/version`
 
 **記錄者**：Tak 決策 · Grok Build 實作

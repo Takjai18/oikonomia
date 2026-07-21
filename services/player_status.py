@@ -12,6 +12,7 @@ from services.ending import build_protagonist_control_status, judge_ending
 
 def build_player_status(squad):
     from data.route_config import FORCED_ROUTE
+    from models.combat import is_zoo_unlocked_for_team, zoo_unlock_story_stage
     from models.team import official_squad_route
 
     if not squad:
@@ -29,6 +30,8 @@ def build_player_status(squad):
             "protagonists": {},
             "route": official_squad_route(squad),
             "forced_route": FORCED_ROUTE,
+            "zoo_unlocked": False,
+            "zoo_unlock_story_stage": zoo_unlock_story_stage(),
             "is_team_leader": 0,
         }
 
@@ -37,6 +40,7 @@ def build_player_status(squad):
     protagonists = get_team_protagonists(team_id)
     route = official_team_route(team)
     ending = judge_ending(team_id)
+    zoo_unlocked = is_zoo_unlocked_for_team(team_id)
 
     protagonist_states = {}
     for key in ("iggy", "marah"):
@@ -57,6 +61,8 @@ def build_player_status(squad):
         "trauma_summary": ending.get("trauma_summary"),
         "ending_preview": ending.get("ending_preview"),
         "forced_route": FORCED_ROUTE,
+        "zoo_unlocked": zoo_unlocked,
+        "zoo_unlock_story_stage": zoo_unlock_story_stage(),
         "is_team_leader": squad.get("is_team_leader", 0),
     }
 
