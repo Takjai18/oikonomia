@@ -330,6 +330,13 @@ def test_no_team_cannot_start():
 
 def test_marah_protagonist():
     print("\n--- 審計 5：Marah 路線主角參戰 ---")
+    from data.route_config import FORCED_ROUTE
+
+    if FORCED_ROUTE and FORCED_ROUTE != "marah":
+        # Camp policy force-Iggy: Marah path is intentionally unavailable.
+        ok(f"skip Marah 審計（FORCED_ROUTE={FORCED_ROUTE}）", True, "expected under camp policy")
+        return
+
     marah_enc = "enc_marah_01_whisper"
     c = oikonomia.app.test_client()
     team_id, _ = setup_team(c, "MarahLeader", route="marah", protagonist_active=True)

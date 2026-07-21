@@ -30,6 +30,8 @@ jobs:
         env:
           SECRET_KEY: test-secret-github-ci
           FLASK_ENV: development
+          # Dual-route regression; production defaults FORCED_ROUTE=iggy when unset
+          OIKONOMIA_FORCED_ROUTE: ""
         run: bash scripts/pre_deploy_checks.sh
 
   deploy-render:
