@@ -2631,9 +2631,92 @@
             }
         }
 
+        let activeMinigameUnmount = null;
+
+        function destroyActiveMinigame() {
+            if (typeof activeMinigameUnmount === 'function') {
+                try {
+                    activeMinigameUnmount();
+                } catch (e) {
+                    console.warn('minigame unmount', e);
+                }
+            }
+            activeMinigameUnmount = null;
+        }
+
         function closeModal(el) {
+            destroyActiveMinigame();
             const modal = el?.closest?.('.modal-overlay') || el?.closest?.('.fixed');
             if (modal) modal.remove();
+            else {
+                document.querySelectorAll('.modal-overlay').forEach((m) => m.remove());
+            }
+        }
+
+        async function startMinigameInModal(taskId, loc) {
+            const root = document.getElementById('minigame-root');
+            if (!root) {
+                showToast('找不到小遊戲容器', 'error');
+                return;
+            }
+            destroyActiveMinigame();
+            root.innerHTML = '<div class="text-zinc-400 text-sm py-8 text-center">載入小遊戲…</div>';
+            const gameId = loc.minigame_id;
+            if (!gameId) {
+                root.innerHTML = '<div class="text-red-400 text-sm py-4">此任務未設定 minigame_id</div>';
+                return;
+            }
+            try {
+                const v = {{ deploy_version|tojson }};
+                const mod = await import(`/static/js/minigames/index.js?v=${encodeURIComponent(v || '1')}`);
+                activeMinigameUnmount = await mod.openMinigame(gameId, root, {
+                    taskId,
+                    config: loc.minigame_config || {},
+                    onComplete: async (payload) => {
+                        try {
+                            const fd = new FormData();
+                            fd.append('task_id', taskId);
+                            fd.append('content', JSON.stringify(payload || {}));
+                            const res = await fetch('/submit_task', {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                body: fd,
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok || data.success === false) {
+                                showToast(data.error || data.message || '提交失敗', 'error');
+                                return;
+                            }
+                            showToast(data.message || '小遊戲過關！', 'success');
+                            destroyActiveMinigame();
+                            document.querySelectorAll('.modal-overlay').forEach((m) => m.remove());
+                            if (data.pending_story_id && typeof shouldAutoShowStory === 'function'
+                                && shouldAutoShowStory(data.pending_story_id)
+                                && typeof fetchStoryAndShow === 'function') {
+                                fetchStoryAndShow(data.pending_story_id);
+                            }
+                            try {
+                                const statusRes = await fetchNoCache('/status');
+                                if (statusRes.ok) {
+                                    const status = await statusRes.json();
+                                    if (status && status.squad_id && status.success !== false) {
+                                        currentSquad = status;
+                                        updateDashboard(currentSquad);
+                                    }
+                                }
+                            } catch (_e) { /* ignore status refresh errors */ }
+                        } catch (err) {
+                            console.error(err);
+                            showToast('提交失敗，請稍後再試', 'error');
+                        }
+                    },
+                    onCancel: () => destroyActiveMinigame(),
+                });
+            } catch (err) {
+                console.error('startMinigameInModal', err);
+                root.innerHTML = `<div class="text-red-400 text-sm py-4">載入失敗：${err.message || err}</div>`;
+                showToast('小遊戲載入失敗', 'error');
+            }
         }
 
         const CAPPED_SQUAD_STATS = new Set(['hp', 'sanity']);
@@ -4394,9 +4477,9 @@
                         <button type="button" class="text-3xl leading-none text-zinc-400 hover:text-white" onclick="closeModal(this)">×</button>
                     </div>
 
-                    <div class="text-zinc-300 mb-6">${loc.description}</div>
+                    <div class="text-zinc-300 mb-6">${loc.description || ''}</div>
 
-                    <div id="action-area">
+                    <div id="action-area" class="${loc.task_type === 'minigame' ? 'max-h-[70vh] overflow-y-auto overflow-x-hidden' : ''}">
                         ${loc.task_type === 'gps' ? `
                             <div class="space-y-3">
                                 <div class="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-3 py-2.5 leading-relaxed">
@@ -4432,6 +4515,11 @@
                                 <span>開始解謎</span>
                             </button>
                         ` : ''}
+
+                        ${loc.task_type === 'minigame' ? `
+                            <div id="minigame-root" class="rounded-2xl bg-zinc-950/40 border border-zinc-800 p-2 min-h-[280px]"></div>
+                            <p class="text-xs text-zinc-500 mt-2 text-center">過關後會自動提交任務（+神智／Resource）</p>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -4446,6 +4534,9 @@
                             submitPhotoWithFile(id, input.files[0], modal);
                         }
                     };
+                }
+                if (loc.task_type === 'minigame') {
+                    startMinigameInModal(id, loc);
                 }
             }, 100);
         }

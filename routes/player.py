@@ -1,4 +1,5 @@
 """Player-facing API routes."""
+import json
 import math
 import os
 import sqlite3
@@ -48,7 +49,7 @@ def submit_task():
     if "squad_id" not in session:
         return jsonify({"error": "未登入"}), 401
 
-    task_id = request.form.get("task_id", "unknown")
+    task_id = (request.form.get("task_id") or "").strip()
     content = request.form.get("content", "")
 
     squad = get_squad(session["squad_id"])
@@ -59,8 +60,27 @@ def submit_task():
     if not team_id:
         return jsonify({"error": "你未加入任何 Team，無法提交任務"}), 400
 
-    loc = LOCATIONS.get(task_id) or {}
-    requires_team_photo = loc.get("task_type") == "gps"
+    if not task_id or task_id not in LOCATIONS:
+        return jsonify({"success": False, "error": "無效任務"}), 400
+
+    loc = LOCATIONS[task_id]
+    task_type = loc.get("task_type") or ""
+
+    # Minigame: client must report a win for the expected gameId.
+    if task_type == "minigame":
+        try:
+            payload = json.loads(content) if content else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return jsonify({"success": False, "error": "小遊戲結果格式錯誤"}), 400
+        if not isinstance(payload, dict):
+            return jsonify({"success": False, "error": "小遊戲結果格式錯誤"}), 400
+        expected_game = loc.get("minigame_id")
+        if payload.get("result") != "win" or (
+            expected_game and payload.get("gameId") != expected_game
+        ):
+            return jsonify({"success": False, "error": "小遊戲尚未過關"}), 400
+
+    requires_team_photo = task_type == "gps"
 
     photo_path = None
     photo = request.files.get("photo") if "photo" in request.files else None
