@@ -25,6 +25,18 @@ from utils.uploads import save_task_submission_photo
 misc_bp = Blueprint("misc", __name__)
 
 
+def _combat_js_has_marker(*needles, relative="static/js/combat/views/dice_modal_view.js"):
+    """True if all needles appear in a Combat V2 JS file under the project root."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, relative)
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return False
+    return all(n in text for n in needles)
+
+
 @misc_bp.route("/")
 def index():
     return render_template(
@@ -170,6 +182,7 @@ def api_version():
                 and "breakdown" in template_text,
             "forced_route_iggy": FORCED_ROUTE == "iggy",
             "zoo_stage_gate": True,
+            "server_dice_ui_v1": _combat_js_has_marker("pendingServerRoll"),
         },
         "forced_route": FORCED_ROUTE,
         "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),

@@ -46,20 +46,33 @@ export function createDiceModalView(rootEl) {
         isItem = false,
         isZoo = false,
         itemName = '',
+        pendingServerRoll = false,
       } = options;
       if (!modal) return;
       modal.classList.remove('hidden');
       modal.classList.add('flex');
       if (valueEl) {
         if (isItem) valueEl.textContent = itemName ? `🎒 ${itemName}` : '🎒 道具';
-        else if (isZoo) valueEl.textContent = `🦄 ${value ?? '—'}`;
         else if (isEscape) valueEl.textContent = '🏃 逃跑';
         else if (isDefend) valueEl.textContent = '🛡 防禦';
-        else valueEl.textContent = String(value ?? '—');
+        // Server-authoritative dice: never show a cosmetic final face as "result".
+        else if (pendingServerRoll || value == null || value === '') {
+          valueEl.textContent = isZoo ? '🦄 ？' : '？';
+        } else if (isZoo) {
+          valueEl.textContent = `🦄 ${value}`;
+        } else {
+          valueEl.textContent = String(value);
+        }
       }
       if (confirmBtn) {
         confirmBtn.classList.remove('hidden');
-        confirmBtn.textContent = isItem ? '確認使用並結束回合' : '確認並結束本回合';
+        if (isItem) {
+          confirmBtn.textContent = '確認使用並結束回合';
+        } else if (pendingServerRoll || value == null || value === '') {
+          confirmBtn.textContent = isZoo ? '確認並由系統擲 Zoo 骰' : '確認並由系統擲骰';
+        } else {
+          confirmBtn.textContent = '確認並結束本回合';
+        }
       }
     },
     setConfirmDisabled(disabled) {

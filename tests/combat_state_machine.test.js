@@ -503,6 +503,20 @@ describe('Combat V2 state machine', () => {
     const { ctx: next } = transition(ctx, 'ACTION_USE_ZOO', { action: 'use_zoo', dice: 1 });
     assert.equal(next.phase, Phase.DICE_ROLLING);
   });
+
+  it('ATTACK without cosmetic final keeps dice pending server roll', () => {
+    const ctx = {
+      ...createInitialContext('c1'),
+      hud: { me: { submitted: false } },
+    };
+    const rolling = transition(ctx, 'ACTION_ATTACK', { action: 'attack' }).ctx;
+    assert.equal(rolling.phase, Phase.DICE_ROLLING);
+    assert.equal(rolling.dice.value, null);
+    assert.equal(rolling.dice.cosmetic, true);
+    const confirm = transition(rolling, 'DICE_ANIMATION_DONE', { dice: null }).ctx;
+    assert.equal(confirm.phase, Phase.DICE_CONFIRM);
+    assert.equal(confirm.dice.value, null);
+  });
 });
 
 describe('Settlement normalization', () => {

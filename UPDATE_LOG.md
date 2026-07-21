@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-07-21 — 營會 threat model + 現場救場文檔
+
+| 項目 | 內容 |
+|------|------|
+| **決策** | 玩家唔識電腦、基本上唔會作弊 → **暫擱** task/item API 反作弊硬化（見 assessment） |
+| **仍做** | GPS／影相 **GM 救場**；伺服器健康 + Drive 備份 |
+| **文檔** | 新增 [`CAMP_FIELD_GUIDE.md`](./CAMP_FIELD_GUIDE.md)；`AGENT_HANDOFF.md` 加開場 checklist 連結 |
+| **Production** | `https://oikonomia.onrender.com` · `version=57bbca7` · `data_dir=/data` · `combat_v2=true` · `forced_route=iggy` |
+| **注意** | Render 閒置首次請求可 **502**（冷啟動）；等 30–60s 再試，見 Field Guide §0 |
+
+**勿重複建議**：為誠實玩家場趕修假 task_id／add_item 白攞（營後可做）。
+
+---
+
 ## ⚠️ AI 協作必讀
 
 **Grok / Gemini / Grok Build 喺提出架構建議、code review、或 debug 假設之前，必須先讀本檔。**
@@ -454,6 +468,19 @@
 | **詳細** | `decisions_log.md` § 2026-07-21 |
 
 **勿重複建議**：唔好當「路線選擇 UI 壞咗」重開 dual-route UI；除非 Tak 明確取消 forced route。
+
+---
+
+## 2026-07-21 — 戰鬥骰 UI 顯示非 0 但實際 0 傷
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 攻擊顯示骰 1/3，結算 0 傷（server 實際骰 0） |
+| **根因** | V2 前端 **cosmetic 骰** 當最終結果顯示；server `roll_combat_dice()` 才係權威 |
+| **修復** | 確認前顯示「？」；submit 後先 reveal `data.dice_result` 再結算 |
+| **檔案** | `static/js/combat/index.js`、`dice_modal_view.js`、`state_machine.js` |
+
+**勿重複建議**：唔好再把 client `Math.random()` 結果當最終骰面。
 
 ---
 

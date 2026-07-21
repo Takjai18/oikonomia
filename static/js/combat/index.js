@@ -282,20 +282,19 @@ export class CombatApp {
     }
 
     if (actionType === 'use_zoo') {
-      const cosmeticDice = Math.floor(Math.random() * 4);
-      this.dispatch(event, { action: 'use_zoo', dice: cosmeticDice });
+      // Cosmetic spin only — final face must come from server dice_result.
+      this.dispatch(event, { action: 'use_zoo', dice: null });
       this.views.dice.showRolling();
-      await this.views.dice.animateCosmeticDice(cosmeticDice);
-      this.dispatch('DICE_ANIMATION_DONE', { dice: cosmeticDice });
+      await this.views.dice.animateCosmeticDice(null);
+      this.dispatch('DICE_ANIMATION_DONE', { dice: null });
       return;
     }
 
-    // 後端權威骰 0–3；cosmetic 動畫收束同範圍
-    const cosmeticDice = Math.floor(Math.random() * 4);
-    this.dispatch(event, { action: 'attack', dice: cosmeticDice });
+    // 後端權威骰 0–3：動畫只係氣氛，唔鎖定假結果（避免 UI 顯示 1/3 但實際 0）
+    this.dispatch(event, { action: 'attack', dice: null });
     this.views.dice.showRolling();
-    await this.views.dice.animateCosmeticDice(cosmeticDice);
-    this.dispatch('DICE_ANIMATION_DONE', { dice: cosmeticDice });
+    await this.views.dice.animateCosmeticDice(null);
+    this.dispatch('DICE_ANIMATION_DONE', { dice: null });
   }
 
   async confirmDice() {
@@ -317,6 +316,7 @@ export class CombatApp {
     this.dispatch('CONFIRM_DICE');
     this.poller.pause();
     this.submittingActive = true;
+    this.views?.dice?.setConfirmDisabled?.(true);
 
     try {
       const actionMap = {
@@ -330,12 +330,37 @@ export class CombatApp {
       const asProtagonist = isProtagonistToggled
         && !!this.ctx.hud?.controllable_protagonist_id
         && !!this.ctx.hud?.me?.is_team_leader;
+      const needsServerDice = actionType === 'attack' || actionType === 'use_zoo';
+      if (needsServerDice) {
+        this.views.dice.showRolling();
+      }
       const data = await CombatApi.submit({
         combatId: this.ctx.combatId,
         actionType,
         itemId: this.ctx.dice.itemId,
         asProtagonist,
       });
+      // Reveal authoritative server die before settlement / waiting UI.
+      if (
+        needsServerDice
+        && data
+        && data.dice_result != null
+        && data.dice_result !== ''
+      ) {
+        const serverDice = Number(data.dice_result);
+        this.ctx = {
+          ...this.ctx,
+          dice: {
+            ...this.ctx.dice,
+            value: Number.isFinite(serverDice) ? serverDice : data.dice_result,
+            cosmetic: false,
+          },
+        };
+        this.views.dice.showConfirm(this.ctx.dice.value, {
+          isZoo: actionType === 'use_zoo',
+        });
+        await new Promise((r) => setTimeout(r, 450));
+      }
       await this.onSubmitSuccess(data);
     } catch (err) {
       this.dispatch('SUBMIT_ERROR', { error: err.message || '提交失敗' });
@@ -669,15 +694,22 @@ export class CombatApp {
         case 'SHOW_DICE_ROLLING':
           this.views.dice.showRolling();
           break;
-        case 'SHOW_DICE_CONFIRM':
+        case 'SHOW_DICE_CONFIRM': {
+          const diceAction = this.ctx.dice.action;
+          const pendingServerRoll = (
+            (diceAction === 'attack' || diceAction === 'use_zoo')
+            && (this.ctx.dice.value == null || this.ctx.dice.cosmetic)
+          );
           this.views.dice.showConfirm(this.ctx.dice.value, {
-            isDefend: this.ctx.dice.action === 'defend',
-            isEscape: this.ctx.dice.action === 'escape',
-            isItem: this.ctx.dice.action === 'use_item',
-            isZoo: this.ctx.dice.action === 'use_zoo',
+            isDefend: diceAction === 'defend',
+            isEscape: diceAction === 'escape',
+            isItem: diceAction === 'use_item',
+            isZoo: diceAction === 'use_zoo',
             itemName: this.ctx.dice.itemName,
+            pendingServerRoll,
           });
           break;
+        }
         case 'HIDE_DICE':
           this.views.dice.hide();
           break;

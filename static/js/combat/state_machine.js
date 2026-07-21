@@ -443,7 +443,12 @@ const TRANSITIONS = {
       reduce: (ctx, meta) => ({
         ...ctx,
         phase: Phase.DICE_ROLLING,
-        dice: { action: meta.action || 'attack', value: meta.dice, cosmetic: true },
+        // value stays null until server dice_result (cosmetic spin only)
+        dice: {
+          action: meta.action || 'attack',
+          value: meta.dice ?? null,
+          cosmetic: meta.dice == null,
+        },
         error: null,
       }),
       effects: () => [{ type: 'SHOW_DICE_ROLLING' }],
@@ -492,7 +497,11 @@ const TRANSITIONS = {
       reduce: (ctx, meta) => ({
         ...ctx,
         phase: Phase.DICE_ROLLING,
-        dice: { action: 'use_zoo', value: meta.dice, cosmetic: true },
+        dice: {
+          action: 'use_zoo',
+          value: meta.dice ?? null,
+          cosmetic: meta.dice == null,
+        },
         error: null,
       }),
       effects: () => [{ type: 'SHOW_DICE_ROLLING' }],
