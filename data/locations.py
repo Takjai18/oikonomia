@@ -97,11 +97,14 @@ LOCATIONS = {
     },
     "loc_map_01": {
         "name": "地理定位儀",
-        "hint": "香港 Mapdle · 小遊戲",
+        "hint": "Worldle 式 · 睇輪廓估地方",
         **_CAMP,
         "task_type": "minigame",
         "minigame_id": "mapdle_hk",
         "minigame_config": {"maxGuesses": 6, "winRadiusKm": 0.5},
-        "description": "系統發出微弱的地理訊號，請根據方位與距離提示鎖定源頭。",
+        "description": (
+            "螢幕顯示一個香港地方嘅輪廓（同 Worldle 一樣）。"
+            "從名單揀地方去估；每次會顯示距離、方向箭嘴同接近度 %。"
+        ),
     },
 }
