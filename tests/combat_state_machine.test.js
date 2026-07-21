@@ -504,18 +504,16 @@ describe('Combat V2 state machine', () => {
     assert.equal(next.phase, Phase.DICE_ROLLING);
   });
 
-  it('ATTACK without cosmetic final keeps dice pending server roll', () => {
+  it('ATTACK can enter rolling without locking a cosmetic face', () => {
     const ctx = {
       ...createInitialContext('c1'),
       hud: { me: { submitted: false } },
     };
     const rolling = transition(ctx, 'ACTION_ATTACK', { action: 'attack' }).ctx;
     assert.equal(rolling.phase, Phase.DICE_ROLLING);
+    assert.equal(rolling.dice.action, 'attack');
+    // Plan A may leave value null until server lands (index.js bypasses confirm).
     assert.equal(rolling.dice.value, null);
-    assert.equal(rolling.dice.cosmetic, true);
-    const confirm = transition(rolling, 'DICE_ANIMATION_DONE', { dice: null }).ctx;
-    assert.equal(confirm.phase, Phase.DICE_CONFIRM);
-    assert.equal(confirm.dice.value, null);
   });
 });
 

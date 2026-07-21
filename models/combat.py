@@ -1870,15 +1870,25 @@ def reconcile_enemy_hp(combat, persist=False):
 
 
 def _combat_player_avatar_url(avatar, *, is_protagonist=False):
-    raw = (avatar or "").strip()
+    """Build public avatar URL. Preserve player subdir paths (e.g. new avatars for players/Mike.jpg)."""
+    from urllib.parse import quote
+
+    raw = (avatar or "").strip().replace("\\", "/")
     if not raw:
         return "/static/avatars/default.png"
     if raw.startswith(("http://", "https://", "/")):
         return raw
-    safe = os.path.basename(raw)
     if is_protagonist:
-        return f"/static/portraits/{safe}"
-    return f"/static/avatars/{safe}"
+        safe = os.path.basename(raw)
+        if not safe or safe in (".", ".."):
+            return "/static/portraits/default.png"
+        return f"/static/portraits/{quote(safe, safe='')}"
+    # Do NOT basename — player picks live under "new avatars for players/…"
+    parts = [p for p in raw.split("/") if p and p != "."]
+    if not parts or any(p == ".." for p in parts):
+        return "/static/avatars/default.png"
+    encoded = "/".join(quote(p, safe="") for p in parts)
+    return f"/static/avatars/{encoded}"
 
 
 def _combat_enemy_avatar_url(encounter=None):

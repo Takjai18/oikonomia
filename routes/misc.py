@@ -183,6 +183,11 @@ def api_version():
             "forced_route_iggy": FORCED_ROUTE == "iggy",
             "zoo_stage_gate": True,
             "server_dice_ui_v1": _combat_js_has_marker("pendingServerRoll"),
+            "server_dice_ui_v2": _combat_js_has_marker(
+                "spinThenLandOnServer",
+                relative="static/js/combat/views/dice_modal_view.js",
+            ),
+            "combat_avatar_path_v2": True,
         },
         "forced_route": FORCED_ROUTE,
         "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),

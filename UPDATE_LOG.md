@@ -477,10 +477,21 @@
 |------|------|
 | **症狀** | 攻擊顯示骰 1/3，結算 0 傷（server 實際骰 0） |
 | **根因** | V2 前端 **cosmetic 骰** 當最終結果顯示；server `roll_combat_dice()` 才係權威 |
-| **修復** | 確認前顯示「？」；submit 後先 reveal `data.dice_result` 再結算 |
-| **檔案** | `static/js/combat/index.js`、`dice_modal_view.js`、`state_machine.js` |
+| **修復 v1** | 確認前「？」→ 體感差，已 superseded |
+| **修復 v2（方案 A）** | 攻擊／Zoo **即 submit**；旋轉動畫 **落地 server `dice_result`**；無「？」 |
+| **檔案** | `static/js/combat/index.js`、`dice_modal_view.js` |
 
 **勿重複建議**：唔好再把 client `Math.random()` 結果當最終骰面。
+
+---
+
+## 2026-07-21 — 戰鬥頭像空白
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 進戰鬥畫面玩家頭像唔顯示 |
+| **根因** | `_combat_player_avatar_url` 用 `basename` 砍掉 `new avatars for players/`；`default.png` 缺失 |
+| **修復** | 保留 subdir + URL encode；補 `static/avatars/default.png` |
 
 ---
 
