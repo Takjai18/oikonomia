@@ -21,7 +21,9 @@ export function resolveCombatAvatarUrl(raw, { isProtagonist = false, isEnemy = f
     return `/static/portraits/${trimmed}`;
   }
   if (isProtagonist) return `/static/portraits/${trimmed}`;
-  return `/static/avatars/${trimmed}`;
+  // Encode segments so "new avatars for players/Mike.jpg" works in URLs
+  const encoded = trimmed.split('/').map(encodeURIComponent).join('/');
+  return `/static/avatars/${encoded}`;
 }
 
 /**

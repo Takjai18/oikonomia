@@ -213,13 +213,14 @@ def allocate_stats():
     if total_free != 30:
         return jsonify({"success": False, "error": "必須剛好使用 30 點自由點數"}), 400
 
-    avatar_dir = settings.avatar_dir
-    avatar_filename = os.path.basename((data.get("avatar") or "").strip())
-    if not avatar_filename:
-        return jsonify({"success": False, "error": "請選擇頭像"}), 400
-    avatar_path = os.path.join(avatar_dir, avatar_filename)
-    if not os.path.isfile(avatar_path) or avatar_filename == "default.png":
-        return jsonify({"success": False, "error": "頭像不存在"}), 400
+    from utils.helpers import resolve_player_pick_avatar
+
+    stored_avatar, _path = resolve_player_pick_avatar(data.get("avatar") or "")
+    if not stored_avatar:
+        return jsonify({
+            "success": False,
+            "error": "請選擇可用頭像（僅限玩家頭像庫）",
+        }), 400
 
     squad_id = session["squad_id"]
 
@@ -234,7 +235,7 @@ def allocate_stats():
                     power,
                     intellect,
                     resilience,
-                    avatar_filename,
+                    stored_avatar,
                     datetime.now().isoformat(),
                     squad_id,
                 ),

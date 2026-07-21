@@ -5016,7 +5016,11 @@
         }
 
         function avatarSrc(filename) {
-            return `/static/avatars/${filename || 'default.png'}`;
+            if (!filename) return '/static/avatars/default.png';
+            const raw = String(filename).replace(/\\/g, '/').replace(/^\/+/, '');
+            // Encode each path segment (supports "new avatars for players/…")
+            const encoded = raw.split('/').map(encodeURIComponent).join('/');
+            return `/static/avatars/${encoded}`;
         }
 
         function setAvatarImage(img, filename) {
@@ -5056,8 +5060,9 @@
                         div.className = `cursor-pointer rounded-2xl overflow-hidden border-2 transition-all hover:scale-105 ${currentAvatar === filename ? 'border-amber-500' : 'border-zinc-700'}`;
 
                         div.innerHTML = `
-                            <img src="/static/avatars/${filename}"
-                                 class="w-full aspect-square object-cover">
+                            <img src="${avatarSrc(filename)}"
+                                 class="w-full aspect-square object-cover"
+                                 alt="">
                         `;
 
                         div.onclick = () => selectAvatar(filename, div);

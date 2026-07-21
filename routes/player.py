@@ -16,7 +16,14 @@ from services.story import (
     get_pending_story_id,
     resolve_story_stage,
 )
-from utils.helpers import list_image_files, normalize_photo_url, photo_public_url
+from utils.helpers import (
+    list_image_files,
+    list_player_pick_avatars,
+    normalize_photo_url,
+    photo_public_url,
+    resolve_player_pick_avatar,
+    PLAYER_AVATAR_SUBDIR,
+)
 from utils.uploads import save_task_submission_photo
 
 player_bp = Blueprint("player", __name__)
@@ -200,9 +207,15 @@ def verify_gps():
 
 @player_bp.route("/available_avatars")
 def available_avatars():
-    avatar_dir = settings.avatar_dir
-    files = list_image_files(avatar_dir, exclude=("default.png",))
-    return jsonify({"avatars": files, "avatar_dir": avatar_dir})
+    """Player pick list: only static/avatars/new avatars for players/."""
+    basenames = list_player_pick_avatars()
+    # Return relative paths under /static/avatars/ for storage + display
+    avatars = [f"{PLAYER_AVATAR_SUBDIR}/{name}" for name in basenames]
+    return jsonify({
+        "avatars": avatars,
+        "avatar_subdir": PLAYER_AVATAR_SUBDIR,
+        "avatar_dir": settings.avatar_dir,
+    })
 
 
 @player_bp.route("/available_portraits")
@@ -217,16 +230,15 @@ def set_avatar():
     if "squad_id" not in session:
         return jsonify({"success": False, "error": "未登入"}), 401
 
-    avatar_filename = os.path.basename(request.form.get("avatar", "").strip())
-    if not avatar_filename:
-        return jsonify({"success": False, "error": "請選擇頭像"}), 400
+    stored, _path = resolve_player_pick_avatar(request.form.get("avatar", ""))
+    if not stored:
+        return jsonify({
+            "success": False,
+            "error": "請選擇可用頭像（僅限玩家頭像庫）",
+        }), 400
 
-    avatar_path = os.path.join(settings.avatar_dir, avatar_filename)
-    if not os.path.exists(avatar_path):
-        return jsonify({"success": False, "error": "頭像不存在"}), 400
-
-    update_squad(session["squad_id"], avatar=avatar_filename)
-    return jsonify({"success": True, "avatar": avatar_filename})
+    update_squad(session["squad_id"], avatar=stored)
+    return jsonify({"success": True, "avatar": stored})
 
 
 @player_bp.route("/update_display_name", methods=["POST"])

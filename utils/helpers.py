@@ -48,6 +48,51 @@ def list_image_files(directory, exclude=()):
     )
 
 
+# Player-facing avatar picker only (not root static/avatars legacy files).
+PLAYER_AVATAR_SUBDIR = "new avatars for players"
+
+
+def player_avatar_pick_dir():
+    base = settings.avatar_dir or ""
+    return os.path.join(base, PLAYER_AVATAR_SUBDIR) if base else PLAYER_AVATAR_SUBDIR
+
+
+def list_player_pick_avatars():
+    """Basenames of images players may choose at start / in avatar modal."""
+    return list_image_files(player_avatar_pick_dir())
+
+
+def resolve_player_pick_avatar(avatar_value):
+    """
+    Validate avatar is inside PLAYER_AVATAR_SUBDIR.
+    Returns (stored_relative_path, abs_path) or (None, None).
+    stored form: 'new avatars for players/Mike.jpg'
+    """
+    raw = str(avatar_value or "").replace("\\", "/").strip()
+    if not raw or ".." in raw or raw.startswith("/"):
+        return None, None
+    basename = os.path.basename(raw)
+    if not basename or basename.startswith(".") or basename == "default.png":
+        return None, None
+    if not basename.lower().endswith(PORTRAIT_IMAGE_EXTS):
+        return None, None
+    pick_dir = player_avatar_pick_dir()
+    if not os.path.isdir(pick_dir):
+        return None, None
+    abs_path = os.path.join(pick_dir, basename)
+    try:
+        abs_real = os.path.realpath(abs_path)
+        pick_real = os.path.realpath(pick_dir)
+        if os.path.commonpath([abs_real, pick_real]) != pick_real:
+            return None, None
+    except (OSError, ValueError):
+        return None, None
+    if not os.path.isfile(abs_real):
+        return None, None
+    stored = f"{PLAYER_AVATAR_SUBDIR}/{basename}"
+    return stored, abs_real
+
+
 def safe_zip_arcname(*parts):
     name = "_".join(str(p or "unknown") for p in parts)
     return re.sub(r"[^\w\-.]", "_", name)
