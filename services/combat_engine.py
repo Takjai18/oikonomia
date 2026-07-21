@@ -117,17 +117,12 @@ def team_defend_damage_multiplier(defender_count: int) -> float:
 
 
 def _is_active_combat_participant(participant: Mapping[str, Any]) -> bool:
+    from models.squad import is_near_death_active
+
     if int(participant.get("hp") or 0) <= 0:
         return False
-    until = participant.get("near_death_until")
-    if until:
-        from datetime import datetime
-
-        try:
-            if datetime.now() < datetime.fromisoformat(until):
-                return False
-        except ValueError:
-            pass
+    if is_near_death_active(participant):
+        return False
     return True
 
 
