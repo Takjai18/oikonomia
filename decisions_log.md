@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-07-22 — 設定1（Iggy Arc）落地
+
+| 決策 | 內容 | 狀態 |
+|------|------|------|
+| 劇情 SSOT | `data/cosmos_lore.py`（法則／陣營／角色矩陣／六幕） | ✅ |
+| Stage 映射 | Act1→stage0；Act2→1；Act3–4→2；Act5–6→3；門檻 2／5／8 任務 | ✅ |
+| 主線 Boss | `enc_iggy_act2_polis`（**survive 5 回合**）、`enc_iggy_act4_julian`、`enc_iggy_act6_salvio` | ✅ |
+| 生存勝利 | `combat_settings.win_condition=survive` + `max_phases`；預設仍 `defeat_enemy` | ✅ |
+| City Hunt GPS | 美孚／深水埗／九龍塘／彩虹用 **placeholder** 座標，實地 pin 後再改 | 待實地 |
+| Where’s Iggy／迷宮圖 | 暫用既有 minigame 代替，正式素材後補 | 待素材 |
+| Marah 主線 | 營會以 Iggy 強制路線為主；Marah 保留薄 stub | ✅ 刻意 |
+
+**影響範圍**：`data/*`、`encounters/enc_iggy_act*.json`、`models/combat.py`（survival win）、`scripts/test_combat_flow.py`
+
+---
+
 ## 2026-06-29 — Grok Phase 1 Spec 確認
 
 | 決策 | 內容 | 狀態 |

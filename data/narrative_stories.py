@@ -1,8 +1,11 @@
-"""Narrative story content for the story UI."""
+"""Narrative story content for the story UI — Iggy Arc (設定1)."""
 
 NARRATIVE_PORTRAITS = {
     "Iggy": "/static/portraits/guardian_male_01.png",
     "Marah": "/static/portraits/healer_female_01.png",
+    "Julian": "/static/portraits/seeker_female_02.png",
+    "Salvio": "/static/portraits/visionary_female_04.png",
+    "Donna": "/static/portraits/healer_female_01.png",
     "Judas": "/static/portraits/seeker_female_02.png",
     "旁白": "/static/portraits/visionary_female_04.png",
 }
@@ -10,8 +13,8 @@ NARRATIVE_PORTRAITS = {
 NARRATIVE_STORIES = {
     "welcome": {
         "story_id": "welcome",
-        "chapter": "OIKONOMIA",
-        "title": "歡迎",
+        "chapter": "OIKONOMIA · COSMOS",
+        "title": "歡迎來到 Cosmos",
         "current_stage": 0,
         "total_stages": 1,
         "route": None,
@@ -19,112 +22,193 @@ NARRATIVE_STORIES = {
         "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "旁白", "text": "歡迎來到 Oikonomia。呢個世界嘅界線正慢慢裂開，而你將會成為故事嘅一部分。"},
-            {"character": "旁白", "text": "選擇你嘅路線，加入小隊，完成任務，面對遭遇——故事會隨你嘅腳步展開。"},
+            {
+                "character": "旁白",
+                "text": (
+                    "Cosmos 有不可違抗的法則：責任、因果、尊重。"
+                    "試圖建立「無痛溫室」、迴避現實與創傷，只會養出怪獸，並令系統崩潰。"
+                ),
+            },
+            {
+                "character": "旁白",
+                "text": (
+                    "Zoo——靈獸——是心理防禦與潛能的具象化。"
+                    "只有直面真實自我、承擔摩擦力的人，才能駕馭它。"
+                ),
+            },
+            {
+                "character": "旁白",
+                "text": (
+                    "兩極失衡：Polis 用痛苦強迫成長，製造空殼木偶；"
+                    "Oikos 用「愛」消除一切負面感受，養出巨嬰。"
+                    "你將走進 Iggy 的故事——討好者的界線之路。"
+                ),
+            },
+            {
+                "character": "旁白",
+                "text": "加入小隊、完成任務、面對遭遇。界線不會自己守住。",
+            },
         ],
     },
+    # —— Act 1 / stage 0 ——
     "iggy_stage0": {
         "story_id": "iggy_stage0",
-        "chapter": "CHAPTER 01 — 裂縫",
-        "title": "裂縫的開端",
+        "chapter": "ACT 1 — 雪山",
+        "title": "雪山與醬板鴨",
         "current_stage": 1,
-        "total_stages": 4,
+        "total_stages": 6,
         "route": "iggy",
         "min_stage": 0,
         "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "Iggy", "text": "這裡的空氣……有種熟悉的沉重。我好像曾經來過。"},
-            {"character": "Iggy", "text": "界線不是用來囚禁誰的，是用來保護還未準備好的人。"},
+            {
+                "character": "旁白",
+                "text": (
+                    "Iggy 與 Marah 交戰。鳳凰 Zoo 失控，他又被擊敗，"
+                    "從高處墜入雪山——能力與記憶短暫消散。"
+                ),
+            },
             {
                 "character": "Iggy",
-                "text": "你想先從邊度開始？",
-                "choices": [
-                    {"text": "🔥 去裂縫起點", "next_story_id": "iggy_branch_start"},
-                    {"text": "🛡️ 守住營地邊緣", "next_story_id": "iggy_branch_edge"},
-                ],
+                "text": "……好冷。你是誰？我……為什麼在這裡？",
             },
-            {"character": "旁白", "text": "你踏入了 Iggy 路線。第一個任務，將會喚醒一段被遺忘的記憶。"},
-        ],
-    },
-    "iggy_branch_start": {
-        "story_id": "iggy_branch_start",
-        "chapter": "CHAPTER 01 — 裂縫",
-        "title": "裂縫起點",
-        "current_stage": 1,
-        "total_stages": 4,
-        "route": "iggy",
-        "min_stage": 0,
-        "skippable": True,
-        "replayable": True,
-        "lines": [
-            {"character": "Iggy", "text": "籃球場旁邊嘅大樹下……記憶開始回流。"},
-            {"character": "旁白", "text": "你選擇直面裂縫起點。任務會帶你更接近 Judas 的低語。"},
-        ],
-    },
-    "iggy_branch_edge": {
-        "story_id": "iggy_branch_edge",
-        "chapter": "CHAPTER 01 — 裂縫",
-        "title": "營地邊緣",
-        "current_stage": 1,
-        "total_stages": 4,
-        "route": "iggy",
-        "min_stage": 0,
-        "skippable": True,
-        "replayable": True,
-        "lines": [
-            {"character": "Iggy", "text": "先守住邊緣。界線唔係退縮，係為全隊爭取時間。"},
-            {"character": "旁白", "text": "你選擇穩守營地。隊友完成任務時，你會係佢哋嘅後盾。"},
+            {
+                "character": "旁白",
+                "text": (
+                    "你在雪山上遇見他。要確認他的身份，需要找出他的貼身物品；"
+                    "要幫他撐下去，需要一隻——醬板鴨。"
+                ),
+            },
+            {
+                "character": "Iggy",
+                "text": "如果……如果你肯幫我，我欠你一次。不管我是誰。",
+            },
         ],
     },
     "iggy_stage1": {
         "story_id": "iggy_stage1",
-        "chapter": "CHAPTER 01 — 裂縫",
-        "title": "痛楚的回音",
+        "chapter": "ACT 2 — 逃亡",
+        "title": "虛妄的羔羊與引路人",
         "current_stage": 2,
-        "total_stages": 4,
+        "total_stages": 6,
         "route": "iggy",
         "min_stage": 1,
         "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "Judas", "text": "你以為守住界線就安全了嗎？痛楚從來不會因為轉身而消失。"},
-            {"character": "Iggy", "text": "我聽見了……那些低語。但這次，我不會再獨自承受。"},
+            {
+                "character": "旁白",
+                "text": (
+                    "逃亡途中，你們目擊 Polis 的殘暴拷問。"
+                    "「沒有痛苦就沒有成長」——他們用鎖鏈實踐這句話。"
+                ),
+            },
+            {
+                "character": "Iggy",
+                "text": (
+                    "如果我走出去……如果我替他們擋下一切……"
+                    "是不是就不會再有人痛？我可以的。我應該的。"
+                ),
+            },
+            {
+                "character": "Julian",
+                "text": "別傻了。現在不是讓你當祭品的時候。——跟我走。",
+            },
+            {
+                "character": "旁白",
+                "text": (
+                    "Julian 擊退敵人，成為「引路人」。"
+                    "你卻隱約感到：他救下的，不只是命——還有可被利用的感恩。"
+                ),
+            },
         ],
     },
     "iggy_stage2": {
         "story_id": "iggy_stage2",
-        "chapter": "CHAPTER 01 — 裂縫",
-        "title": "界線的崩壞",
+        "chapter": "ACT 3–4 — 裂痕與血田",
+        "title": "溫室的裂痕 · 血田的獠牙",
         "current_stage": 3,
-        "total_stages": 4,
+        "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
         "skippable": False,
         "replayable": True,
         "lines": [
-            {"character": "Iggy", "text": "裂痕正在擴大。每一次退讓，都讓寄生者更靠近。"},
-            {"character": "旁白", "text": "全隊必須在戰鬥與任務中守住彼此——否則界線將徹底崩塌。"},
+            {
+                "character": "Julian",
+                "text": "來，Iggy。我會幫你找回記憶。你只要……再信我一次。",
+            },
+            {
+                "character": "Iggy",
+                "text": (
+                    "那些我救過的人……為什麼對我只有索取？"
+                    "我的「包容」……是在製造巨嬰嗎？"
+                ),
+            },
+            {
+                "character": "旁白",
+                "text": (
+                    "在你引導下，Iggy 第一次清楚說出「不」。"
+                    "麻醉之炎轉為帶灼熱的涅槃之火——痛，卻能燒斷病態共生。"
+                ),
+            },
+            {
+                "character": "Julian",
+                "text": "很好……能力覺醒了。那這份力量，就由我來收割吧。——血田，開。",
+            },
+            {
+                "character": "旁白",
+                "text": "背刺。Julian 露出真面目。你必須與他戰鬥，守護剛點燃的界線之火。",
+            },
         ],
     },
     "iggy_stage3": {
         "story_id": "iggy_stage3",
-        "chapter": "CHAPTER 01 — 裂縫",
-        "title": "救贖或崩壞",
+        "chapter": "ACT 5–6 — 業火與結局",
+        "title": "業火與重塑 · 打破無傷神話",
         "current_stage": 4,
-        "total_stages": 4,
+        "total_stages": 6,
         "route": "iggy",
         "min_stage": 3,
         "skippable": False,
         "replayable": True,
         "lines": [
-            {"character": "Iggy", "text": "最後一道界線就在眼前。救贖唔係逃避，係面對。"},
-            {"character": "Judas", "text": "選擇吧——繼續守護，或者讓一切歸於沉默。"},
+            {
+                "character": "旁白",
+                "text": (
+                    "Julian 承受不了「承擔真實痛苦與責任」的重量，能力暴走。"
+                    "Oikos 成員集體失控——溫室崩裂成災難。"
+                ),
+            },
+            {
+                "character": "Iggy",
+                "text": "這次……我不逃了。我們一起，把有毒的共生燒斷。",
+            },
+            {
+                "character": "Salvio",
+                "text": (
+                    "何必如此痛苦？回到我身邊。"
+                    "無痛的烏托邦才是愛。——脆弱，才是罪。"
+                ),
+            },
+            {
+                "character": "Iggy",
+                "text": (
+                    "愛有時需要衝突，需要必要的痛。"
+                    "我不再相信「絕對不造成任何痛楚」的神話。"
+                ),
+            },
+            {
+                "character": "旁白",
+                "text": "最後的領域在前方。擊敗 Salvio，摧毀有毒體制。",
+            },
         ],
     },
+    # Keep thin Marah stubs (camp mainline is Iggy)
     "marah_stage0": {
         "story_id": "marah_stage0",
-        "chapter": "CHAPTER 01 — 深淵",
+        "chapter": "MARAH — 支線",
         "title": "智慧的開端",
         "current_stage": 1,
         "total_stages": 4,
@@ -133,51 +217,22 @@ NARRATIVE_STORIES = {
         "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "Marah", "text": "智慧不是答案本身，而是知道何時該開口、何時該沉默。"},
             {
                 "character": "Marah",
-                "text": "你會點樣回應深淵的低語？",
-                "choices": [
-                    {"text": "🌊 靜聽與分析", "next_story_id": "marah_branch_listen"},
-                    {"text": "🤝 先連結隊友", "next_story_id": "marah_branch_team"},
-                ],
+                "text": (
+                    "我是 Marah。有人叫我控制狂——我叫它「必要的痛」。"
+                    "這次營會主線在 Iggy；若你仍選擇我，請以韌性面對界線。"
+                ),
             },
-            {"character": "旁白", "text": "你選擇了 Marah 路線。深淵的低語，需要用韌性去聆聽。"},
-        ],
-    },
-    "marah_branch_listen": {
-        "story_id": "marah_branch_listen",
-        "chapter": "CHAPTER 01 — 深淵",
-        "title": "靜聽深淵",
-        "current_stage": 1,
-        "total_stages": 4,
-        "route": "marah",
-        "min_stage": 0,
-        "skippable": True,
-        "replayable": True,
-        "lines": [
-            {"character": "Marah", "text": "我會先聽清楚——每一句低語背後，可能藏住一個未被聽見的請求。"},
-            {"character": "Judas", "text": "聰明。但記住，理解太多有時也是一種負擔。"},
-        ],
-    },
-    "marah_branch_team": {
-        "story_id": "marah_branch_team",
-        "chapter": "CHAPTER 01 — 深淵",
-        "title": "連結隊友",
-        "current_stage": 1,
-        "total_stages": 4,
-        "route": "marah",
-        "min_stage": 0,
-        "skippable": True,
-        "replayable": True,
-        "lines": [
-            {"character": "Marah", "text": "韌性唔係一個人硬撐，而係全隊一齊分擔。"},
-            {"character": "旁白", "text": "你選擇先穩住隊伍。故事會隨全隊任務一齊推進。"},
+            {
+                "character": "旁白",
+                "text": "（主線以 Iggy Arc 為準；Marah 內容保留作對照與未來擴充。）",
+            },
         ],
     },
     "marah_stage1": {
         "story_id": "marah_stage1",
-        "chapter": "CHAPTER 01 — 深淵",
+        "chapter": "MARAH — 支線",
         "title": "低語的解析",
         "current_stage": 2,
         "total_stages": 4,
@@ -186,38 +241,35 @@ NARRATIVE_STORIES = {
         "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "Judas", "text": "理解我，你就能超越恐懼——這是你想要的嗎？"},
-            {"character": "Marah", "text": "我會聽，但不會被吞噬。界線是為了連結，不是為了服從。"},
+            {"character": "Marah", "text": "暴政之毒與恩典解藥只有一線之隔——你站在哪邊？"},
         ],
     },
     "marah_stage2": {
         "story_id": "marah_stage2",
-        "chapter": "CHAPTER 01 — 深淵",
+        "chapter": "MARAH — 支線",
         "title": "韌性的考驗",
         "current_stage": 3,
         "total_stages": 4,
         "route": "marah",
         "min_stage": 2,
-        "skippable": False,
+        "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "Marah", "text": "情緒勒索最擅長偽裝成關心。看清它，才能保護自己同隊友。"},
-            {"character": "旁白", "text": "遭遇與任務會考驗全隊的韌性——保持連結，不要孤軍作戰。"},
+            {"character": "Marah", "text": "強迫成長不是愛。但放任巨嬰也不是。"},
         ],
     },
     "marah_stage3": {
         "story_id": "marah_stage3",
-        "chapter": "CHAPTER 01 — 深淵",
+        "chapter": "MARAH — 支線",
         "title": "覺醒",
         "current_stage": 4,
         "total_stages": 4,
         "route": "marah",
         "min_stage": 3,
-        "skippable": False,
+        "skippable": True,
         "replayable": True,
         "lines": [
-            {"character": "Marah", "text": "真相並不溫柔，但覺醒從來不需要完美。"},
-            {"character": "Judas", "text": "你準備好了嗎？最後的問題，只有全隊一起才能回答。"},
+            {"character": "Marah", "text": "當痛楚成為尊重而非武器時，獅蠍才真正屬於你。"},
         ],
     },
 }

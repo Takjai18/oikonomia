@@ -1933,6 +1933,74 @@ def test_zombie_hp_zero_status_poll_returns_victory():
     teardown_test_combat(team_id, enc_id)
 
 
+def test_survival_win_after_max_phases():
+    """Act 2 Polis: win_condition=survive — completing max_phases without wipe → squad win."""
+    from models.combat import save_combat
+    from models.protagonist import update_protagonist_state
+
+    enc_id = "enc_iggy_act2_polis"
+    client = oikonomia.app.test_client()
+    login(client, "SurvivePolis")
+    client.post("/team/create", data={"team_name": "SurvivePolis"})
+    client.post("/set_team_route_by_leader", data={"route": "iggy"})
+    import sqlite3
+
+    conn = sqlite3.connect(_test_db_path())
+    team_id = conn.execute("SELECT team_id FROM teams ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    conn.close()
+    update_protagonist_state(team_id, "iggy", is_active=0)
+
+    from models.squad import get_team_members
+
+    members = get_team_members(team_id)
+    for m in members:
+        update_squad(m["squad_id"], hp=100, max_hp=100, resilience=80, power=10)
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+    start = client.post(
+        "/combat/start",
+        json={"encounter_id": enc_id},
+        content_type="application/json",
+    ).get_json() or {}
+    combat_id = start.get("combat_id")
+    ok("survival: start polis", bool(combat_id), str(start)[:160])
+
+    status0 = client.get(f"/combat/status?combat_id={combat_id}").get_json() or {}
+    ok(
+        "survival: win_condition survive",
+        status0.get("win_condition") in ("survive", "survival", "hold"),
+        str(status0.get("win_condition")),
+    )
+    ok("survival: max_phases 5", int(status0.get("max_phases") or 0) == 5, str(status0.get("max_phases")))
+
+    # Jump to final phase so one defend resolve completes survival.
+    save_combat(combat_id, current_phase=5, enemy_hp=300)
+    with patch("routes.combat.roll_combat_dice", return_value=1), patch(
+        "models.combat.roll_combat_dice", return_value=1
+    ):
+        data = client.post(
+            "/combat/submit_action",
+            json={"combat_id": combat_id, "action_type": "defend"},
+            content_type="application/json",
+        ).get_json() or {}
+
+    ok("survival: victory outcome", data.get("outcome") == "victory", str(data)[:240])
+    ended = get_combat(combat_id) or {}
+    ok("survival: winner squad", ended.get("winner") == "squad", str(ended.get("winner")))
+    ok("survival: enemy not necessarily 0 hp", combat_enemy_hp(ended, default=-1) > 0, str(ended.get("enemy_hp")))
+    logs_blob = json.dumps(data.get("log_entries") or data.get("log") or [], ensure_ascii=False)
+    ok(
+        "survival: log mentions 生存",
+        "生存" in logs_blob or "守住" in logs_blob,
+        logs_blob[:300],
+    )
+
+    teardown_test_combat(team_id, enc_id)
+    clear_encounter_completion(team_id, enc_id)
+
+
 def test_practice_combat_start_enemy_hp_full():
     """Fresh practice combat must start with full enemy HP (not 0 from stale reconcile)."""
     from models.protagonist import update_protagonist_state
@@ -2012,6 +2080,9 @@ def fight_until_victory(client, client2, combat_id):
 PRODUCTION_ENCOUNTERS = (
     "enc_iggy_01_leech",
     "enc_iggy_02_boundary",
+    "enc_iggy_act2_polis",
+    "enc_iggy_act4_julian",
+    "enc_iggy_act6_salvio",
     "enc_marah_01_whisper",
 )
 
@@ -2551,6 +2622,7 @@ def main():
     test_solo_multi_round_poll_hp_monotonic()
     test_zombie_hp_zero_status_poll_returns_victory()
     test_practice_combat_start_enemy_hp_full()
+    test_survival_win_after_max_phases()
     test_phase2_trauma_service_pipeline()
     test_phase2_narrative_orchestrator_pipeline()
     test_maybe_resolve_ready_claim_inside_tx()

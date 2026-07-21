@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-07-22 — 設定1 Iggy Arc 寫入遊戲
+
+| 項目 | 內容 |
+|------|------|
+| **內容** | Cosmos 法則／Polis·Oikos／六幕敘事／City Hunt 任務／Polis·Julian·Salvio 遭遇戰 |
+| **機制** | `win_condition: survive` + `max_phases`（Act2 Polis 5 回合不敗即勝）；提前擊殺仍勝 |
+| **檔案** | `data/cosmos_lore.py`、`story_config`、`narrative_stories`、`locations`、`enc_iggy_act2/4/6_*.json`、`models/combat.py` |
+| **未完成** | Where’s Wally 正式圖、真迷宮、醬板鴨／貼身物實體 props、MTR GPS 精確 pin |
+| **測試** | `test_survival_win_after_max_phases` |
+
+**勿重複建議**：把所有戰鬥的 `max_phases` 預設當硬上限（只在 `win_condition=survive` 時觸發生存勝；預設仍靠打到 0 HP）。
+
+---
+
 ## 2026-07-21 — 營會 threat model + 現場救場文檔
 
 | 項目 | 內容 |

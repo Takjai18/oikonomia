@@ -1,0 +1,61 @@
+{
+  "encounter_id": "enc_iggy_act2_polis",
+  "title": "Act 2：Polis 追擊——守住五回合",
+  "route": "iggy",
+  "story_stage": 1,
+  "trigger_type": "story",
+  "location_hint": "逃亡路線 · Polis 封鎖線",
+  "description": "逃亡途中，Polis 用鎖鏈與拷問實踐「沒有痛苦就沒有成長」。Iggy 想用自我犧牲換「和平」——但你的任務不是當祭品，而是撐過五個回合，等引路人出現。",
+
+  "enemy": {
+    "name": "Polis 追擊隊",
+    "hp": 320,
+    "sanity": 55,
+    "power": 48,
+    "intellect": 32,
+    "resilience": 30,
+    "base_damage": 18,
+    "description": "律法主義與社會達爾文主義的具象。高壓、強迫服從，要把人打成無情感的空殼木偶。血厚，通常要靠「撐過回合」而非秒殺。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70,
+    "max_phases": 5,
+    "win_condition": "survive"
+  },
+
+  "success": {
+    "insight_fragment": 1,
+    "rewards": [],
+    "narrative": "你們撐過了五個回合。Polis 的鎖鏈暫時鬆開——Julian 出現，擊退敵人，成為「引路人」。你隱約感到：他救下的，不只是命，還有可被利用的感恩。",
+    "next_story_unlock": "iggy_act3"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 8
+    },
+    "narrative": "封鎖線沒有鬆開。Iggy 的討好者模式幾乎把全隊拖進「替人擋下一切」的妄想。Polis 的鎖鏈又收緊了一寸。",
+    "debuff": "resilience_-8_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "虛妄的羔羊",
+    "questions": [
+      "當局面變糟時，你有冇下意識想「我來頂住全部」？",
+      "「沒有痛苦就沒有成長」這句話，在你生活中有冇被誤用成逼人屈服的武器？",
+      "真正的守護，同自我犧牲式的討好，差在哪？"
+    ],
+    "theological_tie": "《界線》核心：我們不能代替別人承擔他們必須自己面對的後果；也不是神，不能用痛苦強迫人成長（Law of Responsibility / Respect）。"
+  },
+
+  "notes_for_gm": {
+    "theological_focus": "People-pleasing 的盲目犧牲 vs Polis 的強迫成長",
+    "win_rule": "5 回合內全隊未全滅即勝；提前擊破敵人也算勝",
+    "debrief_tips": "引導討論：『我有冇因為怕衝突，而想用自己當祭品換和平？』",
+    "physical_integration": "可配合 act2_polis_prep 影相任務"
+  }
+}

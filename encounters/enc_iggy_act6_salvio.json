@@ -1,0 +1,67 @@
+{
+  "encounter_id": "enc_iggy_act6_salvio",
+  "title": "Act 6：打破無傷神話——Salvio",
+  "route": "iggy",
+  "story_stage": 3,
+  "trigger_type": "story",
+  "location_hint": "偽神領域 · 無痛烏托邦",
+  "description": "Salvio 以彌賽亞姿態召喚無痛烏托邦：「何必痛苦？回到我身邊。脆弱才是罪。」Iggy 必須與你並肩，擊破有毒體制——愛有時需要必要的衝突與痛楚。",
+
+  "enemy": {
+    "name": "Salvio · 畸形巨獸",
+    "hp": 210,
+    "sanity": 35,
+    "power": 50,
+    "intellect": 44,
+    "resilience": 32,
+    "base_damage": 24,
+    "description": "逃避者／彌賽亞情結的終點。Zoo「山羊／Agape」吸收過量巨嬰負能量後系統超載，黑化為被黑色臍帶纏繞的畸形巨獸。它承諾無痛，卻剝奪成長與真實。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 220,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70,
+    "max_phases": 10,
+    "win_condition": "defeat_enemy"
+  },
+
+  "success": {
+    "insight_fragment": 2,
+    "rewards": [
+      {
+        "type": "item",
+        "item_id": "item-001",
+        "chance": 0.5
+      }
+    ],
+    "narrative": "偽神領域崩解。Salvio 的無傷神話被拆穿——真正的愛不消滅一切痛楚，而是在痛中仍選擇責任、界線與同行。Iggy 的鳳凰以涅槃之火燒斷有毒共生。",
+    "next_story_unlock": "iggy_ending"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 15
+    },
+    "narrative": "無痛的烏托邦再次合攏。脆弱被標籤為罪，你們幾乎相信：只要夠「愛」，就永遠不必面對真實的痛。",
+    "debuff": "resilience_-15_until_healed",
+    "force_near_death": false
+  },
+
+  "reflection_prompt": {
+    "title": "打破無傷神話",
+    "questions": [
+      "你是否曾經把「不造成任何痛楚」當成愛的唯一標準？",
+      "什麼情況下，必要的衝突其實是尊重？",
+      "Iggy 從麻醉之炎走到涅槃之火——你自己的「麻醉」是什麼？"
+    ],
+    "theological_tie": "真正的愛尊重對方承擔後果的權利；無痛溫室養出巨嬰，強迫痛苦製造木偶。恩典在真實中，不在虛假的無傷（2 Cor 12:9 的力量在軟弱中顯得完全）。"
+  },
+
+  "notes_for_gm": {
+    "theological_focus": "Messiah complex · 無痛烏托邦 vs 真實的愛",
+    "debrief_tips": "可對照 Oikos 溫室與 Polis 鎖鏈：兩極都是失衡",
+    "physical_integration": "可配合 act6_salvio_gate 影相；最終 debrief"
+  }
+}

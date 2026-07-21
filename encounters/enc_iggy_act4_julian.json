@@ -1,0 +1,66 @@
+{
+  "encounter_id": "enc_iggy_act4_julian",
+  "title": "Act 4：血田的獠牙——Julian",
+  "route": "iggy",
+  "story_stage": 2,
+  "trigger_type": "story",
+  "location_hint": "記憶重組後 · 血田領域",
+  "description": "Iggy 首次說出「不」，麻醉之炎轉為涅槃之火。Julian 露出真面目：他不是引路人，而是操縱型控制狂——發動「血田」，要收割剛覺醒的鳳凰之力。",
+
+  "enemy": {
+    "name": "Julian · 血田",
+    "hp": 175,
+    "sanity": 40,
+    "power": 46,
+    "intellect": 48,
+    "resilience": 26,
+    "base_damage": 22,
+    "description": "情緒勒索與道德綁架的高手。Zoo「血田」種下他人組織，在宿主能力爆發時收割共鳴、奪取其能力。表面溫柔，獠牙已出。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 200,
+    "allow_zoo": true,
+    "zoo_sanity_threshold": 70,
+    "max_phases": 8,
+    "win_condition": "defeat_enemy"
+  },
+
+  "success": {
+    "insight_fragment": 1,
+    "rewards": [
+      {
+        "type": "item",
+        "item_id": "item-002",
+        "chance": 0.45
+      }
+    ],
+    "narrative": "血田的獠牙被壓下。Julian 無法承受涅槃之火背後「承擔真實痛苦與責任」的重量——他的能力開始暴走。溫室的裂痕，即將變成業火。",
+    "next_story_unlock": "iggy_act5"
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 12
+    },
+    "narrative": "血田收割成功。剛點燃的界線之火被奪走一角，Iggy 的舊傷同感恩鎖鏈再次纏上全隊。",
+    "debuff": "resilience_-12_until_healed"
+  },
+
+  "reflection_prompt": {
+    "title": "引路人與綁架",
+    "questions": [
+      "有沒有人用「我幫過你」來綁架你的選擇？",
+      "當你終於說出「不」時，關係裡最常見的反撲是什麼？",
+      "感恩同被利用，界線在哪？"
+    ],
+    "theological_tie": "健康的引導尊重自由意志；情緒勒索用過去的「恩」剝奪對方成長（Law of Power / Respect）。"
+  },
+
+  "notes_for_gm": {
+    "theological_focus": "Manipulative control · 道德綁架",
+    "debrief_tips": "對照 Act 2：救星與鎖鏈可以是同一人",
+    "physical_integration": "可配合 act4_julian_gate 影相"
+  }
+}

@@ -1747,6 +1747,37 @@ def _resolve_player_phase_body(combat_id):
         )
         return _end_combat(combat_id, "enemy", encounter), "enemy"
 
+    # Survival win (設定 Act 2 Polis 等): complete max_phases rounds without team wipe.
+    # win_condition: "survive" | "defeat_enemy" (default). max_phases only gates win when survive.
+    completed_phase = int(combat.get("current_phase") or 0)
+    win_condition = str(combat_settings.get("win_condition") or "defeat_enemy").lower()
+    max_phases = combat_settings.get("max_phases")
+    try:
+        max_phases_n = int(max_phases) if max_phases is not None else None
+    except (TypeError, ValueError):
+        max_phases_n = None
+    if (
+        win_condition in ("survive", "survival", "hold")
+        and max_phases_n is not None
+        and max_phases_n > 0
+        and completed_phase >= max_phases_n
+    ):
+        combat = append_combat_log(
+            combat,
+            f"守住 {completed_phase} 回合！生存目標達成（{max_phases_n} 回合內不敗）。",
+            log_type="survival_win",
+        )
+        _commit_resolve_phase_state(
+            combat_id,
+            **write_buffers,
+            combat_fields={
+                "enemy_hp": new_enemy_hp,
+                "logs": combat.get("logs"),
+                "phase_actions": {},
+            },
+        )
+        return _end_combat(combat_id, "squad", encounter), "squad"
+
     now = datetime.now().isoformat()
     limit = combat_settings.get("phase_time_limit_seconds", 180)
     _commit_resolve_phase_state(
@@ -1789,7 +1820,16 @@ def _end_combat(combat_id, winner, encounter):
     starter_id = combat.get("squad_id")
     now_str = datetime.now().isoformat()
     logs = list(combat.get("logs") or [])
-    enemy_hp_val = 0 if winner == "squad" else combat.get("enemy_hp", 100)
+    # Defeat-enemy wins zero remaining HP; survival / escape keep residual HP for narrative.
+    if winner == "squad":
+        enc_settings = (encounter or {}).get("combat_settings") or {}
+        win_cond = str(enc_settings.get("win_condition") or "defeat_enemy").lower()
+        if win_cond in ("survive", "survival", "hold") and int(combat.get("enemy_hp") or 0) > 0:
+            enemy_hp_val = combat.get("enemy_hp", 100)
+        else:
+            enemy_hp_val = 0
+    else:
+        enemy_hp_val = combat.get("enemy_hp", 100)
 
     with immediate_transaction() as conn:
         row = conn.execute("SELECT 1 FROM combats WHERE id = ?", (combat_id,)).fetchone()
@@ -2109,6 +2149,9 @@ def build_combat_status_response(combat, encounter, squad_id, participants=None)
         "enemy_description": (encounter or {}).get("enemy", {}).get("description"),
         "route": team_route or (encounter or {}).get("route"),
         "max_phases": combat_settings.get("max_phases", 5),
+        "win_condition": str(
+            combat_settings.get("win_condition") or "defeat_enemy"
+        ).lower(),
         "my_squad_id": squad_id,
         "team_id": team_id,
         "story_stage": story_stage_for_zoo,
