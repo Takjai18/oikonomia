@@ -111,29 +111,9 @@ export function createHudView(rootEl) {
           bindAvatarImage(playerAvatar, me.avatar, { isProtagonist: !!me.is_protagonist });
         }
       }
-      if (!hpOnly && teamStatus) {
-        const members = ctx.hud?.members || {};
-        const combatOver = TERMINAL_PHASES.includes(ctx.phase)
-          || ctx.hud?.active === false;
-        const escaped = ctx.phase === Phase.ESCAPED
-          || ctx.hud?.outcome === 'escaped'
-          || ctx.hud?.winner === 'escaped';
-        teamStatus.innerHTML = Object.entries(members)
-          .map(([id, m]) => {
-            const label = m.is_protagonist ? '⭐ ' : '';
-            const isSubmitted = !!m.submitted || combatOver;
-            const status = combatOver
-              ? (escaped ? '🏃 已脫離' : '⏹ 結束')
-              : (isSubmitted ? '✅ 已就緒' : '⏳ 等待中');
-            const statusCss = combatOver
-              ? 'text-emerald-400 font-bold'
-              : (isSubmitted ? 'text-green-400 font-bold' : 'text-amber-500 animate-pulse');
-            const actionHint = (!combatOver && isSubmitted && m.action_type)
-              ? ` · <span class="text-zinc-300">[${escapeHtml(m.action_type)}]</span>${m.dice_result != null ? `（骰${m.dice_result}）` : ''}`
-              : '';
-            return `<div class="text-xs flex justify-between py-0.5 border-b border-zinc-800/40 gap-2"><span class="truncate">${label}${escapeHtml(m.display_name || id)}</span><span class="shrink-0 ${statusCss}">${status}${actionHint}</span></div>`;
-          })
-          .join('');
+      // Team / Iggy roster: always refresh HP+sanity (including hpOnly poll sync).
+      if (teamStatus) {
+        renderTeamStatus(teamStatus, ctx, { hpOnly });
       }
       if (!hpOnly && logEl) {
         const logs = ctx.hud?.log || [];
@@ -156,4 +136,91 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+/**
+ * Teammates + Iggy (protagonists): name, ready status, HP bar, sanity.
+ * @param {HTMLElement} teamStatus
+ * @param {object} ctx
+ * @param {{ hpOnly?: boolean }} [opts]
+ */
+function renderTeamStatus(teamStatus, ctx, opts = {}) {
+  const members = ctx.hud?.members || {};
+  const entries = Object.entries(members);
+  if (!entries.length) {
+    if (!opts.hpOnly) teamStatus.innerHTML = '';
+    return;
+  }
+
+  const combatOver = TERMINAL_PHASES.includes(ctx.phase)
+    || ctx.hud?.active === false;
+  const escaped = ctx.phase === Phase.ESCAPED
+    || ctx.hud?.outcome === 'escaped'
+    || ctx.hud?.winner === 'escaped';
+  const myId = ctx.hud?.me?.squad_id || ctx.hud?.my_squad_id || null;
+
+  // Stable order: self first, then protagonists, then others (name).
+  entries.sort(([idA, a], [idB, b]) => {
+    const score = (id, m) => {
+      if (myId && id === myId) return 0;
+      if (m.is_protagonist) return 1;
+      return 2;
+    };
+    const d = score(idA, a) - score(idB, b);
+    if (d !== 0) return d;
+    return String(a.display_name || idA).localeCompare(String(b.display_name || idB), 'zh');
+  });
+
+  teamStatus.innerHTML = entries.map(([id, m]) => {
+    const isSelf = myId && id === myId;
+    const label = m.is_protagonist ? '⭐ ' : (isSelf ? '👤 ' : '');
+    const name = escapeHtml(m.display_name || id);
+    const isSubmitted = !!m.submitted || combatOver;
+    const status = combatOver
+      ? (escaped ? '🏃 已脫離' : '⏹ 結束')
+      : (isSubmitted ? '✅ 已就緒' : '⏳ 等待中');
+    const statusCss = combatOver
+      ? 'text-emerald-400 font-bold'
+      : (isSubmitted ? 'text-green-400 font-bold' : 'text-amber-500 animate-pulse');
+    const actionHint = (!combatOver && isSubmitted && m.action_type)
+      ? ` · <span class="text-zinc-300">[${escapeHtml(m.action_type)}]</span>${m.dice_result != null ? `（骰${m.dice_result}）` : ''}`
+      : '';
+
+    const maxHp = parseCombatHp(m.max_hp, 100);
+    const hp = parseCombatHp(m.hp, maxHp);
+    const sanity = resolveCombatStats(m)?.sanity ?? parseCombatHp(m.sanity, 100);
+    const hpPctVal = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+    const sanPctVal = Math.max(0, Math.min(100, (sanity / 100) * 100));
+    const hpBarColor = hpPctVal <= 25 ? 'bg-red-500' : (hpPctVal <= 50 ? 'bg-amber-500' : 'bg-rose-400');
+    const sanBarColor = sanPctVal <= 30 ? 'bg-red-400' : 'bg-purple-500';
+    const nearDeath = !!(m.near_death_until) && hp <= 0;
+
+    return `
+      <div class="py-1.5 border-b border-zinc-800/50 last:border-0" data-member-id="${escapeHtml(id)}">
+        <div class="text-xs flex justify-between gap-2 items-baseline mb-0.5">
+          <span class="truncate font-medium text-zinc-200">${label}${name}${nearDeath ? ' <span class="text-red-400 text-[10px]">瀕死</span>' : ''}</span>
+          <span class="shrink-0 ${statusCss} text-[10px]">${status}${actionHint}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-x-2 gap-y-0.5">
+          <div>
+            <div class="flex justify-between text-[10px] text-zinc-500 mb-0.5">
+              <span>❤️ 生命</span>
+              <span class="font-mono text-rose-300">${hp}/${maxHp}</span>
+            </div>
+            <div class="h-1 bg-zinc-800 rounded overflow-hidden">
+              <div class="h-full ${hpBarColor} transition-all duration-300" style="width:${hpPctVal}%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[10px] text-zinc-500 mb-0.5">
+              <span>🧠 神智</span>
+              <span class="font-mono text-purple-300">${sanity}/100</span>
+            </div>
+            <div class="h-1 bg-zinc-800 rounded overflow-hidden">
+              <div class="h-full ${sanBarColor} transition-all duration-300" style="width:${sanPctVal}%"></div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 }

@@ -182,11 +182,16 @@ export function extractHud(snapshot) {
   const teamId = snapshot.team_id || null;
   const route = snapshot.route || null;
   const me = snapshot.my_state
-    ? { ...snapshot.my_state, team_id: snapshot.my_state.team_id || teamId }
+    ? {
+        ...snapshot.my_state,
+        team_id: snapshot.my_state.team_id || teamId,
+        squad_id: snapshot.my_state.squad_id || snapshot.my_squad_id || null,
+      }
     : null;
   return {
     enemy: snapshot.enemy || null,
     me,
+    my_squad_id: snapshot.my_squad_id || me?.squad_id || null,
     team_id: teamId,
     route,
     encounter_id: snapshot.encounter_id || null,
@@ -210,7 +215,5 @@ export function extractHud(snapshot) {
       ?? snapshot.combat_settings?.zoo_unlock_story_stage
       ?? null,
     active: snapshot.active,
-    outcome: snapshot.outcome,
-    winner: snapshot.winner,
   };
 }

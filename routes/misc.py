@@ -200,6 +200,10 @@ def api_version():
                 "Escape success (poll after timeout resolve",
                 relative="static/js/combat/state_machine.js",
             ),
+            "team_vitals_hud_v1": _combat_js_has_marker(
+                "renderTeamStatus",
+                relative="static/js/combat/views/hud_view.js",
+            ),
         },
         "forced_route": FORCED_ROUTE,
         "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),
