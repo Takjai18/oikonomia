@@ -516,6 +516,16 @@
 
 ---
 
+## 2026-07-21 — 逃離成功但 UI 仍顯示 Iggy 未行動
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 逃離後 ~10s 顯示「逃離成功」，但主角 Iggy 仍顯示等待中／可行動 |
+| **根因** | (1) poll `syncState` **未處理** `winner=escaped`；(2) 結束戰鬥 API 對 escaped 只回精簡 JSON；(3) 超時喺 escape 確認畫面會誤轉防禦 |
+| **修復** | poll 同步 ESCAPED+SHOW_ESCAPED；ended+escaped 回完整 escape payload；escape 超時自動確認逃跑；結束後隊伍狀態顯示「已脫離」 |
+
+---
+
 ## 驗證清單（改動後）
 
 ```bash

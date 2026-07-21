@@ -209,5 +209,8 @@ export function extractHud(snapshot) {
       snapshot.zoo_unlock_story_stage
       ?? snapshot.combat_settings?.zoo_unlock_story_stage
       ?? null,
+    active: snapshot.active,
+    outcome: snapshot.outcome,
+    winner: snapshot.winner,
   };
 }

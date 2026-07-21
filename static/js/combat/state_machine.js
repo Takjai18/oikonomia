@@ -286,6 +286,31 @@ export function syncState(ctx, snapshot) {
     };
   }
 
+  // Escape success (poll after timeout resolve, or re-open ended combat).
+  if (snapshot.outcome === 'escaped' || snapshot.winner === 'escaped') {
+    if (ctx.phase === Phase.ESCAPED) {
+      return { ctx: newCtx, effects: [{ type: 'UPDATE_HUD', hpOnly: true }] };
+    }
+    newCtx = {
+      ...newCtx,
+      phase: Phase.ESCAPED,
+      pollPaused: true,
+      pendingSettlement: null,
+      pendingSettlementId: null,
+      isKillingBlow: false,
+      escapePending: false,
+    };
+    return {
+      ctx: newCtx,
+      effects: terminalModalTeardownEffects([
+        { type: 'HIDE_DICE' },
+        { type: 'HIDE_SUBMITTING' },
+        { type: 'SHOW_ESCAPED', data: snapshot },
+        { type: 'STOP_POLL' },
+      ]),
+    };
+  }
+
   if (snapshot.outcome === 'victory' || snapshot.winner === 'squad') {
     const settlement = normalizeSettlement(snapshot);
     const settlementId = deriveSettlementId(snapshot);

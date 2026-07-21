@@ -246,6 +246,10 @@ def combat_status_api():
                 team_id=team_id,
                 participants=ended_participants,
             ))
+        if winner == "escaped":
+            return jsonify(build_escape_outcome_response(
+                combat, encounter, session["squad_id"], team_id=team_id,
+            ))
         return jsonify({"success": True, "active": False, "winner": winner})
 
     encounter = load_encounter(combat["encounter_id"])

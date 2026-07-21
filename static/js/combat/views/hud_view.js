@@ -1,6 +1,6 @@
 import { DOM_IDS } from '../selectors.js';
 import { bindAvatarImage } from '../avatar_urls.js';
-import { parseCombatHp } from '../state_machine.js';
+import { parseCombatHp, Phase, TERMINAL_PHASES } from '../state_machine.js';
 import { resolveCombatStats, statBarPct, isStaleHudSnapshot } from '../stats.js';
 
 export function createHudView(rootEl) {
@@ -113,13 +113,22 @@ export function createHudView(rootEl) {
       }
       if (!hpOnly && teamStatus) {
         const members = ctx.hud?.members || {};
+        const combatOver = TERMINAL_PHASES.includes(ctx.phase)
+          || ctx.hud?.active === false;
+        const escaped = ctx.phase === Phase.ESCAPED
+          || ctx.hud?.outcome === 'escaped'
+          || ctx.hud?.winner === 'escaped';
         teamStatus.innerHTML = Object.entries(members)
           .map(([id, m]) => {
             const label = m.is_protagonist ? '⭐ ' : '';
-            const isSubmitted = !!m.submitted;
-            const status = isSubmitted ? '✅ 已就緒' : '⏳ 等待中';
-            const statusCss = isSubmitted ? 'text-green-400 font-bold' : 'text-amber-500 animate-pulse';
-            const actionHint = (isSubmitted && m.action_type)
+            const isSubmitted = !!m.submitted || combatOver;
+            const status = combatOver
+              ? (escaped ? '🏃 已脫離' : '⏹ 結束')
+              : (isSubmitted ? '✅ 已就緒' : '⏳ 等待中');
+            const statusCss = combatOver
+              ? 'text-emerald-400 font-bold'
+              : (isSubmitted ? 'text-green-400 font-bold' : 'text-amber-500 animate-pulse');
+            const actionHint = (!combatOver && isSubmitted && m.action_type)
               ? ` · <span class="text-zinc-300">[${escapeHtml(m.action_type)}]</span>${m.dice_result != null ? `（骰${m.dice_result}）` : ''}`
               : '';
             return `<div class="text-xs flex justify-between py-0.5 border-b border-zinc-800/40 gap-2"><span class="truncate">${label}${escapeHtml(m.display_name || id)}</span><span class="shrink-0 ${statusCss}">${status}${actionHint}</span></div>`;

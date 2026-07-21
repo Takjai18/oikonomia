@@ -196,6 +196,10 @@ def api_version():
                 "Plan A keeps dice modal open until submit returns",
                 relative="static/js/combat/state_machine.js",
             ),
+            "escape_poll_sync_v1": _combat_js_has_marker(
+                "Escape success (poll after timeout resolve",
+                relative="static/js/combat/state_machine.js",
+            ),
         },
         "forced_route": FORCED_ROUTE,
         "zoo_unlock_story_stage": get_zoo_unlock_story_stage(),

@@ -521,6 +521,38 @@ describe('Combat V2 state machine', () => {
     // Plan A may leave value null until server lands (index.js bypasses confirm).
     assert.equal(rolling.dice.value, null);
   });
+
+  it('poll winner=escaped → ESCAPED + SHOW_ESCAPED (timeout resolve path)', () => {
+    const ctx = {
+      ...createInitialContext(1),
+      phase: Phase.WAITING_FOR_PLAYERS,
+      hud: {
+        me: { submitted: true, action_type: 'escape' },
+        members: {
+          z: { display_name: 'Zubimendi', submitted: true, action_type: 'escape' },
+          'protagonist:iggy:TEAM-01': {
+            display_name: 'Iggy', submitted: false, is_protagonist: true,
+          },
+        },
+      },
+    };
+    const { ctx: next, effects } = syncState(ctx, {
+      combat_id: 1,
+      success: true,
+      active: false,
+      status: 'ended',
+      outcome: 'escaped',
+      winner: 'escaped',
+      narrative: '全隊成功脫離戰鬥。',
+      member_states: {
+        z: { display_name: 'Zubimendi', submitted: true },
+        'protagonist:iggy:TEAM-01': { display_name: 'Iggy', submitted: false, is_protagonist: true },
+      },
+    });
+    assert.equal(next.phase, Phase.ESCAPED);
+    assert.ok(effects.some((e) => e.type === 'SHOW_ESCAPED'));
+    assert.ok(effects.some((e) => e.type === 'STOP_POLL'));
+  });
 });
 
 describe('Settlement normalization', () => {

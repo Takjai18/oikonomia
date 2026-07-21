@@ -507,6 +507,16 @@ export class CombatApp {
     }
 
     if (this.ctx.phase === Phase.DICE_CONFIRM) {
+      // If player already chose escape, confirm escape — do not swap to defend.
+      const pendingAction = this.ctx.dice?.action;
+      if (pendingAction === 'escape') {
+        console.warn('[FSM] DICE_CONFIRM timeout — auto-confirming escape');
+        this.hasTriggeredTimeoutDefense = true;
+        this.views?.dice?.setConfirmDisabled?.(true);
+        showToast('操作超時！系統已確認你的「逃跑」指令。', 'warn');
+        void this.confirmDice();
+        return;
+      }
       console.warn(
         '[FSM] DICE_CONFIRM timeout — forcing automatic defend takeover',
       );
@@ -663,8 +673,20 @@ export class CombatApp {
       || (typeof snapshot.remaining_seconds === 'number'
         && snapshot.remaining_seconds <= 0);
 
+    // Never auto-defend after combat already ended (escape/victory/defeat).
+    const combatEnded =
+      snapshot.active === false
+      || snapshot.status === 'ended'
+      || snapshot.outcome === 'escaped'
+      || snapshot.winner === 'escaped'
+      || snapshot.outcome === 'victory'
+      || snapshot.outcome === 'defeat'
+      || snapshot.winner === 'squad'
+      || snapshot.winner === 'enemy';
+
     if (
-      snapshot.status === 'player_phase'
+      !combatEnded
+      && snapshot.status === 'player_phase'
       && timedOut
       && !snapshot.my_state?.submitted
     ) {
