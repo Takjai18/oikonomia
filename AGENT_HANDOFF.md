@@ -289,7 +289,8 @@ bash scripts/pre_deploy_checks.sh                        # 部署／CI 閘門（
 | 本地開發 | `source venv/bin/activate && python3 app.py` → http://localhost:5001 |
 | 測試帳號 | `test_squad_01`（開發）；**Henry** `PLAYER-75406`（Iggy solo 實機主測） |
 
-**主題**：Summer Camp 2026 ARG（Oikonomia 青年營會），Iggy / Marah 雙主角路線。
+**主題**：Summer Camp 2026 ARG（Oikonomia 青年營會）。  
+**路線政策（2026-07-21）**：**全線強制 Iggy**（`data/route_config.py` · `FORCED_ROUTE=iggy`；env `OIKONOMIA_FORCED_ROUTE=` 可恢復雙線）。Marah 內容仍在 codebase，但玩家流程唔會揀到。
 
 ---
 
@@ -561,6 +562,7 @@ static/js/combat/
 | **QR claim 事務** | `grant_item_to_squad()` 全部檢查 + INSERT 喺 `immediate_transaction` 內 |
 | **Legacy QR 關閉** | production 預設 `ALLOW_LEGACY_QR=0`（`utils/qr.py`） |
 | **Route SSOT** | `official_squad_route()`；`get_squad` / `get_all_squads` / 戰鬥參與者以 `teams.route` 為準 |
+| **Forced Iggy（2026-07-21）** | `FORCED_ROUTE=iggy`；啟動 `apply_forced_route_to_all()`；建隊自動 Iggy；`/api/version.forced_route` |
 | **瀕死狀態** | 瀕死期間禁止道具補血；HP→0 先設 `near_death_until`；HP≤0 唔攻擊/暴走 |
 | **GM auth** | `services/gm_auth.py`：PIN 登入後 **8 小時** session 過期 |
 | **GM dashboard N+1** | submission count 改 bulk `GROUP BY` |

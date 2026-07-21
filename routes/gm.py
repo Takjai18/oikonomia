@@ -157,6 +157,9 @@ def gm_teams():
 
 @gm_bp.route("/create_team", methods=["POST"])
 def gm_create_team():
+    from data.route_config import FORCED_ROUTE
+    from models.protagonist import initialize_protagonist_for_team
+
     denied = _require_gm()
     if denied:
         return denied
@@ -164,19 +167,28 @@ def gm_create_team():
     team_name = request.form.get("team_name", "").strip() or "新小隊"
     team_id = get_next_team_id()
     created_at = datetime.now().isoformat()
+    route = FORCED_ROUTE  # may be None when dual-route mode
 
     conn = sqlite3.connect(settings.db_path)
     try:
         c = conn.cursor()
         c.execute(
             "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
-            (team_id, team_name, None, created_at, None),
+            (team_id, team_name, route, created_at, None),
         )
         conn.commit()
     finally:
         conn.close()
 
-    return jsonify({"success": True, "team_id": team_id, "team_name": team_name})
+    if route:
+        initialize_protagonist_for_team(team_id, route)
+
+    return jsonify({
+        "success": True,
+        "team_id": team_id,
+        "team_name": team_name,
+        "route": route,
+    })
 
 
 @gm_bp.route("/assign_squad", methods=["POST"])
@@ -229,20 +241,27 @@ def gm_assign_squad():
 
 @gm_bp.route("/set_team_route", methods=["POST"])
 def gm_set_team_route():
+    from data.route_config import FORCED_ROUTE, is_route_allowed, resolve_route
+
     denied = _require_gm()
     if denied:
         return denied
 
     team_id = request.form.get("team_id", "").strip().upper()
-    route = request.form.get("route", "").strip().lower()
+    route = resolve_route(request.form.get("route", "").strip().lower())
 
-    if route not in ("iggy", "marah"):
+    if not is_route_allowed(route):
+        if FORCED_ROUTE:
+            return jsonify({
+                "success": False,
+                "error": f"本營會全線固定為 {FORCED_ROUTE.title()} 路線",
+            }), 400
         return jsonify({"success": False, "error": "路線必須是 iggy 或 marah"}), 400
     if not get_team_by_id(team_id):
         return jsonify({"success": False, "error": "Team 不存在"}), 400
 
     sync_team_route(team_id, route)
-    return jsonify({"success": True})
+    return jsonify({"success": True, "route": route})
 
 
 @gm_bp.route("/global_event", methods=["POST"])

@@ -4,7 +4,7 @@
 > 路徑：`/Users/mingtakyau/Documents/oikonomia`  
 > 備份：`Google Drive/My Drive/oikonomia`
 
-Summer Camp 2026 ARG Web App（Flask）。雙主角路線 Iggy / Marah，含玩家 Dashboard、遭遇戰 Combat V2、故事、GM 後台。
+Summer Camp 2026 ARG Web App（Flask）。雙主角內容（Iggy / Marah）；**營會預設全線強制 Iggy**（`data/route_config.py`）。含玩家 Dashboard、遭遇戰 Combat V2、故事、GM 後台。
 
 ---
 

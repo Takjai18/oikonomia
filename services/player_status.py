@@ -11,8 +11,15 @@ from services.ending import build_protagonist_control_status, judge_ending
 
 
 def build_player_status(squad):
+    from data.route_config import FORCED_ROUTE
+    from models.team import official_squad_route
+
     if not squad:
         return None
+
+    # Persist forced route when DB still empty/wrong (covers login + /status paths).
+    if FORCED_ROUTE:
+        squad = _ensure_forced_route_persisted(squad)
 
     if not squad.get("team_id"):
         return {
@@ -20,7 +27,8 @@ def build_player_status(squad):
             **squad,
             "team": None,
             "protagonists": {},
-            "route": squad.get("route"),
+            "route": official_squad_route(squad),
+            "forced_route": FORCED_ROUTE,
             "is_team_leader": 0,
         }
 
@@ -48,8 +56,39 @@ def build_player_status(squad):
         "trauma_level": ending.get("trauma_level", "safe"),
         "trauma_summary": ending.get("trauma_summary"),
         "ending_preview": ending.get("ending_preview"),
+        "forced_route": FORCED_ROUTE,
         "is_team_leader": squad.get("is_team_leader", 0),
     }
+
+
+def _ensure_forced_route_persisted(squad):
+    """Write FORCED_ROUTE to squad/team when missing or mismatched (idempotent)."""
+    from data.route_config import FORCED_ROUTE
+    from models.squad import get_squad, update_squad
+    from models.team import get_team_by_id, sync_team_route
+
+    if not FORCED_ROUTE or not squad:
+        return squad
+
+    squad_id = squad.get("squad_id")
+    team_id = squad.get("team_id")
+    changed = False
+
+    if team_id:
+        team = get_team_by_id(team_id)
+        team_route = ((team or {}).get("route") or "").strip().lower()
+        if team_route != FORCED_ROUTE:
+            sync_team_route(team_id, FORCED_ROUTE)
+            changed = True
+    else:
+        squad_route = (squad.get("route") or "").strip().lower()
+        if squad_route != FORCED_ROUTE and squad_id:
+            update_squad(squad_id, route=FORCED_ROUTE)
+            changed = True
+
+    if changed and squad_id:
+        return get_squad(squad_id) or squad
+    return squad
 
 
 def reconcile_status_combat_fields(squad):

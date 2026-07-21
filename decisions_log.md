@@ -142,6 +142,7 @@
 | 2026-06-30 | `ebe49ff` | `combat_flow_v6`：一輪擊殺必出 settlement modal |
 | 2026-06-30 | `12e1edd` | `combat_flow_v7`：勝利結算停 poll、確認後唔重彈；**BUG-2026-001 resolved**（Henry 實機） |
 | 2026-06-30 | — | Phase 1.5 Step 1 spec 鎖定；Henry instant settlement 專項 checklist（§17） |
+| 2026-07-21 | — | **全線強制 Iggy**：`FORCED_ROUTE=iggy`；`data/route_config.py` + SSOT + UI + docs |
 
 ## 2026-06-30 — 取消戰鬥動畫 Delay 設計
 
@@ -338,3 +339,34 @@ submit_action → combat_flow.resolve_round()
 **實測（2026-07-02）**：https://oikonomia.onrender.com TTFB ~0.15s；`db_path` → `/data/oikonomia.db`；`render: true` ✅。Secret gist `978ddde…` 已刪除。Service ID `srv-d8v8i7cvikkc73fbsv0g`。
 
 **記錄者**：Tak（升級 Starter）· Grok Build（Blueprint + deploy 腳本）
+
+---
+
+## 2026-07-21 — 全線強制 Iggy 路線（營會設定）
+
+| 決策 | 內容 | 狀態 |
+|------|------|------|
+| 路線政策 | **所有玩家／隊伍必定 Iggy 路線**；關閉 Marah 選擇 | ✅ 已實作 |
+| 設定位置 | `data/route_config.py` → `FORCED_ROUTE`（預設 `"iggy"`） | ✅ |
+| 回滾開關 | `OIKONOMIA_FORCED_ROUTE=`（空字串）恢復雙線；`=marah` 可強制 Marah | ✅ |
+| SSOT | `official_team_route` / `official_squad_route` 喺 force 模式永遠回傳 forced route | ✅ |
+| 持久化 | App 啟動 `apply_forced_route_to_all()` 回填所有 `teams` / `squads`；`/status` 補寫 drift | ✅ |
+| 建隊 | 玩家／GM 建隊自動 `route=iggy`，唔再要求手動揀 | ✅ |
+| API 守衛 | `set_route` / `team/set_route` / GM `set_team_route` 拒絕非 forced 路線 | ✅ |
+| UI | 隱藏 Marah 雙線 picker；dashboard badge 顯示 Iggy | ✅ |
+| 版本標記 | `/api/version` → `forced_route: "iggy"`、`markers.forced_route_iggy: true` | ✅ |
+
+**影響檔案**：
+- `data/route_config.py`（新）
+- `models/team.py`、`services/player_status.py`
+- `routes/team.py`、`routes/gm.py`、`routes/misc.py`、`app.py`
+- `templates/index.html`
+- 本檔 + `UPDATE_LOG.md` + `AGENT_HANDOFF.md`
+
+**Trade-off**：
+- Marah encounter／故事內容仍保留喺 codebase，但玩家流程唔會進入
+- 依賴 dual-route 嘅測試需設 `OIKONOMIA_FORCED_ROUTE=` 先跑 Marah case
+
+**備份**：改動前已觸發 Google Drive backup（`backup-oikonomia` skill）
+
+**記錄者**：Tak 決策 · Grok Build 實作

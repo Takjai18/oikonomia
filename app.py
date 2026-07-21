@@ -248,6 +248,20 @@ configure_database(
 )
 safe_init_db()
 
+# Camp policy: persist forced story route (default Iggy) onto all teams/squads.
+try:
+    from models.team import apply_forced_route_to_all
+
+    _forced_route_result = apply_forced_route_to_all()
+    if _forced_route_result.get("forced_route"):
+        print(
+            f"[route] FORCED_ROUTE={_forced_route_result['forced_route']} "
+            f"teams={_forced_route_result['teams']} squads={_forced_route_result['squads']}",
+            flush=True,
+        )
+except Exception as _forced_route_err:
+    print(f"[route] apply_forced_route_to_all skipped: {_forced_route_err}", flush=True)
+
 # ==================== Model Layer Imports ====================
 from utils.helpers import (
     hkt_timestamp,

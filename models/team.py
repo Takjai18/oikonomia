@@ -16,6 +16,11 @@ def _protagonist_pair_payload(default_base, active_route=None):
 
 
 def resolve_team_display_route(team_id, team_row=None):
+    from data.route_config import FORCED_ROUTE
+
+    if FORCED_ROUTE:
+        return FORCED_ROUTE
+
     clean_id = normalize_team_id(team_id)
     if not clean_id:
         return None
@@ -59,12 +64,24 @@ def resolve_team_display_route(team_id, team_row=None):
 
 
 def official_team_route(team):
+    """SSOT team route. When FORCED_ROUTE is set, always returns that route."""
+    from data.route_config import FORCED_ROUTE, VALID_ROUTES
+
+    if FORCED_ROUTE:
+        return FORCED_ROUTE
     route = (team or {}).get("route")
-    return route if route in ("iggy", "marah") else None
+    return route if route in VALID_ROUTES else None
 
 
 def official_squad_route(squad):
-    """Single source of truth: team.route overrides squads.route when in a team."""
+    """Single source of truth: team.route overrides squads.route when in a team.
+
+    When FORCED_ROUTE is set, always returns that route (even if DB is empty/other).
+    """
+    from data.route_config import FORCED_ROUTE, VALID_ROUTES
+
+    if FORCED_ROUTE:
+        return FORCED_ROUTE
     if not squad:
         return None
     team_id = squad.get("team_id")
@@ -74,7 +91,7 @@ def official_squad_route(squad):
         if route:
             return route
     route = squad.get("route")
-    return route if route in ("iggy", "marah") else None
+    return route if route in VALID_ROUTES else None
 
 
 def is_team_leader_session(team, squad_id):
@@ -89,8 +106,11 @@ def is_team_leader_session(team, squad_id):
 
 
 def sync_team_route(team_id, route):
+    from data.route_config import FORCED_ROUTE, is_route_allowed, resolve_route
+
     clean_id = normalize_team_id(team_id)
-    if not clean_id or route not in ("iggy", "marah"):
+    route = resolve_route(route) if FORCED_ROUTE else (route or "").strip().lower()
+    if not clean_id or not is_route_allowed(route):
         return
     with immediate_transaction() as conn:
         c = conn.cursor()
@@ -102,6 +122,48 @@ def sync_team_route(team_id, route):
     from models.protagonist import initialize_protagonist_for_team
 
     initialize_protagonist_for_team(clean_id, route)
+
+
+def apply_forced_route_to_all():
+    """Persist FORCED_ROUTE onto every team/squad row (idempotent). Returns update counts."""
+    from data.route_config import FORCED_ROUTE
+
+    if not FORCED_ROUTE:
+        return {"teams": 0, "squads": 0, "forced_route": None}
+
+    with immediate_transaction() as conn:
+        c = conn.cursor()
+        c.execute(
+            """UPDATE teams
+               SET route = ?
+               WHERE route IS NULL OR TRIM(route) = '' OR LOWER(TRIM(route)) != ?""",
+            (FORCED_ROUTE, FORCED_ROUTE),
+        )
+        teams_updated = c.rowcount
+        c.execute(
+            """UPDATE squads
+               SET route = ?
+               WHERE route IS NULL OR TRIM(route) = '' OR LOWER(TRIM(route)) != ?""",
+            (FORCED_ROUTE, FORCED_ROUTE),
+        )
+        squads_updated = c.rowcount
+        team_ids = [
+            row[0]
+            for row in c.execute("SELECT team_id FROM teams").fetchall()
+            if row and row[0]
+        ]
+
+    from models.protagonist import initialize_protagonist_for_team
+
+    for team_id in team_ids:
+        initialize_protagonist_for_team(team_id, FORCED_ROUTE)
+
+    return {
+        "teams": teams_updated,
+        "squads": squads_updated,
+        "forced_route": FORCED_ROUTE,
+        "initialized_teams": len(team_ids),
+    }
 
 
 def backfill_team_routes_from_members():
@@ -221,8 +283,11 @@ def get_team_protagonists(team_id):
 
 def join_squad_to_team(squad_id, team_id, route):
     """Atomically join a squad to a team (fails if squad already has a team)."""
+    from data.route_config import is_route_allowed, resolve_route
+
     clean_id = normalize_team_id(team_id)
-    if not clean_id or not squad_id or route not in ("iggy", "marah"):
+    route = resolve_route(route)
+    if not clean_id or not squad_id or not is_route_allowed(route):
         raise ValueError("invalid join parameters")
 
     now = datetime.now().isoformat()
@@ -263,6 +328,13 @@ def transfer_team_leadership(team_id, target_squad_id):
 
 def create_team_with_leader(team_id, team_name, leader_squad_id, route=None):
     """Atomically create a team row and assign the leader squad."""
+    from data.route_config import FORCED_ROUTE, resolve_route
+
+    if FORCED_ROUTE:
+        route = FORCED_ROUTE
+    else:
+        route = resolve_route(route)
+
     created_at = datetime.now().isoformat()
     with immediate_transaction() as conn:
         c = conn.cursor()
@@ -270,7 +342,19 @@ def create_team_with_leader(team_id, team_name, leader_squad_id, route=None):
             "INSERT INTO teams (team_id, team_name, route, created_at, leader_squad_id) VALUES (?, ?, ?, ?, ?)",
             (team_id, team_name, route, created_at, leader_squad_id),
         )
-        c.execute(
-            "UPDATE squads SET team_id = ?, is_team_leader = 1, last_update = ? WHERE squad_id = ?",
-            (team_id, created_at, leader_squad_id),
-        )
+        if route:
+            c.execute(
+                """UPDATE squads
+                   SET team_id = ?, is_team_leader = 1, route = ?, last_update = ?
+                   WHERE squad_id = ?""",
+                (team_id, route, created_at, leader_squad_id),
+            )
+        else:
+            c.execute(
+                "UPDATE squads SET team_id = ?, is_team_leader = 1, last_update = ? WHERE squad_id = ?",
+                (team_id, created_at, leader_squad_id),
+            )
+    if route:
+        from models.protagonist import initialize_protagonist_for_team
+
+        initialize_protagonist_for_team(team_id, route)

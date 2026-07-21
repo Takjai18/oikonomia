@@ -648,16 +648,16 @@
                 </div>
                 <p class="text-xs text-zinc-500 mb-4">點擊頭像更換角色頭像</p>
 
-                <!-- 路線選擇 -->
+                <!-- 路線選擇（forced_route 模式會隱藏；預設全線 Iggy） -->
                 <div id="route-picker" class="hidden mb-8 cartoon-box p-6">
                     <h3 class="text-lg font-bold mb-2">🔗 選擇你的路線</h3>
-                    <p class="text-sm text-zinc-400 mb-4">A/B Line Unified Protocol — 選擇後無法更改</p>
+                    <p id="route-picker-hint" class="text-sm text-zinc-400 mb-4">A/B Line Unified Protocol — 選擇後無法更改</p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="route-card route-iggy" onclick="selectRoute('iggy')">
+                        <div class="route-card route-iggy" data-route="iggy" onclick="selectRoute('iggy')">
                             <div class="text-xl font-bold">🔥 Iggy 路線</div>
                             <div class="text-sm mt-1 opacity-90">界線、力量、面對 Judas</div>
                         </div>
-                        <div class="route-card route-marah" onclick="selectRoute('marah')">
+                        <div class="route-card route-marah" data-route="marah" onclick="selectRoute('marah')">
                             <div class="text-xl font-bold">🌊 Marah 路線</div>
                             <div class="text-sm mt-1 opacity-90">智慧、韌性、深度連結</div>
                         </div>
@@ -2982,10 +2982,20 @@
             const routeBadge = document.getElementById('route-badge');
             const isLeader = squad.is_team_leader === 1;
             const inTeam = !!(squad.team_id || data.team);
+            const forcedRoute = (data.forced_route || squad.forced_route || '').toLowerCase();
 
             showOnlyProtagonistCard(route, protagonists || {});
 
-            if (routePicker) setVisible(routePicker, !route && !inTeam);
+            // Forced route (default Iggy): never show dual-route picker.
+            if (routePicker) {
+                const showFreePicker = !forcedRoute && !route && !inTeam;
+                setVisible(routePicker, showFreePicker);
+                if (showFreePicker) {
+                    routePicker.querySelectorAll('[data-route]').forEach((el) => {
+                        setVisible(el, true);
+                    });
+                }
+            }
 
             if (routeBadge) {
                 if (route === 'iggy') {
@@ -2994,6 +3004,9 @@
                 } else if (route === 'marah') {
                     setVisible(routeBadge, true);
                     routeBadge.innerHTML = `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-blue-900/60 text-blue-400 rounded-full text-xs font-medium">🌊 Marah 路線</span>`;
+                } else if (forcedRoute === 'iggy') {
+                    setVisible(routeBadge, true);
+                    routeBadge.innerHTML = `<span class="inline-flex items-center gap-x-1 px-3 py-1 bg-red-900/60 text-red-400 rounded-full text-xs font-medium">🔥 Iggy 路線</span>`;
                 } else if (inTeam && !isLeader) {
                     setVisible(routeBadge, true);
                     routeBadge.innerHTML = `<span class="text-xs text-zinc-400">等待隊長選擇路線...</span>`;
@@ -3140,7 +3153,9 @@
                 ` : '';
 
                 const teamRoute = data.route || team.route;
-                const routePickerHTML = (isLeader && !teamRoute) ? `
+                const forcedRoute = (data.forced_route || currentSquad?.forced_route || '').toLowerCase();
+                // Dual-route picker only when free choice and leader has not set route.
+                const routePickerHTML = (isLeader && !teamRoute && !forcedRoute) ? `
                     <div id="team-route-picker" class="mt-4 pt-4 border-t border-zinc-700">
                         <div class="text-sm font-semibold mb-1">為隊伍選擇路線</div>
                         <p class="text-xs text-zinc-400 mb-3">設定後全隊統一，其他人方可加入</p>
@@ -3451,13 +3466,20 @@
             });
             const data = await res.json();
             if (data.success) {
-                showToast(data.message || `Team ${data.team_id} 已建立！請在隊伍卡片選擇路線。`, 'success');
+                showToast(data.message || `Team ${data.team_id} 已建立！`, 'success');
                 document.getElementById('create-team-name').value = '';
                 if (currentSquad) {
                     currentSquad.team_id = data.team_id;
                     currentSquad.is_team_leader = 1;
+                    if (data.route) currentSquad.route = data.route;
                 }
                 loadMyTeam();
+                if (typeof updateDashboard === 'function' && currentSquad) {
+                    fetchNoCache('/status').then((r) => r.json()).then((status) => {
+                        currentSquad = status;
+                        updateDashboard(currentSquad);
+                    }).catch(() => {});
+                }
             } else {
                 showToast(data.error || '建立失敗', 'error');
             }

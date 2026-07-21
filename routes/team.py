@@ -141,6 +141,8 @@ def join_team():
     if squad.get("team_id"):
         return jsonify({"success": False, "error": "你已加入 Team，無法重複加入"}), 400
 
+    from data.route_config import FORCED_ROUTE
+
     clean_tid = normalize_team_id(team["team_id"])
     team_route = official_team_route(team)
     if not team_route:
@@ -148,6 +150,12 @@ def join_team():
             "success": False,
             "error": "該隊尚未選擇路線，暫時無法加入",
         }), 400
+
+    # Persist forced / resolved route onto team row if still empty in DB.
+    db_route = (team.get("route") or "").strip().lower()
+    if FORCED_ROUTE and db_route != FORCED_ROUTE:
+        sync_team_route(clean_tid, FORCED_ROUTE)
+        team_route = FORCED_ROUTE
 
     try:
         join_squad_to_team(session["squad_id"], clean_tid, team_route)
@@ -174,10 +182,26 @@ def create_player_team():
     if squad.get("team_id"):
         return jsonify({"success": False, "error": "你已加入 Team，請先離開現有隊伍"}), 400
 
+    from data.route_config import FORCED_ROUTE
+
     team_name = request.form.get("team_name", "").strip() or "新小隊"
     team_id = get_next_team_id()
 
-    create_team_with_leader(team_id, team_name, session["squad_id"], route=None)
+    create_team_with_leader(
+        team_id,
+        team_name,
+        session["squad_id"],
+        route=FORCED_ROUTE,
+    )
+    if FORCED_ROUTE:
+        return jsonify({
+            "success": True,
+            "team_id": team_id,
+            "team_name": team_name,
+            "route": FORCED_ROUTE,
+            "needs_team_route": False,
+            "message": f"隊伍已建立，路線已自動設定為 {FORCED_ROUTE.title()}",
+        })
     return jsonify({
         "success": True,
         "team_id": team_id,
@@ -266,14 +290,21 @@ def transfer_leadership():
 
 @team_bp.route("/team/set_route", methods=["POST"])
 def set_team_route():
+    from data.route_config import FORCED_ROUTE, is_route_allowed, resolve_route
+
     if "squad_id" not in session:
         return jsonify({"success": False, "error": "未登入"}), 401
 
     data = request.get_json(silent=True) or {}
     team_id = normalize_team_id(data.get("team_id") or "")
-    route = (data.get("route") or "").lower()
+    route = resolve_route((data.get("route") or "").lower())
 
-    if not team_id or route not in ("iggy", "marah"):
+    if not team_id or not is_route_allowed(route):
+        if FORCED_ROUTE:
+            return jsonify({
+                "success": False,
+                "error": f"本營會全線固定為 {FORCED_ROUTE.title()} 路線",
+            }), 400
         return jsonify({"success": False, "error": "參數錯誤"}), 400
 
     team = get_team_by_id(team_id)
@@ -287,8 +318,19 @@ def set_team_route():
     if normalize_team_id(squad.get("team_id")) != team_id:
         return jsonify({"success": False, "error": "你只能設定自己隊伍的路線"}), 403
 
-    if official_team_route(team):
+    # Forced mode may re-sync to correct DB drift; free mode still locks after first pick.
+    existing = (team.get("route") or "").strip().lower()
+    if existing and existing in ("iggy", "marah") and not FORCED_ROUTE:
         return jsonify({"success": False, "error": "隊伍已設定路線，無法更改"}), 400
+    if existing and FORCED_ROUTE and existing == FORCED_ROUTE:
+        updated = get_squad(session["squad_id"])
+        status = build_player_status(updated)
+        return jsonify({
+            "success": True,
+            "message": f"路線已是 {FORCED_ROUTE.title()}",
+            "route": FORCED_ROUTE,
+            **status,
+        })
 
     sync_team_route(team_id, route)
     updated = get_squad(session["squad_id"])
@@ -303,6 +345,8 @@ def set_team_route():
 
 @team_bp.route("/set_team_route_by_leader", methods=["POST"])
 def set_team_route_by_leader():
+    from data.route_config import FORCED_ROUTE, is_route_allowed, resolve_route
+
     if "squad_id" not in session:
         return jsonify({"success": False, "error": "未登入"}), 401
 
@@ -310,8 +354,13 @@ def set_team_route_by_leader():
     if not squad or squad.get("is_team_leader") != 1:
         return jsonify({"success": False, "error": "只有隊長可以設定路線"}), 403
 
-    route = request.form.get("route", "").lower()
-    if route not in ("iggy", "marah"):
+    route = resolve_route(request.form.get("route", "").lower())
+    if not is_route_allowed(route):
+        if FORCED_ROUTE:
+            return jsonify({
+                "success": False,
+                "error": f"本營會全線固定為 {FORCED_ROUTE.title()} 路線",
+            }), 400
         return jsonify({"success": False, "error": "無效路線"}), 400
 
     team_id = normalize_team_id(squad.get("team_id"))
@@ -319,7 +368,8 @@ def set_team_route_by_leader():
         return jsonify({"success": False, "error": "你未加入任何 Team"}), 400
 
     team = get_team_by_id(team_id)
-    if team and team.get("route"):
+    existing = (team.get("route") or "").strip().lower() if team else ""
+    if existing and existing in ("iggy", "marah") and not FORCED_ROUTE:
         return jsonify({"success": False, "error": "Team 已設定路線，無法更改"}), 400
 
     sync_team_route(team_id, route)
@@ -332,11 +382,17 @@ def set_team_route_by_leader():
 
 @team_bp.route("/set_route", methods=["POST"])
 def set_route():
+    from data.route_config import FORCED_ROUTE, is_route_allowed, resolve_route
+
     if "squad_id" not in session:
         return jsonify({"error": "未登入"}), 401
 
-    route = request.form.get("route", "").lower()
-    if route not in ("iggy", "marah"):
+    route = resolve_route(request.form.get("route", "").lower())
+    if not is_route_allowed(route):
+        if FORCED_ROUTE:
+            return jsonify({
+                "error": f"本營會全線固定為 {FORCED_ROUTE.title()} 路線",
+            }), 400
         return jsonify({"error": "請選擇 Iggy 或 Marah 路線"}), 400
 
     squad = get_squad(session["squad_id"])
@@ -345,8 +401,11 @@ def set_route():
             "error": "已加入隊伍，路線由隊長統一設定；請到 Team 頁面查看",
         }), 400
 
-    if squad.get("route"):
+    existing = (squad.get("route") or "").strip().lower()
+    if existing and existing in ("iggy", "marah") and not FORCED_ROUTE:
         return jsonify({"error": "你已選擇路線，無法更改"}), 400
+    if existing == route:
+        return jsonify(build_player_status(get_squad(session["squad_id"])))
 
     update_squad(session["squad_id"], route=route)
     return jsonify(build_player_status(get_squad(session["squad_id"])))

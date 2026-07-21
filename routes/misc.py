@@ -47,6 +47,8 @@ def combat_v2_e2e_harness():
 
 @misc_bp.route("/api/version")
 def api_version():
+    from data.route_config import FORCED_ROUTE
+
     upload_folder = settings.upload_folder
     upload_count = len([
         name for name in os.listdir(upload_folder)
@@ -165,7 +167,9 @@ def api_version():
             "combat_v2_module": combat_v2_js,
             "settlement_breakdown_v1": "renderSettlementBreakdown" in template_text
                 and "breakdown" in template_text,
+            "forced_route_iggy": FORCED_ROUTE == "iggy",
         },
+        "forced_route": FORCED_ROUTE,
         "db_path": settings.db_path,
         "data_dir": os.environ.get("DATA_DIR"),
         "render": os.environ.get("RENDER") == "true",

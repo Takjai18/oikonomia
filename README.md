@@ -1,6 +1,6 @@
 # Oikonomia - Summer Camp 2026
 
-Oikonomia 青年營會 ARG（另類實境遊戲）Web App。雙主角路線（Iggy / Marah），含任務提交、遭遇戰、故事階段、GM 後台。
+Oikonomia 青年營會 ARG（另類實境遊戲）Web App。雙主角內容（Iggy / Marah）；**2026-07-21 起營會預設全線強制 Iggy 路線**（`OIKONOMIA_FORCED_ROUTE` / `data/route_config.py`）。含任務提交、遭遇戰、故事階段、GM 後台。
 
 ## 功能
 
