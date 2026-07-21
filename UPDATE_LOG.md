@@ -13,7 +13,7 @@
 | **決策** | 玩家唔識電腦、基本上唔會作弊 → **暫擱** task/item API 反作弊硬化（見 assessment） |
 | **仍做** | GPS／影相 **GM 救場**；伺服器健康 + Drive 備份 |
 | **文檔** | 新增 [`CAMP_FIELD_GUIDE.md`](./CAMP_FIELD_GUIDE.md)；`AGENT_HANDOFF.md` 加開場 checklist 連結 |
-| **Production** | `https://oikonomia.onrender.com` · `version=57bbca7` · `data_dir=/data` · `combat_v2=true` · `forced_route=iggy` |
+| **Production** | `https://oikonomia.onrender.com` · live `version` 以 `/api/version` 為準（2026-07-21 查：`83d1661`；本機 `main` 可再超前 1 commit）· `data_dir=/data` · `combat_v2=true` · `forced_route=iggy` |
 | **注意** | Render 閒置首次請求可 **502**（冷啟動）；等 30–60s 再試，見 Field Guide §0 |
 
 **勿重複建議**：為誠實玩家場趕修假 task_id／add_item 白攞（營後可做）。

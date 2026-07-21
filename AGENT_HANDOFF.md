@@ -815,6 +815,20 @@ Render deploy 完成後 markers 即更新；若 `version` 落後，手動 POST D
 
 ---
 
+## 營會現場（GPS／影相救場 + 開場檢查）
+
+> **SSOT 一頁紙**：[`CAMP_FIELD_GUIDE.md`](./CAMP_FIELD_GUIDE.md)  
+> 玩家唔識電腦時：**唔靠改 code 防作弊**；靠 GM 補獎勵 + 每日 version 檢查。
+
+| 時機 | 動作 |
+|------|------|
+| 每日開場 | `bash deploy/render-check.sh https://oikonomia.onrender.com` |
+| GPS／影相失敗但人已到場 | GM `/gm` → 調整該玩家 `sanity` +6、`resources` +1（僅該 task 未計過分時） |
+| 首次開站 502 | Render 冷啟動；等 30–60s 再 refresh |
+| 備份 | 對 Grok 講「backup」→ Drive `My Drive/oikonomia` |
+
+---
+
 ## 本地開發速查
 
 ```bash
