@@ -33,7 +33,8 @@ deploy/             # Render（主）+ PythonAnywhere（後備）部署腳本
 詳細架構、戰鬥公式、部署狀態見 **[AGENT_HANDOFF.md](./AGENT_HANDOFF.md)**。  
 目錄快照見 **[CURRENT_STRUCTURE.md](./CURRENT_STRUCTURE.md)**。  
 **已知問題、設定陷阱、已修復假陽性**見 **[UPDATE_LOG.md](./UPDATE_LOG.md)**（Grok／Gemini 必讀，避免重複錯誤建議）。  
-**難解、多輪修復嘅 production bug**見 **[bug_log/](./bug_log/)**（SSOT 同步至 Google Drive `oikonomia/bug_log/`）。
+**難解、多輪修復嘅 production bug**見 **[bug_log/](./bug_log/)**（SSOT 同步至 Google Drive `oikonomia/bug_log/`）。  
+**只改劇情／對白／階段文案** → 用精簡 **[STORY_README.md](./STORY_README.md)**（慳 token；唔使讀 combat bundle）。
 
 ## AI 開發分工
 
