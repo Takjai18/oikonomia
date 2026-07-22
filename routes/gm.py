@@ -738,11 +738,95 @@ def gm_combat_v2_status():
     })
 
 
+@gm_bp.route("/api/reset_encounter_options", methods=["GET"])
+def gm_reset_encounter_options_api():
+    """Teams + completed non-replayable encounters for GM dropdowns."""
+    denied = _require_gm()
+    if denied:
+        return denied
+
+    from models.encounter import encounter_is_replayable, load_encounter, load_all_encounters
+
+    teams = []
+    try:
+        conn = sqlite3.connect(settings.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            for row in conn.execute(
+                """SELECT team_id, team_name, route FROM teams
+                   ORDER BY team_id ASC"""
+            ).fetchall():
+                tid = normalize_team_id(row["team_id"])
+                teams.append({
+                    "team_id": tid,
+                    "team_name": row["team_name"] or tid,
+                    "route": row["route"],
+                    "label": f"{tid} · {row['team_name'] or '未命名'}",
+                })
+
+            # Completions grouped by team for UI badges
+            completions_by_team = {}
+            for row in conn.execute(
+                """SELECT team_id, encounter_id, outcome, completed_at
+                   FROM encounter_completions
+                   ORDER BY completed_at DESC"""
+            ).fetchall():
+                tid = normalize_team_id(row["team_id"]) or row["team_id"]
+                if str(tid).startswith("SOLO:"):
+                    # Map SOLO:SQUAD back to team if possible
+                    squad_id = str(tid)[5:]
+                    srow = conn.execute(
+                        "SELECT team_id FROM squads WHERE UPPER(TRIM(squad_id)) = UPPER(TRIM(?))",
+                        (squad_id,),
+                    ).fetchone()
+                    if srow and srow["team_id"]:
+                        tid = normalize_team_id(srow["team_id"])
+                completions_by_team.setdefault(tid, []).append({
+                    "encounter_id": row["encounter_id"],
+                    "outcome": row["outcome"],
+                    "completed_at": row["completed_at"],
+                })
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    encounters = []
+    for enc in load_all_encounters():
+        if not enc:
+            continue
+        eid = enc.get("encounter_id")
+        if not eid:
+            continue
+        if enc.get("trigger_type") == "test":
+            continue
+        encounters.append({
+            "encounter_id": eid,
+            "title": enc.get("title") or eid,
+            "route": enc.get("route"),
+            "replayable": encounter_is_replayable(enc),
+            "label": f"{enc.get('title') or eid} ({eid})",
+        })
+    encounters.sort(key=lambda e: (0 if not e["replayable"] else 1, e["encounter_id"]))
+
+    return jsonify({
+        "success": True,
+        "teams": teams,
+        "encounters": encounters,
+        "completions_by_team": completions_by_team,
+        "defaults": {
+            "encounter_id": "enc_iggy_act1_bubo",
+            "clear_qr": True,
+        },
+    })
+
+
 @gm_bp.route("/api/reset_encounter", methods=["POST"])
 def gm_reset_encounter_api():
     """Clear encounter completion so a non-replayable fight (e.g. 布布) can be retested.
 
-    Optional: clear linked QR claim + task submission for Act 1 wood.
+    Always ends stuck combats for that team+encounter. By default also clears
+    Act 1 wood QR / item / task so scanning wood can start combat again.
     """
     denied = _require_gm()
     if denied:
@@ -751,91 +835,138 @@ def gm_reset_encounter_api():
     data = request.get_json(silent=True) or request.form or {}
     team_id = normalize_team_id(data.get("team_id") or "")
     encounter_id = (data.get("encounter_id") or "").strip()
-    clear_qr = str(data.get("clear_qr") or data.get("clear_wood_qr") or "").lower() in (
-        "1", "true", "yes", "on",
-    )
+    # Default clear_qr=True for bubo (root cause of “still completed” after soft reset)
+    clear_qr_raw = data.get("clear_qr", data.get("clear_wood_qr", True))
+    if isinstance(clear_qr_raw, bool):
+        clear_qr = clear_qr_raw
+    else:
+        clear_qr = str(clear_qr_raw).lower() not in ("0", "false", "no", "off")
+
     if not team_id or not encounter_id:
         return jsonify({
             "success": False,
-            "error": "需要 team_id 與 encounter_id（例如 TEAM-06 + enc_iggy_act1_bubo）",
+            "error": "需要選擇 team_id 與 encounter_id",
         }), 400
 
     deleted_completions = 0
     deleted_qr = 0
     deleted_items = 0
     deleted_tasks = 0
+    ended_combats = 0
+    cleared_combat_links = 0
+    remaining = -1
+
     try:
         with immediate_transaction() as conn:
+            squad_ids = [
+                r[0]
+                for r in conn.execute(
+                    """SELECT squad_id FROM squads
+                       WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))""",
+                    (team_id,),
+                ).fetchall()
+                if r and r[0]
+            ]
+
+            # 1) Team + any SOLO:SQUAD completions for members
             cur = conn.execute(
                 """DELETE FROM encounter_completions
-                   WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?""",
-                (team_id, encounter_id),
+                   WHERE encounter_id = ?
+                     AND (
+                       UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                       OR UPPER(TRIM(team_id)) IN (
+                         SELECT 'SOLO:' || UPPER(TRIM(squad_id)) FROM squads
+                         WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                       )
+                     )""",
+                (encounter_id, team_id, team_id),
             )
-            deleted_completions = cur.rowcount or 0
+            deleted_completions = max(0, cur.rowcount or 0)
 
-            # Also clear SOLO-scoped completions for squads on this team.
-            solo_rows = conn.execute(
-                """SELECT squad_id FROM squads
-                   WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))""",
-                (team_id,),
-            ).fetchall()
-            for row in solo_rows:
-                sid = row[0] if not isinstance(row, sqlite3.Row) else row["squad_id"]
-                solo_key = f"SOLO:{(sid or '').strip().upper()}"
-                cur2 = conn.execute(
-                    """DELETE FROM encounter_completions
-                       WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?""",
-                    (solo_key, encounter_id),
+            # 2) End / detach combats so start is not blocked by active combat
+            if squad_ids:
+                placeholders = ",".join("?" * len(squad_ids))
+                cur_c = conn.execute(
+                    f"""UPDATE combats
+                       SET status = 'ended',
+                           ended_at = COALESCE(ended_at, ?),
+                           winner = COALESCE(winner, 'enemy')
+                       WHERE encounter_id = ?
+                         AND squad_id IN ({placeholders})
+                         AND status != 'ended'""",
+                    (datetime.now().isoformat(), encounter_id, *squad_ids),
                 )
-                deleted_completions += cur2.rowcount or 0
+                ended_combats = max(0, cur_c.rowcount or 0)
+                cur_s = conn.execute(
+                    f"""UPDATE squads SET current_combat_id = NULL
+                       WHERE squad_id IN ({placeholders})""",
+                    (*squad_ids,),
+                )
+                cleared_combat_links = max(0, cur_s.rowcount or 0)
 
-            if clear_qr and encounter_id == "enc_iggy_act1_bubo":
+            # 3) Wood QR / item / task (required for re-scan → combat path)
+            if clear_qr and encounter_id in ("enc_iggy_act1_bubo",):
                 item = conn.execute(
                     "SELECT id FROM items WHERE qr_code_value = ?",
                     ("act1-wood",),
                 ).fetchone()
-                item_id = item[0] if item and not isinstance(item, sqlite3.Row) else (
-                    item["id"] if item else None
-                )
-                if item_id:
-                    cur3 = conn.execute(
-                        """DELETE FROM qr_code_uses
-                           WHERE item_id = ? AND UPPER(TRIM(COALESCE(team_id, ''))) = UPPER(TRIM(?))""",
-                        (item_id, team_id),
+                item_id = item[0] if item else None
+                if item_id and squad_ids:
+                    ph = ",".join("?" * len(squad_ids))
+                    cur_q = conn.execute(
+                        f"""DELETE FROM qr_code_uses
+                           WHERE item_id = ?
+                             AND (
+                               UPPER(TRIM(COALESCE(team_id, ''))) = UPPER(TRIM(?))
+                               OR squad_id IN ({ph})
+                             )""",
+                        (item_id, team_id, *squad_ids),
                     )
-                    deleted_qr = cur3.rowcount or 0
-                    # Per-squad uses without team_id
-                    for row in solo_rows:
-                        sid = row[0] if not isinstance(row, sqlite3.Row) else row["squad_id"]
-                        cur4 = conn.execute(
-                            "DELETE FROM qr_code_uses WHERE item_id = ? AND squad_id = ?",
-                            (item_id, sid),
-                        )
-                        deleted_qr += cur4.rowcount or 0
-                        cur5 = conn.execute(
-                            "DELETE FROM player_items WHERE item_id = ? AND squad_id = ?",
-                            (item_id, sid),
-                        )
-                        deleted_items += cur5.rowcount or 0
-                for row in solo_rows:
-                    sid = row[0] if not isinstance(row, sqlite3.Row) else row["squad_id"]
-                    cur6 = conn.execute(
-                        "DELETE FROM submissions WHERE squad_id = ? AND task_id = ?",
-                        (sid, "act1_wood"),
+                    deleted_qr = max(0, cur_q.rowcount or 0)
+                    cur_i = conn.execute(
+                        f"""DELETE FROM player_items
+                           WHERE item_id = ? AND squad_id IN ({ph})""",
+                        (item_id, *squad_ids),
                     )
-                    deleted_tasks += cur6.rowcount or 0
+                    deleted_items = max(0, cur_i.rowcount or 0)
+                if squad_ids:
+                    ph = ",".join("?" * len(squad_ids))
+                    cur_t = conn.execute(
+                        f"""DELETE FROM submissions
+                           WHERE task_id = 'act1_wood' AND squad_id IN ({ph})""",
+                        (*squad_ids,),
+                    )
+                    deleted_tasks = max(0, cur_t.rowcount or 0)
+
+            remaining = conn.execute(
+                """SELECT COUNT(*) FROM encounter_completions
+                   WHERE encounter_id = ?
+                     AND (
+                       UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                       OR UPPER(TRIM(team_id)) IN (
+                         SELECT 'SOLO:' || UPPER(TRIM(squad_id)) FROM squads
+                         WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))
+                       )
+                     )""",
+                (encounter_id, team_id, team_id),
+            ).fetchone()[0]
     except sqlite3.Error as exc:
         current_app.logger.warning("gm_reset_encounter: %s", exc)
         return jsonify({"success": False, "error": f"資料庫錯誤: {exc}"}), 500
 
+    ok = remaining == 0
     return jsonify({
-        "success": True,
+        "success": ok,
         "message": (
-            f"已重置 {team_id} 的 {encounter_id}："
-            f"完成記錄 {deleted_completions}；"
-            + (f"QR {deleted_qr}／物品 {deleted_items}／任務 {deleted_tasks}" if clear_qr else "未清 QR")
+            f"{'已重置' if ok else '重置可能未完整'} {team_id} / {encounter_id}："
+            f"完成記錄 −{deleted_completions}（剩餘 {remaining}）；"
+            f"結束戰鬥 {ended_combats}；清 current_combat {cleared_combat_links}；"
+            f"QR −{deleted_qr}／物品 −{deleted_items}／任務 −{deleted_tasks}"
         ),
         "deleted_completions": deleted_completions,
+        "remaining_completions": remaining,
+        "ended_combats": ended_combats,
+        "cleared_combat_links": cleared_combat_links,
         "deleted_qr": deleted_qr,
         "deleted_items": deleted_items,
         "deleted_tasks": deleted_tasks,

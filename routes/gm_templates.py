@@ -503,24 +503,41 @@ GM_DASHBOARD_HTML = """
         </div>
 
         <div class="bg-zinc-900 border border-amber-900/40 rounded-3xl p-6 mt-4">
-            <h2 class="text-lg font-semibold text-amber-300 mb-1">重置遭遇（測試用）</h2>
-            <p class="text-xs text-zinc-500 mb-4 leading-relaxed">
-                布布等 <strong>不可重打</strong> 劇情戰打完後，玩家再開會顯示「已完成」。
-                填入隊伍 ID 即可清掉完成記錄，方便重測。勾選「連木材 QR」可一併清 act1-wood 掃描／任務。
-            </p>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <input type="text" id="gm-reset-enc-team" placeholder="TEAM-06"
-                       class="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm font-mono">
-                <input type="text" id="gm-reset-enc-id" value="enc_iggy_act1_bubo"
-                       class="flex-[1.4] bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm font-mono">
+            <div class="flex items-center justify-between gap-2 mb-1">
+                <h2 class="text-lg font-semibold text-amber-300">重置遭遇（測試用）</h2>
+                <button type="button" onclick="loadGmResetEncounterOptions()"
+                        class="text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl">
+                    🔄 重新載入名單
+                </button>
             </div>
+            <p class="text-xs text-zinc-500 mb-4 leading-relaxed">
+                布布等 <strong>不可重打</strong> 劇情戰打完後會鎖住。由下拉<strong>選擇隊伍</strong>同<strong>遭遇</strong>重置即可再測。
+                預設會清木材 QR／背包／任務（否則掃 QR 會因為「已擁有物品」而開唔到戰）。
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="text-[11px] text-zinc-500 block mb-1">隊伍</label>
+                    <select id="gm-reset-enc-team"
+                            class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm font-mono">
+                        <option value="">載入中…</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[11px] text-zinc-500 block mb-1">遭遇</label>
+                    <select id="gm-reset-enc-id"
+                            class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm">
+                        <option value="enc_iggy_act1_bubo">Act 1 布布（enc_iggy_act1_bubo）</option>
+                    </select>
+                </div>
+            </div>
+            <div id="gm-reset-enc-hint" class="text-[11px] text-zinc-500 mt-2 min-h-[1.25rem]"></div>
             <label class="flex items-center gap-2 mt-3 text-sm text-zinc-300 cursor-pointer select-none">
                 <input type="checkbox" id="gm-reset-enc-clear-qr" class="rounded border-zinc-600" checked>
-                連同清除木材 QR 使用記錄／背包木材／act1_wood 任務（布布專用）
+                連同清除木材 QR／背包木材／act1_wood 任務（布布重測必勾）
             </label>
             <button type="button" onclick="gmResetEncounter()"
                     class="mt-4 w-full sm:w-auto px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-zinc-950 font-semibold rounded-2xl text-sm">
-                重置遭遇完成狀態
+                重置所選遭遇
             </button>
         </div>
         </div>
@@ -534,15 +551,78 @@ GM_DASHBOARD_HTML = """
                 .replace(/"/g, '&quot;');
         }
 
+        let gmResetOptionsCache = null;
+
+        async function loadGmResetEncounterOptions() {
+            const teamSel = document.getElementById('gm-reset-enc-team');
+            const encSel = document.getElementById('gm-reset-enc-id');
+            const hint = document.getElementById('gm-reset-enc-hint');
+            if (!teamSel || !encSel) return;
+            teamSel.innerHTML = '<option value="">載入中…</option>';
+            try {
+                const res = await fetch('/gm/api/reset_encounter_options', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.success) {
+                    teamSel.innerHTML = '<option value="">載入失敗</option>';
+                    showGmToast(data.error || '載入名單失敗', 'error');
+                    return;
+                }
+                gmResetOptionsCache = data;
+                const teams = data.teams || [];
+                teamSel.innerHTML = teams.length
+                    ? teams.map((t) => {
+                        const done = (data.completions_by_team || {})[t.team_id] || [];
+                        const bubo = done.some((c) => c.encounter_id === 'enc_iggy_act1_bubo');
+                        const mark = bubo ? ' ✓布布已完成' : '';
+                        return `<option value="${gmEscapeHtml(t.team_id)}">${gmEscapeHtml(t.label)}${mark}</option>`;
+                    }).join('')
+                    : '<option value="">（未有隊伍）</option>';
+
+                const encs = data.encounters || [];
+                const preferred = (data.defaults && data.defaults.encounter_id) || 'enc_iggy_act1_bubo';
+                encSel.innerHTML = encs.map((e) => {
+                    const lock = e.replayable ? '' : ' [不可重打]';
+                    return `<option value="${gmEscapeHtml(e.encounter_id)}" ${e.encounter_id === preferred ? 'selected' : ''}>${gmEscapeHtml(e.label)}${lock}</option>`;
+                }).join('');
+
+                if (hint) {
+                    hint.textContent = teams.length
+                        ? `共 ${teams.length} 隊 · 選隊後可看右側遭遇並重置`
+                        : '未有隊伍';
+                }
+                teamSel.onchange = () => updateGmResetEncHint();
+                updateGmResetEncHint();
+            } catch (e) {
+                teamSel.innerHTML = '<option value="">網路錯誤</option>';
+            }
+        }
+
+        function updateGmResetEncHint() {
+            const hint = document.getElementById('gm-reset-enc-hint');
+            if (!hint || !gmResetOptionsCache) return;
+            const teamId = document.getElementById('gm-reset-enc-team')?.value;
+            const done = (gmResetOptionsCache.completions_by_team || {})[teamId] || [];
+            if (!teamId) {
+                hint.textContent = '';
+                return;
+            }
+            if (!done.length) {
+                hint.textContent = `${teamId}：目前冇遭遇完成記錄（可直接重測）`;
+                return;
+            }
+            const names = done.slice(0, 5).map((c) => c.encounter_id).join('、');
+            hint.textContent = `${teamId} 已完成：${names}${done.length > 5 ? '…' : ''}`;
+        }
+
         async function gmResetEncounter() {
             const teamId = (document.getElementById('gm-reset-enc-team')?.value || '').trim();
             const encounterId = (document.getElementById('gm-reset-enc-id')?.value || '').trim();
             const clearQr = !!document.getElementById('gm-reset-enc-clear-qr')?.checked;
             if (!teamId || !encounterId) {
-                showGmToast('請填 team_id 與 encounter_id', 'error');
+                showGmToast('請選擇隊伍同遭遇', 'error');
                 return;
             }
-            if (!confirm(`確定重置 ${teamId} 的 ${encounterId}？`)) return;
+            if (!confirm(`確定重置 ${teamId} 的 ${encounterId}？\\n（會結束該隊相關戰鬥並清完成記錄）`)) return;
             try {
                 const res = await fetch('/gm/api/reset_encounter', {
                     method: 'POST',
@@ -557,8 +637,9 @@ GM_DASHBOARD_HTML = """
                 const data = await res.json();
                 if (data.success) {
                     showGmToast(data.message || '已重置', 'success');
+                    loadGmResetEncounterOptions();
                 } else {
-                    showGmToast(data.error || '重置失敗', 'error');
+                    showGmToast(data.error || data.message || '重置失敗', 'error');
                 }
             } catch (e) {
                 showGmToast('網路錯誤', 'error');
@@ -1493,6 +1574,9 @@ GM_DASHBOARD_HTML = """
                 btnCombat.classList.add('active', 'bg-amber-500', 'text-zinc-950');
                 loadCombatV2Setting();
                 loadActiveCombats();
+                if (typeof loadGmResetEncounterOptions === 'function') {
+                    loadGmResetEncounterOptions();
+                }
             } else {
                 squadsTab.classList.remove('hidden');
                 btnSquads.classList.add('active', 'bg-amber-500', 'text-zinc-950');

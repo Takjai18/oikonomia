@@ -108,8 +108,42 @@ def add_item():
         if not item:
             return jsonify({"success": False, "error": "物品不存在或已停用"}), 400
 
+    from data.act1_qr_hooks import hooks_for_qr_code
+    from models.encounter_outcomes import encounter_already_completed
+    from models.squad import get_squad as _get_squad
+    from services.story import record_task_completion_from_qr
+
     success, message, applied_effect = grant_item_to_squad(session["squad_id"], item_id, source)
+    hooks = hooks_for_qr_code(item.get("qr_code_value"))
+    start_encounter = hooks.get("start_encounter")
+
+    # If player already owns wood (or QR already used) after a partial GM reset,
+    # still allow re-triggering tutorial combat when encounter is not completed.
+    already_owned_messages = (
+        "你已經擁有此物品",
+        "你已經使用過此 QR Code",
+        "同一隊內已經有人擁有此物品",
+        "此 QR Code 已經被使用",
+    )
     if not success:
+        if start_encounter and any(m in (message or "") for m in already_owned_messages):
+            squad = _get_squad(session["squad_id"]) or {}
+            team_id = squad.get("team_id")
+            completed = (
+                encounter_already_completed(team_id, start_encounter) if team_id else False
+            )
+            if not completed:
+                response = {
+                    "success": True,
+                    "message": f"{message} — 再次觸發教學戰。",
+                    "item": serialize_item_for_client(item),
+                    "item_id": item_id,
+                    "item_name": item.get("name"),
+                    "qr_code_value": item.get("qr_code_value"),
+                    "already_owned": True,
+                    "start_encounter": start_encounter,
+                }
+                return jsonify(response)
         return jsonify({"success": False, "error": message}), 400
 
     response = {
@@ -124,10 +158,6 @@ def add_item():
         response["applied_effect"] = applied_effect
 
     # Act 1+ QR hooks: auto-complete linked explore task; optional combat start.
-    from data.act1_qr_hooks import hooks_for_qr_code
-    from services.story import record_task_completion_from_qr
-
-    hooks = hooks_for_qr_code(item.get("qr_code_value"))
     linked_task_id = hooks.get("linked_task_id")
     if linked_task_id:
         newly = record_task_completion_from_qr(
@@ -140,7 +170,6 @@ def add_item():
         response["task_newly_completed"] = bool(newly)
         if newly:
             response["message"] = f"{message}（任務已完成）"
-    start_encounter = hooks.get("start_encounter")
     if start_encounter:
         response["start_encounter"] = start_encounter
         response["message"] = (
