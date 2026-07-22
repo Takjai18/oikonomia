@@ -110,12 +110,29 @@ def narrative_story_id_for_stage(route, stage):
 
 
 def get_pending_story_id(squad):
+    """Onboarding order: welcome prologue → (character stats) → Act / stage story.
+
+    Stage stories are withheld until stats_allocated so new players see:
+    PIN → 序章 → 建角 → Act 1.
+    """
     squad_id = squad.get("squad_id")
-    route = squad.get("route")
+    if not squad_id:
+        return None
+
+    # 1) Always finish world prologue first (even when forced_route is set).
+    if not is_story_viewed(squad_id, "welcome"):
+        return "welcome"
+
+    # 2) Character creation sits between prologue and Act 1.
+    if not squad.get("stats_allocated"):
+        return None
+
+    # 3) Route / stage mainline (Iggy Act 1 = iggy_stage0, …)
+    route = (squad.get("route") or "").strip().lower()
     if not route:
-        pending_welcome = "welcome"
-        if not is_story_viewed(squad_id, pending_welcome):
-            return pending_welcome
+        from data.route_config import FORCED_ROUTE
+        route = (FORCED_ROUTE or "").strip().lower() or None
+    if not route:
         return None
 
     completed_count, completed_task_ids = count_team_distinct_tasks(

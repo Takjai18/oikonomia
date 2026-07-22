@@ -24,6 +24,7 @@ NARRATIVE_STORIES = {
         "min_stage": 0,
         "skippable": True,
         "replayable": True,
+        # Shown right after PIN, before character creation (see get_pending_story_id).
         "lines": [
             {
                 "character": "旁白",
