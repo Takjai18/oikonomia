@@ -501,6 +501,28 @@ GM_DASHBOARD_HTML = """
             </div>
             <div id="gm-combat-content" class="text-zinc-400 text-center py-8">載入中...</div>
         </div>
+
+        <div class="bg-zinc-900 border border-amber-900/40 rounded-3xl p-6 mt-4">
+            <h2 class="text-lg font-semibold text-amber-300 mb-1">重置遭遇（測試用）</h2>
+            <p class="text-xs text-zinc-500 mb-4 leading-relaxed">
+                布布等 <strong>不可重打</strong> 劇情戰打完後，玩家再開會顯示「已完成」。
+                填入隊伍 ID 即可清掉完成記錄，方便重測。勾選「連木材 QR」可一併清 act1-wood 掃描／任務。
+            </p>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <input type="text" id="gm-reset-enc-team" placeholder="TEAM-06"
+                       class="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm font-mono">
+                <input type="text" id="gm-reset-enc-id" value="enc_iggy_act1_bubo"
+                       class="flex-[1.4] bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm font-mono">
+            </div>
+            <label class="flex items-center gap-2 mt-3 text-sm text-zinc-300 cursor-pointer select-none">
+                <input type="checkbox" id="gm-reset-enc-clear-qr" class="rounded border-zinc-600" checked>
+                連同清除木材 QR 使用記錄／背包木材／act1_wood 任務（布布專用）
+            </label>
+            <button type="button" onclick="gmResetEncounter()"
+                    class="mt-4 w-full sm:w-auto px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-zinc-950 font-semibold rounded-2xl text-sm">
+                重置遭遇完成狀態
+            </button>
+        </div>
         </div>
 
         <script>
@@ -510,6 +532,37 @@ GM_DASHBOARD_HTML = """
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;');
+        }
+
+        async function gmResetEncounter() {
+            const teamId = (document.getElementById('gm-reset-enc-team')?.value || '').trim();
+            const encounterId = (document.getElementById('gm-reset-enc-id')?.value || '').trim();
+            const clearQr = !!document.getElementById('gm-reset-enc-clear-qr')?.checked;
+            if (!teamId || !encounterId) {
+                showGmToast('請填 team_id 與 encounter_id', 'error');
+                return;
+            }
+            if (!confirm(`確定重置 ${teamId} 的 ${encounterId}？`)) return;
+            try {
+                const res = await fetch('/gm/api/reset_encounter', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        team_id: teamId,
+                        encounter_id: encounterId,
+                        clear_qr: clearQr,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showGmToast(data.message || '已重置', 'success');
+                } else {
+                    showGmToast(data.error || '重置失敗', 'error');
+                }
+            } catch (e) {
+                showGmToast('網路錯誤', 'error');
+            }
         }
 
         async function refreshGmGlobalEventsLog() {

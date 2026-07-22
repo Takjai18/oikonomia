@@ -738,6 +738,110 @@ def gm_combat_v2_status():
     })
 
 
+@gm_bp.route("/api/reset_encounter", methods=["POST"])
+def gm_reset_encounter_api():
+    """Clear encounter completion so a non-replayable fight (e.g. 布布) can be retested.
+
+    Optional: clear linked QR claim + task submission for Act 1 wood.
+    """
+    denied = _require_gm()
+    if denied:
+        return denied
+
+    data = request.get_json(silent=True) or request.form or {}
+    team_id = normalize_team_id(data.get("team_id") or "")
+    encounter_id = (data.get("encounter_id") or "").strip()
+    clear_qr = str(data.get("clear_qr") or data.get("clear_wood_qr") or "").lower() in (
+        "1", "true", "yes", "on",
+    )
+    if not team_id or not encounter_id:
+        return jsonify({
+            "success": False,
+            "error": "需要 team_id 與 encounter_id（例如 TEAM-06 + enc_iggy_act1_bubo）",
+        }), 400
+
+    deleted_completions = 0
+    deleted_qr = 0
+    deleted_items = 0
+    deleted_tasks = 0
+    try:
+        with immediate_transaction() as conn:
+            cur = conn.execute(
+                """DELETE FROM encounter_completions
+                   WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?""",
+                (team_id, encounter_id),
+            )
+            deleted_completions = cur.rowcount or 0
+
+            # Also clear SOLO-scoped completions for squads on this team.
+            solo_rows = conn.execute(
+                """SELECT squad_id FROM squads
+                   WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?))""",
+                (team_id,),
+            ).fetchall()
+            for row in solo_rows:
+                sid = row[0] if not isinstance(row, sqlite3.Row) else row["squad_id"]
+                solo_key = f"SOLO:{(sid or '').strip().upper()}"
+                cur2 = conn.execute(
+                    """DELETE FROM encounter_completions
+                       WHERE UPPER(TRIM(team_id)) = UPPER(TRIM(?)) AND encounter_id = ?""",
+                    (solo_key, encounter_id),
+                )
+                deleted_completions += cur2.rowcount or 0
+
+            if clear_qr and encounter_id == "enc_iggy_act1_bubo":
+                item = conn.execute(
+                    "SELECT id FROM items WHERE qr_code_value = ?",
+                    ("act1-wood",),
+                ).fetchone()
+                item_id = item[0] if item and not isinstance(item, sqlite3.Row) else (
+                    item["id"] if item else None
+                )
+                if item_id:
+                    cur3 = conn.execute(
+                        """DELETE FROM qr_code_uses
+                           WHERE item_id = ? AND UPPER(TRIM(COALESCE(team_id, ''))) = UPPER(TRIM(?))""",
+                        (item_id, team_id),
+                    )
+                    deleted_qr = cur3.rowcount or 0
+                    # Per-squad uses without team_id
+                    for row in solo_rows:
+                        sid = row[0] if not isinstance(row, sqlite3.Row) else row["squad_id"]
+                        cur4 = conn.execute(
+                            "DELETE FROM qr_code_uses WHERE item_id = ? AND squad_id = ?",
+                            (item_id, sid),
+                        )
+                        deleted_qr += cur4.rowcount or 0
+                        cur5 = conn.execute(
+                            "DELETE FROM player_items WHERE item_id = ? AND squad_id = ?",
+                            (item_id, sid),
+                        )
+                        deleted_items += cur5.rowcount or 0
+                for row in solo_rows:
+                    sid = row[0] if not isinstance(row, sqlite3.Row) else row["squad_id"]
+                    cur6 = conn.execute(
+                        "DELETE FROM submissions WHERE squad_id = ? AND task_id = ?",
+                        (sid, "act1_wood"),
+                    )
+                    deleted_tasks += cur6.rowcount or 0
+    except sqlite3.Error as exc:
+        current_app.logger.warning("gm_reset_encounter: %s", exc)
+        return jsonify({"success": False, "error": f"資料庫錯誤: {exc}"}), 500
+
+    return jsonify({
+        "success": True,
+        "message": (
+            f"已重置 {team_id} 的 {encounter_id}："
+            f"完成記錄 {deleted_completions}；"
+            + (f"QR {deleted_qr}／物品 {deleted_items}／任務 {deleted_tasks}" if clear_qr else "未清 QR")
+        ),
+        "deleted_completions": deleted_completions,
+        "deleted_qr": deleted_qr,
+        "deleted_items": deleted_items,
+        "deleted_tasks": deleted_tasks,
+    })
+
+
 @gm_bp.route("/api/combat_v2", methods=["POST"])
 def gm_set_combat_v2():
     denied = _require_gm()

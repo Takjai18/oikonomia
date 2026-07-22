@@ -47,6 +47,12 @@ export const DOM_IDS = {
   FAILED_PANEL: 'combat-v2-failed-panel',
   TOAST: 'combat-v2-toast',
   PRACTICE_EXIT_BTN: 'combat-v2-practice-exit-btn',
+  TUTORIAL_MODAL: 'combat-v2-tutorial-modal',
+  TUTORIAL_TITLE: 'combat-v2-tutorial-title',
+  TUTORIAL_BODY: 'combat-v2-tutorial-body',
+  TUTORIAL_PROGRESS: 'combat-v2-tutorial-progress',
+  TUTORIAL_NEXT: 'combat-v2-tutorial-next',
+  TUTORIAL_SKIP: 'combat-v2-tutorial-skip',
 };
 
 export const TEST_IDS = {

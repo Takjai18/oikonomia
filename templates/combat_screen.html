@@ -128,4 +128,32 @@
   <div id="combat-v2-escape-result" class="hidden"></div>
   <div id="combat-v2-result-panel" class="hidden"></div>
   <div id="combat-v2-failed-panel" class="hidden"></div>
+
+  <!-- Combat tutorial (teaching encounters e.g. 布布) -->
+  <div id="combat-v2-tutorial-modal"
+       class="hidden fixed inset-0 z-[130] items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+       role="dialog" aria-modal="true" aria-labelledby="combat-v2-tutorial-title">
+    <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl p-5 w-full max-w-md shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div class="text-[10px] uppercase tracking-widest text-amber-500/80 font-bold">Combat Tutorial</div>
+          <h2 id="combat-v2-tutorial-title" class="text-lg font-bold text-amber-300 mt-0.5">戰鬥教學</h2>
+        </div>
+        <span id="combat-v2-tutorial-progress" class="text-xs text-zinc-500 font-mono shrink-0 pt-1">1 / 1</span>
+      </div>
+      <div id="combat-v2-tutorial-body"
+           class="text-[15px] leading-relaxed text-zinc-200 whitespace-pre-wrap flex-1 overflow-y-auto min-h-[8rem] bg-zinc-950/50 border border-zinc-800 rounded-2xl px-4 py-3 mb-4">
+      </div>
+      <div class="flex gap-2">
+        <button type="button" id="combat-v2-tutorial-skip"
+                class="flex-1 min-h-11 rounded-2xl border border-zinc-600 text-zinc-400 text-sm hover:bg-zinc-800">
+          跳過教學
+        </button>
+        <button type="button" id="combat-v2-tutorial-next"
+                class="flex-[1.4] min-h-11 rounded-2xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm">
+          下一步
+        </button>
+      </div>
+    </div>
+  </div>
 </div>

@@ -186,6 +186,7 @@ def combat_start_api(encounter_id=None):
     combat = get_combat(combat["id"]) or combat
     status_slice = build_combat_status_response(combat, encounter, squad_id)
     live_status = combat.get("status")
+    combat_settings = (encounter or {}).get("combat_settings") or {}
     return jsonify({
         "success": True,
         "combat_id": combat["id"],
@@ -202,6 +203,8 @@ def combat_start_api(encounter_id=None):
         "enemy": build_enemy_combat_stats(combat, encounter),
         "my_state": status_slice.get("my_state"),
         "member_states": status_slice.get("member_states"),
+        "combat_settings": combat_settings,
+        "tutorial_steps": combat_settings.get("tutorial_steps") or [],
         "encounter": {
             "encounter_id": encounter_id,
             "title": encounter.get("title"),

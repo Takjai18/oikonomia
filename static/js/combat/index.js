@@ -32,6 +32,7 @@ import { createSubmittingOverlay } from './views/submitting_overlay.js';
 import { createEscapeResultView } from './views/escape_result_view.js';
 import { createVictoryView } from './views/victory_view.js';
 import { createItemSelectView } from './views/item_select_view.js';
+import { createTutorialView } from './views/tutorial_view.js';
 
 export class CombatApp {
   /**
@@ -50,6 +51,7 @@ export class CombatApp {
     this.hasTriggeredTimeoutDefense = false;
     this.submittingActive = false;
     this.entrySyncInFlight = false;
+    this.tutorialActive = false;
     this._activeRafIds = new Set();
     this._activeTimeoutIds = new Set();
 
@@ -68,6 +70,7 @@ export class CombatApp {
       escape: createEscapeResultView(rootEl),
       endgame: createVictoryView(rootEl),
       items: createItemSelectView(rootEl, (action, opts) => this.performAction(action, opts)),
+      tutorial: createTutorialView(rootEl),
     };
 
     this.views.dice.onConfirm(() => this.confirmDice());
@@ -117,6 +120,9 @@ export class CombatApp {
       this.hideAllModals();
       this.views?.endgame?.hideAll();
       this.views?.items?.hide();
+      this.views?.tutorial?.hide();
+      this.tutorialActive = false;
+      this.views?.actions?.setTutorialLock?.(false);
       if (this.rootEl) {
         this.rootEl.classList.add('hidden');
         delete this.rootEl.__combat_app_instance__;
@@ -155,6 +161,8 @@ export class CombatApp {
     this.poller?.stop();
     this.hideAllModals();
     this.views.endgame.hideAll();
+    this.views.tutorial?.hide();
+    this.tutorialActive = false;
 
     this.ctx = {
       ...createInitialContext(data.combat_id),
@@ -179,8 +187,8 @@ export class CombatApp {
     this.scrollCombatToTop();
 
     this.entrySyncInFlight = true;
+    let merged = data;
     try {
-      let merged = data;
       for (let attempt = 0; attempt < 3; attempt++) {
         const snapshot = await CombatApi.status(data.combat_id);
         merged = mergeEntryCombatPayload(data, snapshot);
@@ -202,10 +210,40 @@ export class CombatApp {
       renderAll(this.views, this.ctx);
     } finally {
       this.entrySyncInFlight = false;
-      if (data.combat_id) {
-        this.poller.start(data.combat_id);
-      }
     }
+
+    // Teaching encounter: block actions until tutorial steps are finished.
+    const tutorialSteps = this._extractTutorialSteps(data, merged);
+    if (tutorialSteps.length) {
+      this.tutorialActive = true;
+      this.views.actions?.setTutorialLock?.(true);
+      await new Promise((resolve) => {
+        this.views.tutorial.show(tutorialSteps, () => {
+          this.tutorialActive = false;
+          this.views.actions?.setTutorialLock?.(false);
+          resolve();
+        });
+      });
+    }
+
+    if (data.combat_id) {
+      this.poller.start(data.combat_id);
+    }
+  }
+
+  _extractTutorialSteps(startData, statusData) {
+    const sources = [
+      startData?.combat_settings,
+      statusData?.combat_settings,
+      startData?.tutorial_steps,
+      statusData?.tutorial_steps,
+    ];
+    for (const src of sources) {
+      if (Array.isArray(src) && src.length) return src;
+      const steps = src?.tutorial_steps;
+      if (Array.isArray(steps) && steps.length) return steps;
+    }
+    return [];
   }
 
   scrollCombatToTop() {
@@ -233,6 +271,10 @@ export class CombatApp {
   }
 
   async performAction(actionType, options = {}) {
+    if (this.tutorialActive) {
+      showToast('請先看完戰鬥教學', 'info');
+      return;
+    }
     const eventMap = {
       attack: 'ACTION_ATTACK',
       defend: 'ACTION_DEFEND',

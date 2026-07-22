@@ -47,10 +47,17 @@ export function createActionView(rootEl, handlers = {}) {
   zooBtn?.addEventListener('click', () => { void handlers.onZoo?.(); });
   itemBtn?.addEventListener('click', () => handlers.onItemClick?.());
 
+  let tutorialLocked = false;
+
   function setDisabled(disabled) {
     actionBtns.forEach((btn) => {
-      if (btn) btn.disabled = disabled;
+      if (btn) btn.disabled = disabled || tutorialLocked;
     });
+  }
+
+  function setTutorialLock(locked) {
+    tutorialLocked = !!locked;
+    setDisabled(tutorialLocked);
   }
 
   function updateZooTip(ctx) {
@@ -102,13 +109,14 @@ export function createActionView(rootEl, handlers = {}) {
   }
 
   return {
+    setTutorialLock,
     update(ctx) {
       const absorbing = TERMINAL_PHASES.includes(ctx.phase);
       const busy = BUSY_PHASES.includes(ctx.phase);
       const submitted = !!ctx.hud?.me?.submitted;
       const allowZoo = ctx.hud?.allow_zoo !== false;
 
-      setDisabled(absorbing || busy || submitted);
+      setDisabled(absorbing || busy || submitted || tutorialLocked);
       if (zooBtn) {
         // Stage-locked / encounter-disabled: hide entirely (not greyed out).
         if (!allowZoo) {
@@ -117,7 +125,7 @@ export function createActionView(rootEl, handlers = {}) {
           zooBtn.title = '';
         } else {
           zooBtn.classList.remove('hidden');
-          zooBtn.disabled = absorbing || busy || submitted;
+          zooBtn.disabled = absorbing || busy || submitted || tutorialLocked;
           zooBtn.title = '';
         }
       }
