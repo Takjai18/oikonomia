@@ -122,6 +122,31 @@ def add_item():
     }
     if applied_effect:
         response["applied_effect"] = applied_effect
+
+    # Act 1+ QR hooks: auto-complete linked explore task; optional combat start.
+    from data.act1_qr_hooks import hooks_for_qr_code
+    from services.story import record_task_completion_from_qr
+
+    hooks = hooks_for_qr_code(item.get("qr_code_value"))
+    linked_task_id = hooks.get("linked_task_id")
+    if linked_task_id:
+        newly = record_task_completion_from_qr(
+            session["squad_id"],
+            linked_task_id,
+            note=f"QR 獲得物品：{item.get('name')}",
+        )
+        response["linked_task_id"] = linked_task_id
+        response["task_completed"] = True
+        response["task_newly_completed"] = bool(newly)
+        if newly:
+            response["message"] = f"{message}（任務已完成）"
+    start_encounter = hooks.get("start_encounter")
+    if start_encounter:
+        response["start_encounter"] = start_encounter
+        response["message"] = (
+            f"{response.get('message') or message}"
+            " — 雪山熊「布布」出現了！進入戰鬥教學。"
+        )
     return jsonify(response)
 
 

@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-07-22 — Act 1 飛狐雪山（QR + 布布教學戰）
+
+| 項目 | 內容 |
+|------|------|
+| **劇情** | `iggy_stage0`：醬板鴨、重傷男子、布布、生火 |
+| **任務** | `act1_lighter` / `act1_wood` / `act1_goat_badge` / `act1_iron_plate`（`task_type=qr`） |
+| **QR** | `act1-lighter` · `act1-wood` · `act1-goat-badge` · `act1-iron-plate` |
+| **布布** | 掃木材 → `enc_iggy_act1_bubo` 自動開戰（教學：攻擊／防禦／擲骰） |
+| **進度** | Stage 門檻 4 / 7 / 11（Act1 四任務） |
+
+**GM**：為 4 個道具印簽章 QR（GM 物品頁或 `build_item_qr_payload`）；部署後 `migrate` 會 upsert 新物品。
+
+---
+
 ## 2026-07-22 — 練習長戰擊敗後無勝利畫面（Raya）
 
 | 項目 | 內容 |

@@ -10,27 +10,56 @@ _KOWLOON_TONG = {"lat": 22.3370, "lng": 114.1760, "radius": 100}
 _CHOI_HUNG = {"lat": 22.3347, "lng": 114.2090, "radius": 100}
 
 LOCATIONS = {
-    # ========== ACT 1 — 雪山救助 ==========
-    "act1_keepsake": {
-        "name": "Iggy 的貼身物品",
-        "hint": "雪山記憶點 · 影相",
+    # ========== ACT 1 — 飛狐雪山（QR 掃描完成） ==========
+    "act1_lighter": {
+        "name": "火機",
+        "hint": "取火 · 掃描 QR",
         **_CAMP,
-        "task_type": "photo",
+        "task_type": "qr",
         "story_act": 1,
+        "qr_code_value": "act1-lighter",
         "description": (
-            "【Act 1】找出能確認 Iggy 身份的貼身物品（營會道具／GM 放置）。"
-            "影一張清楚見到物品同至少一位隊員的相，提交完成。"
+            "【Act 1 · I 取火加食】在雪地附近找出「火機」實體道具，"
+            "用 Web App 掃描上面的 QR Code。掃描成功即完成此任務。"
         ),
     },
-    "act1_sauce_duck": {
-        "name": "醬板鴨",
-        "hint": "雪山補給 · 影相",
+    "act1_wood": {
+        "name": "木材",
+        "hint": "取火 · 掃描 QR → 布布戰",
         **_CAMP,
-        "task_type": "photo",
+        "task_type": "qr",
         "story_act": 1,
+        "qr_code_value": "act1-wood",
+        "start_encounter": "enc_iggy_act1_bubo",
         "description": (
-            "【Act 1】找出一隻醬板鴨（實體道具），「給 Iggy 吃」——"
-            "影相記錄全組與醬板鴨，提交完成，幫他捱過艱難時刻。"
+            "【Act 1 · I 取火加食】找出「木材」（木／木筷子）並掃描 QR。"
+            "掃描後會觸發雪山熊「布布」的戰鬥教學："
+            "練習攻擊、防禦、擲骰；有隊友時可全隊一起行動。"
+            "擊敗布布後再回去生火、烤醬板鴨。"
+        ),
+    },
+    "act1_goat_badge": {
+        "name": "殘缺的山羊徵章",
+        "hint": "Iggy 個人物品 · 掃描 QR",
+        **_CAMP,
+        "task_type": "qr",
+        "story_act": 1,
+        "qr_code_value": "act1-goat-badge",
+        "description": (
+            "【Act 1 · II Iggy 個人物品】找出殘缺的山羊徵章，"
+            "掃描 QR 完成。這可能與他的過去與 Zoo 有關……"
+        ),
+    },
+    "act1_iron_plate": {
+        "name": "刻著 Iggy 的鐵片",
+        "hint": "Iggy 個人物品 · 掃描 QR",
+        **_CAMP,
+        "task_type": "qr",
+        "story_act": 1,
+        "qr_code_value": "act1-iron-plate",
+        "description": (
+            "【Act 1 · II Iggy 個人物品】找出一塊鐵片——上面刻住「Iggy」。"
+            "掃描 QR 完成，確認這名重傷男子的身份。"
         ),
     },
     # ========== ACT 2 — 逃亡 / Polis ==========

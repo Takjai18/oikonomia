@@ -68,6 +68,39 @@ def is_story_viewed(squad_id, story_id):
         conn.close()
 
 
+def record_task_completion_from_qr(squad_id, task_id, note=None):
+    """Mark a location task complete after a successful QR claim (idempotent per squad).
+
+    Returns True if a new submission row was inserted.
+    """
+    if not squad_id or not task_id:
+        return False
+    locations = settings.locations or {}
+    if task_id not in locations:
+        return False
+    content = note or f"QR 掃描完成：{locations[task_id].get('name') or task_id}"
+    conn = sqlite3.connect(settings.db_path)
+    try:
+        existing = conn.execute(
+            "SELECT 1 FROM submissions WHERE squad_id = ? AND task_id = ? LIMIT 1",
+            (squad_id, task_id),
+        ).fetchone()
+        if existing:
+            return False
+        conn.execute(
+            """INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
+               VALUES (?, ?, ?, NULL, ?)""",
+            (squad_id, task_id, content, datetime.now().isoformat()),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
 def narrative_story_id_for_stage(route, stage):
     if not route:
         return None

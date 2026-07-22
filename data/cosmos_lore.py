@@ -122,16 +122,17 @@ CHARACTERS = {
 # Six-act Iggy arc (mapped onto story stages 0–3 for progression engine)
 IGGY_ACTS = {
     1: {
-        "title": "雪山與醬板鴨",
-        "subtitle": "失憶與救助",
+        "title": "飛狐雪山",
+        "subtitle": "醬板鴨 · 布布 · 身份",
         "story_stage": 0,
         "summary": (
-            "Iggy 與 Marah 交戰時 Zoo 失控並落敗，墜入雪山，短暫失去能力與記憶。"
-            "玩家在雪山上遇見 Iggy，並以一隻醬板鴨救助他。"
+            "飛狐雪山。玩家本帶醬板鴨想救助狐狸，卻遇見重傷男子。"
+            "取火（火機、木材）時遭遇雪山熊布布；擊退後生火烤鴨。"
+            "並以山羊徵章與刻著 Iggy 的鐵片確認其身份。"
         ),
         "tasks": [
-            "找出 Iggy 的貼身物品，確認其身份",
-            "找出一隻醬板鴨，給 Iggy 吃，幫他捱過艱難時刻",
+            "掃描 QR：火機、木材（木材觸發布布教學戰）",
+            "掃描 QR：殘缺的山羊徵章、刻著 Iggy 的鐵片",
         ],
     },
     2: {

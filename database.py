@@ -544,11 +544,36 @@ def migrate_db():
         except sqlite3.Error:
             pass
 
-    item_count = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
-    if item_count == 0:
-        now = datetime.now().isoformat()
-        for entry in SAMPLE_ITEMS:
-            is_one_time = 0 if entry["item_type"] == "story" else 1
+    # Upsert catalog items (insert new QR codes on deploy; refresh copy on known codes).
+    now = datetime.now().isoformat()
+    for entry in SAMPLE_ITEMS:
+        is_one_time = 0 if entry["item_type"] == "story" else 1
+        existing = c.execute(
+            "SELECT id FROM items WHERE qr_code_value = ?",
+            (entry["qr_code_value"],),
+        ).fetchone()
+        if existing:
+            c.execute(
+                """UPDATE items
+                   SET name = ?, description = ?, icon = ?, item_type = ?,
+                       has_ability = ?, effect_type = ?, effect_value = ?,
+                       image_path = COALESCE(NULLIF(image_path, ''), ?),
+                       is_one_time_use = ?, is_active = 1
+                   WHERE qr_code_value = ?""",
+                (
+                    entry["name"],
+                    entry["description"],
+                    entry["icon"],
+                    entry["item_type"],
+                    entry.get("has_ability", 0),
+                    entry.get("effect_type"),
+                    entry.get("effect_value", 0),
+                    entry.get("image_path"),
+                    is_one_time,
+                    entry["qr_code_value"],
+                ),
+            )
+        else:
             c.execute(
                 """INSERT INTO items
                    (name, description, icon, item_type, qr_code_value, is_active,
@@ -567,23 +592,6 @@ def migrate_db():
                     entry.get("effect_value", 0),
                     entry.get("image_path"),
                     now,
-                ),
-            )
-    else:
-        for entry in SAMPLE_ITEMS:
-            c.execute(
-                """UPDATE items
-                   SET has_ability = ?, effect_type = ?, effect_value = ?,
-                       image_path = COALESCE(NULLIF(image_path, ''), ?),
-                       description = ?
-                   WHERE qr_code_value = ?""",
-                (
-                    entry.get("has_ability", 0),
-                    entry.get("effect_type"),
-                    entry.get("effect_value", 0),
-                    entry.get("image_path"),
-                    entry["description"],
-                    entry["qr_code_value"],
                 ),
             )
 

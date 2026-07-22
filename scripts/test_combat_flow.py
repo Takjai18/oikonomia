@@ -2110,6 +2110,7 @@ def fight_until_victory(client, client2, combat_id):
 PRODUCTION_ENCOUNTERS = (
     "enc_iggy_01_leech",
     "enc_iggy_02_boundary",
+    "enc_iggy_act1_bubo",
     "enc_iggy_act2_polis",
     "enc_iggy_act4_julian",
     "enc_iggy_act6_savio",

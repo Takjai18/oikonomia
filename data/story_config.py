@@ -6,9 +6,9 @@
 #   stage 2 → Act 3–4
 #   stage 3 → Act 5–6
 STORY_STAGE_THRESHOLDS = {
-    1: 2,   # Act 1 完成：至少 2 個任務（貼身物品 + 醬板鴨）
-    2: 5,   # Act 2：小遊戲／Polis 戰等
-    3: 8,   # Act 3 City Hunt + Julian 後進入最終
+    1: 4,   # Act 1：火機 + 木材 + 山羊徵章 + 鐵片（4 個 QR 任務）
+    2: 7,   # Act 2：小遊戲／Polis 戰等
+    3: 11,  # Act 3 City Hunt + Julian 後進入最終
 }
 
 # Optional hard gates by location id (uncomment when task IDs are locked in).
@@ -21,10 +21,11 @@ STORY_STAGE_REQUIRED_TASKS = {
 STORY_CONTENT = {
     "iggy": {
         0: {
-            "title": "🔥 Act 1：雪山與醬板鴨",
+            "title": "🔥 Act 1：飛狐雪山",
             "content": (
-                "Iggy 與 Marah 交戰時 Zoo 失控並落敗，墜入雪山，失去能力與記憶。"
-                "你在雪山上遇見他——先確認他是誰，再找出一隻醬板鴨幫他捱過這一關。"
+                "風雪中你們本想救助狐狸，卻遇見重傷的年輕男子。"
+                "掃描 QR 取得火機與木材（木材會遇到雪山熊布布——戰鬥教學），"
+                "再找出山羊徵章與刻著 Iggy 的鐵片，確認他的身份。"
             ),
         },
         1: {

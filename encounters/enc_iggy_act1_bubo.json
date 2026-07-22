@@ -1,0 +1,61 @@
+{
+  "encounter_id": "enc_iggy_act1_bubo",
+  "title": "Act 1 教學戰：雪山熊「布布」",
+  "route": "iggy",
+  "story_stage": 0,
+  "trigger_type": "story",
+  "replayable": true,
+  "location_hint": "飛狐雪山 · 拾取木材處",
+  "description": "你們撿起木筷子的一刻，樹林深處傳來咆哮——雪山熊「布布」猛然撲出！這是戰鬥教學戰：請嘗試攻擊、防禦，觀察擲骰結果；若有隊友，可輪流行動、一起分擔傷害。擊敗布布後，再回去生火與烤醬板鴨。",
+
+  "enemy": {
+    "name": "布布（雪山熊）",
+    "hp": 72,
+    "sanity": 30,
+    "power": 30,
+    "intellect": 18,
+    "resilience": 16,
+    "base_damage": 12,
+    "description": "護食護地的雪山熊。力大但不難打——適合熟悉攻擊、防禦與擲骰。全隊一起行動會更穩。"
+  },
+
+  "combat_settings": {
+    "phase_time_limit_seconds": 180,
+    "allow_zoo": false,
+    "zoo_sanity_threshold": 70,
+    "max_phases": 8,
+    "win_condition": "defeat_enemy"
+  },
+
+  "success": {
+    "insight_fragment": 0,
+    "rewards": [],
+    "narrative": "布布被擊退，吼聲遠去。你們總算守住了重傷男子身邊的篝火空地——可以繼續取火、烤醬板鴨了。記住：攻擊靠擲骰與能力；防禦可減傷；隊友一齊行動更安全。",
+    "next_story_unlock": null
+  },
+
+  "failure": {
+    "trauma": {
+      "stat": "resilience",
+      "amount": 0
+    },
+    "narrative": "布布太兇，你們被迫暫時退開。可以再掃一次木材 QR（或由隊長再開此遭遇）重試教學戰——這場不會留下永久創傷。",
+    "debuff": null
+  },
+
+  "reflection_prompt": {
+    "title": "戰鬥教學 · 布布",
+    "questions": [
+      "攻擊時擲骰結果如何影響傷害？",
+      "什麼時候會想用「防禦」而不是一直攻擊？",
+      "如果有隊友，你們怎樣分工（有人攻擊、有人防禦）？"
+    ],
+    "theological_tie": "面對危險時，保護傷者需要勇氣與界線——不是盲目硬撐，而是團隊一起承擔後果。"
+  },
+
+  "notes_for_gm": {
+    "purpose": "Act 1 教學戰：攻擊／防禦／擲骰／全隊行動",
+    "trigger": "掃描「木材」QR（act1-wood）後前端自動開打；亦可在遭遇列表重開",
+    "debrief_tips": "引導玩家口述：攻擊＝輸出，防禦＝減傷，骰子＝不確定性"
+  }
+}
