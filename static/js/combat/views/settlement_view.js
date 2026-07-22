@@ -6,10 +6,19 @@
 import { DOM_IDS, TEST_IDS } from '../selectors.js';
 
 export function createSettlementView(rootEl) {
-  const modal = rootEl.querySelector(`#${DOM_IDS.SETTLEMENT_MODAL}`);
+  let modal = rootEl.querySelector(`#${DOM_IDS.SETTLEMENT_MODAL}`);
   const body = rootEl.querySelector(`#${DOM_IDS.SETTLEMENT_BODY}`);
   const ackBtn = rootEl.querySelector(`#${DOM_IDS.SETTLEMENT_ACK}`);
   let onAck = null;
+
+  function ensureBodyHost(el) {
+    if (!el || !el.ownerDocument) return el;
+    const docBody = el.ownerDocument.body;
+    if (docBody && el.parentElement !== docBody) {
+      docBody.appendChild(el);
+    }
+    return el;
+  }
 
   ackBtn?.addEventListener('click', () => {
     if (onAck) onAck();
@@ -97,15 +106,19 @@ export function createSettlementView(rootEl) {
       return modal && !modal.classList.contains('hidden');
     },
     show(settlement, ctx, { killing = false } = {}) {
+      modal = ensureBodyHost(modal || rootEl.querySelector(`#${DOM_IDS.SETTLEMENT_MODAL}`));
       if (!modal) return;
-      if (body) body.innerHTML = renderBreakdown(settlement, ctx.hud);
-      if (ackBtn) {
-        ackBtn.textContent = killing ? '確定，查看勝利結果' : '確認並進入下一回合';
-        ackBtn.dataset.testid = TEST_IDS.SETTLEMENT_CONFIRM;
+      const bodyEl = modal.querySelector(`#${DOM_IDS.SETTLEMENT_BODY}`) || body;
+      const ack = modal.querySelector(`#${DOM_IDS.SETTLEMENT_ACK}`) || ackBtn;
+      if (bodyEl) bodyEl.innerHTML = renderBreakdown(settlement, ctx.hud);
+      if (ack) {
+        ack.textContent = killing ? '確定，查看勝利結果' : '確認並進入下一回合';
+        ack.dataset.testid = TEST_IDS.SETTLEMENT_CONFIRM;
       }
-      modal.className = 'fixed inset-0 z-[75] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm';
+      modal.className = 'fixed inset-0 z-[115] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm';
     },
     hide() {
+      modal = modal || rootEl.querySelector(`#${DOM_IDS.SETTLEMENT_MODAL}`);
       if (modal) {
         modal.className = 'hidden';
       }

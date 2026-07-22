@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-07-22 — 練習長戰擊敗後無勝利畫面（Raya）
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 練習長影／多回合打完敵 HP 0，畫面停住無「戰鬥勝利」 |
+| **根因** | poll 勝利時若 phase=SUBMITTING 且 settlement_id 已見過／缺，只 UPDATE_HUD 軟卡死 |
+| **次因** | 全螢幕殼 overflow/transform 可裁切 fixed 結算／勝利層 |
+| **修復** | 勝利 poll 一律進 VICTORY（已在 SETTLEMENT 等 ACK 除外）；endgame/settlement 掛 body；去掉 shell overflow:hidden |
+| **UX 提示** | 斬殺回合仍會先彈「傷害結算」→ 按「確定，查看勝利結果」 |
+
+---
+
 ## 2026-07-22 — GM 瀕死救援訊號不再全營廣播
 
 | 項目 | 內容 |

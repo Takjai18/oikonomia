@@ -11,8 +11,18 @@ import { DOM_IDS } from '../selectors.js';
 import { showToast } from '../toast.js';
 
 export function createVictoryView(rootEl) {
-  const panel = rootEl.querySelector(`#${DOM_IDS.VICTORY_PANEL}`);
-  const failedPanel = rootEl.querySelector(`#${DOM_IDS.FAILED_PANEL}`);
+  let panel = rootEl.querySelector(`#${DOM_IDS.VICTORY_PANEL}`);
+  let failedPanel = rootEl.querySelector(`#${DOM_IDS.FAILED_PANEL}`);
+
+  /** Host endgame layers on document.body so fixed fullscreen is never clipped. */
+  function ensureBodyHost(el) {
+    if (!el || !el.ownerDocument) return el;
+    const body = el.ownerDocument.body;
+    if (body && el.parentElement !== body) {
+      body.appendChild(el);
+    }
+    return el;
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -74,10 +84,11 @@ export function createVictoryView(rootEl) {
 
   return {
     showVictory(data) {
+      panel = ensureBodyHost(panel || rootEl.querySelector(`#${DOM_IDS.VICTORY_PANEL}`));
       if (!panel) return;
       const narrative = data?.narrative || '你們成功看穿了這場衝突背後的情緒勒索與邊界扭曲。';
 
-      panel.className = 'fixed inset-0 z-[85] flex items-center justify-center bg-zinc-950/90 p-4 backdrop-blur-sm';
+      panel.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-zinc-950/90 p-4 backdrop-blur-sm';
       panel.innerHTML = `
         <div class="bg-zinc-900 border border-emerald-500/30 rounded-3xl p-6 max-w-md w-full text-center shadow-2xl">
           <div class="text-6xl mb-3">🎉</div>
@@ -95,10 +106,11 @@ export function createVictoryView(rootEl) {
     },
 
     showDefeat(data) {
+      panel = ensureBodyHost(panel || rootEl.querySelector(`#${DOM_IDS.VICTORY_PANEL}`));
       if (!panel) return;
       const narrative = data?.narrative || '心理界線宣告失守，全隊陷入混亂。';
 
-      panel.className = 'fixed inset-0 z-[85] flex items-center justify-center bg-zinc-950/90 p-4 backdrop-blur-sm';
+      panel.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-zinc-950/90 p-4 backdrop-blur-sm';
       panel.innerHTML = `
         <div class="bg-zinc-900 border border-red-500/30 rounded-3xl p-6 max-w-md w-full text-center shadow-2xl">
           <div class="text-6xl mb-3">💀</div>
@@ -118,10 +130,13 @@ export function createVictoryView(rootEl) {
     showFailed(members) {
       document.getElementById('combat-near-death-overlay')?.classList.add('hidden');
 
+      failedPanel = ensureBodyHost(
+        failedPanel || rootEl.querySelector(`#${DOM_IDS.FAILED_PANEL}`),
+      );
       if (!failedPanel) return;
       const list = (members || []).map((m) => `<li class="text-red-300 font-mono">${escapeHtml(m)}</li>`).join('');
 
-      failedPanel.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/95 p-4';
+      failedPanel.className = 'fixed inset-0 z-[125] flex items-center justify-center bg-black/95 p-4';
       failedPanel.innerHTML = `
         <div class="bg-zinc-900 border-2 border-red-600 rounded-3xl p-6 max-w-md w-full shadow-2xl shadow-red-950">
           <div class="flex items-center gap-3 border-b border-zinc-800 pb-3 mb-4">

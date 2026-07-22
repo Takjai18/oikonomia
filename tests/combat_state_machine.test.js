@@ -368,7 +368,9 @@ describe('Combat V2 state machine', () => {
     assert.equal(route.skipToVictory, undefined);
   });
 
-  it('SUBMITTING poll victory with seen settlement does not skip to SHOW_VICTORY', () => {
+  it('SUBMITTING poll victory with seen settlement → SHOW_VICTORY (no soft-stick)', () => {
+    // Regression: multi-round kills (e.g. practice marathon) used to stay in
+    // SUBMITTING with only UPDATE_HUD when settlement_id was already shown.
     const ctx = {
       ...createInitialContext(7),
       phase: Phase.SUBMITTING,
@@ -384,9 +386,9 @@ describe('Combat V2 state machine', () => {
       my_state: { hp: 80, submitted: true },
       member_states: { s1: { hp: 80, submitted: true } },
     });
-    assert.equal(next.phase, Phase.SUBMITTING);
-    assert.ok(!effects.some((e) => e.type === 'SHOW_VICTORY'));
-    assert.ok(effects.some((e) => e.type === 'UPDATE_HUD' && e.hpOnly === true));
+    assert.equal(next.phase, Phase.VICTORY);
+    assert.ok(effects.some((e) => e.type === 'SHOW_VICTORY'));
+    assert.ok(effects.some((e) => e.type === 'STOP_POLL'));
   });
 
   it('SUBMITTING poll victory advances to SETTLEMENT (not pinned)', () => {

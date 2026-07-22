@@ -339,16 +339,14 @@ export function syncState(ctx, snapshot) {
     }
 
     if (ctx.phase === Phase.SETTLEMENT) {
+      // Killing-blow breakdown is already up — wait for ACK_SETTLEMENT → SHOW_VICTORY.
       return { ctx: newCtx, effects };
     }
 
-    if (ctx.phase === Phase.SUBMITTING || ctx.phase === Phase.WAITING_FOR_PLAYERS) {
-      return {
-        ctx: newCtx,
-        effects: [{ type: 'UPDATE_HUD', hpOnly: true }],
-      };
-    }
-
+    // Server already ended combat (outcome=victory). Never soft-stick in
+    // SUBMITTING / WAITING_FOR_PLAYERS with only HUD updates — that left Raya-style
+    // multi-round kills (practice marathon) on a dead board with no victory screen
+    // when settlement_id was already seen or missing on the poll payload.
     newCtx = {
       ...newCtx,
       phase: Phase.VICTORY,
@@ -356,10 +354,13 @@ export function syncState(ctx, snapshot) {
       pendingSettlement: null,
       pendingSettlementId: null,
       isKillingBlow: false,
+      escapePending: false,
     };
     return {
       ctx: newCtx,
       effects: terminalModalTeardownEffects([
+        { type: 'HIDE_DICE' },
+        { type: 'HIDE_SUBMITTING' },
         { type: 'SHOW_VICTORY', data: snapshot },
         { type: 'STOP_POLL' },
       ]),
