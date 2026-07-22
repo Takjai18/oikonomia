@@ -1807,7 +1807,6 @@
             });
             if (!agreed) return;
         }
-        window.startEncounter = startEncounter;
         pendingEncounterId = encounterId;
         const res = await fetch('/combat/start', {
             method: 'POST',
@@ -1837,6 +1836,7 @@
         }
         showToast('請聯繫 GM 開啟 COMBAT_V2', 'error');
     }
+    window.startEncounter = startEncounter;
 
     async function confirmPrecheck(choice) {
         const res = await fetch('/combat/start', {
