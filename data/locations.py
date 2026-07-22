@@ -11,31 +11,31 @@ _CHOI_HUNG = {"lat": 22.3347, "lng": 114.2090, "radius": 100}
 
 LOCATIONS = {
     # ========== ACT 1 — 飛狐雪山（QR 掃描完成） ==========
-    "act1_lighter": {
-        "name": "火機",
-        "hint": "取火 · 掃描 QR",
-        **_CAMP,
-        "task_type": "qr",
-        "story_act": 1,
-        "qr_code_value": "act1-lighter",
-        "description": (
-            "【Act 1 · I 取火加食】在雪地附近找出「火機」實體道具，"
-            "用 Web App 掃描上面的 QR Code。掃描成功即完成此任務。"
-        ),
-    },
     "act1_wood": {
         "name": "木材",
-        "hint": "取火 · 掃描 QR → 布布戰",
+        "hint": "搜集 · 掃描 QR → 布布戰",
         **_CAMP,
         "task_type": "qr",
         "story_act": 1,
         "qr_code_value": "act1-wood",
         "start_encounter": "enc_iggy_act1_bubo",
         "description": (
-            "【Act 1 · I 取火加食】找出「木材」（木／木筷子）並掃描 QR。"
-            "掃描後會觸發雪山熊「布布」的戰鬥教學："
-            "練習攻擊、防禦、擲骰；有隊友時可全隊一起行動。"
-            "擊敗布布後再回去生火、烤醬板鴨。"
+            "【Act 1 · I 取暖加食】在場地找出「木材」實體道具並掃描 QR。"
+            "掃描成功後會立刻進入雪山熊「布布」戰鬥教學"
+            "（攻擊、防禦、擲骰；可全隊一起行動）。"
+            "擊敗布布後再繼續生火、烤醬板鴨。"
+        ),
+    },
+    "act1_water": {
+        "name": "水",
+        "hint": "搜集 · 掃描 QR",
+        **_CAMP,
+        "task_type": "qr",
+        "story_act": 1,
+        "qr_code_value": "act1-water",
+        "description": (
+            "【Act 1 · I 取暖加食】在場地找出「水」實體道具，"
+            "用 Web App 掃描 QR Code。掃描成功即完成此任務。"
         ),
     },
     "act1_goat_badge": {
@@ -46,7 +46,7 @@ LOCATIONS = {
         "story_act": 1,
         "qr_code_value": "act1-goat-badge",
         "description": (
-            "【Act 1 · II Iggy 個人物品】找出殘缺的山羊徵章，"
+            "【Act 1 · II 個人物品】找出殘缺的山羊徵章，"
             "掃描 QR 完成。這可能與他的過去與 Zoo 有關……"
         ),
     },
@@ -58,7 +58,7 @@ LOCATIONS = {
         "story_act": 1,
         "qr_code_value": "act1-iron-plate",
         "description": (
-            "【Act 1 · II Iggy 個人物品】找出一塊鐵片——上面刻住「Iggy」。"
+            "【Act 1 · II 個人物品】找出一塊鐵片——上面刻住「Iggy」。"
             "掃描 QR 完成，確認這名重傷男子的身份。"
         ),
     },

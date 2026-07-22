@@ -145,7 +145,7 @@ def add_item():
         response["start_encounter"] = start_encounter
         response["message"] = (
             f"{response.get('message') or message}"
-            " — 雪山熊「布布」出現了！進入戰鬥教學。"
+            " — 你們撿起木材的一刻，樹林傳來咆哮！雪山熊「布布」撲出——進入戰鬥教學。"
         )
     return jsonify(response)
 

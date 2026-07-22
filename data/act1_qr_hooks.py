@@ -2,18 +2,21 @@
 
 QR payload resolves to items.qr_code_value; after a successful claim we may
 auto-complete a location task and/or start a tutorial combat.
+
+Flow: story prompts players to search the field → scan 木 / 水 / 個人物品.
+Scanning wood immediately starts the Bubuo (布布) tutorial fight.
 """
 
 # qr_code_value → hooks
 ACT1_QR_HOOKS = {
-    "act1-lighter": {
-        "linked_task_id": "act1_lighter",
-        "start_encounter": None,
-    },
     "act1-wood": {
         "linked_task_id": "act1_wood",
-        # Scanning wood spawns the tutorial snow-bear fight.
+        # Scan wood → immediate tutorial combat with 布布.
         "start_encounter": "enc_iggy_act1_bubo",
+    },
+    "act1-water": {
+        "linked_task_id": "act1_water",
+        "start_encounter": None,
     },
     "act1-goat-badge": {
         "linked_task_id": "act1_goat_badge",

@@ -10,13 +10,13 @@
 
 | 項目 | 內容 |
 |------|------|
-| **劇情** | `iggy_stage0`：醬板鴨、重傷男子、布布、生火 |
-| **任務** | `act1_lighter` / `act1_wood` / `act1_goat_badge` / `act1_iron_plate`（`task_type=qr`） |
-| **QR** | `act1-lighter` · `act1-wood` · `act1-goat-badge` · `act1-iron-plate` |
-| **布布** | 掃木材 → `enc_iggy_act1_bubo` 自動開戰（教學：攻擊／防禦／擲骰） |
-| **進度** | Stage 門檻 4 / 7 / 11（Act1 四任務） |
+| **劇情** | `iggy_stage0` 停在「去場地掃 QR」；**唔預先寫死**搵到火機／已打贏布布 |
+| **任務** | `act1_wood` · `act1_water` · `act1_goat_badge` · `act1_iron_plate`（**無火機**） |
+| **QR** | `act1-wood` · `act1-water` · `act1-goat-badge` · `act1-iron-plate` |
+| **布布** | **只**掃木材 → 立刻 `enc_iggy_act1_bubo` |
+| **進度** | Stage 門檻 4 / 7 / 11 |
 
-**GM**：為 4 個道具印簽章 QR（GM 物品頁或 `build_item_qr_payload`）；部署後 `migrate` 會 upsert 新物品。
+**GM**：印 4 個簽章 QR；舊 `act1-lighter` 可忽略／停用。
 
 ---
 
