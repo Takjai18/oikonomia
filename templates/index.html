@@ -406,8 +406,62 @@
         #combat-module-container {
             min-height: 0;
         }
+        /*
+         * Combat V2 mobile shell: pin the action buttons.
+         * Without a capped height, flex-1 log grows with content and pushes
+         * #combat-v2-actions below the fold (long fights on phone).
+         */
         #combat-root-v2 {
             scroll-margin-top: 0;
+        }
+        #combat-root-v2:not(.hidden) {
+            position: fixed;
+            inset: 0;
+            z-index: 55;
+            width: 100%;
+            max-width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100vh;
+            max-height: 100dvh;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #09090b;
+            box-sizing: border-box;
+            padding-top: env(safe-area-inset-top, 0px);
+        }
+        @media (min-width: 1024px) {
+            #combat-root-v2:not(.hidden) {
+                max-width: 72rem; /* lg:max-w-6xl */
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
+            }
+        }
+        #combat-v2-log {
+            flex: 1 1 0%;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
+        #combat-v2-actions {
+            flex-shrink: 0;
+            position: relative;
+            z-index: 5;
+        }
+        body.combat-v2-active {
+            overflow: hidden !important;
+            touch-action: none;
+            overscroll-behavior: none;
+        }
+        body.combat-v2-active #nav-desktop,
+        body.combat-v2-active #hamburger-btn,
+        body.combat-v2-active #mobile-menu {
+            /* Nav sits under fixed combat shell (z-index 55) */
+            pointer-events: none;
         }
         #combat-v2-player-hp-bar {
             transition: none !important;
@@ -1433,6 +1487,13 @@
     }
     window.scrollCombatToTop = scrollCombatToTop;
 
+    function setCombatV2BodyLock(active) {
+        try {
+            document.body.classList.toggle('combat-v2-active', !!active);
+        } catch (_) { /* noop */ }
+    }
+    window.setCombatV2BodyLock = setCombatV2BodyLock;
+
     function revealCombatV2Surface() {
         // DOM-first: visible combat section before V2 init (avoids 0px reflow on restore)
         showSection('combat', { skipCombatLobbyLoad: true });
@@ -1446,6 +1507,7 @@
             if (el) setVisible(el, false);
         });
         document.getElementById('combat-root-v2')?.classList.remove('hidden');
+        setCombatV2BodyLock(true);
         requestAnimationFrame(() => scrollCombatToTop());
     }
 
@@ -1521,6 +1583,7 @@
                 const lobby = document.getElementById('combat-lobby');
                 if (lobby) lobby.classList.remove('hidden');
                 document.getElementById('combat-root-v2')?.classList.add('hidden');
+                setCombatV2BodyLock(false);
             }
         },
     };
@@ -1577,6 +1640,7 @@
         });
         setVisible(document.getElementById('combat-lobby'), true);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
+        setCombatV2BodyLock(false);
 
         if (!options.fromV2) {
             showToast('已安全退出戰場', 'info');
@@ -1601,6 +1665,7 @@
             setVisible(document.getElementById('combat-precheck-modal'), false);
             setVisible(document.getElementById('combat-near-death-overlay'), false);
             document.getElementById('combat-root-v2')?.classList.add('hidden');
+            setCombatV2BodyLock(false);
         }
         const fresh = await refreshSquadFromServer();
         if (fresh) {
@@ -1772,6 +1837,7 @@
         setVisible(document.getElementById('combat-precheck-modal'), false);
         setVisible(document.getElementById('combat-lobby'), false);
         document.getElementById('combat-root-v2')?.classList.add('hidden');
+        setCombatV2BodyLock(false);
         setVisible(document.getElementById('combat-result-panel'), true);
         const badEnding = data.trauma_bad_ending || data.ending_condition === 'bad_ending';
         const victory = data.outcome === 'victory';

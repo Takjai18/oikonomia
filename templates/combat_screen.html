@@ -1,8 +1,10 @@
-{# Combat V2 mount skeleton — included when COMBAT_V2 enabled #}
-<div id="combat-root-v2" class="combat-v2 relative flex flex-col min-h-[70vh] max-w-md lg:max-w-6xl mx-auto px-1 sm:px-0 hidden"
+{# Combat V2 mount skeleton — included when COMBAT_V2 enabled.
+   Layout: fixed viewport shell (see index.html #combat-root-v2 CSS) so the log
+   scrolls internally and action buttons stay pinned at the bottom on mobile. #}
+<div id="combat-root-v2" class="combat-v2 relative flex flex-col max-w-md lg:max-w-6xl mx-auto px-1 sm:px-0 hidden"
      data-testid="combat-v2-screen">
   <button type="button" id="combat-v2-practice-exit-btn"
-          class="hidden absolute top-2 right-2 z-10 px-2 py-1 rounded-lg bg-zinc-800/90 border border-zinc-600 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white"
+          class="hidden absolute top-2 right-2 z-20 px-2 py-1 rounded-lg bg-zinc-800/90 border border-zinc-600 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white"
           onclick="exitCombatScreen({ fromV2: true })"
           title="離開練習戰鬥">⚙ 離開戰鬥</button>
   <section id="combat-v2-hud" class="shrink-0 px-3 py-2 grid grid-cols-2 gap-2 max-h-20">
@@ -74,16 +76,22 @@
   </section>
 
   <section id="combat-v2-team-status"
-           class="shrink-0 px-3 py-1.5 border-y border-zinc-800/80 max-h-36 sm:max-h-40 overflow-y-auto space-y-0"
+           class="shrink-0 px-3 py-1.5 border-y border-zinc-800/80 max-h-24 sm:max-h-32 overflow-y-auto space-y-0"
            data-testid="combat-v2-team-status"
            aria-label="隊友與主角狀態"></section>
 
-  <div id="combat-v2-zoo-tip" class="hidden mx-3 mt-2"></div>
+  <div id="combat-v2-zoo-tip" class="hidden shrink-0 mx-3 mt-1"></div>
 
-  <section id="combat-v2-log" class="flex-1 overflow-y-auto px-3 py-2 text-sm min-h-0"></section>
+  {# Middle band: only this region scrolls as the fight log grows #}
+  <section id="combat-v2-log"
+           class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-2 text-sm"
+           aria-label="戰鬥紀錄"
+           data-testid="combat-v2-log"></section>
 
-  <section id="combat-v2-actions" class="shrink-0 p-3 grid grid-cols-2 gap-2 md:flex md:gap-3 md:flex-wrap"
-           style="touch-action: manipulation;">
+  {# Action dock — always visible above the fold / home indicator #}
+  <section id="combat-v2-actions"
+           class="shrink-0 p-3 pt-2 grid grid-cols-2 gap-2 md:flex md:gap-3 md:flex-wrap border-t border-zinc-800 bg-zinc-950"
+           style="touch-action: manipulation; padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));">
     <button type="button" id="combat-v2-attack-btn" data-testid="attack-btn"
             class="min-h-11 rounded-lg bg-red-600 text-white font-medium active:scale-95 transition-transform">⚔ 攻擊</button>
     <button type="button" id="combat-v2-defend-btn" data-testid="defend-btn"

@@ -117,10 +117,17 @@ export function createHudView(rootEl) {
       }
       if (!hpOnly && logEl) {
         const logs = ctx.hud?.log || [];
-        logEl.innerHTML = logs.slice(-12).map((e) => {
+        // Keep log short; shell scrolls only this panel so action buttons stay pinned.
+        logEl.innerHTML = logs.slice(-14).map((e) => {
           const msg = typeof e === 'string' ? e : (e.message || '');
-          return `<div class="text-zinc-400 text-xs py-0.5">${escapeHtml(msg)}</div>`;
+          return `<div class="text-zinc-400 text-xs py-0.5 leading-snug break-words">${escapeHtml(msg)}</div>`;
         }).join('');
+        // Stick to newest entries (mobile: no need to scroll the page for latest log).
+        requestAnimationFrame(() => {
+          try {
+            logEl.scrollTop = logEl.scrollHeight;
+          } catch (_) { /* noop */ }
+        });
       }
       if (practiceExitBtn) {
         const encounterId = ctx.hud?.encounter_id || '';
