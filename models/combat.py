@@ -1928,21 +1928,31 @@ def _combat_player_avatar_url(avatar, *, is_protagonist=False):
 
 
 def _combat_enemy_avatar_url(encounter=None):
+    """Resolve enemy art under static/images/enemies/ (svg/png/jpg/webp)."""
+    from urllib.parse import quote
+
     enemy_def = (encounter or {}).get("enemy", {}) if encounter else {}
     raw = (
         enemy_def.get("avatar")
         or enemy_def.get("portrait")
         or enemy_def.get("image")
         or ""
-    ).strip()
+    ).strip().replace("\\", "/")
     if not raw:
         return "/static/images/enemies/parasite_shadow.svg"
     if raw.startswith(("http://", "https://", "/")):
         return raw
+    # Allow "enemies/foo.png" or bare filename.
+    if raw.startswith("images/enemies/") or raw.startswith("static/images/enemies/"):
+        return "/" + raw.lstrip("/").removeprefix("static/")
     safe = os.path.basename(raw)
-    if safe.endswith(".svg"):
-        return f"/static/images/enemies/{safe}"
-    return f"/static/portraits/{safe}"
+    if not safe or safe in (".", ".."):
+        return "/static/images/enemies/parasite_shadow.svg"
+    lower = safe.lower()
+    if lower.endswith((".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif")):
+        return f"/static/images/enemies/{quote(safe, safe='')}"
+    # Legacy: bare id without extension → try enemies svg name
+    return f"/static/images/enemies/{quote(safe, safe='')}"
 
 
 def build_enemy_combat_stats(combat, encounter=None):

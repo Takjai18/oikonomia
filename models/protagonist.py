@@ -25,7 +25,7 @@ class ProtagonistLifeState(str, Enum):
 PROTAGONIST_PROFILES = {
     "iggy": {
         "display_name": "Iggy",
-        "avatar": "guardian_male_01.png",
+        "avatar": "iggy.jpg",
         "power": 100,
         "intellect": 85,
         "resilience": 90,

@@ -1,7 +1,10 @@
 """Narrative story content for the story UI — Iggy Arc (設定1)."""
 
 NARRATIVE_PORTRAITS = {
-    "Iggy": "/static/portraits/guardian_male_01.png",
+    # Art assets under static/portraits/ (ASCII filenames preferred)
+    "Iggy": "/static/portraits/iggy.jpg",
+    # Act 1 snow-mountain wounded state (optional character tag in lines)
+    "Iggy（重傷）": "/static/portraits/act1_injured_iggy.jpg",
     "Marah": "/static/portraits/healer_female_01.png",
     "Julian": "/static/portraits/seeker_female_02.png",
     "Savio": "/static/portraits/visionary_female_04.png",

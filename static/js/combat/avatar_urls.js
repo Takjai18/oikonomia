@@ -16,9 +16,13 @@ export function resolveCombatAvatarUrl(raw, { isProtagonist = false, isEnemy = f
     return trimmed;
   }
   if (isEnemy) {
+    if (trimmed.startsWith('images/enemies/') || trimmed.startsWith('static/images/enemies/')) {
+      return `/${trimmed.replace(/^\/+/, '').replace(/^static\//, '')}`;
+    }
     if (trimmed.includes('/')) return `/${trimmed.replace(/^\/+/, '')}`;
-    if (trimmed.endsWith('.svg')) return `/static/images/enemies/${trimmed}`;
-    return `/static/portraits/${trimmed}`;
+    // svg / png / jpg / webp all live under enemies/
+    const base = trimmed.split('/').pop() || trimmed;
+    return `/static/images/enemies/${encodeURIComponent(base).replace(/%2F/gi, '/')}`;
   }
   if (isProtagonist) return `/static/portraits/${trimmed}`;
   // Encode segments so "new avatars for players/Mike.jpg" works in URLs
