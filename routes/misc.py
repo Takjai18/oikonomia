@@ -227,18 +227,12 @@ def get_locations():
 
 @misc_bp.route("/global_events")
 def get_global_events():
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute("""
-        SELECT id, title, description, effect_type, effect_value, created_by, timestamp
-        FROM global_events
-        ORDER BY timestamp DESC
-        LIMIT 30
-    """).fetchall()
-    conn.close()
+    """Player-facing global event log (excludes GM rescue alerts)."""
+    from services.global_events import list_public_global_events
+
     return jsonify({
         "success": True,
-        "events": [dict(row) for row in rows],
+        "events": list_public_global_events(30),
     })
 
 

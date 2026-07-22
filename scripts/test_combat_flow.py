@@ -1716,10 +1716,27 @@ def test_combat_summon_gm_creates_global_event():
 
     conn = sqlite3.connect(_test_db_path())
     row = conn.execute(
-        "SELECT title, description FROM global_events ORDER BY rowid DESC LIMIT 1"
+        "SELECT id, title, description, effect_type FROM global_events ORDER BY rowid DESC LIMIT 1"
     ).fetchone()
     conn.close()
-    ok("summon_gm: global_events row", row and "救援訊號" in (row[0] or ""), str(row))
+    ok("summon_gm: global_events row", row and "救援訊號" in (row[1] or ""), str(row))
+    ok("summon_gm: effect_type gm_alert", row and row[3] == "gm_alert", str(row))
+
+    # Players must not see staff-only rescue alerts on public feeds.
+    pub = client.get("/announcements").get_json() or {}
+    anns = pub.get("announcements") or []
+    ok(
+        "summon_gm: hidden from player announcements",
+        not any("請求 GM 介入" in (a.get("message") or "") for a in anns),
+        str(anns)[:200],
+    )
+    ge = client.get("/global_events").get_json() or {}
+    events = ge.get("events") or []
+    ok(
+        "summon_gm: hidden from player global_events",
+        not any("救援訊號" in (e.get("title") or "") for e in events),
+        str(events)[:200],
+    )
 
     combat = get_combat(combat_id) or {}
     logs = combat.get("logs") or []
@@ -1728,6 +1745,19 @@ def test_combat_summon_gm_creates_global_event():
         any("求助" in (e.get("message") if isinstance(e, dict) else str(e)) for e in logs),
         str(logs[-3:]),
     )
+
+    # GM can dismiss the alert.
+    from services.gm_auth import establish_gm_session
+
+    with client.session_transaction() as sess:
+        establish_gm_session(sess)
+    event_id = row[0] if row else None
+    dismiss = client.delete(f"/gm/api/global_events/{event_id}").get_json() or {}
+    ok("summon_gm: GM dismiss success", dismiss.get("success"), str(dismiss))
+    conn = sqlite3.connect(_test_db_path())
+    still = conn.execute("SELECT 1 FROM global_events WHERE id = ?", (event_id,)).fetchone()
+    conn.close()
+    ok("summon_gm: row deleted", still is None, str(still))
 
     teardown_test_combat(team_id, enc_id)
 

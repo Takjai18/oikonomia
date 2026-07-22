@@ -727,13 +727,15 @@ def combat_summon_gm_api():
     display_name = squad.get("display_name") or squad_id
     team_id = squad.get("team_id") or "獨立隊員"
 
+    # Staff-only: effect_type=gm_alert is filtered from player /announcements
+    # and /global_events (see services.global_events.is_staff_only_event).
     create_global_event(
         title=f"🚨 戰場救援訊號：{display_name}",
         description=(
             f"Team [{team_id}] 在戰鬥 #{combat_id} 請求 GM 介入瀕死/崩潰狀態，"
             "需要工作人員手動重置或復活。"
         ),
-        effect_type="announcement",
+        effect_type="gm_alert",
         effect_value=int(combat_id),
         created_by=squad_id,
     )

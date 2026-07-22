@@ -375,16 +375,27 @@ GM_DASHBOARD_HTML = """
 
         <!-- Global Events Audit Log -->
         <div class="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 mt-6">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <h3 class="font-bold text-lg flex items-center gap-x-2 text-red-400">
                     <i class="fa-solid fa-history"></i>
                     <span>🌍 全球事件與工作人員操作日誌</span>
                 </h3>
-                <button type="button" onclick="refreshGmGlobalEventsLog()"
-                        class="text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl transition-colors">
-                    🔄 刷新日誌
-                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="clearGmAlertEvents()"
+                            class="text-xs px-3 py-1.5 bg-amber-900/40 hover:bg-amber-800/50 border border-amber-700/50 text-amber-200 rounded-xl transition-colors"
+                            title="清除所有戰場救援訊號（不影響正式公告）">
+                        清除救援訊號
+                    </button>
+                    <button type="button" onclick="refreshGmGlobalEventsLog()"
+                            class="text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl transition-colors">
+                        🔄 刷新日誌
+                    </button>
+                </div>
             </div>
+            <p class="text-[11px] text-zinc-500 mb-3">
+                戰場「請求 GM 介入」只顯示喺此日誌（玩家通告／全球事件記錄睇唔到）。
+                可逐則「消除」，或一次清走全部救援訊號。
+            </p>
             <div id="gm-global-events-container" class="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
                 <div class="text-zinc-500 text-sm py-4 text-center">點擊刷新載入事件日誌...</div>
             </div>
@@ -519,31 +530,83 @@ GM_DASHBOARD_HTML = """
                 }
 
                 container.innerHTML = data.events.map((ev) => {
-                    const badgeColor = ev.effect_type === 'announcement'
-                        ? 'bg-blue-900/40 text-blue-300'
-                        : 'bg-amber-900/40 text-amber-400';
+                    const isAlert = ev.effect_type === 'gm_alert'
+                        || (ev.title || '').includes('救援訊號')
+                        || (ev.description || '').includes('請求 GM 介入');
+                    const badgeColor = isAlert
+                        ? 'bg-red-900/40 text-red-300'
+                        : (ev.effect_type === 'announcement'
+                            ? 'bg-blue-900/40 text-blue-300'
+                            : 'bg-amber-900/40 text-amber-400');
                     const title = gmEscapeHtml(ev.title);
                     const desc = ev.description ? `<p class="text-zinc-400 mt-1 leading-relaxed">${gmEscapeHtml(ev.description)}</p>` : '';
                     const effectType = gmEscapeHtml(ev.effect_type || '指令');
                     const createdBy = gmEscapeHtml(ev.created_by || '系統');
                     const ts = gmEscapeHtml(ev.timestamp);
                     const effectValue = ev.effect_value ?? 0;
+                    const eid = Number(ev.id) || 0;
                     return `
                         <div class="text-xs bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center gap-x-2 flex-wrap gap-y-1">
                                     <span class="font-bold text-zinc-200 text-sm">${title}</span>
                                     <span class="px-1.5 py-0.5 rounded text-[10px] ${badgeColor}">${effectType}</span>
+                                    ${isAlert ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-400">僅 GM</span>' : ''}
                                 </div>
                                 ${desc}
                                 <div class="text-[10px] text-zinc-500 mt-1">執行者: <span class="font-mono text-zinc-400">${createdBy}</span> | 數值: ${effectValue}</div>
                             </div>
-                            <div class="text-[10px] text-zinc-500 font-mono text-right shrink-0">${ts}</div>
+                            <div class="flex flex-col items-end gap-1.5 shrink-0">
+                                <div class="text-[10px] text-zinc-500 font-mono text-right">${ts}</div>
+                                <button type="button" onclick="dismissGmGlobalEvent(${eid})"
+                                        class="text-[10px] px-2 py-1 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-red-950/50 hover:border-red-800 text-zinc-300 hover:text-red-200 transition-colors">
+                                    消除
+                                </button>
+                            </div>
                         </div>
                     `;
                 }).join('');
             } catch (err) {
                 container.innerHTML = '<div class="text-red-400 text-sm py-4 text-center">網路連線超時，請重試</div>';
+            }
+        }
+
+        async function dismissGmGlobalEvent(eventId) {
+            if (!eventId) return;
+            if (!confirm('確定消除此事件／通告？')) return;
+            try {
+                const res = await fetch('/gm/api/global_events/' + eventId, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showGmToast(data.message || '已消除', 'success');
+                    refreshGmGlobalEventsLog();
+                } else {
+                    showGmToast(data.error || '消除失敗', 'error');
+                }
+            } catch (err) {
+                showGmToast('網路錯誤，消除失敗', 'error');
+            }
+        }
+
+        async function clearGmAlertEvents() {
+            if (!confirm('清除全部「戰場救援訊號」？（正式 GM 公告會保留）')) return;
+            try {
+                const res = await fetch('/gm/api/global_events/clear_gm_alerts', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showGmToast(data.message || '已清除救援訊號', 'success');
+                    refreshGmGlobalEventsLog();
+                } else {
+                    showGmToast(data.error || '清除失敗', 'error');
+                }
+            } catch (err) {
+                showGmToast('網路錯誤，清除失敗', 'error');
             }
         }
 

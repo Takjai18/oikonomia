@@ -345,6 +345,44 @@ def _gm_global_events_log_response():
         return jsonify({"success": False, "error": f"資料庫繁忙: {exc}"}), 500
 
 
+@gm_bp.route("/api/global_events/<int:event_id>", methods=["DELETE"])
+def gm_delete_global_event_api(event_id):
+    """Dismiss one global event / announcement / GM alert."""
+    denied = _require_gm()
+    if denied:
+        return denied
+    from services.global_events import delete_global_event
+
+    try:
+        removed = delete_global_event(event_id)
+    except sqlite3.Error as exc:
+        current_app.logger.warning("gm_delete_global_event: %s", exc)
+        return jsonify({"success": False, "error": f"資料庫繁忙: {exc}"}), 500
+    if not removed:
+        return jsonify({"success": False, "error": "找不到該事件"}), 404
+    return jsonify({"success": True, "message": f"已消除事件 #{event_id}", "id": event_id})
+
+
+@gm_bp.route("/api/global_events/clear_gm_alerts", methods=["POST"])
+def gm_clear_gm_alerts_api():
+    """Bulk-dismiss staff-only rescue signals (gm_alert + legacy summon rows)."""
+    denied = _require_gm()
+    if denied:
+        return denied
+    from services.global_events import clear_staff_alert_events
+
+    try:
+        deleted = clear_staff_alert_events()
+    except sqlite3.Error as exc:
+        current_app.logger.warning("gm_clear_gm_alerts: %s", exc)
+        return jsonify({"success": False, "error": f"資料庫繁忙: {exc}"}), 500
+    return jsonify({
+        "success": True,
+        "message": f"已清除 {deleted} 則救援訊號",
+        "deleted": deleted,
+    })
+
+
 @gm_bp.route("/teams_overview")
 def gm_teams_overview():
     denied = _require_gm()

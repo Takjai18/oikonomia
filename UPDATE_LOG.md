@@ -6,6 +6,19 @@
 
 ---
 
+## 2026-07-22 — GM 瀕死救援訊號不再全營廣播
+
+| 項目 | 內容 |
+|------|------|
+| **症狀** | 玩家「請求 GM 介入瀕死」寫成 `effect_type=announcement`，全營通告／全球事件記錄都睇到 |
+| **修復** | 改 `gm_alert`；玩家 `/announcements` 與 `/global_events` 過濾 staff-only 與舊「救援訊號」列 |
+| **GM 消除** | 後台日誌每則「消除」；「清除救援訊號」一次清走全部 gm_alert／舊救援列 |
+| **API** | `DELETE /gm/api/global_events/<id>` · `POST /gm/api/global_events/clear_gm_alerts` |
+
+**勿重複建議**：把救援訊號再當 public announcement 發（應維持 `gm_alert`）。
+
+---
+
 ## 2026-07-22 — 設定1 Iggy Arc 寫入遊戲
 
 | 項目 | 內容 |
