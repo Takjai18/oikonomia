@@ -162,7 +162,7 @@ LOCATIONS = {
             "到達指定範圍後驗證定位，並影全組合照提交。"
         ),
     },
-    "act6_salvio_gate": {
+    "act6_savio_gate": {
         "name": "偽神領域入口",
         "hint": "最終戰前 · 影相",
         **_CAMP,
@@ -170,7 +170,7 @@ LOCATIONS = {
         "story_act": 6,
         "description": (
             "【Act 6】打破無傷神話——全組影一張「我們選擇真實的痛」的合照，"
-            "然後挑戰最終遭遇戰 enc_iggy_act6_salvio。"
+            "然後挑戰最終遭遇戰 enc_iggy_act6_savio。"
         ),
     },
     # ========== 營會探索小遊戲（保留） ==========

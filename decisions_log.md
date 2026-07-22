@@ -11,7 +11,7 @@
 |------|------|------|
 | 劇情 SSOT | `data/cosmos_lore.py`（法則／陣營／角色矩陣／六幕） | ✅ |
 | Stage 映射 | Act1→stage0；Act2→1；Act3–4→2；Act5–6→3；門檻 2／5／8 任務 | ✅ |
-| 主線 Boss | `enc_iggy_act2_polis`（**survive 5 回合**）、`enc_iggy_act4_julian`、`enc_iggy_act6_salvio` | ✅ |
+| 主線 Boss | `enc_iggy_act2_polis`（**survive 5 回合**）、`enc_iggy_act4_julian`、`enc_iggy_act6_savio` | ✅ |
 | 生存勝利 | `combat_settings.win_condition=survive` + `max_phases`；預設仍 `defeat_enemy` | ✅ |
 | City Hunt GPS | 美孚／深水埗／九龍塘／彩虹用 **placeholder** 座標，實地 pin 後再改 | 待實地 |
 | Where’s Iggy／迷宮圖 | 暫用既有 minigame 代替，正式素材後補 | 待素材 |
@@ -50,7 +50,7 @@
 
 1. Gemini review Phase 1 diff（`services/ending.py`、`player_status.py`、combat 路徑）
 2. GM `/gm` ending override + `gm_audit` log
-3. Good Ending narrative + Salvio Boss（Phase 3）
+3. Good Ending narrative + Savio Boss（Phase 3）
 4. 前端 exponential backoff（Wi‑Fi 不穩）
 
 ---

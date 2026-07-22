@@ -165,7 +165,7 @@ class RoundResult:
 
 - Event bus（僅當 encounter 類型 >10 或多系統整合時）
 - 前端 offline queue + 提交重試
-- Good Ending 完整演出 + Salvio Boss encounter
+- Good Ending 完整演出 + Savio Boss encounter
 
 ---
 

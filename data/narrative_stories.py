@@ -4,7 +4,7 @@ NARRATIVE_PORTRAITS = {
     "Iggy": "/static/portraits/guardian_male_01.png",
     "Marah": "/static/portraits/healer_female_01.png",
     "Julian": "/static/portraits/seeker_female_02.png",
-    "Salvio": "/static/portraits/visionary_female_04.png",
+    "Savio": "/static/portraits/visionary_female_04.png",
     "Donna": "/static/portraits/healer_female_01.png",
     "Judas": "/static/portraits/seeker_female_02.png",
     "旁白": "/static/portraits/visionary_female_04.png",
@@ -295,7 +295,7 @@ NARRATIVE_STORIES = {
                 "text": "這次……我不逃了。我們一起，把有毒的共生燒斷。",
             },
             {
-                "character": "Salvio",
+                "character": "Savio",
                 "text": (
                     "何必如此痛苦？回到我身邊。"
                     "無痛的烏托邦才是愛。——脆弱，才是罪。"
@@ -310,7 +310,7 @@ NARRATIVE_STORIES = {
             },
             {
                 "character": "旁白",
-                "text": "最後的領域在前方。擊敗 Salvio，摧毀有毒體制。",
+                "text": "最後的領域在前方。擊敗 Savio，摧毀有毒體制。",
             },
         ],
     },

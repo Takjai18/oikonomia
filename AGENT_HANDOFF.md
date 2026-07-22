@@ -718,7 +718,7 @@ GM stat：>100 唔被全營事件/item cap 壓返 100
 
 | 優先 | 項目 | 說明 |
 |------|------|------|
-| **內容** | Salvio 最終 Boss encounter | 用戶未寫好劇情 |
+| **內容** | Savio 最終 Boss encounter | 用戶未寫好劇情 |
 | **內容** | Marah 線 / 各 Stage 任務 + encounter | 同上 |
 | **內容** | Good Ending 完整演出 | 只得 `bad_ending` 鎖定；正面結局 narrative 待寫 |
 | **系統** | 主角瀕死禱告救援 | 用戶未設定好祈禱規則；現只支援玩家 squad |

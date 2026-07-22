@@ -2112,7 +2112,7 @@ PRODUCTION_ENCOUNTERS = (
     "enc_iggy_02_boundary",
     "enc_iggy_act2_polis",
     "enc_iggy_act4_julian",
-    "enc_iggy_act6_salvio",
+    "enc_iggy_act6_savio",
     "enc_marah_01_whisper",
 )
 

@@ -331,7 +331,7 @@ curl -s https://oikonomia.onrender.com/api/version | python3 -m json.tool
 ## 7. 已知待辦（Review 時唔重複當新 bug）
 
 見 `AGENT_HANDOFF.md`「尚未完成」一節，例如：
-- Salvio 最終 Boss encounter（劇情未寫）
+- Savio 最終 Boss encounter（劇情未寫）
 - Marah 線 / 各 Stage 任務 + encounter
 - Good Ending 完整演出
 - 主角瀕死禱告救援、祈禱系統整體（延後）
@@ -420,7 +420,7 @@ Bug 描述：<用戶描述>
 2. SQL 字串拼接 → ✅ 已核實無 exploit 路徑  
 3. Team/Squad Route SSOT → ⚠️ 讀取層完成；DB migration 可之後做  
 
-**仍值得做（非阻營會）**：刪 `squads.route` 欄位；20 人 HTTP 層壓測；Salvio Boss encounter；拆 `index.html` JS。
+**仍值得做（非阻營會）**：刪 `squads.route` 欄位；20 人 HTTP 層壓測；Savio Boss encounter；拆 `index.html` JS。
 
 ---
 

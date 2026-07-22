@@ -35,7 +35,7 @@
 
 | 項目 | 內容 |
 |------|------|
-| **內容** | Cosmos 法則／Polis·Oikos／六幕敘事／City Hunt 任務／Polis·Julian·Salvio 遭遇戰 |
+| **內容** | Cosmos 法則／Polis·Oikos／六幕敘事／City Hunt 任務／Polis·Julian·Savio 遭遇戰 |
 | **機制** | `win_condition: survive` + `max_phases`（Act2 Polis 5 回合不敗即勝）；提前擊殺仍勝 |
 | **檔案** | `data/cosmos_lore.py`、`story_config`、`narrative_stories`、`locations`、`enc_iggy_act2/4/6_*.json`、`models/combat.py` |
 | **未完成** | Where’s Wally 正式圖、真迷宮、醬板鴨／貼身物實體 props、MTR GPS 精確 pin |

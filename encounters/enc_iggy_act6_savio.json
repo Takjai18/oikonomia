@@ -1,14 +1,14 @@
 {
-  "encounter_id": "enc_iggy_act6_salvio",
-  "title": "Act 6：打破無傷神話——Salvio",
+  "encounter_id": "enc_iggy_act6_savio",
+  "title": "Act 6：打破無傷神話——Savio",
   "route": "iggy",
   "story_stage": 3,
   "trigger_type": "story",
   "location_hint": "偽神領域 · 無痛烏托邦",
-  "description": "Salvio 以彌賽亞姿態召喚無痛烏托邦：「何必痛苦？回到我身邊。脆弱才是罪。」Iggy 必須與你並肩，擊破有毒體制——愛有時需要必要的衝突與痛楚。",
+  "description": "Savio 以彌賽亞姿態召喚無痛烏托邦：「何必痛苦？回到我身邊。脆弱才是罪。」Iggy 必須與你並肩，擊破有毒體制——愛有時需要必要的衝突與痛楚。",
 
   "enemy": {
-    "name": "Salvio · 畸形巨獸",
+    "name": "Savio · 畸形巨獸",
     "hp": 210,
     "sanity": 35,
     "power": 50,
@@ -35,7 +35,7 @@
         "chance": 0.5
       }
     ],
-    "narrative": "偽神領域崩解。Salvio 的無傷神話被拆穿——真正的愛不消滅一切痛楚，而是在痛中仍選擇責任、界線與同行。Iggy 的鳳凰以涅槃之火燒斷有毒共生。",
+    "narrative": "偽神領域崩解。Savio 的無傷神話被拆穿——真正的愛不消滅一切痛楚，而是在痛中仍選擇責任、界線與同行。Iggy 的鳳凰以涅槃之火燒斷有毒共生。",
     "next_story_unlock": "iggy_ending"
   },
 
@@ -62,6 +62,6 @@
   "notes_for_gm": {
     "theological_focus": "Messiah complex · 無痛烏托邦 vs 真實的愛",
     "debrief_tips": "可對照 Oikos 溫室與 Polis 鎖鏈：兩極都是失衡",
-    "physical_integration": "可配合 act6_salvio_gate 影相；最終 debrief"
+    "physical_integration": "可配合 act6_savio_gate 影相；最終 debrief"
   }
 }

@@ -15,7 +15,7 @@ STORY_STAGE_THRESHOLDS = {
 STORY_STAGE_REQUIRED_TASKS = {
     # 1: ["act1_keepsake", "act1_sauce_duck"],
     # 2: ["act2_polis_survive"],
-    # 3: ["act4_julian", "act6_salvio"],
+    # 3: ["act4_julian", "act6_savio"],
 }
 
 STORY_CONTENT = {
@@ -45,7 +45,7 @@ STORY_CONTENT = {
             "title": "🔥 Act 5–6：業火與偽神",
             "content": (
                 "災難蔓延，Iggy 不再逃避，與你並肩燒斷有毒共生。"
-                "最後一關：直面 Salvio 的無痛烏托邦——打破無傷神話。"
+                "最後一關：直面 Savio 的無痛烏托邦——打破無傷神話。"
             ),
         },
     },

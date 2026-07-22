@@ -63,8 +63,8 @@ CHARACTERS = {
             "late": "恩典解藥——尊重意志，在痛楚中提供緩衝",
         },
     },
-    "salvio": {
-        "display_name": "Salvio",
+    "savio": {
+        "display_name": "Savio",
         "role": "antagonist",
         "archetype": "逃避者／彌賽亞情結 (Avoidant / Messiah Complex)",
         "myth": "「我可以代替別人承受一切痛苦，展現脆弱是軟弱的。」",
@@ -182,9 +182,9 @@ IGGY_ACTS = {
         "subtitle": "直面偽神與結局",
         "story_stage": 3,
         "summary": (
-            "直面 Salvio 的無痛烏托邦洗腦。Iggy 明白愛有時需要必要的衝突與痛楚，"
-            "最終擊破 Salvio 的領域，摧毀有毒體制。"
+            "直面 Savio 的無痛烏托邦洗腦。Iggy 明白愛有時需要必要的衝突與痛楚，"
+            "最終擊破 Savio 的領域，摧毀有毒體制。"
         ),
-        "tasks": ["擊敗 Salvio"],
+        "tasks": ["擊敗 Savio"],
     },
 }
