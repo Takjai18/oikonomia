@@ -1192,6 +1192,11 @@
             highlightSettingButton('size', fontSize);
             highlightSettingButton('dice', diceRollSpeed);
             applyFontSize(fontSize);
+            syncStoryAutoplaySpeedUi(
+                settings.autoPlaySpeed != null
+                    ? parseInt(settings.autoPlaySpeed, 10)
+                    : getStoryAutoplaySpeedLevel(),
+            );
 
             return settings;
         }
@@ -1207,10 +1212,12 @@
                 typewriterSpeed: getActiveSpeed(),
                 fontSize: getActiveFontSize(),
                 diceRollSpeed: getActiveDiceRollSpeed(),
+                autoPlaySpeed: getStoryAutoplaySpeedLevel(),
             };
 
             localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify(settings));
             applyFontSize(settings.fontSize);
+            syncStoryAutoplaySpeedUi(settings.autoPlaySpeed);
         }
 
         function applyFontSize(size) {
@@ -1934,8 +1941,58 @@
         let isStoryAutoPlaying = false;
         const storyAutoShown = new Set();
         const STORY_READ_STORAGE_KEY = 'read_stories';
-        const STORY_AUTOPLAY_PAUSE_MS = 1400;
+        /** Autoplay pause after line fully shown (ms). Slider level 1=slow … 5=fast. */
+        const STORY_AUTOPLAY_PAUSE_BY_LEVEL = {
+            1: 3200,
+            2: 2200,
+            3: 1400,
+            4: 900,
+            5: 500,
+        };
+        const STORY_AUTOPLAY_SPEED_LABELS = {
+            1: '很慢',
+            2: '慢',
+            3: '正常',
+            4: '快',
+            5: '很快',
+        };
         let serverReadStories = null;
+
+        function getStoryAutoplaySpeedLevel() {
+            const raw = getGameSettings().autoPlaySpeed;
+            const n = parseInt(raw, 10);
+            if (Number.isFinite(n) && n >= 1 && n <= 5) return n;
+            return 3;
+        }
+
+        function getStoryAutoplayPauseMs() {
+            return STORY_AUTOPLAY_PAUSE_BY_LEVEL[getStoryAutoplaySpeedLevel()] || 1400;
+        }
+
+        function syncStoryAutoplaySpeedUi(level) {
+            const lv = level != null ? level : getStoryAutoplaySpeedLevel();
+            const slider = document.getElementById('story-autoplay-speed');
+            const label = document.getElementById('story-autoplay-speed-label');
+            if (slider && String(slider.value) !== String(lv)) slider.value = String(lv);
+            if (label) label.textContent = STORY_AUTOPLAY_SPEED_LABELS[lv] || '正常';
+        }
+
+        function onStoryAutoplaySpeedChange(value) {
+            const lv = Math.max(1, Math.min(5, parseInt(value, 10) || 3));
+            const prev = getGameSettings();
+            try {
+                localStorage.setItem(
+                    GAME_SETTINGS_KEY,
+                    JSON.stringify({ ...prev, autoPlaySpeed: lv }),
+                );
+            } catch (_) { /* noop */ }
+            syncStoryAutoplaySpeedUi(lv);
+            // If currently autoplaying, re-schedule with new pace after current line finishes.
+            if (isStoryAutoPlaying && !isStoryTyping) {
+                scheduleStoryAutoAdvance();
+            }
+        }
+        window.onStoryAutoplaySpeedChange = onStoryAutoplaySpeedChange;
 
         function getReadStories() {
             try {
@@ -1996,11 +2053,12 @@
             void progressBar.offsetWidth;
         }
 
-        function animateAutoplayProgress(durationMs = STORY_AUTOPLAY_PAUSE_MS) {
+        function animateAutoplayProgress(durationMs) {
+            const ms = durationMs != null ? durationMs : getStoryAutoplayPauseMs();
             const progressBar = document.getElementById('autoplay-progress');
             if (!progressBar || !isStoryAutoPlaying) return;
             resetAutoplayProgress();
-            progressBar.style.transition = `width ${durationMs}ms linear`;
+            progressBar.style.transition = `width ${ms}ms linear`;
             requestAnimationFrame(() => {
                 progressBar.style.width = '100%';
             });
@@ -2032,11 +2090,12 @@
             const line = currentStory?.lines?.[currentLineIndex];
             if (line?.choices?.length) return;
             if (storyAutoPlayTimer) clearTimeout(storyAutoPlayTimer);
-            animateAutoplayProgress(STORY_AUTOPLAY_PAUSE_MS);
+            const pauseMs = getStoryAutoplayPauseMs();
+            animateAutoplayProgress(pauseMs);
             storyAutoPlayTimer = setTimeout(() => {
                 storyAutoPlayTimer = null;
                 if (isStoryAutoPlaying && !isStoryTyping) nextStoryLine();
-            }, STORY_AUTOPLAY_PAUSE_MS);
+            }, pauseMs);
         }
 
         function typewriterStoryText(textEl, text, onDone) {
@@ -2154,6 +2213,7 @@
                 if (autoplayText) autoplayText.textContent = '停止播放';
             }
 
+            syncStoryAutoplaySpeedUi();
             showCurrentStoryLine();
         }
 
@@ -5491,6 +5551,27 @@
                             class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-zinc-950 font-semibold rounded-2xl text-sm tracking-wider transition-colors">
                         繼續
                     </button>
+                </div>
+
+                <div class="mt-3 px-1" id="story-autoplay-speed-wrap">
+                    <div class="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5">
+                        <span>自動播放速度</span>
+                        <span id="story-autoplay-speed-label" class="text-amber-400/90 font-medium">正常</span>
+                    </div>
+                    <input type="range"
+                           id="story-autoplay-speed"
+                           min="1"
+                           max="5"
+                           step="1"
+                           value="3"
+                           class="w-full h-2 accent-amber-500 cursor-pointer"
+                           style="touch-action: pan-x; -webkit-appearance: none; appearance: none; height: 8px; border-radius: 9999px; background: #3f3f46;"
+                           oninput="onStoryAutoplaySpeedChange(this.value)"
+                           aria-label="自動播放速度">
+                    <div class="flex justify-between text-[10px] text-zinc-600 mt-1 px-0.5">
+                        <span>慢</span>
+                        <span>快</span>
+                    </div>
                 </div>
             </div>
         </div>
