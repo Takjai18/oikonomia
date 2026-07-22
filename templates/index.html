@@ -1150,6 +1150,15 @@
             }
         }
 
+        /** Default ON: long prologues (序章) read better without typewriter. */
+        function isTypewriterDisabled() {
+            const s = getGameSettings();
+            if (s.disableTypewriter === undefined || s.disableTypewriter === null) {
+                return true;
+            }
+            return !!s.disableTypewriter;
+        }
+
         function loadSettings() {
             const settings = getGameSettings();
 
@@ -1160,7 +1169,20 @@
 
             const disableTypewriterEl = document.getElementById('setting-disable-typewriter');
             if (disableTypewriterEl) {
-                disableTypewriterEl.checked = !!settings.disableTypewriter;
+                // Default checked when never set (序章長文：即時顯示)
+                const disabled = settings.disableTypewriter === undefined
+                    || settings.disableTypewriter === null
+                    ? true
+                    : !!settings.disableTypewriter;
+                disableTypewriterEl.checked = disabled;
+                if (settings.disableTypewriter === undefined || settings.disableTypewriter === null) {
+                    try {
+                        localStorage.setItem(
+                            GAME_SETTINGS_KEY,
+                            JSON.stringify({ ...settings, disableTypewriter: true }),
+                        );
+                    } catch (_) { /* noop */ }
+                }
             }
 
             const speed = settings.typewriterSpeed || 'normal';
@@ -1181,8 +1203,7 @@
                     ?? prev.autoPlayStory
                     ?? false,
                 disableTypewriter: document.getElementById('setting-disable-typewriter')?.checked
-                    ?? prev.disableTypewriter
-                    ?? false,
+                    ?? (prev.disableTypewriter === undefined ? true : !!prev.disableTypewriter),
                 typewriterSpeed: getActiveSpeed(),
                 fontSize: getActiveFontSize(),
                 diceRollSpeed: getActiveDiceRollSpeed(),
@@ -2024,7 +2045,7 @@
             textEl.textContent = '';
             const content = text || '';
 
-            if (getGameSettings().disableTypewriter) {
+            if (isTypewriterDisabled()) {
                 textEl.textContent = content;
                 if (onDone) onDone();
                 scheduleStoryAutoAdvance();
@@ -5416,26 +5437,28 @@
         </div>
     </div>
 
-    <!-- 劇情介面 -->
+    <!-- 劇情介面（長序章：預設即時全文、大文字框） -->
     <div id="story-modal"
          onclick="if (event.target.id === 'story-modal') tryCloseStoryModal()"
-         class="hidden fixed inset-0 bg-black/95 z-[60] items-center justify-center">
-        <div class="w-full max-w-md px-4" onclick="event.stopPropagation()">
-            <div class="text-center mb-4">
+         class="hidden fixed inset-0 bg-black/95 z-[60] items-center justify-center overflow-y-auto py-4">
+        <div class="w-full max-w-lg px-4 my-auto" onclick="event.stopPropagation()">
+            <div class="text-center mb-3">
                 <div id="story-chapter" class="text-amber-400 text-sm tracking-[2px] font-medium"></div>
                 <div id="story-stage" class="text-white text-lg font-semibold mt-0.5"></div>
                 <div id="story-title" class="text-zinc-400 text-sm mt-1"></div>
             </div>
 
-            <div class="flex flex-col items-center mb-4">
-                <div class="w-24 h-24 rounded-full overflow-hidden border-[6px] border-zinc-800 shadow-2xl mb-2">
+            <div class="flex flex-col items-center mb-3">
+                <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-[5px] border-zinc-800 shadow-2xl mb-1.5">
                     <img id="story-portrait" class="w-full h-full object-cover" alt="角色" src="/static/portraits/guardian_male_01.png">
                 </div>
                 <div id="story-character-name" class="text-xs text-amber-400/90 tracking-wide"></div>
             </div>
 
-            <div class="bg-zinc-900 border border-zinc-700 rounded-3xl px-6 py-7 min-h-[140px] flex items-center">
-                <div id="story-text" class="text-white text-[15px] leading-relaxed text-center w-full"></div>
+            <div id="story-text-box"
+                 class="bg-zinc-900 border border-zinc-700 rounded-3xl px-5 sm:px-6 py-5 sm:py-6 min-h-[220px] max-h-[min(52vh,420px)] overflow-y-auto flex items-start -webkit-overflow-scrolling-touch">
+                <div id="story-text"
+                     class="text-white text-[16px] sm:text-[17px] leading-[1.75] text-left w-full whitespace-pre-wrap"></div>
             </div>
 
             <div id="story-choices" class="mt-4 space-y-3 hidden"></div>
@@ -5515,10 +5538,10 @@
                     <div class="settings-row">
                         <div class="min-w-0">
                             <div class="font-medium text-sm">即時顯示文字</div>
-                            <div class="text-[11px] text-zinc-500 hidden sm:block">關閉打字機效果</div>
+                            <div class="text-[11px] text-zinc-500">預設開啟：長序章一次顯示全文（關閉＝打字機）</div>
                         </div>
                         <label class="relative inline-flex shrink-0 items-center cursor-pointer">
-                            <input type="checkbox" id="setting-disable-typewriter" class="sr-only peer" onchange="saveSettings()">
+                            <input type="checkbox" id="setting-disable-typewriter" class="sr-only peer" checked onchange="saveSettings()">
                             <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
                         </label>
                     </div>
