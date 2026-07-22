@@ -2,11 +2,38 @@
 
 > **用途**：只更新遊戲劇情／文案時用。  
 > **目標**：慳 token——**唔好**讀 combat、部署、GEMINI、COMBAT bundle、全站 assessment。  
-> **讀者**：Grok Build（實作）· 用戶交劇情稿時請標 **【劇情更新】**
+> **讀者**：Grok Build（實作）· 用戶交劇情稿時請標 **【劇情更新】**  
+> **路徑**：`/Users/mingtakyau/Documents/oikonomia/STORY_README.md`（repo 根目錄）
 
 ---
 
-## 0. 開場必做（只做這些）
+## 給用戶：點開新 Grok Build chat
+
+1. **開一個全新 Grok Build 對話**（唔好沿用塞滿 audit 嘅舊 chat）。  
+2. **第一句只貼下面「開場白」**（或 `@` / 附上本檔 `STORY_README.md`）。  
+3. 喺開場白下面 **貼你要改嘅劇情**（或講改邊段）。  
+4. Build 應 **只跟本檔** 做事，唔使你再解釋專案架構。
+
+### 開場白（複製即用）
+
+```
+【劇情更新 · 慳 token】
+工作目錄：/Users/mingtakyau/Documents/oikonomia
+請先只讀 STORY_README.md（本專案根目錄），然後嚴格跟該檔執行。
+禁止讀 COMBAT_*、GEMINI_REVIEW、bug_log、AGENT_HANDOFF 全文、combat JS。
+除非我叫你 commit+push，否則只改檔、簡短回報。
+
+範圍：<例如 iggy_stage0 或 welcome>
+內容：
+<喺呢度貼新對白，或寫「把第 N 段改成…」>
+完成：commit+push   ← 唔要就刪呢行
+```
+
+Build 讀完本檔就會知：改邊啲 `data/*`、`story_id` 格式、驗證指令、回覆要幾短。
+
+---
+
+## 0. Grok Build 開場必做（只做這些）
 
 1. **只讀本檔** + 下面列出的 **data 檔**（按任務選讀）。  
 2. **禁止**主動讀：`models/combat.py`、`static/js/combat/**`、`COMBAT_V2_*`、`GEMINI_REVIEW.md`、`bug_log/**`、整份 `AGENT_HANDOFF.md`（除非用戶明確要求接戰鬥敘事）。  
