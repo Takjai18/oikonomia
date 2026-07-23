@@ -1,11 +1,11 @@
 {
   "encounter_id": "enc_iggy_act4_julian",
-  "title": "Act 4：血田的獠牙——Julian",
+  "title": "Act 5：彩虹月台——Julian 變色龍",
   "route": "iggy",
   "story_stage": 2,
   "trigger_type": "story",
-  "location_hint": "記憶重組後 · 血田領域",
-  "description": "Iggy 首次說出「不」，麻醉之炎轉為涅槃之火。Julian 露出真面目：他不是引路人，而是操縱型控制狂——發動「血田」，要收割剛覺醒的鳳凰之力。",
+  "location_hint": "彩虹站月台",
+  "description": "面具撕下。Julian 使出 Simon 的「蜜獾·狂化重擊」，並坦言 Zoo「變色龍」——要 Iggy 甘願交出鳳凰之力。挺身迎戰！",
 
   "enemy": {
     "name": "Julian · 血田",
@@ -35,8 +35,8 @@
         "chance": 0.45
       }
     ],
-    "narrative": "血田的獠牙被壓下。Julian 無法承受涅槃之火背後「承擔真實痛苦與責任」的重量——他的能力開始暴走。溫室的裂痕，即將變成業火。",
-    "next_story_unlock": "iggy_act5"
+    "narrative": "Iggy 二次覺醒為涅槃金焰，全隊並肩擊敗 Julian。遠方天空卻染上紫黑——Oikos 集體暴走的序幕。",
+    "next_story_unlock": "iggy_act6_approach"
   },
 
   "failure": {

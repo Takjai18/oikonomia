@@ -1,11 +1,11 @@
 {
   "encounter_id": "enc_iggy_act6_savio",
-  "title": "Act 6：打破無傷神話——Savio",
+  "title": "Act 6：Necessary Pain——暴走 Savio",
   "route": "iggy",
   "story_stage": 3,
   "trigger_type": "story",
-  "location_hint": "偽神領域 · 無痛烏托邦",
-  "description": "Savio 以彌賽亞姿態召喚無痛烏托邦：「何必痛苦？回到我身邊。脆弱才是罪。」Iggy 必須與你並肩，擊破有毒體制——愛有時需要必要的衝突與痛楚。",
+  "location_hint": "西貢戶外康樂中心（SKORC）",
+  "description": "黑色臍帶纏繞總部。Goat 能力超載，Savio 畸變暴走。與 Iggy 的涅槃金焰並肩，切斷病態鎖鏈——必要的痛。",
 
   "enemy": {
     "name": "Savio · 畸形巨獸",
@@ -35,8 +35,8 @@
         "chance": 0.5
       }
     ],
-    "narrative": "偽神領域崩解。Savio 的無傷神話被拆穿——真正的愛不消滅一切痛楚，而是在痛中仍選擇責任、界線與同行。Iggy 的鳳凰以涅槃之火燒斷有毒共生。",
-    "next_story_unlock": "iggy_ending"
+    "narrative": "痛楚與現實的摩擦力重回每個人身上。Savio 卸下虛假救世主重擔——Cosmos 重獲健康的界線法則。",
+    "next_story_unlock": "iggy_ending_victory"
   },
 
   "failure": {

@@ -59,13 +59,19 @@ def list_encounters_api():
         session.get("is_gm")
         or os.environ.get("OIKONOMIA_SHOW_TEST_ENCOUNTERS", "").lower() in ("1", "true", "yes")
     )
+    from services.progression import is_encounter_unlocked, is_gm_unlock_mode
+
+    unlock_mode = is_gm_unlock_mode(squad_id)
     encounters = []
     for enc in load_all_encounters():
         if not encounter_visible_to_player(enc, show_test=show_test):
             continue
         if not encounter_route_matches(enc.get("route"), route):
             continue
-        if enc.get("story_stage", 0) > stage:
+        # Progressive: story_stage still applies unless GM unlock mode.
+        if not unlock_mode and enc.get("story_stage", 0) > stage:
+            continue
+        if not is_encounter_unlocked(squad, enc.get("encounter_id"), encounter=enc):
             continue
         completed = encounter_already_completed(team_id, enc["encounter_id"]) if team_id else False
         replayable = encounter_is_replayable(enc)

@@ -63,6 +63,14 @@ def submit_task():
     if not task_id or task_id not in LOCATIONS:
         return jsonify({"success": False, "error": "無效任務"}), 400
 
+    from services.progression import is_task_unlocked, task_lock_reason, grant_task_story_unlocks
+
+    if not is_task_unlocked(squad, task_id):
+        return jsonify({
+            "success": False,
+            "error": task_lock_reason(squad, task_id) or "此任務尚未解鎖（請先完成前置劇情）",
+        }), 403
+
     loc = LOCATIONS[task_id]
     task_type = loc.get("task_type") or ""
 
@@ -148,14 +156,17 @@ def submit_task():
             new_count, new_tasks = count_team_distinct_tasks(session["squad_id"], team_id)
             old_stage = resolve_story_stage(old_count, old_tasks)
             new_stage = resolve_story_stage(new_count, new_tasks)
+            # Progressive: task completion may queue the next story beat (not whole act).
+            unlock_story = grant_task_story_unlocks(squad, task_id)
             pending_story_id = None
-            if new_stage > old_stage and squad:
-                pending_story_id = get_pending_story_id(squad)
+            if squad:
+                pending_story_id = get_pending_story_id(squad) or unlock_story
             return jsonify({
                 "success": True,
                 "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）",
                 "pending_story_id": pending_story_id,
                 "stage": new_stage,
+                "stage_advanced": new_stage > old_stage,
             })
         return jsonify({
             "success": True,

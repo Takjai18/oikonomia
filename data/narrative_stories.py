@@ -207,13 +207,15 @@ NARRATIVE_STORIES = {
     # —— Act 2 ——
     "iggy_stage1": {
         "story_id": "iggy_stage1",
-        "chapter": "第二章 · 逃亡",
-        "title": "抉擇與邊界",
+        "chapter": "第二章 · Avoidant",
+        "title": "吐血的推拒",
         "current_stage": 2,
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 1,
         "requires_team": True,
+        # Only after Act1 escape task (see TASK_STORY_UNLOCKS) — not by task-count alone.
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -271,16 +273,13 @@ NARRATIVE_STORIES = {
                 "一律視為同謀擊斃！」——完全不聽解釋。"
             )},
             {"character": "旁白", "text": (
-                "⚔️ 請到遭遇列表挑戰「Act 2：Polis 追擊」——擊退追兵。"
+                "⚔️ 請到探索完成「Polis 追兵」準備，並在遭遇列表挑戰"
+                "「Act 2：Polis 追擊」——擊退追兵。"
                 "（5 回合內存活即勝，或擊敗敵人。）"
             )},
             {"character": "旁白", "text": (
-                "戰鬥後：看著倒地的士兵，你們大口喘氣。"
-                "「可惡……完全不聽人講嘢！」"
-                "你們看著性命危在旦夕的 Iggy——"
-                "反正自己向來欣賞 Oikos「建立無痛世界」的理想；"
-                "現在打了 Polis 士兵，已經洗濕咗個頭。"
-                "不如帶他下山，嘗試聯絡 Oikos……甚至正式加入！"
+                "戰鬥勝利後，將繼續解鎖下山與村莊的劇情——"
+                "現在，先守住這一仗。"
             )},
         ],
     },
@@ -305,81 +304,361 @@ NARRATIVE_STORIES = {
             )},
             {"character": "旁白", "text": (
                 "🧩 請完成探索任務「潛行下山」——避開 Polis 哨塔與雷達封鎖線，"
-                "帶 Iggy 偷渡下山。"
+                "帶 Iggy 偷渡下山。成功後將抵達山下村莊。"
             )},
         ],
     },
-    # —— Act 3 ——
+    "iggy_act2_post_polis": {
+        "story_id": "iggy_act2_post_polis",
+        "chapter": "第二章 · 分支 A",
+        "title": "洗濕個頭",
+        "current_stage": 2,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 1,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "看著倒地的士兵，你們大口喘氣。"
+                "「可惡……完全不聽人講嘢！」"
+            )},
+            {"character": "旁白", "text": (
+                "你們看著性命危在旦夕的 Iggy——"
+                "反正自己向來欣賞 Oikos「建立無痛世界」的理想；"
+                "現在打了 Polis 士兵，已經洗濕咗個頭，沒有回頭路了。"
+            )},
+            {"character": "旁白", "text": (
+                "不如帶他下山，嘗試聯絡 Oikos 其他成員——"
+                "甚至可能被記上一功，正式加入 Oikos！"
+            )},
+        ],
+    },
+    # —— Act 3：村莊（分段，唔一次過劇透）——
     "iggy_stage2": {
         "story_id": "iggy_stage2",
-        "chapter": "第三章 · 記憶之路",
-        "title": "村莊 · Julian · Albert",
+        "chapter": "第三章 · Village",
+        "title": "山下的村莊",
         "current_stage": 3,
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
         "requires_team": True,
+        "unlock_only": True,  # after Act2 branch task complete
         "skippable": True,
         "replayable": True,
         "lines": [
             {"character": "旁白", "text": (
-                "順利擺脫追兵後，你們背著虛弱的 Iggy，"
-                "來到飛狐雪山腳下的一座寧靜村莊。"
+                "順利擺脫了 Polis 的追兵後，你們背著依然虛弱的 Iggy，"
+                "來到了飛狐雪山腳下的一座寧靜村莊。"
             )},
             {"character": "旁白", "text": (
                 "為了尋找 Oikos 的線索，你們在村子裡到處打探——"
-                "希望能把 Iggy 交還 Oikos，甚至加入這個渴望建立無痛世界的組織。"
+                "希望找到能將 Iggy 交還給 Oikos 的方法，"
+                "甚至希望有機會加入這個夢寐以求、渴望建立無痛世界的組織。"
             )},
             {"character": "旁白", "text": (
-                "🧩 請完成「村莊情報」任務。成功後，一位婦人認出了 Iggy——"
-                "他是 Oikos 內部要員，並好心收留你們。"
+                "🧩 請完成探索任務「村莊情報」。"
+            )},
+        ],
+    },
+    "iggy_act3_shelter": {
+        "story_id": "iggy_act3_shelter",
+        "chapter": "第三章 · Village",
+        "title": "庇護與逃脫",
+        "current_stage": 3,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "經過一番努力，你們終於找到一位了解 Oikos 的婦人。"
+                "婦人看見你們懷中昏迷的男子，以及他隨身的羊頭徽章與鐵片名牌，驚呼出聲——"
+                "她認出這名受傷男子就是 Iggy，而且是 Oikos 內部的要員！"
             )},
             {"character": "旁白", "text": (
-                "平靜沒有維持多久。Polis 士兵闖入村莊搜查。"
-                "你們轉身時發現——床榻空無一人，Iggy 又偷偷離開了！"
+                "婦人好心地收留了你們。在溫暖的木屋裡住了幾天，"
+                "Iggy 身體逐漸復元，臉上恢復血色——"
+                "只是記憶依然空白，眼神總帶著不安與迷惘。"
             )},
             {"character": "旁白", "text": (
-                "🧩 請完成「搜尋 Iggy」任務。找到他後，Polis 強光掃來——"
-                "⚔️ 進入村莊包圍戰。"
+                "然而平靜沒有維持多久。"
+                "這天清晨，村莊外傳來雜亂刺耳的金屬靴聲，伴隨 Polis 士兵粗暴的喧嘩！"
+            )},
+            {"character": "旁白", "text": (
+                "「全村人聽著！治安局收到消息，有 Oikos 可疑人物來到此村莊！"
+                "任何人敢包庇恐怖份子，一律同罪！」"
+            )},
+            {"character": "旁白", "text": (
+                "你們正商討對策，打算偷偷帶走 Iggy……"
+                "轉過頭時卻震驚地發現——床榻空無一人，Iggy 已經偷偷離開了木屋！"
+            )},
+            {"character": "旁白", "text": (
+                "「這個傻瓜……他又想一個人跑掉，以為這樣就不會連累大家嗎？！」"
+                "🧩 請完成「搜尋 Iggy」任務。"
+            )},
+        ],
+    },
+    "iggy_act3_found_iggy": {
+        "story_id": "iggy_act3_found_iggy",
+        "chapter": "第三章 · Village",
+        "title": "後山包圍",
+        "current_stage": 3,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "憑藉團隊配合，你們終於在村莊後山找到了 Iggy。"
+                "然而還未鬆一口氣，幾束強光手電筒瞬間掃向你們！"
+            )},
+            {"character": "旁白", "text": "「在這裡！發現可疑目標！」"},
+            {"character": "旁白", "text": (
+                "⚔️ 幾名 Polis 士兵圍攻過來——請完成「村莊包圍戰」並進入遭遇列表戰鬥。"
+            )},
+        ],
+    },
+    "iggy_act3_julian": {
+        "story_id": "iggy_act3_julian",
+        "chapter": "第三章 · Village",
+        "title": "Julian 登場",
+        "current_stage": 3,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "戰鬥中 Polis 追兵火力強大，你們逐漸陷入絕望。"
+                "就在千鈞一髮之際——"
+            )},
+            {"character": "旁白", "text": "「血田·刺藤！」"},
+            {"character": "旁白", "text": (
+                "數根暗紅色的藤蔓突然爆裂而出，瞬間將 Polis 士兵重重抽飛！"
+                "一道披著灰色斗篷的身影躍下，迅速擊退追兵，救走了你們！"
             )},
             {"character": "Julian", "text": (
                 "別害怕，你們安全了。我叫 Julian……也是 Oikos 的成員。"
             )},
             {"character": "Julian", "text": (
-                "Iggy 失去記憶，Zoo 力量也沉寂了。"
-                "若要醫治他，必須找到最神秘的「神醫」——Albert 師兄。"
-                "只有 Savio 比較清楚他在哪……不過附近紅牆上有定位的提示。"
+                "Iggy 不僅失去記憶，連體內的 Zoo 力量也完全沉寂了……"
+                "若要醫治他，必須找到 Oikos 最神秘的「神醫」——Albert 師兄。"
+            )},
+            {"character": "Julian", "text": (
+                "Albert 師兄為躲避 Polis 地毯式搜捕，行蹤極神秘。"
+                "整個 Oikos 裡，只有 Savio 比較清楚他在哪。"
+                "不過據我所知——村莊附近有一塊紅色的牆，上面畫著附近風景和建築。"
+                "Albert 說過：若將來有事找他，可以在那道牆施展定位……"
             )},
             {"character": "旁白", "text": (
-                "🎮 請依序完成 City Hunt：尋找 Albert Ching 1→5，"
-                "最後前往彩虹站集合。"
+                "🎮 請完成「CHing 1 · 荃灣紅牆」GPS 定位。"
+                "之後會一步步解鎖下一站——不要急，一步一步來。"
+            )},
+        ],
+    },
+    "iggy_act4_albert_test": {
+        "story_id": "iggy_act4_albert_test",
+        "chapter": "第四章 · Memory",
+        "title": "Albert 師兄",
+        "current_stage": 3,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "葵芳月台的角落裡，一位溫和卻透徹的男子收起短刃——"
+                "他剛剛測試了你們的實力。"
+            )},
+            {"character": "旁白", "text": (
+                "「大腦啟動了自我保護機制……過往那些不能承受的傷口，被他自己親手埋藏了。"
+                "要重新握緊體內那股火，你們必須帶他走一遍來時的路，"
+                "讓他親眼看一看，自己究竟在逃避甚麼。」"
+            )},
+            {"character": "旁白", "text": (
+                "下一個地點已解鎖：美孚站——解封第一道記憶。"
+            )},
+        ],
+    },
+    "iggy_act4_meifoo": {
+        "story_id": "iggy_act4_meifoo",
+        "chapter": "第四章 · Memory",
+        "title": "美孚 · 第一道碎片",
+        "current_stage": 3,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "美孚站轉車隧道的舊街壁畫前，Iggy 呆立著，"
+                "目光死死凝視畫中角落那座舊式唐樓的樓梯口——"
+                "突然雙腿一軟，重重跪倒在地板上。"
+            )},
+            {"character": "Iggy", "text": (
+                "是我不夠好……一定是那天我不夠聽話……我太笨了……他們才不要我的……"
+            )},
+            {"character": "旁白", "text": (
+                "你們握住他凍得發冰的手："
+                "「那不是你的錯。當年轉身走掉的是他們。"
+                "你不需要為了讓別人留下來，而把自己折磨得面目全非。」"
+            )},
+            {"character": "旁白", "text": (
+                "【第一道記憶碎片，重組完成】——下一站：深水埗通渠佬。"
+                "（繼續完成 CHing 鏈即可前進。）"
+            )},
+        ],
+    },
+    "iggy_act4_phoenix": {
+        "story_id": "iggy_act4_phoenix",
+        "chapter": "第四章 · Memory",
+        "title": "再生火焰",
+        "current_stage": 3,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 2,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "九龍塘「八乘八」前，Iggy 誠實面對創傷與軟弱——"
+                "極致耀眼的純白光芒從他體內轟然爆發！"
+            )},
+            {"character": "Iggy", "text": (
+                "我……我真的很痛……我真的快要撐不下去了啊啊啊——！"
+            )},
+            {"character": "旁白", "text": (
+                "那一股沉寂已久、帶著溫暖與強大生命力的「再生火焰 (Phoenix Fire)」，"
+                "如璀璨的金色羽翼在他背後騰空而起！"
+            )},
+            {"character": "旁白", "text": (
+                "【系統廣播】記憶任務完成！Iggy 已重執再生火焰！"
+                "請全體小隊立刻前往彩虹站，與 Julian 會合！"
+            )},
+            {"character": "Iggy", "text": "走吧……彩虹站。這一次，我不會再跑了。"},
+        ],
+    },
+    "iggy_act5_betrayal": {
+        "story_id": "iggy_act5_betrayal",
+        "chapter": "第五章 · Pain Alone",
+        "title": "彩虹月台 · 面具撕下",
+        "current_stage": 4,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 3,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "彩虹站月台上，披著灰色斗篷的 Julian 站在中央。"
+                "他拍了拍 Iggy 的肩膀：「怎麼樣……你的記憶還有 Zoo 能力，是不是已經全部恢復了？」"
+            )},
+            {"character": "Iggy", "text": (
+                "我想起了一點……但尚未完全恢復。"
+                "特別是雪山那一戰……腦海裡還是一片混亂。"
+            )},
+            {"character": "Julian", "text": "那看來……我不需要再演下去了。"},
+            {"character": "旁白", "text": (
+                "話音未落，短刃直刺 Iggy 心口！"
+                "Julian 雙眼布滿血絲——那是 Simon 的能力：「蜜獾·狂化重擊」！"
+            )},
+            {"character": "Julian", "text": (
+                "我的 Zoo 是「變色龍」——可以借用他人甘願交出的力量。"
+                "我一路扮演好人，只因失憶的你無法交出完整的鳳凰之力。"
+                "現在……甘願交出，還是一起死在這裡？"
+            )},
+            {"character": "旁白", "text": (
+                "⚔️ 請完成「彩虹月台 · 迎戰」，並挑戰遭遇戰 Julian。"
+                "（此戰將揭開真相——堅持到最後。）"
+            )},
+        ],
+    },
+    "iggy_act6_approach": {
+        "story_id": "iggy_act6_approach",
+        "chapter": "第六章 · Necessary Pain",
+        "title": "黑色臍帶",
+        "current_stage": 4,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 3,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "擊敗 Julian 後，煙塵散去——天空染上不祥的紫黑色，"
+                "無數黑色氣息如血管在雲層中蠕動。"
+            )},
+            {"character": "旁白", "text": (
+                "「這是 Oikos 成員的集體暴走！"
+                "Salvio 當年用 Goat 能力代大家承受覺醒之痛，"
+                "那些被剝奪的後果全數沉積在他體內——"
+                "Julian 敗亡引發連鎖，負能量正反噬 Savio！」"
+            )},
+            {"character": "旁白", "text": (
+                "唯有前往 Oikos 總部——西貢戶外康樂中心（SKORC），"
+                "擊敗暴走的 Savio，用涅槃金焰燒斷病態臍帶。"
+            )},
+            {"character": "Iggy", "text": (
+                "雖然這是我這輩子做過最痛苦的決定……但這一次，我絕不逃避！"
+                "Savio 老師，讓我來為你切斷這有毒的鎖鏈！"
+            )},
+            {"character": "旁白", "text": (
+                "🎮 請完成「前往西貢 SKORC」與「迎戰暴走 Savio」，"
+                "挑戰最終遭遇戰。"
+            )},
+        ],
+    },
+    "iggy_ending_victory": {
+        "story_id": "iggy_ending_victory",
+        "chapter": "結局 · Victory",
+        "title": "健康的界線",
+        "current_stage": 4,
+        "total_stages": 6,
+        "route": "iggy",
+        "min_stage": 3,
+        "skippable": True,
+        "replayable": True,
+        "lines": [
+            {"character": "旁白", "text": (
+                "痛楚與現實的摩擦力重回每個人身上。"
+                "信徒們雖然因直面現實而呻吟，但雙眼重獲自由意志的光芒。"
+            )},
+            {"character": "Savio", "text": (
+                "我……我終於不用再替所有人承擔了嗎……"
+            )},
+            {"character": "Iggy", "text": (
+                "是的。你累了，該卸下這個虛假的救世主重擔了。"
+                "各人擔當自己的擔子。"
+            )},
+            {"character": "旁白", "text": (
+                "Cosmos 世界重獲健康的界線法則。"
+                "——完——"
             )},
         ],
     },
     "iggy_stage3": {
         "story_id": "iggy_stage3",
-        "chapter": "ACT 5–6 — 業火與結局",
-        "title": "業火與重塑 · 打破無傷神話",
+        "chapter": "ACT 5–6",
+        "title": "業火與重塑",
         "current_stage": 4,
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 3,
-        "skippable": False,
+        "unlock_only": True,
+        "skippable": True,
         "replayable": True,
         "lines": [
             {"character": "旁白", "text": (
-                "Julian 承受不了「承擔真實痛苦與責任」的重量，能力暴走。"
-                "Oikos 成員集體失控——溫室崩裂成災難。"
+                "主線已進入終局。若你尚未完成彩虹站與西貢任務，"
+                "請依探索列表逐步推進——故事會在關鍵節點自動出現。"
             )},
-            {"character": "Iggy", "text": "這次……我不逃了。我們一起，把有毒的共生燒斷。"},
-            {"character": "Savio", "text": (
-                "何必如此痛苦？回到我身邊。無痛的烏托邦才是愛。——脆弱，才是罪。"
-            )},
-            {"character": "Iggy", "text": (
-                "愛有時需要衝突，需要必要的痛。"
-                "我不再相信「絕對不造成任何痛楚」的神話。"
-            )},
-            {"character": "旁白", "text": "最後的領域在前方。擊敗 Savio，摧毀有毒體制。"},
         ],
     },
     "marah_stage0": {

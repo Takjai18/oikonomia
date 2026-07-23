@@ -222,7 +222,18 @@ def api_version():
 
 @misc_bp.route("/locations")
 def get_locations():
-    return jsonify(LOCATIONS)
+    """Explore list: only tasks unlocked by story/task progression (or GM unlock mode)."""
+    from flask import session
+    from models.squad import get_squad
+    from services.progression import filter_locations_for_squad
+
+    squad_id = session.get("squad_id")
+    if not squad_id:
+        return jsonify({})
+    squad = get_squad(squad_id)
+    if not squad:
+        return jsonify({})
+    return jsonify(filter_locations_for_squad(LOCATIONS, squad))
 
 
 @misc_bp.route("/global_events")

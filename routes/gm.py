@@ -738,6 +738,81 @@ def gm_combat_v2_status():
     })
 
 
+@gm_bp.route("/api/unlock_mode", methods=["GET"])
+def gm_unlock_mode_list_api():
+    """List players and whether GM unlock (sandbox) mode is on."""
+    denied = _require_gm()
+    if denied:
+        return denied
+
+    from services.progression import is_gm_unlock_mode, list_gm_unlock_squads
+
+    unlocked = set(list_gm_unlock_squads())
+    players = []
+    try:
+        conn = sqlite3.connect(settings.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            for row in conn.execute(
+                """SELECT squad_id, display_name, team_id, route
+                   FROM squads ORDER BY squad_id ASC"""
+            ).fetchall():
+                sid = row["squad_id"]
+                players.append({
+                    "squad_id": sid,
+                    "display_name": row["display_name"] or sid,
+                    "team_id": row["team_id"],
+                    "route": row["route"],
+                    "unlock_mode": sid in unlocked or is_gm_unlock_mode(sid),
+                })
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    return jsonify({
+        "success": True,
+        "players": players,
+        "unlocked_squad_ids": sorted(unlocked),
+    })
+
+
+@gm_bp.route("/api/unlock_mode", methods=["POST"])
+def gm_unlock_mode_set_api():
+    """Enable/disable unlock mode for a player: ignore story/task gates for explore & combat."""
+    denied = _require_gm()
+    if denied:
+        return denied
+
+    from services.progression import is_gm_unlock_mode, set_gm_unlock_mode
+
+    data = request.get_json(silent=True) or request.form or {}
+    squad_id = (data.get("squad_id") or "").strip()
+    raw = data.get("enabled")
+    if isinstance(raw, str):
+        enabled = raw.strip().lower() in ("1", "true", "yes", "on")
+    else:
+        enabled = bool(raw)
+
+    if not squad_id:
+        return jsonify({"success": False, "error": "需要 squad_id"}), 400
+
+    ok = set_gm_unlock_mode(squad_id, enabled)
+    if not ok:
+        return jsonify({"success": False, "error": "無法寫入開通狀態"}), 500
+
+    return jsonify({
+        "success": True,
+        "squad_id": squad_id,
+        "enabled": is_gm_unlock_mode(squad_id),
+        "message": (
+            f"已為 {squad_id} 開啟「開通模式」——可無視劇情／任務要求進行所有探索與戰鬥"
+            if enabled else
+            f"已關閉 {squad_id} 的開通模式——恢復正常進度鎖定"
+        ),
+    })
+
+
 @gm_bp.route("/api/reset_encounter_options", methods=["GET"])
 def gm_reset_encounter_options_api():
     """Teams + completed non-replayable encounters for GM dropdowns."""

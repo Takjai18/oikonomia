@@ -6,16 +6,16 @@
 #   stage 2 → Act 3–4
 #   stage 3 → Act 5–6
 STORY_STAGE_THRESHOLDS = {
-    1: 4,   # Act 1：木＋水＋兩件隨身物
-    2: 6,   # Act 2：潛行／Polis 等
-    3: 12,  # Act 3：村莊＋Albert Ching 鏈
+    1: 5,   # Act 1：木＋水＋徽章＋鐵片＋逃離
+    2: 7,   # Act 2：分支任務（潛行或 Polis）＋村莊情報起
+    3: 14,  # Act 3–4：村莊＋CHing 鏈＋彩虹
 }
 
-# Optional hard gates by location id (uncomment when task IDs are locked in).
+# Soft gates (any listed task → stage at least N). Primary progression is unlock stories.
 STORY_STAGE_REQUIRED_TASKS = {
-    # 1: ["act1_keepsake", "act1_sauce_duck"],
-    # 2: ["act2_polis_survive"],
-    # 3: ["act4_julian", "act6_savio"],
+    1: ["act1_escape"],
+    2: ["act2_stealth", "act2_polis_fight"],
+    3: ["act3_choihung_rally"],
 }
 
 STORY_CONTENT = {
@@ -23,27 +23,26 @@ STORY_CONTENT = {
         0: {
             "title": "🔥 第一章 · 飛狐雪山",
             "content": (
-                "風雪中遇見重傷失憶的男子。掃描 QR 取水與木材（木材觸發布布教學戰）；"
-                "再搜集隨身物品，揭開名字「Iggy」，逃離 Polis 追捕。"
+                "風雪中遇見重傷失憶的男子。先掃水與木材（木材→布布教學戰）；"
+                "篝火後再搜集隨身物品，揭開「Iggy」，逃離 Polis。"
             ),
         },
         1: {
-            "title": "🔥 第二章 · 抉擇與邊界",
+            "title": "🔥 第二章 · Avoidant",
             "content": (
-                "Iggy 吐血仍推拒善意。選擇離開將迎戰 Polis；選擇照顧則潛行下山。"
+                "Iggy 吐血仍推拒善意。離開→Polis 戰；照顧→潛行下山。"
             ),
         },
         2: {
-            "title": "🔥 第三章 · 記憶之路",
+            "title": "🔥 第三–四章 · 村莊與記憶",
             "content": (
-                "村莊庇護、Julian 登場，City Hunt 尋找 Albert Ching（1→5），集合彩虹站。"
+                "村莊庇護、搜尋 Iggy、Julian 救場；再 City Hunt（CHing 1→5）解封記憶。"
             ),
         },
         3: {
-            "title": "🔥 Act 5–6：業火與偽神",
+            "title": "🔥 第五–六章 · Pain Alone / Necessary Pain",
             "content": (
-                "災難蔓延，Iggy 不再逃避，與你並肩燒斷有毒共生。"
-                "最後一關：直面 Savio 的無痛烏托邦——打破無傷神話。"
+                "彩虹站面具撕下；二次覺醒後前往西貢，迎戰暴走 Savio。"
             ),
         },
     },

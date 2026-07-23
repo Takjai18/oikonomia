@@ -112,9 +112,21 @@ def add_item():
     from models.encounter_outcomes import encounter_already_completed
     from models.squad import get_squad as _get_squad
     from services.story import record_task_completion_from_qr
+    from services.progression import is_task_unlocked, task_lock_reason, grant_task_story_unlocks
+
+    hooks = hooks_for_qr_code(item.get("qr_code_value"))
+    linked_task_id = hooks.get("linked_task_id")
+    squad_for_gate = _get_squad(session["squad_id"]) or {"squad_id": session["squad_id"]}
+    if linked_task_id and not is_task_unlocked(squad_for_gate, linked_task_id):
+        return jsonify({
+            "success": False,
+            "error": (
+                task_lock_reason(squad_for_gate, linked_task_id)
+                or "此道具任務尚未解鎖——請先完成前置劇情"
+            ),
+        }), 403
 
     success, message, applied_effect = grant_item_to_squad(session["squad_id"], item_id, source)
-    hooks = hooks_for_qr_code(item.get("qr_code_value"))
     start_encounter = hooks.get("start_encounter")
 
     # If player already owns wood (or QR already used) after a partial GM reset,
@@ -158,7 +170,6 @@ def add_item():
         response["applied_effect"] = applied_effect
 
     # Act 1+ QR hooks: auto-complete linked explore task; optional combat start.
-    linked_task_id = hooks.get("linked_task_id")
     if linked_task_id:
         newly = record_task_completion_from_qr(
             session["squad_id"],
@@ -170,6 +181,13 @@ def add_item():
         response["task_newly_completed"] = bool(newly)
         if newly:
             response["message"] = f"{message}（任務已完成）"
+            try:
+                squad_now = _get_squad(session["squad_id"]) or squad_for_gate
+                unlock_story = grant_task_story_unlocks(squad_now, linked_task_id)
+                if unlock_story and not response.get("pending_story_id"):
+                    response["pending_story_id"] = unlock_story
+            except Exception:
+                pass
     if start_encounter:
         response["start_encounter"] = start_encounter
         response["message"] = (

@@ -118,10 +118,31 @@ def combat_start_api(encounter_id=None):
     if not encounter_visible_to_player(encounter, show_test=show_test):
         return jsonify({"success": False, "error": "此 Encounter 僅供開發測試"}), 403
 
+    from services.progression import is_encounter_unlocked, encounter_lock_reason, is_gm_unlock_mode
+    from services.story import count_team_distinct_tasks, resolve_story_stage
+
+    if not is_encounter_unlocked(squad, encounter_id, encounter=encounter):
+        return jsonify({
+            "success": False,
+            "error": encounter_lock_reason(squad, encounter_id) or "此戰鬥尚未解鎖（請先完成前置劇情／任務）",
+        }), 403
+
+    if not is_gm_unlock_mode(squad_id):
+        completed_count, completed_task_ids = count_team_distinct_tasks(
+            squad_id, squad.get("team_id")
+        )
+        stage = resolve_story_stage(completed_count, completed_task_ids)
+        if int(encounter.get("story_stage") or 0) > stage:
+            return jsonify({
+                "success": False,
+                "error": f"故事階段不足（需要階段 {encounter.get('story_stage')}，目前 {stage}）",
+            }), 403
+
     team_id = squad["team_id"]
     if (
         not encounter_is_replayable(encounter)
         and encounter_already_completed(team_id, encounter_id)
+        and not is_gm_unlock_mode(squad_id)
     ):
         return jsonify({"success": False, "error": "此 Encounter 已完成"}), 400
 

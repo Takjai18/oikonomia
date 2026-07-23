@@ -88,18 +88,41 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
             apply_encounter_success_solo(starter_id, encounter)
             result["applied_success"] = True
 
-        # Queue post-combat story for all team members (e.g. Act1 after 布布).
+        # Queue post-combat story beats for team (progressive — one act beat at a time).
         unlock = (encounter or {}).get("success", {}).get("next_story_unlock")
+        extra_unlocks = []
+        try:
+            from data.progression_gates import ENCOUNTER_STORY_UNLOCKS
+            extra_unlocks = list(
+                ENCOUNTER_STORY_UNLOCKS.get(
+                    (encounter or {}).get("encounter_id") or "",
+                    [],
+                )
+                or []
+            )
+        except Exception:
+            extra_unlocks = []
+        unlock_ids = []
         if unlock:
-            result["next_story_unlock"] = unlock
+            unlock_ids.append(unlock)
+        for u in extra_unlocks:
+            if u and u not in unlock_ids:
+                unlock_ids.append(u)
+        if unlock_ids:
+            result["next_story_unlock"] = unlock_ids[0]
+            result["next_story_unlocks"] = unlock_ids
             try:
                 from models.squad import get_team_members
                 from services.story import grant_story_unlock
-                if team_id:
-                    for m in get_team_members(team_id) or []:
-                        grant_story_unlock(m.get("squad_id"), unlock)
-                elif starter_id:
-                    grant_story_unlock(starter_id, unlock)
+                members = (
+                    get_team_members(team_id) if team_id else [{"squad_id": starter_id}]
+                )
+                for m in members or []:
+                    sid = m.get("squad_id") if isinstance(m, dict) else None
+                    if not sid:
+                        continue
+                    for u in unlock_ids:
+                        grant_story_unlock(sid, u)
             except Exception:
                 pass
         return result

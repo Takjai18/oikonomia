@@ -131,20 +131,34 @@ def get_pending_story_id(squad):
     if not squad.get("team_id"):
         return None
 
-    # 4) Explicit unlock stories (post-combat / post-item) take priority over stage SSOT.
-    for unlock_id in (
+    # 4) Explicit unlock stories (post-combat / post-task) — ordered, progressive.
+    # Do NOT dump every act; only surface if granted via grant_story_unlock.
+    PROGRESSIVE_UNLOCK_ORDER = (
         "iggy_act1_post_bubo",
         "iggy_act1_identity",
+        "iggy_stage1",
         "iggy_act2_branch_leave",
         "iggy_act2_branch_care",
-    ):
+        "iggy_act2_post_polis",
+        "iggy_stage2",
+        "iggy_act3_shelter",
+        "iggy_act3_found_iggy",
+        "iggy_act3_julian",
+        "iggy_act4_albert_test",
+        "iggy_act4_meifoo",
+        "iggy_act4_phoenix",
+        "iggy_act5_betrayal",
+        "iggy_act6_approach",
+        "iggy_ending_victory",
+    )
+    for unlock_id in PROGRESSIVE_UNLOCK_ORDER:
         if is_story_viewed(squad_id, unlock_id):
             continue
-        # Only surface unlocks that were marked pending for this squad.
         if _squad_has_story_unlock(squad_id, unlock_id):
             return unlock_id
 
-    # 5) Route / stage mainline (Iggy Act 1 = iggy_stage0, …)
+    # 5) Route / stage mainline (e.g. iggy_stage0 after team create).
+    # Stories marked unlock_only=True never auto-fire from task-count stage.
     route = (squad.get("route") or "").strip().lower()
     if not route:
         from data.route_config import FORCED_ROUTE
@@ -161,6 +175,8 @@ def get_pending_story_id(squad):
         return None
     stories = settings.narrative_stories or {}
     story = stories.get(story_id, {})
+    if story.get("unlock_only"):
+        return None
     if story.get("min_stage", 0) > stage:
         return None
     if is_story_viewed(squad_id, story_id):

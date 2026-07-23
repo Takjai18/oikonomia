@@ -29,8 +29,8 @@
   "success": {
     "insight_fragment": 1,
     "rewards": [],
-    "narrative": "你們撐過了五個回合。Polis 的鎖鏈暫時鬆開——Julian 出現，擊退敵人，成為「引路人」。你隱約感到：他救下的，不只是命，還有可被利用的感恩。",
-    "next_story_unlock": "iggy_act3"
+    "narrative": "你們撐過了五個回合。Polis 的鎖鏈暫時鬆開——已經洗濕個頭，沒有回頭路。帶著 Iggy 下山，聯絡 Oikos。",
+    "next_story_unlock": "iggy_act2_post_polis"
   },
 
   "failure": {

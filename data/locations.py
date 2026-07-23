@@ -21,10 +21,10 @@ LOCATIONS = {
         "qr_code_value": "act1-wood",
         "start_encounter": "enc_iggy_act1_bubo",
         "description": (
-            "【Act 1 · I 取暖加食】在場地找出「木材」實體道具並掃描 QR。"
-            "掃描成功後會立刻進入雪山熊「布布」戰鬥教學"
+            "【主線 1.1 · 希望你能熬過這個冬天】找出「木材」並掃描 QR。"
+            "掃描成功後立刻進入雪山熊「布布」教學戰"
             "（攻擊、防禦、擲骰；可全隊一起行動）。"
-            "擊敗布布後再繼續生火、烤醬板鴨。"
+            "擊敗後再繼續生火、烤醬板鴨。"
         ),
     },
     "act1_water": {
@@ -35,8 +35,8 @@ LOCATIONS = {
         "story_act": 1,
         "qr_code_value": "act1-water",
         "description": (
-            "【Act 1 · I 取暖加食】在場地找出「水」實體道具，"
-            "用 Web App 掃描 QR Code。掃描成功即完成此任務。"
+            "【主線 1.1】找出「水」實體道具並掃描 QR。"
+            "與木材一齊用於生火取暖、照顧傷者。"
         ),
     },
     "act1_goat_badge": {
@@ -47,8 +47,8 @@ LOCATIONS = {
         "story_act": 1,
         "qr_code_value": "act1-goat-badge",
         "description": (
-            "【Act 1 · II】在雪地／傷者附近找出一件隨身物品（徽章），"
-            "掃描 QR。兩件隨身物都掃完後會解鎖身分劇情。"
+            "【主線 1.2 · 不明來歷】篝火劇情後才解鎖。"
+            "找出殘缺山羊徽章並掃描 QR；與鐵片齊全後揭開身分。"
         ),
     },
     "act1_iron_plate": {
@@ -59,8 +59,22 @@ LOCATIONS = {
         "story_act": 1,
         "qr_code_value": "act1-iron-plate",
         "description": (
-            "【Act 1 · II】找出一塊金屬鐵片／名牌，掃描 QR。"
+            "【主線 1.2 · 不明來歷】找出一塊金屬鐵片／名牌，掃描 QR。"
             "（內容在掃描與劇情中揭曉——請勿劇透隊友。）"
+        ),
+    },
+    "act1_escape": {
+        "name": "後有追兵",
+        "hint": "逃離雪山 · 解難",
+        **_CAMP,
+        "task_type": "minigame",
+        "minigame_id": "bilateral_brain",
+        "minigame_config": {"targetStreak": 5, "roundMs": 3200},
+        "story_act": 1,
+        "description": (
+            "【主線 1.3 · 後有追兵】Polis 治安局搜捕隊逼近！"
+            "帶著虛弱失憶的 Iggy 逃離雪山——"
+            "保持冷靜與專注，闖過封鎖（解難小遊戲）。"
         ),
     },
     # ========== ACT 2 — 逃亡 ==========
@@ -73,8 +87,8 @@ LOCATIONS = {
         "minigame_config": {"diffCount": 5, "timeLimitSec": 120},
         "story_act": 2,
         "description": (
-            "【Act 2 · 分支 B】Stealth：避開 Polis 哨塔與雷達封鎖線，帶 Iggy 下山。"
-            "（暫以找不同小遊戲代表潛行；正式圖後補。）"
+            "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與雷達封鎖線，帶 Iggy 下山。"
+            "（暫以找不同小遊戲代表潛行。）"
         ),
     },
     "act2_polis_fight": {
@@ -84,7 +98,7 @@ LOCATIONS = {
         "task_type": "photo",
         "story_act": 2,
         "description": (
-            "【Act 2 · 分支 A】第一場正式戰鬥：enc_iggy_act2_polis"
+            "【主線 2.1 · 分支 A】正式戰鬥：遭遇列表「Act 2：Polis 追擊」"
             "（5 回合內存活或擊敗追兵）。可先影合照再開戰。"
         ),
     },
@@ -100,7 +114,10 @@ LOCATIONS = {
             "answers": ["OIKOS", "IGGY", "POLIS", "家", "山羊"],
         },
         "story_act": 3,
-        "description": "【Act 3】在村莊打探 Oikos 線索（密碼／關鍵詞小遊戲）。",
+        "description": (
+            "【主線 3 · 村莊避難】在村子裡打探 Oikos 線索。"
+            "成功後會遇到了解內情的婦人。"
+        ),
     },
     "act3_search_iggy": {
         "name": "搜尋 Iggy",
@@ -110,7 +127,10 @@ LOCATIONS = {
         "minigame_id": "spot_the_difference",
         "minigame_config": {"diffCount": 6, "timeLimitSec": 150},
         "story_act": 3,
-        "description": "【Act 3】在村莊巷弄與廢墟中搜尋偷偷離開的 Iggy，避開搜捕。",
+        "description": (
+            "【主線 3】Iggy 又怕連累大家偷偷跑掉——"
+            "在村莊巷弄與廢墟中搜尋他，避開搜捕。"
+        ),
     },
     "act3_village_battle": {
         "name": "村莊包圍戰",
@@ -119,24 +139,24 @@ LOCATIONS = {
         "task_type": "photo",
         "story_act": 3,
         "description": (
-            "【Act 3】被逼進入戰鬥——挑戰 enc_iggy_act2_polis 或後續村莊戰。"
-            "勝利後 Julian 登場救場。"
+            "【主線 3】後山被 Polis 包圍——挑戰遭遇戰「Polis 追擊」。"
+            "危急時會有人出手……"
         ),
     },
     "albert_ching_1": {
-        "name": "尋找 Albert Ching 1",
-        "hint": "紅牆定位 · 荃灣",
+        "name": "CHing 1 · 荃灣紅牆",
+        "hint": "GPS 定位術",
         **_TSUEN_WAN,
         "task_type": "gps",
-        "story_act": 3,
+        "story_act": 4,
         "description": (
-            "【City Hunt 1】前往村莊邊緣的紅牆（荃灣站外牆一帶），"
-            "開啟 GPS 點擊驗證＝「施展定位術」。成功後解鎖 Ching 2。"
+            "【主線 4.1】前往荃灣站外牆（印有景色的紅牆），"
+            "開啟 GPS 驗證＝「施展定位術」。成功後解鎖下一提示。"
         ),
     },
     "albert_ching_2": {
-        "name": "尋找 Albert Ching 2",
-        "hint": "地圖輪廓 · 葵芳",
+        "name": "CHing 2 · 葵芳輪廓",
+        "hint": "Worldle · 葵芳",
         **_KWAI_FONG,
         "task_type": "minigame",
         "minigame_id": "mapdle_hk",
@@ -146,16 +166,16 @@ LOCATIONS = {
             "targetName": "葵芳",
             "targetImage": "/static/mission_hints/albert_ching_2_kwaifong.svg",
         },
-        "story_act": 3,
+        "story_act": 4,
         "description": (
-            "【City Hunt 2】Worldle 式：睇社區輪廓（素材：mission_hints/kwaifong）推斷藏身地。"
-            "答對「葵芳」後前往葵芳做 Ching 3。"
+            "【主線 4.2】App 顯示社區邊界輪廓，猜出地點「葵芳」（最多 5 次）。"
+            "答對後前往葵芳做結界任務。"
         ),
         "hint_media": "/static/mission_hints/albert_ching_2_kwaifong.svg",
     },
     "albert_ching_3": {
-        "name": "尋找 Albert Ching 3",
-        "hint": "語音密碼 · 葵芳",
+        "name": "CHing 3 · 葵芳結界",
+        "hint": "語音密碼",
         **_KWAI_FONG,
         "task_type": "minigame",
         "minigame_id": "voice_record",
@@ -169,75 +189,78 @@ LOCATIONS = {
             "maxSeconds": 15,
             "hintVideo": "/static/mission_hints/albert_ching_3_password_hint.mp4",
         },
-        "story_act": 3,
+        "story_act": 4,
         "description": (
-            "【City Hunt 3】葵芳結界：先睇提示短片，再錄音全隊輪流讀出"
-            "「我叫做 Franchesca，今年係 19 歲半」。通過後解鎖 Ching 4。"
+            "【主線 4.3】語音密碼：「我叫做 Franchesca，今年係 19 歲半」。"
+            "通過後解鎖美孚站。"
         ),
         "hint_media": "/static/mission_hints/albert_ching_3_password_hint.mp4",
     },
     "albert_ching_4": {
-        "name": "尋找 Albert Ching 4",
-        "hint": "美孚站壁畫",
+        "name": "CHing 4 · 美孚今昔",
+        "hint": "壁畫 · 棄兒創傷",
         **_MEI_FOO,
         "task_type": "photo",
-        "story_act": 3,
+        "story_act": 4,
         "description": (
-            "【City Hunt 4】對照提示圖，前往美孚站轉車隧道壁畫，"
-            "影下對應細節並提交。（提示圖見任務內嵌媒體。）"
+            "【主線 4.4】美孚站轉車隧道壁畫——解封第一道記憶（棄兒創傷）。"
+            "影下對應細節並提交。"
         ),
         "hint_media": "/static/mission_hints/albert_ching_4_meifoo_hint.jpg",
     },
     "albert_ching_5": {
-        "name": "尋找 Albert Ching 5",
-        "hint": "九龍塘 · 八乘八",
+        "name": "CHing 5 · 九龍塘易經",
+        "hint": "八乘八 · 再生火焰",
         **_KOWLOON_TONG,
         "task_type": "photo",
-        "story_act": 3,
+        "story_act": 4,
         "description": (
-            "【City Hunt 5】「天行健，君子以自強不息」——"
-            "九龍塘「八乘八」：影符號組合＋全組 20 字內短故事。完成後集合彩虹站。"
+            "【主線 4.5】九龍塘「八乘八」藝術品——第三道記憶與再生火種。"
+            "影符號組合；之後 Iggy 將重執 Phoenix Fire，並前往彩虹站。"
         ),
     },
     "act3_choihung_rally": {
         "name": "彩虹站集合",
-        "hint": "City Hunt 終點",
+        "hint": "與 Julian 會合",
         **_CHOI_HUNG,
         "task_type": "gps",
-        "story_act": 3,
-        "description": "【City Hunt 終】全體小隊立刻前往彩虹站完成最終集合任務。",
-    },
-    # ========== ACT 4–6 戰鬥相關提示任務 ==========
-    "act4_julian_gate": {
-        "name": "血田前夜",
-        "hint": "進入 Julian 戰前 · 影相",
-        **_CAMP,
-        "task_type": "photo",
-        "story_act": 4,
+        "story_act": 5,
         "description": (
-            "【Act 4】全組影一張「準備迎戰 Julian／血田」的合照，"
+            "【主線 5】全體小隊立刻前往彩虹站，與 Julian 會合。"
+            "（記憶任務完成後解鎖。）"
+        ),
+    },
+    # ========== ACT 5–6 戰鬥相關提示任務 ==========
+    "act4_julian_gate": {
+        "name": "彩虹月台 · 迎戰",
+        "hint": "Julian 戰前 · 影相",
+        **_CHOI_HUNG,
+        "task_type": "photo",
+        "story_act": 5,
+        "description": (
+            "【Act 5】面具撕下之後——全組影一張準備迎戰的合照，"
             "然後挑戰遭遇戰 enc_iggy_act4_julian。"
         ),
     },
     "act5_return_camp": {
-        "name": "到達營地",
-        "hint": "Act 5 · GPS／影相",
+        "name": "前往西貢 SKORC",
+        "hint": "Act 6 · 終局集合",
         **_CAMP,
         "task_type": "gps",
-        "story_act": 5,
+        "story_act": 6,
         "description": (
-            "【Act 5】業火蔓延後，全隊回到營地集合。"
-            "到達指定範圍後驗證定位，並影全組合照提交。"
+            "【Act 6 · Necessary Pain】Julian 敗亡引發連鎖反應。"
+            "全隊前往 Oikos 總部——西貢戶外康樂中心（SKORC）集合。"
         ),
     },
     "act6_savio_gate": {
-        "name": "偽神領域入口",
-        "hint": "最終戰前 · 影相",
+        "name": "迎戰暴走 Savio",
+        "hint": "終局 BOSS 前 · 影相",
         **_CAMP,
         "task_type": "photo",
         "story_act": 6,
         "description": (
-            "【Act 6】打破無傷神話——全組影一張「我們選擇真實的痛」的合照，"
+            "【Act 6】與 Iggy 並肩——全組影一張「我們選擇必要的痛」的合照，"
             "然後挑戰最終遭遇戰 enc_iggy_act6_savio。"
         ),
     },

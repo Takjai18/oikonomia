@@ -502,6 +502,40 @@ GM_DASHBOARD_HTML = """
             <div id="gm-combat-content" class="text-zinc-400 text-center py-8">載入中...</div>
         </div>
 
+        <div class="bg-zinc-900 border border-emerald-900/50 rounded-3xl p-6 mt-4">
+            <div class="flex items-center justify-between gap-2 mb-1">
+                <h2 class="text-lg font-semibold text-emerald-300">開通模式（Debug）</h2>
+                <button type="button" onclick="loadGmUnlockMode()"
+                        class="text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl">
+                    🔄 重新載入
+                </button>
+            </div>
+            <p class="text-xs text-zinc-500 mb-4 leading-relaxed">
+                選一位玩家開啟後，該玩家<strong>無視劇情／任務前置</strong>，探索可看見全部主線任務，遭遇列表可打全部戰鬥（含已完成劇情戰）。
+                正式營會請關閉。玩家需<strong>重新整理</strong>探索／遭遇頁才會生效。
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="text-[11px] text-zinc-500 block mb-1">玩家</label>
+                    <select id="gm-unlock-squad"
+                            class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm font-mono">
+                        <option value="">載入中…</option>
+                    </select>
+                </div>
+                <div class="flex flex-col justify-end gap-2">
+                    <button type="button" onclick="gmSetUnlockMode(true)"
+                            class="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold rounded-2xl text-sm">
+                        開啟開通模式
+                    </button>
+                    <button type="button" onclick="gmSetUnlockMode(false)"
+                            class="w-full px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl text-sm">
+                        關閉開通模式
+                    </button>
+                </div>
+            </div>
+            <div id="gm-unlock-hint" class="text-[11px] text-zinc-500 mt-3 min-h-[1.25rem]"></div>
+        </div>
+
         <div class="bg-zinc-900 border border-amber-900/40 rounded-3xl p-6 mt-4">
             <div class="flex items-center justify-between gap-2 mb-1">
                 <h2 class="text-lg font-semibold text-amber-300">重置遭遇（測試用）</h2>
@@ -552,6 +586,64 @@ GM_DASHBOARD_HTML = """
         }
 
         let gmResetOptionsCache = null;
+        let gmUnlockPlayersCache = null;
+
+        async function loadGmUnlockMode() {
+            const sel = document.getElementById('gm-unlock-squad');
+            const hint = document.getElementById('gm-unlock-hint');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">載入中…</option>';
+            try {
+                const res = await fetch('/gm/api/unlock_mode', { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!data.success) {
+                    sel.innerHTML = '<option value="">載入失敗</option>';
+                    showGmToast(data.error || '載入失敗', 'error');
+                    return;
+                }
+                gmUnlockPlayersCache = data.players || [];
+                sel.innerHTML = gmUnlockPlayersCache.length
+                    ? gmUnlockPlayersCache.map((p) => {
+                        const mark = p.unlock_mode ? ' 🔓開通中' : '';
+                        const label = (p.display_name || p.squad_id) + mark;
+                        return `<option value="${gmEscapeHtml(p.squad_id)}">${gmEscapeHtml(label)}</option>`;
+                    }).join('')
+                    : '<option value="">（未有玩家）</option>';
+                const on = (data.unlocked_squad_ids || []).length;
+                if (hint) {
+                    hint.textContent = on
+                        ? `目前 ${on} 人開通中：${(data.unlocked_squad_ids || []).join('、')}`
+                        : '目前無人開啟開通模式';
+                }
+            } catch (e) {
+                sel.innerHTML = '<option value="">網路錯誤</option>';
+            }
+        }
+
+        async function gmSetUnlockMode(enabled) {
+            const squadId = (document.getElementById('gm-unlock-squad')?.value || '').trim();
+            if (!squadId) {
+                showGmToast('請選擇玩家', 'error');
+                return;
+            }
+            try {
+                const res = await fetch('/gm/api/unlock_mode', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ squad_id: squadId, enabled: !!enabled }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showGmToast(data.message || '已更新', 'success');
+                    loadGmUnlockMode();
+                } else {
+                    showGmToast(data.error || '失敗', 'error');
+                }
+            } catch (e) {
+                showGmToast('網路錯誤', 'error');
+            }
+        }
 
         async function loadGmResetEncounterOptions() {
             const teamSel = document.getElementById('gm-reset-enc-team');
@@ -1574,6 +1666,9 @@ GM_DASHBOARD_HTML = """
                 btnCombat.classList.add('active', 'bg-amber-500', 'text-zinc-950');
                 loadCombatV2Setting();
                 loadActiveCombats();
+                if (typeof loadGmUnlockMode === 'function') {
+                    loadGmUnlockMode();
+                }
                 if (typeof loadGmResetEncounterOptions === 'function') {
                     loadGmResetEncounterOptions();
                 }
