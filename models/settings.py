@@ -4,7 +4,6 @@ FALLBACK_DEFAULT_PROTAGONIST = {
     "hp": 100,
     "sanity": 100,
     "power": 100,
-    "intellect": 100,
     "resilience": 100,
 }
 
