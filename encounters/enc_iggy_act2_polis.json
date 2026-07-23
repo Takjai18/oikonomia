@@ -5,17 +5,17 @@
   "story_stage": 1,
   "trigger_type": "story",
   "location_hint": "逃亡路線 · Polis 封鎖線",
-  "description": "逃亡途中，Polis 用鎖鏈與拷問實踐「沒有痛苦就沒有成長」。Iggy 想用自我犧牲換「和平」——但你的任務不是當祭品，而是撐過五個回合，等引路人出現。",
+  "description": "逃亡途中，Polis 用鎖鏈與拷問實踐「沒有痛苦就沒有成長」。撐過五個回合即勝——火力凶猛，4 人隊也要有人防禦。",
 
   "enemy": {
     "name": "Polis 追擊隊",
-    "hp": 320,
+    "hp": 1100,
     "sanity": 55,
-    "power": 48,
-    "intellect": 32,
-    "resilience": 30,
-    "base_damage": 18,
-    "description": "律法主義與社會達爾文主義的具象。高壓、強迫服從，要把人打成無情感的空殼木偶。血厚，通常要靠「撐過回合」而非秒殺。"
+    "power": 55,
+    "intellect": 36,
+    "resilience": 48,
+    "base_damage": 38,
+    "description": "律法主義與社會達爾文主義的具象。血厚、打得重。通常靠「撐過回合」而非秒殺。"
   },
 
   "combat_settings": {
@@ -36,26 +36,23 @@
   "failure": {
     "trauma": {
       "stat": "resilience",
-      "amount": 8
+      "amount": 10
     },
-    "narrative": "封鎖線沒有鬆開。Iggy 的討好者模式幾乎把全隊拖進「替人擋下一切」的妄想。Polis 的鎖鏈又收緊了一寸。",
-    "debuff": "resilience_-8_until_healed"
+    "narrative": "追兵擊潰防線。Iggy 的傷口再次崩裂——團隊承受了深刻的創傷。",
+    "debuff": null
   },
 
   "reflection_prompt": {
-    "title": "虛妄的羔羊",
+    "title": "Polis 追擊",
     "questions": [
-      "當局面變糟時，你有冇下意識想「我來頂住全部」？",
-      "「沒有痛苦就沒有成長」這句話，在你生活中有冇被誤用成逼人屈服的武器？",
-      "真正的守護，同自我犧牲式的討好，差在哪？"
+      "五回合生存戰裡，何時該攻、何時該守？",
+      "「不聽解釋」的壓迫感，與現實中哪些權力結構相似？"
     ],
-    "theological_tie": "《界線》核心：我們不能代替別人承擔他們必須自己面對的後果；也不是神，不能用痛苦強迫人成長（Law of Responsibility / Respect）。"
+    "theological_tie": "公義不是強者的鎖鏈；保護弱者有時要承受衝突。"
   },
 
   "notes_for_gm": {
-    "theological_focus": "People-pleasing 的盲目犧牲 vs Polis 的強迫成長",
-    "win_rule": "5 回合內全隊未全滅即勝；提前擊破敵人也算勝",
-    "debrief_tips": "引導討論：『我有冇因為怕衝突，而想用自己當祭品換和平？』",
-    "physical_integration": "可配合 act2_polis_prep 影相任務"
+    "purpose": "正式戰鬥 1：生存 5 回合（4 人隊難度）",
+    "difficulty": "base_damage 38 · res 48 · 需防禦輪轉"
   }
 }

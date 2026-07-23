@@ -6,39 +6,39 @@
   "trigger_type": "practice",
   "location_hint": "練習場 · 耐力測試區",
   "description": "高 HP 敵人，專測多回合結算 modal、輪詢同血條動畫。打贏打輸都可以即刻再開。",
-
   "enemy": {
     "name": "練習・長戰巨影",
-    "hp": 220,
+    "hp": 900,
     "sanity": 45,
-    "power": 38,
+    "power": 48,
     "intellect": 30,
-    "resilience": 30,
-    "base_damage": 16,
+    "resilience": 42,
+    "base_damage": 34,
     "description": "血厚防高，要打好幾回合先贏。"
   },
-
   "combat_settings": {
     "phase_time_limit_seconds": 240,
     "allow_zoo": true,
     "zoo_sanity_threshold": 70
   },
-
   "success": {
     "insight_fragment": 0,
     "narrative": "長戰練習勝利！",
     "next_story_unlock": null
   },
-
   "failure": {
-    "trauma": { "stat": "resilience", "amount": 0 },
+    "trauma": {
+      "stat": "resilience",
+      "amount": 0
+    },
     "narrative": "長戰練習落敗，可再挑戰。",
     "debuff": null
   },
-
   "reflection_prompt": {
     "title": "練習反思",
-    "questions": ["連續多回合結算有冇漏彈或 HP 唔郁？"],
+    "questions": [
+      "連續多回合結算有冇漏彈或 HP 唔郁？"
+    ],
     "theological_tie": "練習用。"
   }
 }

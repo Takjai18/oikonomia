@@ -6,39 +6,39 @@
   "trigger_type": "practice",
   "location_hint": "練習場 · 深淵模擬區",
   "description": "接近劇情首戰難度，適合反覆測試 Marah 線多回合戰鬥。",
-
   "enemy": {
     "name": "練習・低語糾纏影",
-    "hp": 105,
+    "hp": 460,
     "sanity": 45,
-    "power": 30,
+    "power": 40,
     "intellect": 42,
-    "resilience": 20,
-    "base_damage": 16,
+    "resilience": 32,
+    "base_damage": 30,
     "description": "與 enc_marah_01_whisper 同級，可重複挑戰。"
   },
-
   "combat_settings": {
     "phase_time_limit_seconds": 180,
     "allow_zoo": true,
     "zoo_sanity_threshold": 70
   },
-
   "success": {
     "insight_fragment": 0,
     "narrative": "Marah 標準練習勝利。",
     "next_story_unlock": null
   },
-
   "failure": {
-    "trauma": { "stat": "resilience", "amount": 0 },
+    "trauma": {
+      "stat": "resilience",
+      "amount": 0
+    },
     "narrative": "Marah 標準練習落敗。",
     "debuff": null
   },
-
   "reflection_prompt": {
     "title": "練習反思",
-    "questions": ["主角參戰同結算有冇正常？"],
+    "questions": [
+      "主角參戰同結算有冇正常？"
+    ],
     "theological_tie": "練習用。"
   }
 }

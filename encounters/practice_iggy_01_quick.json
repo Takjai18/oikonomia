@@ -6,39 +6,39 @@
   "trigger_type": "practice",
   "location_hint": "練習場 · 快速結算區",
   "description": "低 HP 敵人，1～2 回合可結束。可無限重複挑戰，專為測試戰鬥結算、擲骰同 HP 顯示。",
-
   "enemy": {
     "name": "速戰殘影",
-    "hp": 48,
+    "hp": 220,
     "sanity": 28,
     "power": 28,
     "intellect": 22,
-    "resilience": 14,
-    "base_damage": 10,
+    "resilience": 24,
+    "base_damage": 22,
     "description": "弱化版影子，方便快速驗證一整個戰鬥流程。"
   },
-
   "combat_settings": {
     "phase_time_limit_seconds": 180,
     "allow_zoo": true,
     "zoo_sanity_threshold": 70
   },
-
   "success": {
     "insight_fragment": 0,
     "narrative": "練習戰勝利！呢場可以隨時再開，唔會影響劇情進度。",
     "next_story_unlock": null
   },
-
   "failure": {
-    "trauma": { "stat": "resilience", "amount": 0 },
+    "trauma": {
+      "stat": "resilience",
+      "amount": 0
+    },
     "narrative": "練習戰落敗。再試一次吧——呢場唔會留下創傷。",
     "debuff": null
   },
-
   "reflection_prompt": {
     "title": "練習反思",
-    "questions": ["今次戰鬥結算同 HP 顯示是否正常？"],
+    "questions": [
+      "今次戰鬥結算同 HP 顯示是否正常？"
+    ],
     "theological_tie": "練習用，可略過。"
   }
 }

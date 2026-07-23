@@ -6,39 +6,39 @@
   "trigger_type": "practice",
   "location_hint": "練習場 · 裂痕模擬區",
   "description": "較厚 HP，適合測試長戰、堅守界線減傷、同主角自動行動。可重複挑戰。",
-
   "enemy": {
     "name": "練習・界線共生影",
-    "hp": 140,
+    "hp": 600,
     "sanity": 40,
-    "power": 40,
+    "power": 46,
     "intellect": 32,
-    "resilience": 26,
-    "base_damage": 18,
+    "resilience": 38,
+    "base_damage": 32,
     "description": "需要多回合輸出，用嚟壓力測試戰鬥 UI。"
   },
-
   "combat_settings": {
     "phase_time_limit_seconds": 200,
     "allow_zoo": true,
     "zoo_sanity_threshold": 70
   },
-
   "success": {
     "insight_fragment": 0,
     "narrative": "練習戰勝界線共生影。",
     "next_story_unlock": null
   },
-
   "failure": {
-    "trauma": { "stat": "resilience", "amount": 0 },
+    "trauma": {
+      "stat": "resilience",
+      "amount": 0
+    },
     "narrative": "練習落敗，可再戰。",
     "debuff": null
   },
-
   "reflection_prompt": {
     "title": "練習反思",
-    "questions": ["堅守界線時全隊減傷有冇生效？"],
+    "questions": [
+      "堅守界線時全隊減傷有冇生效？"
+    ],
     "theological_tie": "練習用。"
   }
 }

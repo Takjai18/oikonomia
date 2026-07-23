@@ -5,24 +5,24 @@
   "story_stage": 3,
   "trigger_type": "story",
   "location_hint": "西貢戶外康樂中心（SKORC）",
-  "description": "黑色臍帶纏繞總部。Goat 能力超載，Savio 畸變暴走。與 Iggy 的涅槃金焰並肩，切斷病態鎖鏈——必要的痛。",
+  "description": "黑色臍帶纏繞總部。Goat 能力超載，Savio 畸變暴走。與 Iggy 的涅槃金焰並肩，切斷病態鎖鏈——終局長戰，4 人隊需全力以赴。",
 
   "enemy": {
     "name": "Savio · 畸形巨獸",
-    "hp": 210,
-    "sanity": 35,
-    "power": 50,
-    "intellect": 44,
-    "resilience": 32,
-    "base_damage": 24,
-    "description": "逃避者／彌賽亞情結的終點。Zoo「山羊／Agape」吸收過量巨嬰負能量後系統超載，黑化為被黑色臍帶纏繞的畸形巨獸。它承諾無痛，卻剝奪成長與真實。"
+    "hp": 1400,
+    "sanity": 30,
+    "power": 62,
+    "intellect": 48,
+    "resilience": 58,
+    "base_damage": 48,
+    "description": "逃避者／彌賽亞情結的終點。黑化巨獸每擊威脅瀕死。4 人全攻約需 7–10 回合；務必輪防。"
   },
 
   "combat_settings": {
     "phase_time_limit_seconds": 220,
     "allow_zoo": true,
     "zoo_sanity_threshold": 70,
-    "max_phases": 10,
+    "max_phases": 14,
     "win_condition": "defeat_enemy"
   },
 
@@ -44,24 +44,21 @@
       "stat": "resilience",
       "amount": 15
     },
-    "narrative": "無痛的烏托邦再次合攏。脆弱被標籤為罪，你們幾乎相信：只要夠「愛」，就永遠不必面對真實的痛。",
-    "debuff": "resilience_-15_until_healed",
-    "force_near_death": false
+    "narrative": "涅槃金焰熄滅。黑色臍帶吞噬 Polis——失敗結局的陰影逼近。",
+    "debuff": null
   },
 
   "reflection_prompt": {
-    "title": "打破無傷神話",
+    "title": "Necessary Pain",
     "questions": [
-      "你是否曾經把「不造成任何痛楚」當成愛的唯一標準？",
-      "什麼情況下，必要的衝突其實是尊重？",
-      "Iggy 從麻醉之炎走到涅槃之火——你自己的「麻醉」是什麼？"
+      "「無痛成長」的承諾為何會變成鎖鏈？",
+      "各人擔當自己的擔子，與彼此扶持如何並存？"
     ],
-    "theological_tie": "真正的愛尊重對方承擔後果的權利；無痛溫室養出巨嬰，強迫痛苦製造木偶。恩典在真實中，不在虛假的無傷（2 Cor 12:9 的力量在軟弱中顯得完全）。"
+    "theological_tie": "必要的痛不是懲罰，而是真實與責任的代價。"
   },
 
   "notes_for_gm": {
-    "theological_focus": "Messiah complex · 無痛烏托邦 vs 真實的愛",
-    "debrief_tips": "可對照 Oikos 溫室與 Polis 鎖鏈：兩極都是失衡",
-    "physical_integration": "可配合 act6_savio_gate 影相；最終 debrief"
+    "purpose": "終局 BOSS：擊敗暴走 Savio（4 人隊最高難度）",
+    "difficulty": "HP 1400 · dmg 48 · 長戰；注意瀕死救援"
   }
 }

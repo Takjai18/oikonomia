@@ -2831,28 +2831,92 @@ def _build_round_resolved_response(combat, encounter, squad_id):
     return payload
 
 
+def _count_team_fighters(team_id, squad_id=None):
+    """Living party size for difficulty scaling (baseline design: 4 players)."""
+    if team_id:
+        try:
+            from models.squad import get_team_members
+            members = get_team_members(team_id) or []
+            n = len([m for m in members if m and m.get("squad_id")])
+            if n > 0:
+                return n
+        except Exception:
+            pass
+    return 1 if squad_id else 1
+
+
+def scale_enemy_stats_for_party(enemy_def, party_size):
+    """Scale encounter JSON stats so larger parties still face multi-round fights.
+
+    JSON values are calibrated for a **4-player** squad.
+    - HP scales linearly with party size (min 50% for 1–2p)
+    - Damage / resilience scale gently so solo is not unfair one-shots either
+    """
+    n = max(1, min(12, int(party_size or 1)))
+    baseline = 4.0
+    hp_scale = max(0.55, n / baseline)
+    dmg_scale = max(0.7, 0.7 + 0.3 * (n / baseline))
+    res_scale = max(0.8, 0.8 + 0.2 * (n / baseline))
+
+    def _i(key, default=0):
+        try:
+            return int((enemy_def or {}).get(key, default) or default)
+        except (TypeError, ValueError):
+            return int(default)
+
+    base_hp = max(1, _i("hp", 100))
+    hp = max(1, int(round(base_hp * hp_scale)))
+    return {
+        "name": (enemy_def or {}).get("name", "敵人"),
+        "hp": hp,
+        "max_hp": hp,
+        "resilience": max(0, int(round(_i("resilience", 0) * res_scale))),
+        "sanity": _i("sanity", 0),
+        "base_damage": max(1, int(round(_i("base_damage", 10) * dmg_scale))),
+        "power": max(1, int(round(_i("power", _i("base_damage", 10)) * dmg_scale))),
+        "intellect": _i("intellect", 0),
+        "party_size": n,
+        "hp_scale": hp_scale,
+    }
+
+
 def create_combat_record(squad_id, encounter_id, encounter, initial_status="precheck"):
     squad = get_squad(squad_id)
     team_id = (squad or {}).get("team_id")
     clean_team_id = normalize_team_id(team_id) if team_id else None
 
-    enemy = encounter.get("enemy", {})
+    enemy = encounter.get("enemy", {}) or {}
+    party_n = _count_team_fighters(clean_team_id, squad_id)
+    scaled = scale_enemy_stats_for_party(enemy, party_n)
     enemy_stats = build_enemy_combat_stats(
         {
-            "enemy_name": enemy.get("name", "敵人"),
-            "enemy_hp": enemy.get("hp", 100),
-            "enemy_max_hp": enemy.get("hp", 100),
-            "enemy_resilience": enemy.get("resilience", 0),
-            "enemy_sanity": enemy.get("sanity", 0),
-            "enemy_base_damage": enemy.get("base_damage", 10),
-            "enemy_power": enemy.get("power"),
-            "enemy_intellect": enemy.get("intellect"),
+            "enemy_name": scaled["name"],
+            "enemy_hp": scaled["hp"],
+            "enemy_max_hp": scaled["max_hp"],
+            "enemy_resilience": scaled["resilience"],
+            "enemy_sanity": scaled["sanity"],
+            "enemy_base_damage": scaled["base_damage"],
+            "enemy_power": scaled["power"],
+            "enemy_intellect": scaled["intellect"],
         },
         encounter,
     )
+    # Force HP from scaled values — never trust stale log reconcile at create time.
+    enemy_stats["hp"] = scaled["hp"]
+    enemy_stats["max_hp"] = scaled["max_hp"]
+    enemy_stats["resilience"] = scaled["resilience"]
+    enemy_stats["base_damage"] = scaled["base_damage"]
+    enemy_stats["power"] = scaled["power"]
+
     combat_settings = encounter.get("combat_settings", {})
     now = datetime.now().isoformat()
-    logs = [{"at": now, "message": f"遭遇戰開始：{encounter.get('title', encounter_id)}"}]
+    logs = [{
+        "at": now,
+        "message": (
+            f"遭遇戰開始：{encounter.get('title', encounter_id)}"
+            f"（隊伍 {party_n} 人 · 敵人 HP {scaled['hp']}）"
+        ),
+    }]
     phase_started = now if initial_status == "player_phase" else None
     phase_deadline = (
         combat_phase_deadline(now, combat_settings.get("phase_time_limit_seconds", 180))

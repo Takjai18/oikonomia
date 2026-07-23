@@ -18,12 +18,12 @@
 
   "enemy": {
     "name": "低語糾纏影",
-    "hp": 105,
+    "hp": 500,
     "sanity": 45,
-    "power": 30,
+    "power": 44,
     "intellect": 42,
-    "resilience": 20,
-    "base_damage": 16,
+    "resilience": 34,
+    "base_damage": 30,
     "description": "一個由無數低語編織而成的影子，不斷用「我懂你」的語句誘使人放棄界線。它代表 Marah 過去最深的掙扎——在理解與被吞噬之間找不到平衡。"
   },
 

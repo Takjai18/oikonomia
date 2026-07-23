@@ -5,24 +5,24 @@
   "story_stage": 2,
   "trigger_type": "story",
   "location_hint": "彩虹站月台",
-  "description": "面具撕下。Julian 使出 Simon 的「蜜獾·狂化重擊」，並坦言 Zoo「變色龍」——要 Iggy 甘願交出鳳凰之力。挺身迎戰！",
+  "description": "面具撕下。Julian 使出 Simon 的「蜜獾·狂化重擊」，並坦言 Zoo「變色龍」——要 Iggy 甘願交出鳳凰之力。挺身迎戰！血厚且打得重，4 人隊需多回合集火。",
 
   "enemy": {
-    "name": "Julian · 血田",
-    "hp": 175,
-    "sanity": 40,
-    "power": 46,
-    "intellect": 48,
-    "resilience": 26,
-    "base_damage": 22,
-    "description": "情緒勒索與道德綁架的高手。Zoo「血田」種下他人組織，在宿主能力爆發時收割共鳴、奪取其能力。表面溫柔，獠牙已出。"
+    "name": "Julian · 變色龍／蜜獾",
+    "hp": 980,
+    "sanity": 45,
+    "power": 58,
+    "intellect": 50,
+    "resilience": 50,
+    "base_damage": 42,
+    "description": "情緒勒索與道德綁架的高手。借用 Simon 狂化重擊，每回合威脅全隊。4 人全攻仍需約 5–7 回合。"
   },
 
   "combat_settings": {
     "phase_time_limit_seconds": 200,
     "allow_zoo": true,
     "zoo_sanity_threshold": 70,
-    "max_phases": 8,
+    "max_phases": 12,
     "win_condition": "defeat_enemy"
   },
 
@@ -41,26 +41,24 @@
 
   "failure": {
     "trauma": {
-      "stat": "resilience",
+      "stat": "power",
       "amount": 12
     },
-    "narrative": "血田收割成功。剛點燃的界線之火被奪走一角，Iggy 的舊傷同感恩鎖鏈再次纏上全隊。",
-    "debuff": "resilience_-12_until_healed"
+    "narrative": "Julian 的獠牙刺穿防線。Iggy 幾乎交出力量——創傷加深。",
+    "debuff": null
   },
 
   "reflection_prompt": {
-    "title": "引路人與綁架",
+    "title": "Julian 之戰",
     "questions": [
-      "有沒有人用「我幫過你」來綁架你的選擇？",
-      "當你終於說出「不」時，關係裡最常見的反撲是什麼？",
-      "感恩同被利用，界線在哪？"
+      "「甘願交出力量」與健康界線有何不同？",
+      "團隊如何在高壓下仍守護彼此？"
     ],
-    "theological_tie": "健康的引導尊重自由意志；情緒勒索用過去的「恩」剝奪對方成長（Law of Power / Respect）。"
+    "theological_tie": "真正的愛不索取獻祭；接納軟弱才是勇氣。"
   },
 
   "notes_for_gm": {
-    "theological_focus": "Manipulative control · 道德綁架",
-    "debrief_tips": "對照 Act 2：救星與鎖鏈可以是同一人",
-    "physical_integration": "可配合 act4_julian_gate 影相"
+    "purpose": "Act 5 BOSS：擊敗 Julian（4 人隊長戰）",
+    "difficulty": "HP 980 · dmg 42 · 需防禦與輸出平衡"
   }
 }
