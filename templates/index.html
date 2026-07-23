@@ -37,8 +37,21 @@
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        #qr-reader { min-height: 280px; background: #09090b; }
-        #qr-reader video { border-radius: 0.75rem; }
+        #qr-reader {
+            min-height: 280px;
+            width: 100%;
+            background: #09090b;
+            position: relative;
+        }
+        #qr-reader video {
+            border-radius: 0.75rem;
+            width: 100% !important;
+            max-width: 100%;
+            /* iOS Safari: keep camera preview visible & inline */
+            object-fit: cover;
+            -webkit-playsinline: true;
+        }
+        #qr-reader img { display: none !important; }
         input[type="password"],
         input[type="text"].form-input,
         #login_pin,
@@ -5415,23 +5428,90 @@
         let html5QrCode = null;
         let qrScannerRunning = false;
         let qrClaimInProgress = false;
+        let qrStartInProgress = false;
 
+        /** Stop camera stream only — does NOT hide the modal. */
+        async function stopQRCameraOnly() {
+            if (html5QrCode) {
+                try {
+                    if (qrScannerRunning) {
+                        await html5QrCode.stop();
+                    }
+                } catch (e) {
+                    console.warn('QR stop:', e);
+                }
+                try {
+                    html5QrCode.clear();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            html5QrCode = null;
+            qrScannerRunning = false;
+            const reader = document.getElementById('qr-reader');
+            if (reader) reader.innerHTML = '';
+        }
+
+        /** Full close: stop camera + hide modal. */
         async function stopQRScanner() {
+            await stopQRCameraOnly();
             const modal = document.getElementById('qr-scanner-modal');
             if (modal) {
                 modal.classList.remove('flex');
                 modal.classList.add('hidden');
             }
-            if (html5QrCode && qrScannerRunning) {
-                try {
-                    await html5QrCode.stop();
-                    html5QrCode.clear();
-                } catch (e) {
-                    console.error(e);
-                }
+            qrStartInProgress = false;
+        }
+
+        function qrCameraErrorMessage(err) {
+            const name = err && (err.name || err);
+            const msg = String((err && err.message) || err || '');
+            if (name === 'NotAllowedError' || /Permission|NotAllowed|denied/i.test(msg)) {
+                return '相機權限被拒絕。請到 設定 → Safari → 相機 允許此網站，然後重新整理。';
             }
-            html5QrCode = null;
-            qrScannerRunning = false;
+            if (name === 'NotFoundError' || /NotFound|no camera|DevicesNotFound/i.test(msg)) {
+                return '找不到相機裝置。';
+            }
+            if (name === 'NotReadableError' || /NotReadable|in use|TrackStart/i.test(msg)) {
+                return '相機正被其他 App 使用，請關閉後重試。';
+            }
+            if (name === 'OverconstrainedError' || /Overconstrained/i.test(msg)) {
+                return '此裝置不支援所選鏡頭，請重試。';
+            }
+            if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                return '相機需要 HTTPS 連線才能使用。';
+            }
+            return '無法啟動相機：' + (msg || '未知錯誤') + '。請確認已允許相機權限並重新整理。';
+        }
+
+        /** Pick rear camera deviceId when possible (Safari-friendly). */
+        async function pickQrCameraId() {
+            try {
+                const cameras = await Html5Qrcode.getCameras();
+                if (!cameras || !cameras.length) return null;
+                const rear = cameras.find((c) =>
+                    /back|rear|environment|後|后|外置|wide/i.test(c.label || '')
+                );
+                return (rear || cameras[cameras.length - 1] || cameras[0]).id;
+            } catch (e) {
+                console.warn('getCameras failed:', e);
+                return null;
+            }
+        }
+
+        function ensureQrVideoPlaysInline() {
+            const reader = document.getElementById('qr-reader');
+            if (!reader) return;
+            reader.querySelectorAll('video').forEach((v) => {
+                v.setAttribute('playsinline', 'true');
+                v.setAttribute('webkit-playsinline', 'true');
+                v.muted = true;
+                v.setAttribute('muted', '');
+                v.playsInline = true;
+                // Nudge Safari to actually paint frames
+                const p = v.play && v.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            });
         }
 
         async function startQRScanner() {
@@ -5439,41 +5519,91 @@
                 showToast('QR 掃描庫載入失敗，請重新整理頁面', 'error');
                 return;
             }
+            if (qrStartInProgress) return;
+            qrStartInProgress = true;
 
             const modal = document.getElementById('qr-scanner-modal');
             const status = document.getElementById('qr-status');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            const readerEl = document.getElementById('qr-reader');
+
+            // 1) Show modal FIRST (camera must start on a visible element — Safari)
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
             if (status) status.textContent = '正在啟動相機...';
 
-            await stopQRScanner();
-            html5QrCode = new Html5Qrcode('qr-reader');
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            // 2) Clean previous instance WITHOUT hiding the modal
+            await stopQRCameraOnly();
+
+            // Layout paint so #qr-reader has non-zero size before getUserMedia
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+            const boxSize = Math.min(
+                250,
+                Math.max(180, Math.floor(((readerEl && readerEl.clientWidth) || 280) * 0.72))
+            );
+            const config = {
+                fps: 10,
+                qrbox: { width: boxSize, height: boxSize },
+                aspectRatio: 1.0,
+                // Disable experimental features that break some iOS builds
+                disableFlip: false,
+            };
 
             const onScanFailure = () => {};
 
-            async function tryStartCamera(facingMode, label) {
-                await html5QrCode.start(
-                    { facingMode },
-                    config,
-                    onScanSuccess,
-                    onScanFailure
-                );
+            async function tryStart(cameraConfig, label) {
+                html5QrCode = new Html5Qrcode('qr-reader');
+                await html5QrCode.start(cameraConfig, config, onScanSuccess, onScanFailure);
                 qrScannerRunning = true;
+                ensureQrVideoPlaysInline();
+                // Second pass after DOM settles (html5-qrcode injects <video> async)
+                setTimeout(ensureQrVideoPlaysInline, 200);
+                setTimeout(ensureQrVideoPlaysInline, 600);
                 if (status) status.textContent = label;
             }
 
             try {
-                await tryStartCamera('environment', '請對準 QR Code');
-            } catch (err) {
-                console.error('後置相機失敗:', err);
-                try {
-                    html5QrCode = new Html5Qrcode('qr-reader');
-                    await tryStartCamera('user', '請對準 QR Code（前鏡頭）');
-                } catch (err2) {
-                    console.error('前鏡頭失敗:', err2);
-                    if (status) status.textContent = '無法啟動相機，請檢查瀏覽器權限';
+                // Prefer enumerated deviceId — most reliable on iOS Safari
+                const deviceId = await pickQrCameraId();
+                if (deviceId) {
+                    try {
+                        await tryStart(
+                            { deviceId: { exact: deviceId } },
+                            '請對準 QR Code'
+                        );
+                        qrStartInProgress = false;
+                        return;
+                    } catch (e1) {
+                        console.warn('deviceId start failed, fallback facingMode:', e1);
+                        await stopQRCameraOnly();
+                    }
                 }
+
+                // facingMode environment (back camera)
+                try {
+                    await tryStart(
+                        { facingMode: { ideal: 'environment' } },
+                        '請對準 QR Code'
+                    );
+                    qrStartInProgress = false;
+                    return;
+                } catch (e2) {
+                    console.warn('environment camera failed:', e2);
+                    await stopQRCameraOnly();
+                }
+
+                // Last resort: front camera
+                await tryStart({ facingMode: 'user' }, '請對準 QR Code（前鏡頭）');
+            } catch (err) {
+                console.error('QR camera start failed:', err);
+                await stopQRCameraOnly();
+                const friendly = qrCameraErrorMessage(err);
+                if (status) status.textContent = friendly;
+                showToast(friendly, 'error');
+            } finally {
+                qrStartInProgress = false;
             }
         }
 
