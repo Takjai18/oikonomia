@@ -4,11 +4,19 @@ import hmac
 import json
 import os
 import re
+import unicodedata
 
 from flask import current_app
 
 from models.item import get_item_by_id, get_item_by_qr_code_value
 from utils.env import is_production_env
+
+# Zero-width / BOM that often appear after print → phone camera scan.
+_ZW_RE = re.compile(r"[\u200b-\u200d\ufeff\u2060]")
+# Various unicode dashes → ASCII hyphen for act1-water style codes.
+_DASH_RE = re.compile(r"[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]")
+# Signed token: payload + "." + 12 hex chars (see sign_qr_token).
+_SIGNED_TOKEN_RE = re.compile(r"^(.+)\.([0-9a-fA-F]{12})$")
 
 
 def qr_signing_secret():
@@ -35,12 +43,14 @@ def verify_signed_qr_token(token):
     if not token or "." not in token:
         return None
     payload, signature = token.rsplit(".", 1)
+    if len(signature) != 12:
+        return None
     expected = hmac.new(
         qr_signing_secret().encode(),
         payload.encode(),
         hashlib.sha256,
     ).hexdigest()[:12]
-    if not hmac.compare_digest(signature, expected):
+    if not hmac.compare_digest(signature.lower(), expected.lower()):
         return None
     return payload
 
@@ -48,6 +58,21 @@ def verify_signed_qr_token(token):
 def allow_legacy_unsigned_qr():
     default = "0" if is_production_env() else "1"
     return os.environ.get("ALLOW_LEGACY_QR", default) != "0"
+
+
+def normalize_qr_payload(raw_payload):
+    """Strip noise from camera / print pipelines so act1-water still matches."""
+    if raw_payload is None:
+        return ""
+    text = str(raw_payload)
+    text = unicodedata.normalize("NFKC", text)
+    text = _ZW_RE.sub("", text)
+    text = _DASH_RE.sub("-", text)
+    text = text.strip()
+    # Drop surrounding quotes sometimes added by third-party scanners
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"', "`"):
+        text = text[1:-1].strip()
+    return text
 
 
 def build_item_qr_payload(item):
@@ -64,48 +89,79 @@ def build_item_qr_payload(item):
     }, ensure_ascii=False)
 
 
+def _lookup_catalog_qr(value):
+    """Match items.qr_code_value (case-insensitive). Catalog codes are intentional print payloads."""
+    if not value:
+        return None
+    clean = normalize_qr_payload(value)
+    if not clean:
+        return None
+    item = get_item_by_qr_code_value(clean)
+    if item:
+        return item
+    # Case-insensitive fallback (DB helper also does LOWER match).
+    lower = clean.lower()
+    if lower != clean:
+        item = get_item_by_qr_code_value(lower)
+        if item:
+            return item
+    return None
+
+
 def resolve_item_from_qr_payload(raw_payload):
-    text = (raw_payload or "").strip()
+    text = normalize_qr_payload(raw_payload)
     if not text:
         return None
 
+    # 1) Catalog plain codes FIRST (act1-wood, item-001, …).
+    # These are the codes printed on physical props — always allowed when present in DB.
+    # Do this before signed-token / legacy gates so production ALLOW_LEGACY_QR=0
+    # does not block intentional print payloads.
+    catalog = _lookup_catalog_qr(text)
+    if catalog:
+        return catalog
+
+    # 2) v2 JSON envelope
     if text.startswith("{"):
         try:
             obj = json.loads(text)
             if obj.get("type") == "item":
                 token = obj.get("token")
                 if token:
-                    verified = verify_signed_qr_token(token)
-                    if not verified:
-                        return None
-                    item = get_item_by_qr_code_value(verified)
-                    if item:
-                        return item
+                    verified = verify_signed_qr_token(normalize_qr_payload(token))
+                    if verified:
+                        item = _lookup_catalog_qr(verified)
+                        if item:
+                            return item
                 if obj.get("qr"):
-                    if not allow_legacy_unsigned_qr():
-                        return None
-                    item = get_item_by_qr_code_value(obj["qr"])
+                    item = _lookup_catalog_qr(obj["qr"])
                     if item:
+                        # Prefer catalog match; only require legacy flag if not in catalog
+                        # (already matched above if valid)
                         return item
                 if obj.get("id") is not None and allow_legacy_unsigned_qr():
                     return get_item_by_id(int(obj["id"]))
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
 
-    if "." in text and not text.startswith("http"):
+    # 3) Signed compact token: "act1-wood.a1b2c3d4e5f6"
+    signed_match = _SIGNED_TOKEN_RE.match(text)
+    if signed_match:
         verified = verify_signed_qr_token(text)
         if verified:
-            item = get_item_by_qr_code_value(verified)
+            item = _lookup_catalog_qr(verified)
             if item:
                 return item
             if verified.isdigit():
                 return get_item_by_id(int(verified))
-        if not allow_legacy_unsigned_qr():
-            return None
+        # Invalid signature — do not fall through as catalog id containing a dot
+        return None
 
+    # 4) Claim page URLs
     claim_qr_match = re.search(r"/claim_qr/([^/?#]+)", text, re.I)
     if claim_qr_match:
-        item = get_item_by_qr_code_value(claim_qr_match.group(1))
+        from urllib.parse import unquote
+        item = _lookup_catalog_qr(unquote(claim_qr_match.group(1)))
         if item:
             return item
 
@@ -113,22 +169,19 @@ def resolve_item_from_qr_payload(raw_payload):
     if claim_id_match:
         return get_item_by_id(int(claim_id_match.group(1)))
 
+    # 5) Legacy aliases
     if re.match(r"^item-\d{3}$", text, re.I):
-        if not allow_legacy_unsigned_qr():
-            return None
-        return get_item_by_qr_code_value(text.lower())
+        item = _lookup_catalog_qr(text.lower())
+        if item:
+            return item
 
     if text.lower().startswith("oiko-item-"):
         suffix = text.lower().replace("oiko-item-", "", 1)
         if suffix.isdigit():
-            return get_item_by_qr_code_value(f"item-{int(suffix):03d}")
-        return get_item_by_qr_code_value(text)
+            return _lookup_catalog_qr(f"item-{int(suffix):03d}")
+        return _lookup_catalog_qr(text)
 
-    direct = get_item_by_qr_code_value(text)
-    if direct:
-        return direct
-
-    if text.isdigit():
+    if text.isdigit() and allow_legacy_unsigned_qr():
         return get_item_by_id(int(text))
 
     return None

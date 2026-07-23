@@ -92,12 +92,25 @@ def add_item():
     item = None
 
     if source == "qr":
+        from utils.qr import normalize_qr_payload
+
         qr_payload = data.get("qr_payload") or data.get("qr_code_value") or ""
-        if not str(qr_payload).strip():
-            return jsonify({"success": False, "error": "無效的 QR Code"}), 400
-        item = resolve_item_from_qr_payload(qr_payload)
+        qr_clean = normalize_qr_payload(qr_payload)
+        if not qr_clean:
+            return jsonify({"success": False, "error": "無效的 QR Code（內容為空）"}), 400
+        item = resolve_item_from_qr_payload(qr_clean)
         if not item:
-            return jsonify({"success": False, "error": "QR Code 無效或物品已停用"}), 400
+            # Help GM / players: show what was scanned (truncated).
+            preview = qr_clean if len(qr_clean) <= 48 else (qr_clean[:45] + "…")
+            return jsonify({
+                "success": False,
+                "error": (
+                    f"QR Code 無法對應物品（讀到：{preview}）。"
+                    "請確認是遊戲專用碼（如 act1-water），並用 App 內掃描；"
+                    "若剛 deploy，請等伺服器重啟完成後再試。"
+                ),
+                "scanned_preview": preview,
+            }), 400
         item_id = item["id"]
     else:
         try:
@@ -118,12 +131,16 @@ def add_item():
     linked_task_id = hooks.get("linked_task_id")
     squad_for_gate = _get_squad(session["squad_id"]) or {"squad_id": session["squad_id"]}
     if linked_task_id and not is_task_unlocked(squad_for_gate, linked_task_id):
+        reason = task_lock_reason(squad_for_gate, linked_task_id) or "請先完成前置劇情"
         return jsonify({
             "success": False,
             "error": (
-                task_lock_reason(squad_for_gate, linked_task_id)
-                or "此道具任務尚未解鎖——請先完成前置劇情"
+                f"此 QR 任務尚未解鎖（{reason}）。"
+                "請先看完當前劇情再掃；例如木材／水要先完成「飛狐雪山」開場，"
+                "徽章／鐵片要等布布戰後篝火劇情。"
             ),
+            "locked": True,
+            "linked_task_id": linked_task_id,
         }), 403
 
     success, message, applied_effect = grant_item_to_squad(session["squad_id"], item_id, source)

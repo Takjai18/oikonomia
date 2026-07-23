@@ -25,14 +25,28 @@ def get_item_by_qr_code_value(qr_code_value):
     if not qr_code_value:
         return None
     clean_value = str(qr_code_value).strip()
+    if not clean_value:
+        return None
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM items WHERE qr_code_value = ? AND COALESCE(is_active, 1) = 1",
-        (clean_value,),
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    try:
+        # Exact match first (index-friendly).
+        row = conn.execute(
+            "SELECT * FROM items WHERE qr_code_value = ? AND COALESCE(is_active, 1) = 1",
+            (clean_value,),
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Case-insensitive fallback for phone scanners / OCR quirks.
+        row = conn.execute(
+            """SELECT * FROM items
+               WHERE LOWER(TRIM(qr_code_value)) = LOWER(TRIM(?))
+                 AND COALESCE(is_active, 1) = 1""",
+            (clean_value,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 
 def format_item_effect_text(effect_type, effect_value):
