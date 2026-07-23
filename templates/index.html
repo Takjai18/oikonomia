@@ -644,6 +644,7 @@
             <p class="text-zinc-400 text-sm mb-5 leading-snug">
                 選擇頭像，並將
                 <span class="text-amber-400 font-semibold">30</span> 點分配到<strong class="text-zinc-200">力量／韌性</strong>（每項基礎 10）。
+                韌性會一併提升<strong class="text-emerald-400">血量、防禦與逃跑</strong>。
                 點能力旁的 <span class="text-amber-400">?</span> 可查看用途。
             </p>
 
@@ -683,8 +684,10 @@
                         <span id="alloc-resilience-value" class="font-mono text-emerald-400">10</span>
                     </div>
                     <div id="stat-help-resilience" class="hidden text-[12px] leading-relaxed text-zinc-400 bg-zinc-900/80 border border-zinc-700 rounded-xl px-3 py-2 mb-2">
-                        <strong class="text-emerald-300">韌性</strong>影響<strong class="text-zinc-200">受傷減免與存活</strong>。
-                        敵人反擊時，韌性越高受傷越少；防禦＋高韌性更易撐過多回合。
+                        <strong class="text-emerald-300">韌性</strong>同時影響：
+                        <strong class="text-zinc-200">① 血量上限</strong>（每比基礎 10 多 1 點韌性 ＝ ＋2 最大生命）；
+                        <strong class="text-zinc-200">② 防禦減傷</strong>（受傷更少，配合「防禦」更穩）；
+                        <strong class="text-zinc-200">③ 逃跑成功率</strong>（韌性越高越易成功逃離戰鬥）。
                     </div>
                     <input type="range" id="alloc-resilience" min="10" max="40" value="10" step="1"
                            class="w-full accent-emerald-500" oninput="onAllocSliderInput('resilience')">

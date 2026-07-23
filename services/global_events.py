@@ -60,11 +60,23 @@ def apply_global_effect(effect_type, effect_value=0):
                 (delta, delta),
             )
         elif effect_type == "resilience_up":
+            # Resilience also raises max HP / current HP for every squad.
+            from utils.stats_formulas import apply_resilience_change_to_hp
             delta = abs(effect_value)
-            c.execute(
-                f"UPDATE squads SET resilience = {clamped_stat_delta_expr('resilience', '+')}",
-                (delta, delta),
-            )
+            rows = c.execute(
+                "SELECT squad_id, resilience, hp, max_hp FROM squads"
+            ).fetchall()
+            for sid, old_res_raw, hp0, max0 in rows:
+                try:
+                    old_res = int(old_res_raw if old_res_raw is not None else 10)
+                except (TypeError, ValueError):
+                    old_res = 10
+                new_res = max(0, min(999, old_res + delta))
+                new_hp, new_max = apply_resilience_change_to_hp(hp0, max0, old_res, new_res)
+                c.execute(
+                    "UPDATE squads SET resilience = ?, hp = ?, max_hp = ? WHERE squad_id = ?",
+                    (new_res, new_hp, new_max, sid),
+                )
         elif effect_type == "judas_strengthen":
             c.execute("UPDATE squads SET sanity = MAX(0, sanity - 8)")
         elif effect_type == "iggy_collapse":

@@ -205,6 +205,35 @@ def update_squad(squad_id, **kwargs):
     c = conn.cursor()
     updates = []
     params = []
+
+    # Resilience raises max HP / current HP (defence + flee already use resilience).
+    if "resilience" in kwargs and kwargs["resilience"] is not None:
+        try:
+            new_res = int(kwargs["resilience"])
+        except (TypeError, ValueError):
+            new_res = None
+        if new_res is not None:
+            from utils.stats_formulas import apply_resilience_change_to_hp
+            current = get_squad(squad_id) or {}
+            old_res = current.get("resilience")
+            try:
+                old_res_i = int(old_res if old_res is not None else 10)
+            except (TypeError, ValueError):
+                old_res_i = 10
+            if new_res != old_res_i:
+                new_hp, new_max = apply_resilience_change_to_hp(
+                    current.get("hp"),
+                    current.get("max_hp"),
+                    old_res_i,
+                    new_res,
+                )
+                # Only auto-adjust HP if caller did not set them explicitly.
+                if "hp" not in kwargs:
+                    kwargs["hp"] = new_hp
+                if "max_hp" not in kwargs:
+                    kwargs["max_hp"] = new_max
+            kwargs["resilience"] = max(0, new_res)
+
     if "hp" in kwargs and kwargs["hp"] is not None:
         try:
             new_hp = int(kwargs["hp"])
@@ -213,6 +242,11 @@ def update_squad(squad_id, **kwargs):
         if new_hp is not None:
             current = get_squad(squad_id) or {}
             current_max = squad_max_hp(current)
+            if "max_hp" in kwargs and kwargs["max_hp"] is not None:
+                try:
+                    current_max = max(current_max, int(kwargs["max_hp"]))
+                except (TypeError, ValueError):
+                    pass
             if new_hp > current_max:
                 kwargs["max_hp"] = min(HP_STAT_CEILING, new_hp)
             kwargs["hp"] = max(0, new_hp)

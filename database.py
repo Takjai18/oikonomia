@@ -281,6 +281,34 @@ def migrate_db():
         )
     except sqlite3.Error:
         pass
+    # Resilience → max HP: raise ceiling (and top up full-HP players) once formula is higher.
+    # Formula: max_hp >= 100 + max(0, resilience - 10) * 2
+    try:
+        c.execute(
+            """UPDATE squads
+               SET max_hp = MAX(
+                       COALESCE(max_hp, 100),
+                       100 + MAX(0, COALESCE(resilience, 10) - 10) * 2
+                   ),
+                   hp = CASE
+                       WHEN COALESCE(hp, 0) >= COALESCE(max_hp, 100) - 1
+                       THEN MAX(
+                           COALESCE(hp, 100),
+                           100 + MAX(0, COALESCE(resilience, 10) - 10) * 2
+                       )
+                       ELSE MIN(
+                           COALESCE(hp, 100),
+                           MAX(
+                               COALESCE(max_hp, 100),
+                               100 + MAX(0, COALESCE(resilience, 10) - 10) * 2
+                           )
+                       )
+                   END
+               WHERE 100 + MAX(0, COALESCE(resilience, 10) - 10) * 2
+                     > COALESCE(max_hp, 100)"""
+        )
+    except sqlite3.Error:
+        pass
     default_protagonist = settings.default_protagonist or {
         "hp": 100,
         "sanity": 100,

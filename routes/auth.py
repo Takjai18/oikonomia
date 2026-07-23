@@ -224,16 +224,25 @@ def allocate_stats():
 
     squad_id = session["squad_id"]
 
+    from utils.stats_formulas import max_hp_from_resilience
+
+    # Resilience also sets max HP (and starting HP) at character create.
+    max_hp = max_hp_from_resilience(resilience)
+    hp = max_hp
+
     def _write_allocation():
         with immediate_transaction() as conn:
             conn.execute(
                 """UPDATE squads
                    SET power = ?, intellect = 10, resilience = ?,
+                       max_hp = ?, hp = ?,
                        avatar = ?, stats_allocated = 1, last_update = ?
                    WHERE squad_id = ?""",
                 (
                     power,
                     resilience,
+                    max_hp,
+                    hp,
                     stored_avatar,
                     datetime.now().isoformat(),
                     squad_id,

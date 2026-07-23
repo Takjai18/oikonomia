@@ -982,12 +982,34 @@ def get_lowest_resilience_player(participants):
     return best or (participants[0] if participants else None)
 
 
-def _escape_success_rate(combat_settings):
-    try:
-        rate = float((combat_settings or {}).get("escape_success_rate", 0.4))
-    except (TypeError, ValueError):
-        rate = 0.4
-    return max(0.0, min(1.0, rate))
+def _escape_success_rate(combat_settings, participants=None, actions=None):
+    """Escape success chance — higher team resilience raises the rate.
+
+    Encounter JSON may still hard-code escape_success_rate to override.
+    """
+    from utils.stats_formulas import escape_rate_for_participants
+
+    escapers = None
+    if actions:
+        escapers = [
+            sid
+            for sid, a in (actions or {}).items()
+            if (a.get("action_type") or a.get("action")) == "escape"
+        ]
+    if participants is not None:
+        return escape_rate_for_participants(
+            participants,
+            escapers,
+            combat_settings=combat_settings,
+        )
+    # Fallback when no participant list (legacy / tests).
+    if combat_settings and combat_settings.get("escape_success_rate") is not None:
+        try:
+            return max(0.0, min(1.0, float(combat_settings["escape_success_rate"])))
+        except (TypeError, ValueError):
+            pass
+    from utils.stats_formulas import escape_success_rate_from_resilience
+    return escape_success_rate_from_resilience(10)
 
 
 def _escape_meta_from_logs(logs, summary_idx=None):
@@ -1427,11 +1449,15 @@ def _resolve_player_phase_body(combat_id):
     )
     counter_target_actions = actions
     if escape_triggered:
-        escape_rate = _escape_success_rate(combat_settings)
+        escape_rate = _escape_success_rate(
+            combat_settings,
+            participants=list(participant_by_id.values()),
+            actions=actions,
+        )
         if random.random() < escape_rate:
             combat = append_combat_log(
                 combat,
-                f"全隊逃跑成功！（成功率 {int(escape_rate * 100)}%）",
+                f"全隊逃跑成功！（成功率 {int(escape_rate * 100)}% · 韌性影響）",
                 log_type="escape_success",
             )
             save_combat(combat_id, logs=combat.get("logs"))

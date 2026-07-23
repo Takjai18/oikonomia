@@ -58,12 +58,14 @@ def process_mixed_round_actions(
     player_actions: Mapping[str, Any],
     enemy_base_damage: int,
     *,
-    escape_success_rate: float = 0.4,
+    escape_success_rate: Optional[float] = None,
     rng: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     INV-E terminal orchestration: escape gate first, then per-attacker engine calls.
     Returns a pure breakdown dict (caller persists to DB).
+
+    If escape_success_rate is None, derive from average resilience of escapers.
     """
     actions = deepcopy(dict(player_actions or {}))
     round_breakdown: Dict[str, Any] = {
@@ -73,6 +75,7 @@ def process_mixed_round_actions(
         "damages_taken": {},
         "team_escaped": False,
         "defender_count": 0,
+        "escape_success_rate": None,
     }
 
     escape_intent = [
@@ -81,6 +84,16 @@ def process_mixed_round_actions(
     ]
 
     if escape_intent:
+        if escape_success_rate is None:
+            from utils.stats_formulas import escape_rate_for_participants
+            parts = [
+                active_combatants[sid]
+                for sid in escape_intent
+                if sid in active_combatants
+            ]
+            escape_success_rate = escape_rate_for_participants(parts, escape_intent)
+        escape_success_rate = float(escape_success_rate)
+        round_breakdown["escape_success_rate"] = escape_success_rate
         roll = random.random() if rng is None else float(rng)
         if roll < escape_success_rate:
             round_breakdown["team_escaped"] = True

@@ -95,6 +95,20 @@ def _apply_stat_delta(c, squad_id, stat, delta):
             f"UPDATE squads SET sanity = {clamped_stat_delta_expr('sanity', operator)} WHERE squad_id = ?",
             (magnitude, magnitude, squad_id),
         )
+    elif stat == "resilience":
+        from utils.stats_formulas import apply_resilience_change_to_hp
+        try:
+            old_res = int(row["resilience"] or 10)
+        except (TypeError, ValueError, KeyError):
+            old_res = 10
+        new_res = max(0, min(999, old_res + int(delta)))
+        new_hp, new_max = apply_resilience_change_to_hp(
+            row["hp"], row["max_hp"], old_res, new_res,
+        )
+        c.execute(
+            "UPDATE squads SET resilience = ?, hp = ?, max_hp = ? WHERE squad_id = ?",
+            (new_res, new_hp, new_max, squad_id),
+        )
     else:
         operator = "+" if delta >= 0 else "-"
         magnitude = abs(delta)
