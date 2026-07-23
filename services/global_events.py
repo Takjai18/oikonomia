@@ -53,9 +53,10 @@ def apply_global_effect(effect_type, effect_value=0):
                 (delta, delta),
             )
         elif effect_type == "intellect_up":
+            # Intellect retired — treat as power boost for legacy events.
             delta = abs(effect_value)
             c.execute(
-                f"UPDATE squads SET intellect = {clamped_stat_delta_expr('intellect', '+')}",
+                f"UPDATE squads SET power = {clamped_stat_delta_expr('power', '+')}",
                 (delta, delta),
             )
         elif effect_type == "resilience_up":

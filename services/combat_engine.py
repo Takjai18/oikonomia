@@ -42,8 +42,8 @@ class RoundResult:
 
 
 def get_effective_attack_stat(combatant: Combatant) -> int:
-    """Attack stat used for damage (max of power and intellect)."""
-    return max(int(combatant.power), int(combatant.intellect))
+    """Attack stat used for damage (power only; intellect retired)."""
+    return int(combatant.power or 0)
 
 
 def calculate_attack_damage(

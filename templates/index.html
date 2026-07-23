@@ -643,7 +643,7 @@
             <h2 class="text-2xl font-bold mb-1">建立你的角色</h2>
             <p class="text-zinc-400 text-sm mb-5 leading-snug">
                 選擇頭像，並將
-                <span class="text-amber-400 font-semibold">30</span> 點分配到力量／智力／韌性（每項基礎 10）。
+                <span class="text-amber-400 font-semibold">30</span> 點分配到<strong class="text-zinc-200">力量／韌性</strong>（每項基礎 10）。
                 點能力旁的 <span class="text-amber-400">?</span> 可查看用途。
             </p>
 
@@ -666,28 +666,11 @@
                         <span id="alloc-power-value" class="font-mono text-orange-400">10</span>
                     </div>
                     <div id="stat-help-power" class="hidden text-[12px] leading-relaxed text-zinc-400 bg-zinc-900/80 border border-zinc-700 rounded-xl px-3 py-2 mb-2">
-                        <strong class="text-orange-300">力量</strong>影響戰鬥<strong class="text-zinc-200">攻擊傷害</strong>。
-                        擲骰後的倍率會乘在攻擊相關輸出上；想打得更痛、更快清怪，就多加力量。
+                        <strong class="text-orange-300">力量</strong>決定戰鬥<strong class="text-zinc-200">攻擊傷害</strong>。
+                        擲骰後的倍率會乘在攻擊輸出上；想打得更痛、更快清怪，就多加力量。
                     </div>
                     <input type="range" id="alloc-power" min="10" max="40" value="10" step="1"
                            class="w-full accent-orange-500" oninput="onAllocSliderInput('power')">
-                </div>
-                <div>
-                    <div class="flex justify-between text-sm mb-1 items-center gap-2">
-                        <span class="flex items-center gap-1.5 min-w-0">
-                            智力 <span class="text-zinc-500">(Intellect)</span>
-                            <button type="button" class="stat-help-btn shrink-0"
-                                    onclick="toggleStatHelp('intellect')"
-                                    aria-label="智力說明">?</button>
-                        </span>
-                        <span id="alloc-intellect-value" class="font-mono text-blue-400">10</span>
-                    </div>
-                    <div id="stat-help-intellect" class="hidden text-[12px] leading-relaxed text-zinc-400 bg-zinc-900/80 border border-zinc-700 rounded-xl px-3 py-2 mb-2">
-                        <strong class="text-blue-300">智力</strong>影響<strong class="text-zinc-200">洞察、解謎與部分特殊／物品效果</strong>。
-                        任務 precheck、看穿情緒勒索等會用到；偏劇情與策略的選擇。
-                    </div>
-                    <input type="range" id="alloc-intellect" min="10" max="40" value="10" step="1"
-                           class="w-full accent-blue-500" oninput="onAllocSliderInput('intellect')">
                 </div>
                 <div>
                     <div class="flex justify-between text-sm mb-1 items-center gap-2">
@@ -820,10 +803,6 @@
                                 <span id="power-value" class="font-mono text-lg font-bold text-orange-400">—</span>
                             </div>
                             <div class="flex justify-between items-center py-1.5">
-                                <span class="flex items-center gap-2 text-sm"><span>📘</span><span class="font-medium text-zinc-200">智力</span></span>
-                                <span id="intellect-value" class="font-mono text-lg font-bold text-blue-400">—</span>
-                            </div>
-                            <div class="flex justify-between items-center py-1.5">
                                 <span class="flex items-center gap-2 text-sm"><span>🛡️</span><span class="font-medium text-zinc-200">韌性</span></span>
                                 <span id="resilience-value" class="font-mono text-lg font-bold text-emerald-400">—</span>
                             </div>
@@ -847,7 +826,6 @@
                             <div><div class="flex justify-between text-sm mb-1"><span>❤️ 生命值</span><span id="iggy-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div><div class="flex justify-between text-sm mb-1"><span>🧠 神智</span><span id="iggy-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div><div class="flex justify-between text-sm mb-1"><span>⚡ 力量</span><span id="iggy-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>📖 智力</span><span id="iggy-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div><div class="flex justify-between text-sm mb-1"><span>🛡️ 韌性</span><span id="iggy-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="iggy-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
@@ -859,7 +837,6 @@
                             <div><div class="flex justify-between text-sm mb-1"><span>❤️ 生命值</span><span id="marah-hp-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-hp-bar" class="h-2.5 bg-red-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div><div class="flex justify-between text-sm mb-1"><span>🧠 神智</span><span id="marah-sanity-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-sanity-bar" class="h-2.5 bg-purple-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div><div class="flex justify-between text-sm mb-1"><span>⚡ 力量</span><span id="marah-power-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-power-bar" class="h-2.5 bg-orange-500 rounded-full status-bar" style="width:100%"></div></div></div>
-                            <div><div class="flex justify-between text-sm mb-1"><span>📖 智力</span><span id="marah-intellect-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-intellect-bar" class="h-2.5 bg-blue-500 rounded-full status-bar" style="width:100%"></div></div></div>
                             <div><div class="flex justify-between text-sm mb-1"><span>🛡️ 韌性</span><span id="marah-resilience-value" class="font-mono">100</span></div><div class="h-2.5 bg-zinc-800 rounded-full"><div id="marah-resilience-bar" class="h-2.5 bg-emerald-500 rounded-full status-bar" style="width:100%"></div></div></div>
                         </div>
                     </div>
@@ -2454,7 +2431,7 @@
             const el = document.getElementById(`stat-help-${stat}`);
             if (!el) return;
             const open = !el.classList.contains('hidden');
-            ['power', 'intellect', 'resilience'].forEach((s) => {
+            ['power', 'resilience'].forEach((s) => {
                 const box = document.getElementById(`stat-help-${s}`);
                 if (box) box.classList.add('hidden');
             });
@@ -2826,7 +2803,7 @@
                 sanity_down: '神智下降',
                 sanity_up: '神智上升',
                 power_up: '力量上升',
-                intellect_up: '智力上升',
+                intellect_up: '力量上升',
                 resilience_up: '韌性上升',
                 judas_strengthen: 'Judas 加強',
                 iggy_collapse: 'Iggy 崩潰',
@@ -3010,7 +2987,7 @@
             hp: { text: 'text-red-400', bar: 'bg-red-500' },
             sanity: { text: 'text-purple-400', bar: 'bg-purple-500' },
             power: { text: 'text-orange-400' },
-            intellect: { text: 'text-blue-400' },
+
             resilience: { text: 'text-emerald-400' },
         };
 
@@ -3063,11 +3040,7 @@
             const hint = document.getElementById('dashboard-attack-hint');
             if (!hint) return;
             const power = Number(squad?.power) || 0;
-            const intellect = Number(squad?.intellect) || 0;
-            const attack = Math.max(power, intellect);
-            if (power > intellect) hint.textContent = `攻擊力：力量 ${attack}`;
-            else if (intellect > power) hint.textContent = `攻擊力：智力 ${attack}`;
-            else hint.textContent = `攻擊力：${attack}（力量／智力相同）`;
+            hint.textContent = `攻擊力：力量 ${power}`;
         }
 
         function setText(id, value) {
@@ -3120,7 +3093,7 @@
             setStatBar(prefix, 'hp', stats?.hp ?? DEFAULT_PLAYER_MAX_HP, {
                 maxHp: effectivePlayerMaxHp(stats),
             });
-            ['sanity', 'power', 'intellect', 'resilience'].forEach(s => {
+            ['sanity', 'power', 'resilience'].forEach(s => {
                 setStatBar(prefix, s, stats?.[s] ?? 100);
             });
         }
@@ -3151,10 +3124,10 @@
 
         function buildProtagonistCardHtml(title, prefix, stats, isActive) {
             const ring = isActive ? 'ring-active-route' : '';
-            const statsList = ['hp', 'sanity', 'power', 'intellect', 'resilience'];
-            const labels = {hp: '❤️ 生命值', sanity: '🧠 神智', power: '⚡ 力量', intellect: '📖 智力', resilience: '🛡️ 韌性'};
-            const colors = {hp: 'text-red-400', sanity: 'text-purple-400', power: 'text-orange-400', intellect: 'text-blue-400', resilience: 'text-emerald-400'};
-            const barColors = {hp: 'bg-red-500', sanity: 'bg-purple-500', power: 'bg-orange-500', intellect: 'bg-blue-500', resilience: 'bg-emerald-500'};
+            const statsList = ['hp', 'sanity', 'power', 'resilience'];
+            const labels = {hp: '❤️ 生命值', sanity: '🧠 神智', power: '⚡ 力量', resilience: '🛡️ 韌性'};
+            const colors = {hp: 'text-red-400', sanity: 'text-purple-400', power: 'text-orange-400', resilience: 'text-emerald-400'};
+            const barColors = {hp: 'bg-red-500', sanity: 'bg-purple-500', power: 'bg-orange-500', resilience: 'bg-emerald-500'};
             const rows = statsList.map(s => `
                 <div>
                     <div class="flex justify-between text-xs mb-1"><span>${labels[s]}</span><span class="font-mono ${colors[s]}">${stats?.[s] ?? 100}</span></div>
@@ -3331,7 +3304,7 @@
             setStatBar('', 'hp', squad.hp ?? DEFAULT_PLAYER_MAX_HP, {
                 maxHp: effectivePlayerMaxHp(squad),
             });
-            ['sanity','power','intellect','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
+            ['sanity','power','resilience'].forEach(s => setStatBar('', s, squad[s] ?? 100));
             document.getElementById('resource-value').textContent = squad.resources || 0;
             const insightEl = document.getElementById('insight-value');
             if (insightEl) insightEl.textContent = squad.insight_fragments || 0;
@@ -3637,10 +3610,6 @@
                                 <div class="text-zinc-500">力量</div>
                             </div>
                             <div>
-                                <div class="text-blue-400 font-mono">${m.intellect}</div>
-                                <div class="text-zinc-500">智力</div>
-                            </div>
-                            <div>
                                 <div class="text-emerald-400 font-mono">${m.resilience}</div>
                                 <div class="text-zinc-500">韌性</div>
                             </div>
@@ -3941,26 +3910,25 @@
 
         const STAT_ALLOC_BASE = 10;
         const STAT_ALLOC_FREE = 30;
-        let allocStats = { power: 10, intellect: 10, resilience: 10 };
+        let allocStats = { power: 10, resilience: 10 };
         let selectedAllocAvatar = null;
 
         function readAllocStatsFromSliders() {
             return {
                 power: parseInt(document.getElementById('alloc-power')?.value || '10', 10),
-                intellect: parseInt(document.getElementById('alloc-intellect')?.value || '10', 10),
                 resilience: parseInt(document.getElementById('alloc-resilience')?.value || '10', 10),
             };
         }
 
         function writeAllocStatsToSliders(stats) {
-            ['power', 'intellect', 'resilience'].forEach(stat => {
+            ['power', 'resilience'].forEach(stat => {
                 const slider = document.getElementById(`alloc-${stat}`);
                 if (slider) slider.value = stats[stat];
             });
         }
 
         function resetAllocStats() {
-            allocStats = { power: 10, intellect: 10, resilience: 10 };
+            allocStats = { power: 10, resilience: 10 };
             selectedAllocAvatar = null;
             writeAllocStatsToSliders(allocStats);
             updateAllocUi();
@@ -3969,7 +3937,6 @@
         function onAllocSliderInput(changedStat) {
             allocStats = readAllocStatsFromSliders();
             let used = (allocStats.power - STAT_ALLOC_BASE)
-                + (allocStats.intellect - STAT_ALLOC_BASE)
                 + (allocStats.resilience - STAT_ALLOC_BASE);
             if (used > STAT_ALLOC_FREE) {
                 const excess = used - STAT_ALLOC_FREE;
@@ -3981,12 +3948,11 @@
 
         function updateAllocUi() {
             allocStats = readAllocStatsFromSliders();
-            ['power', 'intellect', 'resilience'].forEach(stat => {
+            ['power', 'resilience'].forEach(stat => {
                 const el = document.getElementById(`alloc-${stat}-value`);
                 if (el) el.textContent = allocStats[stat];
             });
             const used = (allocStats.power - STAT_ALLOC_BASE)
-                + (allocStats.intellect - STAT_ALLOC_BASE)
                 + (allocStats.resilience - STAT_ALLOC_BASE);
             const remaining = STAT_ALLOC_FREE - used;
             const remEl = document.getElementById('alloc-remaining');
@@ -4055,7 +4021,6 @@
                 return;
             }
             const used = (allocStats.power - STAT_ALLOC_BASE)
-                + (allocStats.intellect - STAT_ALLOC_BASE)
                 + (allocStats.resilience - STAT_ALLOC_BASE);
             if (STAT_ALLOC_FREE - used !== 0) {
                 showToast('請分配完所有 30 點', 'error');
@@ -5198,7 +5163,7 @@
             sanity_up: '神智',
             resilience_up: '韌性',
             hp_up: '生命值',
-            intellect_up: '智力',
+            intellect_up: '力量',
         };
 
         let currentObtainedItem = null;

@@ -10,7 +10,6 @@ export function createHudView(rootEl) {
   const enemyHpBar = rootEl.querySelector(`#${DOM_IDS.ENEMY_HP_BAR}`);
   const enemySanity = rootEl.querySelector(`#${DOM_IDS.ENEMY_SANITY}`);
   const enemyPower = rootEl.querySelector(`#${DOM_IDS.ENEMY_POWER}`);
-  const enemyIntellect = rootEl.querySelector(`#${DOM_IDS.ENEMY_INTELLECT}`);
   const enemyResilience = rootEl.querySelector(`#${DOM_IDS.ENEMY_RESILIENCE}`);
   const playerAvatar = rootEl.querySelector(`#${DOM_IDS.PLAYER_AVATAR}`);
   const playerName = rootEl.querySelector(`#${DOM_IDS.PLAYER_NAME}`);
@@ -19,7 +18,6 @@ export function createHudView(rootEl) {
   const playerSanity = rootEl.querySelector(`#${DOM_IDS.PLAYER_SANITY}`);
   const playerSanityBar = rootEl.querySelector(`#${DOM_IDS.PLAYER_SANITY_BAR}`);
   const playerPower = rootEl.querySelector(`#${DOM_IDS.PLAYER_POWER}`);
-  const playerIntellect = rootEl.querySelector(`#${DOM_IDS.PLAYER_INTELLECT}`);
   const playerResilience = rootEl.querySelector(`#${DOM_IDS.PLAYER_RESILIENCE}`);
   const playerStatsLabel = rootEl.querySelector(`#${DOM_IDS.PLAYER_STATS_LABEL}`);
   const playerPirLabel = rootEl.querySelector('#combat-v2-player-stats-pir-label');
@@ -63,7 +61,6 @@ export function createHudView(rootEl) {
       if (estats) {
         setStatText(enemySanity, estats.sanity);
         setStatText(enemyPower, estats.power);
-        setStatText(enemyIntellect, estats.intellect);
         setStatText(enemyResilience, estats.resilience);
       }
     }
@@ -83,7 +80,6 @@ export function createHudView(rootEl) {
       if (pstats) {
         setSanity(playerSanityBar, playerSanity, pstats.sanity);
         setStatText(playerPower, pstats.power);
-        setStatText(playerIntellect, pstats.intellect);
         setStatText(playerResilience, pstats.resilience);
       }
     }

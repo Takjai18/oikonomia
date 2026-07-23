@@ -201,17 +201,17 @@ def allocate_stats():
     data = request.json or {}
     try:
         power = int(data.get("power", 10))
-        intellect = int(data.get("intellect", 10))
         resilience = int(data.get("resilience", 10))
     except (TypeError, ValueError):
         return jsonify({"success": False, "error": "數值格式錯誤"}), 400
 
-    if power < 10 or intellect < 10 or resilience < 10:
+    if power < 10 or resilience < 10:
         return jsonify({"success": False, "error": "每項屬性最少要有 10 點"}), 400
 
-    total_free = (power - 10) + (intellect - 10) + (resilience - 10)
+    # Intellect retired: free points only go to power + resilience.
+    total_free = (power - 10) + (resilience - 10)
     if total_free != 30:
-        return jsonify({"success": False, "error": "必須剛好使用 30 點自由點數"}), 400
+        return jsonify({"success": False, "error": "必須剛好使用 30 點自由點數（力量／韌性）"}), 400
 
     from utils.helpers import resolve_player_pick_avatar
 
@@ -228,12 +228,11 @@ def allocate_stats():
         with immediate_transaction() as conn:
             conn.execute(
                 """UPDATE squads
-                   SET power = ?, intellect = ?, resilience = ?,
+                   SET power = ?, intellect = 10, resilience = ?,
                        avatar = ?, stats_allocated = 1, last_update = ?
                    WHERE squad_id = ?""",
                 (
                     power,
-                    intellect,
                     resilience,
                     stored_avatar,
                     datetime.now().isoformat(),

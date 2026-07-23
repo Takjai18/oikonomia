@@ -270,11 +270,21 @@ def migrate_db():
             "AND (COALESCE(power, 100) != 10 OR COALESCE(intellect, 100) != 10 "
             "OR COALESCE(resilience, 100) != 10 OR pin IS NOT NULL)"
         )
+    # Retire intellect: fold surplus points into power so existing characters keep attack value.
+    # Safe to re-run — only touches rows with intellect > 10.
+    try:
+        c.execute(
+            """UPDATE squads
+               SET power = MIN(100, COALESCE(power, 10) + MAX(0, COALESCE(intellect, 10) - 10)),
+                   intellect = 10
+               WHERE COALESCE(intellect, 10) > 10"""
+        )
+    except sqlite3.Error:
+        pass
     default_protagonist = settings.default_protagonist or {
         "hp": 100,
         "sanity": 100,
         "power": 100,
-        "intellect": 100,
         "resilience": 100,
     }
     c.execute(

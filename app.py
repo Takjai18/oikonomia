@@ -109,8 +109,9 @@ DB_PATH = os.path.join(DATA_DIR, "oikonomia.db")
 # ==================== Utils Layer Imports ====================
 from utils.uploads import save_task_submission_photo
 
-DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "intellect": 100, "resilience": 100}
-SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "intellect", "resilience"]
+DEFAULT_PROTAGONIST = {"hp": 100, "sanity": 100, "power": 100, "resilience": 100}
+# Player-facing combat stats (intellect retired — kept in DB only for legacy rows).
+SQUAD_ATTRIBUTES = ["hp", "sanity", "power", "resilience"]
 MAX_INVENTORY_SLOTS = 5
 
 SAMPLE_ITEMS = [
@@ -221,7 +222,8 @@ ITEM_EFFECT_STAT_MAP = {
     "sanity_up": "sanity",
     "resilience_up": "resilience",
     "hp_up": "hp",
-    "intellect_up": "intellect",
+    # Legacy alias: old intellect items now boost power instead.
+    "intellect_up": "power",
 }
 
 ITEM_EFFECT_LABELS = {
@@ -229,7 +231,7 @@ ITEM_EFFECT_LABELS = {
     "sanity_up": "神智",
     "resilience_up": "韌性",
     "hp_up": "生命值",
-    "intellect_up": "智力",
+    "intellect_up": "力量",
 }
 
 # ==================== Encounter / Combat ====================

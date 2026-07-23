@@ -232,7 +232,7 @@ GM_DASHBOARD_HTML = """
                         <th class="py-3">路線</th>
                         <th class="py-3">生命值</th>
                         <th class="py-3">神智</th>
-                        <th class="py-3">力量/智力/韌性</th>
+                        <th class="py-3">力量/韌性</th>
                         <th class="py-3">提交次數</th>
                         <th class="py-3">操作</th>
                     </tr>
@@ -266,7 +266,7 @@ GM_DASHBOARD_HTML = """
                                 </div>
                             </div>
                         </td>
-                        <td class="py-4 font-mono text-xs">{{ squad.power }}/{{ squad.intellect }}/{{ squad.resilience }}</td>
+                        <td class="py-4 font-mono text-xs">{{ squad.power }}/{{ squad.resilience }}</td>
                         <td class="py-4">
                             <span class="px-3 py-1 bg-zinc-700 rounded-full text-xs">{{ squad.submission_count }} 次</span>
                             
@@ -338,7 +338,7 @@ GM_DASHBOARD_HTML = """
                             <option value="sanity_down">全營神智下降</option>
                             <option value="sanity_up">全營神智上升</option>
                             <option value="power_up">全營力量上升</option>
-                            <option value="intellect_up">全營智力上升</option>
+
                             <option value="resilience_up">全營韌性上升</option>
                             <option value="global_debuff">全球減益（只記錄）</option>
                         </select>
@@ -1266,11 +1266,10 @@ GM_DASHBOARD_HTML = """
                             </div>
                             <a href="/gm/squad/${m.squad_id}" class="text-xs px-3 py-1 bg-amber-500/20 text-amber-400 rounded-xl hover:bg-amber-500/30">詳情</a>
                         </div>
-                        <div class="grid grid-cols-5 gap-2 text-center text-xs">
+                        <div class="grid grid-cols-4 gap-2 text-center text-xs">
                             <div><div class="text-red-400 font-mono">${m.hp}</div><div class="text-zinc-500">生命值</div></div>
                             <div><div class="text-purple-400 font-mono">${m.sanity}</div><div class="text-zinc-500">神智</div></div>
                             <div><div class="text-orange-400 font-mono">${m.power}</div><div class="text-zinc-500">力量</div></div>
-                            <div><div class="text-blue-400 font-mono">${m.intellect}</div><div class="text-zinc-500">智力</div></div>
                             <div><div class="text-emerald-400 font-mono">${m.resilience}</div><div class="text-zinc-500">韌性</div></div>
                         </div>
                     `;
@@ -1418,11 +1417,10 @@ GM_DASHBOARD_HTML = """
                                     </div>
                                     <span class="text-xs px-3 py-1 rounded-full ${routeClass}">${team.route_label}</span>
                                 </div>
-                                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-center text-xs mb-4">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs mb-4">
                                     <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-red-400 font-mono text-base">${team.avg_hp}</div><div class="text-zinc-500">平均生命值</div></div>
                                     <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-purple-400 font-mono text-base">${team.avg_sanity}</div><div class="text-zinc-500">平均神智</div></div>
                                     <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-orange-400 font-mono text-base">${team.avg_power}</div><div class="text-zinc-500">平均力量</div></div>
-                                    <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-blue-400 font-mono text-base">${team.avg_intellect}</div><div class="text-zinc-500">平均智力</div></div>
                                     <div class="bg-zinc-900/60 rounded-xl py-2"><div class="text-emerald-400 font-mono text-base">${team.avg_resilience}</div><div class="text-zinc-500">平均韌性</div></div>
                                 </div>
                                 <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-400 mb-4">
@@ -1467,7 +1465,7 @@ GM_DASHBOARD_HTML = """
                                         <tr class="border-b border-zinc-700 text-zinc-400">
                                             <th class="py-2 pr-4">玩家</th>
                                             <th class="py-2 pr-4">路線</th>
-                                            <th class="py-2 pr-4">生命值/神智/力量/智力/韌性</th>
+                                            <th class="py-2 pr-4">生命值/神智/力量/韌性</th>
                                             <th class="py-2 pr-4">任務</th>
                                             <th class="py-2 pr-4">階段</th>
                                             <th class="py-2 pr-4">提交</th>
@@ -1485,7 +1483,7 @@ GM_DASHBOARD_HTML = """
                                     <div class="text-xs text-zinc-500 font-mono">${p.squad_id}</div>
                                 </td>
                                 <td class="py-3 pr-4 text-xs">${p.route_label}</td>
-                                <td class="py-3 pr-4 font-mono text-xs">${p.hp}/${p.sanity}/${p.power}/${p.intellect}/${p.resilience}</td>
+                                <td class="py-3 pr-4 font-mono text-xs">${p.hp}/${p.sanity}/${p.power}/${p.resilience}</td>
                                 <td class="py-3 pr-4">${p.distinct_tasks}</td>
                                 <td class="py-3 pr-4">Stage ${p.story_stage}</td>
                                 <td class="py-3 pr-4">${p.submission_count}</td>
@@ -1914,7 +1912,6 @@ GM_SQUAD_DETAIL_HTML = """
                     <div>生命值: <span id="gm-stat-hp" class="font-mono text-red-400">{{ squad.hp }}{% if squad.max_hp and squad.max_hp > 100 %} / {{ squad.max_hp }}{% endif %}</span></div>
                     <div>神智: <span id="gm-stat-sanity" class="font-mono text-purple-400">{{ squad.sanity }}</span></div>
                     <div>力量: <span id="gm-stat-power" class="font-mono text-orange-400">{{ squad.power }}</span></div>
-                    <div>智力: <span id="gm-stat-intellect" class="font-mono text-blue-400">{{ squad.intellect }}</span></div>
                     <div>韌性: <span id="gm-stat-resilience" class="font-mono text-emerald-400">{{ squad.resilience }}</span></div>
                 </div>
             </div>
@@ -1959,15 +1956,6 @@ GM_SQUAD_DETAIL_HTML = """
                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
                         <button type="button" onclick="adjustValue('power')" 
                                 class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-2xl text-sm">更新</button>
-                    </div>
-                </div>
-                <div>
-                    <label class="text-xs text-zinc-400 block mb-1">智力</label>
-                    <div class="flex gap-x-2">
-                        <input type="number" id="intellect-value" value="{{ squad.intellect }}" 
-                               class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
-                        <button type="button" onclick="adjustValue('intellect')" 
-                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-2xl text-sm">更新</button>
                     </div>
                 </div>
                 <div>
@@ -2029,7 +2017,6 @@ GM_SQUAD_DETAIL_HTML = """
                 hp: formatGmHpDisplay(squad.hp, squad.max_hp),
                 sanity: squad.sanity,
                 power: squad.power,
-                intellect: squad.intellect,
                 resilience: squad.resilience,
                 resources: squad.resources,
             };
@@ -2041,7 +2028,6 @@ GM_SQUAD_DETAIL_HTML = """
                 hp: 'hp-value',
                 sanity: 'sanity-value',
                 power: 'power-value',
-                intellect: 'intellect-value',
                 resilience: 'resilience-value',
                 resources: 'resource-value',
             };
@@ -2055,7 +2041,7 @@ GM_SQUAD_DETAIL_HTML = """
 
         function adjustValue(field) {
             let valueInput;
-            const ids = {hp:'hp-value', sanity:'sanity-value', power:'power-value', intellect:'intellect-value', resilience:'resilience-value', resources:'resource-value'};
+            const ids = {hp:'hp-value', sanity:'sanity-value', power:'power-value', resilience:'resilience-value', resources:'resource-value'};
             valueInput = document.getElementById(ids[field]);
 
             const value = valueInput.value;

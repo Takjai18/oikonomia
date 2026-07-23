@@ -262,19 +262,12 @@ def get_effective_stat(squad, stat):
     return max(0, base - trauma)
 
 def get_effective_attack_stat(squad):
-    return max(
-        get_effective_stat(squad, "power"),
-        get_effective_stat(squad, "intellect"),
-    )
+    """Attack uses power only (intellect retired from player kit)."""
+    return get_effective_stat(squad, "power")
 
 def describe_attack_stat(squad):
     power = get_effective_stat(squad, "power")
-    intellect = get_effective_stat(squad, "intellect")
-    if power > intellect:
-        return {"stat": "power", "value": power, "label": "力量"}
-    if intellect > power:
-        return {"stat": "intellect", "value": intellect, "label": "智力"}
-    return {"stat": "power", "value": power, "label": "力量/智力"}
+    return {"stat": "power", "value": power, "label": "力量"}
 
 
 def _combatant_from_squad(squad, item_bonus=0):
@@ -1024,7 +1017,7 @@ def _escape_meta_from_logs(logs, summary_idx=None):
 def resolve_player_phase(combat_id):
     """
     完整解析 Player Phase：
-    - 攻擊傷害（max(力量, 智力)）+ dice multiplier
+    - 攻擊傷害（力量）+ dice multiplier
     - Zoo 加成（≥70/≥80/≥90/≥100 → 1.3x/1.4x/1.5x/1.8x；<70 為 1.0x，仍可發動）
     - 暴走（指定機率 + 30% 自傷）
     - 敵人反擊（韌性最低者；任一同隊 Defend → 全隊減傷 50%）
@@ -1956,7 +1949,7 @@ def _combat_enemy_avatar_url(encounter=None):
 
 
 def build_enemy_combat_stats(combat, encounter=None):
-    """敵人 5 維數值（同玩家：生命值／神智／力量／智力／韌性）。"""
+    """敵人數值（生命值／神智／力量／韌性；intellect 欄位僅相容舊 JSON）。"""
     combat = reconcile_enemy_hp(combat)
     enemy_def = (encounter or {}).get("enemy", {}) if encounter else {}
     log_hp = _enemy_hp_from_logs(combat.get("logs"))
