@@ -45,20 +45,52 @@ def next_stage_threshold(current_stage):
     return thresholds.get(current_stage + 1)
 
 
-def get_available_narrative_stories(squad):
+def squad_can_access_story(squad, story_id, story=None):
+    """Progressive access: unlock_only stories need grant/view; free stories use min_stage."""
+    from services.story import _squad_has_story_unlock
+
+    if not squad or not story_id:
+        return False
+    stories = settings.narrative_stories or NARRATIVE_STORIES
+    story = story or stories.get(story_id)
+    if not story:
+        return False
     squad_id = squad.get("squad_id")
+    story_route = story.get("route")
     route = squad.get("route")
+    if story_route and route and story_route != route:
+        return False
+    # Always allow welcome / already viewed (replay list handled by caller).
+    if story_id == "welcome":
+        return True
+    if is_story_viewed(squad_id, story_id):
+        return True
+    if _squad_has_story_unlock(squad_id, story_id):
+        return True
+    # unlock_only: never show by stage alone (prevents Act 2 spoilers before Bubuo).
+    if story.get("unlock_only"):
+        return False
     completed_count, completed_task_ids = count_team_distinct_tasks(
         squad_id, squad.get("team_id")
     )
     stage = resolve_story_stage(completed_count, completed_task_ids)
+    if story.get("min_stage", 0) > stage:
+        return False
+    if story.get("requires_team") and not squad.get("team_id"):
+        return False
+    return True
+
+
+def get_available_narrative_stories(squad):
+    squad_id = squad.get("squad_id")
+    route = squad.get("route")
     stories = settings.narrative_stories or NARRATIVE_STORIES
     results = []
     for story_id, story in stories.items():
         story_route = story.get("route")
         if story_route and story_route != route:
             continue
-        if story.get("min_stage", 0) > stage:
+        if not squad_can_access_story(squad, story_id, story):
             continue
         viewed = is_story_viewed(squad_id, story_id)
         if viewed and not story.get("replayable"):

@@ -139,6 +139,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 0,
+        "unlock_only": True,
         "requires_team": True,
         "skippable": True,
         "replayable": True,
@@ -176,6 +177,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 0,
+        "unlock_only": True,
         "requires_team": True,
         "skippable": True,
         "replayable": True,
@@ -263,6 +265,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 1,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -292,6 +295,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 1,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -317,6 +321,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 1,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -371,6 +376,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -410,6 +416,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -431,6 +438,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -470,6 +478,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -495,6 +504,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -525,6 +535,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 2,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -554,6 +565,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 3,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -589,6 +601,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 3,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [
@@ -624,6 +637,7 @@ NARRATIVE_STORIES = {
         "total_stages": 6,
         "route": "iggy",
         "min_stage": 3,
+        "unlock_only": True,
         "skippable": True,
         "replayable": True,
         "lines": [

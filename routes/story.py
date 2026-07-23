@@ -9,6 +9,7 @@ from services.narrative import (
     get_available_narrative_stories,
     get_story_for_route,
     next_stage_threshold,
+    squad_can_access_story,
 )
 from services.story import (
     count_team_distinct_tasks,
@@ -70,13 +71,8 @@ def api_get_story(story_id):
     if story_route and squad.get("route") != story_route:
         return jsonify({"error": "此劇情不適用於你目前的路線"}), 403
 
-    if story.get("min_stage") is not None and story_route:
-        completed_count, completed_task_ids = count_team_distinct_tasks(
-            session["squad_id"], squad.get("team_id")
-        )
-        stage = resolve_story_stage(completed_count, completed_task_ids)
-        if story.get("min_stage", 0) > stage:
-            return jsonify({"error": "故事階段未解鎖"}), 403
+    if not squad_can_access_story(squad, story_id, story):
+        return jsonify({"error": "此劇情尚未解鎖（請先完成前置任務／戰鬥）"}), 403
 
     payload = enrich_story_lines(story)
     payload["viewed"] = is_story_viewed(session["squad_id"], story_id)

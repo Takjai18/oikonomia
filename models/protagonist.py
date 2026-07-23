@@ -568,6 +568,43 @@ def apply_damage_to_protagonist(team_id, protagonist_key, damage, participant=No
     return update_protagonist_state(team_id, protagonist_key, **updates)
 
 
+def heal_protagonist_hp_percent(team_id, protagonist_key, percent):
+    """Restore protagonist HP by percent of max_hp; clear near-death when HP > 0."""
+    state = get_protagonist_state(team_id, protagonist_key, create=True)
+    if not state:
+        return None
+    try:
+        pct = float(percent)
+    except (TypeError, ValueError):
+        return None
+    if pct <= 0:
+        return None
+    max_hp = max(1, int(state.get("max_hp") or DEFAULT_MAX_HP))
+    cur = int(state.get("hp") or 0)
+    heal = max(1, int(round(max_hp * pct / 100.0)))
+    new_hp = min(max_hp, cur + heal)
+    updates = {"hp": new_hp}
+    if new_hp > 0:
+        updates["near_death_until"] = None
+    return update_protagonist_state(team_id, protagonist_key, **updates)
+
+
+def revive_protagonist(team_id, protagonist_key, full_hp=True, clear_trauma=False):
+    """GM / rescue: restore protagonist to fight-ready state."""
+    state = get_protagonist_state(team_id, protagonist_key, create=True)
+    if not state:
+        return None
+    max_hp = max(1, int(state.get("max_hp") or DEFAULT_MAX_HP))
+    updates = {
+        "hp": max_hp if full_hp else max(1, int(state.get("hp") or 0) or max_hp),
+        "near_death_until": None,
+        "is_active": 1,
+    }
+    if clear_trauma:
+        updates["trauma_count"] = 0
+    return update_protagonist_state(team_id, protagonist_key, **updates)
+
+
 def trauma_bad_ending_narrative(encounter):
     custom = (encounter or {}).get("success", {}).get("trauma_bad_ending_narrative")
     if custom:

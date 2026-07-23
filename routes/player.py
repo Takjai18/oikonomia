@@ -152,6 +152,17 @@ def submit_task():
             new_sanity = min(100, squad["sanity"] + 6)
             new_resources = squad["resources"] + 1
             update_squad(session["squad_id"], sanity=new_sanity, resources=new_resources)
+            # First completion of a task: restore 10% max HP for the whole party.
+            try:
+                from models.squad import restore_party_hp_percent
+                restore_party_hp_percent(
+                    team_id=team_id,
+                    starter_id=session["squad_id"],
+                    percent=10,
+                    include_protagonist=True,
+                )
+            except Exception:
+                pass
             squad = get_squad(session["squad_id"])
             new_count, new_tasks = count_team_distinct_tasks(session["squad_id"], team_id)
             old_stage = resolve_story_stage(old_count, old_tasks)
@@ -170,7 +181,7 @@ def submit_task():
                 pending_story_id = get_pending_story_id(squad) or unlock_story
             return jsonify({
                 "success": True,
-                "message": "任務提交成功！+6 神智 +1 Resource（第一次提交）",
+                "message": "任務提交成功！+6 神智 +1 Resource，全隊回復 10% 生命值",
                 "pending_story_id": pending_story_id,
                 "stage": new_stage,
                 "stage_advanced": new_stage > old_stage,

@@ -45,11 +45,31 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
 
     encounter_id = encounter.get("encounter_id")
 
+    def _post_combat_heal():
+        """Every combat end restores 20% max HP for the party (+ protagonist)."""
+        try:
+            from models.squad import restore_party_hp_percent
+            healed = restore_party_hp_percent(
+                team_id=team_id,
+                starter_id=starter_id,
+                percent=20,
+                include_protagonist=True,
+            )
+            if healed:
+                result["hp_restored_percent"] = 20
+                result["log_messages"].append({
+                    "message": "戰鬥結束，全隊回復 20% 生命值",
+                    "log_type": "hp_restore",
+                })
+        except Exception:
+            pass
+
     if winner == "escaped":
         result["log_messages"].append({
             "message": "全隊成功逃離戰場",
             "log_type": "escape_success",
         })
+        _post_combat_heal()
         return result
 
     if winner == "squad":
@@ -125,6 +145,7 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
                         grant_story_unlock(sid, u)
             except Exception:
                 pass
+        _post_combat_heal()
         return result
 
     if winner == "enemy":
@@ -136,6 +157,7 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
             result["applied_failure"] = True
         if team_id:
             result["ending"] = judge_ending(team_id)
+        _post_combat_heal()
         return result
 
     return result

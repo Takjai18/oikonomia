@@ -576,6 +576,70 @@ def gm_adjust():
     })
 
 
+@gm_bp.route("/api/revive_protagonist", methods=["POST"])
+def gm_revive_protagonist_api():
+    """Revive team protagonist (Iggy/Marah): full HP, clear near-death, optional trauma clear."""
+    denied = _require_gm()
+    if denied:
+        return denied
+
+    body = request.json if request.is_json else request.form
+    team_id = normalize_team_id(body.get("team_id") or "")
+    squad_id = (body.get("squad_id") or "").strip()
+    protagonist_key = (body.get("protagonist_key") or body.get("protagonist") or "").strip().lower()
+    clear_trauma = str(body.get("clear_trauma") or "").lower() in ("1", "true", "yes", "on")
+
+    if not team_id and squad_id:
+        sq = get_squad(squad_id)
+        team_id = normalize_team_id((sq or {}).get("team_id") or "")
+
+    if not team_id:
+        return jsonify({"success": False, "error": "缺少 team_id（或 squad_id 所屬隊伍）"}), 400
+
+    if not protagonist_key:
+        from models.team import get_team_by_id
+        team = get_team_by_id(team_id) or {}
+        protagonist_key = (team.get("route") or "iggy").strip().lower()
+    if protagonist_key not in ("iggy", "marah"):
+        return jsonify({"success": False, "error": "protagonist_key 必須是 iggy 或 marah"}), 400
+
+    from models.protagonist import get_protagonist_state, revive_protagonist
+
+    before = get_protagonist_state(team_id, protagonist_key, create=True)
+    state = revive_protagonist(
+        team_id,
+        protagonist_key,
+        full_hp=True,
+        clear_trauma=clear_trauma,
+    )
+    if not state:
+        return jsonify({"success": False, "error": "無法更新主角狀態"}), 500
+
+    operator = (session.get("gm_operator") or session.get("squad_id") or "GM").strip()
+    create_global_event(
+        title=f"GM 復活主角：{protagonist_key.upper()}（{team_id}）",
+        description=(
+            f"{operator} 將 {protagonist_key} 回滿生命並清除瀕死"
+            + ("，並清零創傷" if clear_trauma else "")
+            + f"。HP {before.get('hp') if before else '?'} → {state.get('hp')}"
+        ),
+        effect_type="gm_revive_protagonist",
+        effect_value=int(state.get("hp") or 0),
+        created_by=operator or "GM",
+    )
+    return jsonify({
+        "success": True,
+        "message": (
+            f"已復活 {protagonist_key.upper()}（{team_id}）："
+            f"HP {state.get('hp')}/{state.get('max_hp')}，瀕死已清除"
+            + ("，創傷已清零" if clear_trauma else "")
+        ),
+        "team_id": team_id,
+        "protagonist_key": protagonist_key,
+        "state": state,
+    })
+
+
 @gm_bp.route("/download_team_images/<team_id>")
 def gm_download_team_images(team_id):
     denied = _require_gm()

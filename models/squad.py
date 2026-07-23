@@ -93,6 +93,58 @@ def apply_hp_change(hp, max_hp, delta):
     return hp, max_hp
 
 
+def heal_squad_hp_percent(squad_id, percent):
+    """Restore current HP by percent of max_hp (does not raise max_hp). Clears near-death if HP > 0."""
+    if not squad_id or percent is None:
+        return None
+    try:
+        pct = float(percent)
+    except (TypeError, ValueError):
+        return None
+    if pct <= 0:
+        return None
+    squad = get_squad(squad_id)
+    if not squad:
+        return None
+    max_hp = squad_max_hp(squad)
+    cur = int(squad.get("hp") or 0)
+    heal = max(1, int(round(max_hp * pct / 100.0)))
+    new_hp = min(max_hp, cur + heal)
+    if new_hp == cur:
+        return squad
+    update_squad(squad_id, hp=new_hp)
+    return get_squad(squad_id)
+
+
+def restore_party_hp_percent(team_id=None, starter_id=None, percent=20, include_protagonist=True):
+    """Heal all team members (or solo starter) and optionally active route protagonist."""
+    healed = []
+    members = []
+    if team_id:
+        members = get_team_members(team_id) or []
+    if not members and starter_id:
+        members = [{"squad_id": starter_id}]
+    for m in members:
+        sid = m.get("squad_id") if isinstance(m, dict) else None
+        if not sid or str(sid).startswith("protagonist:"):
+            continue
+        if heal_squad_hp_percent(sid, percent):
+            healed.append(sid)
+    if include_protagonist and team_id:
+        try:
+            from models.protagonist import heal_protagonist_hp_percent
+            from models.team import get_team_by_id
+            team = get_team_by_id(team_id) or {}
+            route = (team.get("route") or "").strip().lower()
+            keys = [route] if route in ("iggy", "marah") else ["iggy", "marah"]
+            for key in keys:
+                if heal_protagonist_hp_percent(team_id, key, percent):
+                    healed.append(f"protagonist:{key}")
+        except Exception:
+            pass
+    return healed
+
+
 def row_to_squad(row):
     d = dict(row)
     protagonist = default_protagonist_template()

@@ -1922,6 +1922,32 @@ GM_SQUAD_DETAIL_HTML = """
             重置玩家 PIN
         </button>
 
+        <!-- 主角救援（Iggy / Marah 瀕死時） -->
+        <div class="bg-zinc-900 rounded-3xl p-6 mt-6 border border-amber-800/40">
+            <h2 class="text-lg font-semibold mb-2 text-amber-300">主角救援（Iggy / Marah）</h2>
+            <p class="text-xs text-zinc-500 mb-4">
+                主角 HP 歸零後玩家無法自行復活。此處可回滿生命、清除瀕死；勾選可一併清零創傷。
+                {% if squad.team_id %}隊伍：<span class="font-mono text-emerald-400">{{ squad.team_id }}</span>{% else %}（此玩家未入隊）{% endif %}
+            </p>
+            <div class="flex flex-wrap gap-3 items-center">
+                <select id="gm-revive-protagonist-key"
+                        class="bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                    <option value="iggy">Iggy</option>
+                    <option value="marah">Marah</option>
+                </select>
+                <label class="text-sm text-zinc-300 flex items-center gap-2">
+                    <input type="checkbox" id="gm-revive-clear-trauma" class="rounded">
+                    同時清零創傷
+                </label>
+                <button type="button" onclick="gmReviveProtagonist()"
+                        class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-2xl text-sm font-bold"
+                        {% if not squad.team_id %}disabled{% endif %}>
+                    ✨ 復活主角
+                </button>
+            </div>
+            <p id="gm-revive-msg" class="text-xs text-zinc-400 mt-3"></p>
+        </div>
+
         <!-- 手動調整數值 -->
         <div class="bg-zinc-900 rounded-3xl p-6 mt-6">
             <h2 class="text-lg font-semibold mb-4">手動調整數值</h2>
@@ -2065,6 +2091,42 @@ GM_SQUAD_DETAIL_HTML = """
                     showGmToast('更新失敗: ' + data.error, 'success');
                 }
             });
+        }
+
+        async function gmReviveProtagonist() {
+            const teamId = '{{ squad.team_id or "" }}';
+            if (!teamId) {
+                showGmToast('此玩家未加入隊伍，無法復活主角', 'success');
+                return;
+            }
+            const key = document.getElementById('gm-revive-protagonist-key')?.value || 'iggy';
+            const clearTrauma = !!document.getElementById('gm-revive-clear-trauma')?.checked;
+            if (!confirm(`確定復活 ${key.toUpperCase()}（${teamId}）？` + (clearTrauma ? '\\n並清零創傷' : ''))) {
+                return;
+            }
+            const msgEl = document.getElementById('gm-revive-msg');
+            try {
+                const res = await fetch('/gm/api/revive_protagonist', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        team_id: teamId,
+                        squad_id: '{{ squad.squad_id }}',
+                        protagonist_key: key,
+                        clear_trauma: clearTrauma,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (msgEl) msgEl.textContent = data.message || '已復活';
+                    showGmToast(data.message || '主角已復活', 'success');
+                } else {
+                    if (msgEl) msgEl.textContent = data.error || '失敗';
+                    showGmToast(data.error || '復活失敗', 'success');
+                }
+            } catch (e) {
+                showGmToast('網路錯誤', 'success');
+            }
         }
         </script>
 

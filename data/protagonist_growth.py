@@ -25,11 +25,12 @@ GROWTH_MILESTONES = [
     "act6_savio_gate",
 ]
 
-# Base after prologue / first meet (near death).
+# Base after prologue / first meet (near death, but must survive Bubuo tutorial hits).
+# base_damage~8 vs res 8 → ~3 dmg/hit; HP 24 allows several hits with team defend.
 IGGY_BASE = {
-    "max_hp": 10,
+    "max_hp": 24,
     "power": 6,
-    "resilience": 6,
+    "resilience": 8,
     "sanity": 35,
 }
 

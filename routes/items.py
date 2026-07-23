@@ -224,6 +224,20 @@ def add_item():
             response["task_newly_completed"] = bool(newly_parent)
             response["parent_completed"] = True
             response["message"] = f"{message}（雪山物資與身分任務完成！）"
+            if newly_parent:
+                try:
+                    from models.squad import restore_party_hp_percent
+                    restore_party_hp_percent(
+                        team_id=squad_now.get("team_id"),
+                        starter_id=session["squad_id"],
+                        percent=10,
+                        include_protagonist=True,
+                    )
+                    response["message"] = (
+                        f"{response['message']} 全隊回復 10% 生命值"
+                    )
+                except Exception:
+                    pass
             try:
                 unlock_story = grant_task_story_unlocks(squad_now, parent_task_id)
                 if unlock_story and not response.get("pending_story_id"):

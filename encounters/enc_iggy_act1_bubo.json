@@ -10,14 +10,14 @@
 
   "enemy": {
     "name": "布布",
-    "hp": 720,
+    "hp": 480,
     "sanity": 40,
-    "power": 44,
+    "power": 22,
     "intellect": 20,
-    "resilience": 40,
-    "base_damage": 36,
+    "resilience": 28,
+    "base_damage": 8,
     "avatar": "act1_bubu.png",
-    "description": "護食護地的雪山熊。4 人全攻仍需約 4–5 回合才能打到 0。會反擊——記得用防禦。"
+    "description": "護食護地的雪山熊。教學戰：反擊溫和，不會秒殺虛弱的 Iggy；4 人合作約 3–5 回合可擊退。"
   },
 
   "combat_settings": {
