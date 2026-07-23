@@ -5694,8 +5694,36 @@
 
         function avatarSrc(filename) {
             if (!filename) return '/static/avatars/default.png';
-            const raw = String(filename).replace(/\\/g, '/').replace(/^\/+/, '');
-            // Encode each path segment (supports "new avatars for players/…")
+            let raw = String(filename).replace(/\\/g, '/').replace(/^\/+/, '');
+            // Legacy renames / png→jpg optimisations (must match utils/helpers.py)
+            const AVATAR_ALIASES = {
+                'lok sum.jpg': 'loksum.jpg',
+                'lok tin.jpg': 'lokting.jpg',
+                'lok tIn.jpg': 'lokting.jpg',
+                'lok ting.jpg': 'lokting.jpg',
+                'lok ying.jpg': 'lokying.jpg',
+                'lok yiu.jpg': 'lokyiu.jpg',
+                'sumwing 2.jpg': 'sumwing2.jpg',
+                'pak yat.jpg': 'ethan.jpg',
+                'fung.png': 'fung.jpg',
+                'siujai.png': 'siujai.jpg',
+                'sumwing.png': 'sumwing.jpg',
+                'tak.png': 'tak.jpg',
+                'ted.png': 'ted.jpg',
+            };
+            const parts = raw.split('/');
+            let base = parts[parts.length - 1] || '';
+            const mapped = AVATAR_ALIASES[base] || AVATAR_ALIASES[base.toLowerCase()];
+            if (mapped) {
+                parts[parts.length - 1] = mapped;
+                raw = parts.join('/');
+            } else if (/\.png$/i.test(base) && raw.includes('new avatars')) {
+                parts[parts.length - 1] = base.replace(/\.png$/i, '.jpg');
+                raw = parts.join('/');
+            }
+            if (!raw.includes('/')) {
+                raw = 'new avatars for players/' + raw;
+            }
             const encoded = raw.split('/').map(encodeURIComponent).join('/');
             return `/static/avatars/${encoded}`;
         }

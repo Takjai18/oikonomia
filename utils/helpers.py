@@ -51,6 +51,23 @@ def list_image_files(directory, exclude=()):
 # Player-facing avatar picker only (not root static/avatars legacy files).
 PLAYER_AVATAR_SUBDIR = "new avatars for players"
 
+# Old filenames → current basenames (rename / png→jpg optimisations).
+PLAYER_AVATAR_ALIASES = {
+    "lok sum.jpg": "loksum.jpg",
+    "lok tin.jpg": "lokting.jpg",
+    "lok tIn.jpg": "lokting.jpg",
+    "lok ting.jpg": "lokting.jpg",
+    "lok ying.jpg": "lokying.jpg",
+    "lok yiu.jpg": "lokyiu.jpg",
+    "sumwing 2.jpg": "sumwing2.jpg",
+    "pak yat.jpg": "ethan.jpg",
+    "fung.png": "fung.jpg",
+    "siujai.png": "siujai.jpg",
+    "sumwing.png": "sumwing.jpg",
+    "tak.png": "tak.jpg",
+    "ted.png": "ted.jpg",
+}
+
 
 def player_avatar_pick_dir():
     base = settings.avatar_dir or ""
@@ -62,6 +79,36 @@ def list_player_pick_avatars():
     return list_image_files(player_avatar_pick_dir())
 
 
+def normalize_player_avatar_basename(basename):
+    """Map legacy / optimized-away filenames to a file that exists on disk."""
+    name = os.path.basename(str(basename or "").replace("\\", "/").strip())
+    if not name:
+        return name
+    pick_dir = player_avatar_pick_dir()
+    alias = PLAYER_AVATAR_ALIASES.get(name) or PLAYER_AVATAR_ALIASES.get(name.lower())
+    candidates = []
+    if alias:
+        candidates.append(alias)
+    candidates.append(name)
+    # png → jpg after web optimise
+    if name.lower().endswith(".png"):
+        candidates.append(name[:-4] + ".jpg")
+    if name.lower().endswith((".jpeg", ".jpg")):
+        stem = name.rsplit(".", 1)[0]
+        candidates.append(stem + ".jpg")
+        candidates.append(stem + ".png")
+    # Case-insensitive match against pick dir
+    if os.path.isdir(pick_dir):
+        existing = {f.lower(): f for f in os.listdir(pick_dir) if not f.startswith(".")}
+        for c in candidates:
+            if os.path.isfile(os.path.join(pick_dir, c)):
+                return c
+            hit = existing.get(c.lower())
+            if hit:
+                return hit
+    return name
+
+
 def resolve_player_pick_avatar(avatar_value):
     """
     Validate avatar is inside PLAYER_AVATAR_SUBDIR.
@@ -71,7 +118,7 @@ def resolve_player_pick_avatar(avatar_value):
     raw = str(avatar_value or "").replace("\\", "/").strip()
     if not raw or ".." in raw or raw.startswith("/"):
         return None, None
-    basename = os.path.basename(raw)
+    basename = normalize_player_avatar_basename(os.path.basename(raw))
     if not basename or basename.startswith(".") or basename == "default.png":
         return None, None
     if not basename.lower().endswith(PORTRAIT_IMAGE_EXTS):

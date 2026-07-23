@@ -6,7 +6,7 @@ NARRATIVE_PORTRAITS = {
     "Marah": "/static/portraits/marah.png",
     "Julian": "/static/portraits/julian.png",
     "Savio": "/static/portraits/savio.png",
-    "Donna": "/static/portraits/eonna.png",
+    "Donna": "/static/portraits/donna.png",
     "Judas": "/static/portraits/npc_1.png",
     "旁白": "/static/portraits/villager.png",
 }
