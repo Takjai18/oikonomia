@@ -634,12 +634,12 @@ const TRANSITIONS = {
       effects: (ctx, meta) => {
         // Plan A keeps dice modal open until submit returns — always tear it down here.
         if (meta.escaped) {
-          return [
+          return terminalModalTeardownEffects([
             { type: 'HIDE_DICE' },
             { type: 'HIDE_SUBMITTING' },
             { type: 'SHOW_ESCAPED', data: meta.data },
             { type: 'STOP_POLL' },
-          ];
+          ]);
         }
         if (meta.roundResolved === false) {
           return [
@@ -749,10 +749,15 @@ const TRANSITIONS = {
       },
       effects: (ctx, meta) => {
         if (meta.killing || ctx.isKillingBlow) {
+          // Prefer explicit victory payload so narrative / next_story_unlock survive ACK.
+          const victoryData = meta.data
+            || ctx._lastPollSnapshot
+            || ctx.hud
+            || null;
           return [
             { type: 'HIDE_DICE' },
             { type: 'HIDE_SETTLEMENT' },
-            { type: 'SHOW_VICTORY' },
+            { type: 'SHOW_VICTORY', data: victoryData },
             { type: 'STOP_POLL' },
           ];
         }
@@ -858,13 +863,34 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
   const isKillingBlow = apiData.outcome === 'victory'
     || apiData.winner === 'squad'
     || (apiData.enemy?.hp ?? 0) <= 0;
-  if (ctx.shownSettlementIds.has(settlementId)) {
+
+  // Victory without usable settlement breakdown → go straight to victory screen.
+  if (isKillingBlow && !settlement) {
+    return {
+      roundResolved: true,
+      skipToVictory: true,
+      settledRoundIndex: apiData.settled_round_index,
+      data: apiData,
+    };
+  }
+
+  if (settlementId && ctx.shownSettlementIds.has(settlementId)) {
     if (isKillingBlow) {
-      if (TERMINAL_PHASES.includes(ctx.phase) || ctx.phase === Phase.SETTLEMENT) {
+      // Already viewing killing-blow settlement — wait for ACK (do not soft-stick).
+      if (ctx.phase === Phase.SETTLEMENT) {
         return {
           roundResolved: true,
           skipModal: true,
           settledRoundIndex: apiData.settled_round_index,
+          data: apiData,
+        };
+      }
+      if (TERMINAL_PHASES.includes(ctx.phase)) {
+        return {
+          roundResolved: true,
+          skipModal: true,
+          settledRoundIndex: apiData.settled_round_index,
+          data: apiData,
         };
       }
       // Entry absorb false-positive: first SUBMIT_SUCCESS still needs breakdown once.
@@ -875,6 +901,7 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
           settlementId,
           settledRoundIndex: apiData.settled_round_index,
           isKillingBlow: true,
+          data: apiData,
         };
       }
       return {
@@ -892,5 +919,6 @@ export function determineSettlementRoute(ctx, apiData, settlement, settlementId)
     settlementId,
     settledRoundIndex: apiData.settled_round_index,
     isKillingBlow,
+    data: apiData,
   };
 }

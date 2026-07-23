@@ -47,30 +47,20 @@ LOCATIONS = {
     # ========== ACT 2 — 逃亡 ==========
     "act2_stealth": {
         "name": "潛行下山",
-        "hint": "分支 B · 高難度找不同",
+        "hint": "分支 B · 一心二用閃避巡邏",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "spot_the_difference",
+        "minigame_id": "bilateral_brain",
         "minigame_config": {
-            "diffCount": 8,
-            "timeLimitSec": 55,
-            "hotspots": [
-                {"x": 18, "y": 38, "w": 22, "h": 22, "found": False},
-                {"x": 142, "y": 18, "w": 18, "h": 18, "found": False},
-                {"x": 78, "y": 8, "w": 28, "h": 24, "found": False},
-                {"x": 148, "y": 58, "w": 16, "h": 16, "found": False},
-                {"x": 8, "y": 2, "w": 28, "h": 12, "found": False},
-                {"x": 55, "y": 62, "w": 20, "h": 18, "found": False},
-                {"x": 110, "y": 45, "w": 14, "h": 14, "found": False},
-                {"x": 175, "y": 75, "w": 18, "h": 16, "found": False},
-            ],
+            "targetStreak": 6,
+            "roundMs": 3200,
         },
         "story_act": 2,
         "mainline": True,
         "mainline_order": 30,
         "description": (
-            "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與雷達——"
-            "兩幅地圖僅有細微差異。限時短、差異多、點錯扣時。"
+            "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與巡邏——"
+            "必須同時處理顏色與方向兩項干擾訊號，連續過關才能潛行下山。"
         ),
     },
     "act2_polis_fight": {
@@ -89,20 +79,25 @@ LOCATIONS = {
     # ========== ACT 3 — 村莊 + Albert City Hunt ==========
     "act3_village_intel": {
         "name": "村莊情報",
-        "hint": "打探 Oikos · 小遊戲",
+        "hint": "打探 Oikos · Mastermind 解碼",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "wordle_custom",
+        "minigame_id": "mastermind",
         "minigame_config": {
-            "maxGuesses": 6,
-            "answers": ["OIKOS", "IGGY", "POLIS", "家", "山羊"],
+            "codeLength": 4,
+            "maxGuesses": 10,
+            "themeTitle": "村莊情報 · 解碼",
+            "themeHint": (
+                "婦人留下一組顏色密碼。黑釘＝顏色與位置正確；"
+                "白釘＝顏色正確但位置不對。破解後才知道 Oikos 的下落。"
+            ),
         },
         "story_act": 3,
         "mainline": True,
         "mainline_order": 40,
         "description": (
-            "【主線 3 · 村莊避難】在村子裡打探 Oikos 線索。"
-            "成功後會遇到了解內情的婦人。"
+            "【主線 3 · 村莊避難】在村子裡打探 Oikos 線索——"
+            "以 Mastermind 破解線人密碼。成功後會遇到了解內情的婦人。"
         ),
     },
     "act3_search_iggy": {

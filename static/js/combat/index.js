@@ -458,6 +458,8 @@ export class CombatApp {
   async onSubmitSuccess(data) {
     // Belt-and-suspenders: never leave last-turn dice modal open.
     this.views?.dice?.hide?.();
+    // Keep latest API payload for victory/escape narrative + story unlock.
+    this.ctx._lastPollSnapshot = data;
 
     const deathCheck = handleAnyDeath(
       { ...this.ctx, hud: extractHud(data) },
@@ -525,7 +527,11 @@ export class CombatApp {
     }
     this.hasTriggeredTimeoutDefense = false;
     const killing = this.ctx.isKillingBlow;
-    this.dispatch('ACK_SETTLEMENT', { killing });
+    // Carry victory narrative / story unlock through ACK → SHOW_VICTORY.
+    const victoryData = killing
+      ? (this.ctx._lastPollSnapshot || this.ctx.hud || null)
+      : null;
+    this.dispatch('ACK_SETTLEMENT', { killing, data: victoryData });
   }
 
   triggerTimeoutAutomaticDefense() {
@@ -828,13 +834,18 @@ export class CombatApp {
         case 'HIDE_SETTLEMENT':
           this.views.settlement.hide();
           break;
-        case 'SHOW_VICTORY':
+        case 'SHOW_VICTORY': {
           this.releaseCombatBridgeLock();
-          this.views.endgame.showVictory(fx.data || this.ctx.hud);
+          const victoryPayload = fx.data
+            || this.ctx._lastPollSnapshot
+            || this.ctx.hud
+            || {};
+          this.views.endgame.showVictory(victoryPayload);
           break;
+        }
         case 'SHOW_DEFEAT':
           this.releaseCombatBridgeLock();
-          this.views.endgame.showDefeat(fx.data);
+          this.views.endgame.showDefeat(fx.data || this.ctx._lastPollSnapshot);
           break;
         case 'SHOW_FAILED':
           this.releaseCombatBridgeLock();
@@ -845,7 +856,9 @@ export class CombatApp {
           this.views.escape.onContinue(() => this.exitToLobby());
           this.views.escape.show({
             success: true,
-            message: fx.data?.narrative || '全隊已脫離戰鬥',
+            message: fx.data?.narrative
+              || this.ctx._lastPollSnapshot?.narrative
+              || '全隊已脫離戰鬥',
           });
           break;
         case 'HIDE_ALL_MODALS':

@@ -10,6 +10,7 @@ export const MINIGAMES = {
     mapdle_hk: () => import('./mapdle_hk.js'),
     voice_record: () => import('./voice_record.js'),
     memory_match: () => import('./memory_match.js'),
+    mastermind: () => import('./mastermind.js'),
 };
 
 let currentUnmount = null;

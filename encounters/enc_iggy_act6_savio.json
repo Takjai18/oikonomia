@@ -1,28 +1,29 @@
 {
   "encounter_id": "enc_iggy_act6_savio",
-  "title": "Act 6：Necessary Pain——暴走 Savio",
+  "title": "Act 6：Necessary Pain——迎戰 Savio",
   "route": "iggy",
   "story_stage": 3,
   "trigger_type": "story",
   "location_hint": "西貢戶外康樂中心（SKORC）",
-  "description": "黑色臍帶纏繞總部。Goat 能力超載，Savio 畸變暴走。與 Iggy 的涅槃金焰並肩，切斷病態鎖鏈——終局長戰，4 人隊需全力以赴。",
+  "description": "黑色臍帶纏繞總部。Goat 能力超載，Savio 畸變暴走。與 Iggy 的涅槃金焰並肩，切斷病態鎖鏈——終局長戰，4 人隊需全力以赴，稍有失誤即可能全滅。",
 
   "enemy": {
-    "name": "Savio · 畸形巨獸",
-    "hp": 1400,
+    "name": "Savio",
+    "hp": 2100,
     "sanity": 30,
-    "power": 62,
+    "power": 78,
     "intellect": 48,
-    "resilience": 58,
-    "base_damage": 48,
-    "description": "逃避者／彌賽亞情結的終點。黑化巨獸每擊威脅瀕死。4 人全攻約需 7–10 回合；務必輪防。"
+    "resilience": 70,
+    "base_damage": 68,
+    "avatar": "savio.png",
+    "description": "逃避者／彌賽亞情結的終點。黑化巨獸每擊威脅瀕死。4 人全攻約需 8–12 回合；務必輪防與救援。"
   },
 
   "combat_settings": {
     "phase_time_limit_seconds": 220,
-    "allow_zoo": true,
+    "allow_zoo": false,
     "zoo_sanity_threshold": 70,
-    "max_phases": 14,
+    "max_phases": 16,
     "win_condition": "defeat_enemy"
   },
 
@@ -58,7 +59,7 @@
   },
 
   "notes_for_gm": {
-    "purpose": "終局 BOSS：擊敗暴走 Savio（4 人隊最高難度）",
-    "difficulty": "HP 1400 · dmg 48 · 長戰；注意瀕死救援"
+    "purpose": "終局 BOSS：擊敗 Savio（4 人隊最高難度，可勝可敗）",
+    "difficulty": "HP 2100 · dmg 68 · res 70 · 長戰；注意瀕死救援"
   }
 }

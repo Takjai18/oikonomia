@@ -598,7 +598,7 @@ NARRATIVE_STORIES = {
             )},
             {"character": "旁白", "text": (
                 "「這是 Oikos 成員的集體暴走！"
-                "Salvio 當年用 Goat 能力代大家承受覺醒之痛，"
+                "Savio 當年用 Goat 能力代大家承受覺醒之痛，"
                 "那些被剝奪的後果全數沉積在他體內——"
                 "Julian 敗亡引發連鎖，負能量正反噬 Savio！」"
             )},

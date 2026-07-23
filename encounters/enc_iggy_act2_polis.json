@@ -8,19 +8,20 @@
   "description": "逃亡途中，Polis 用鎖鏈與拷問實踐「沒有痛苦就沒有成長」。撐過五個回合即勝——火力凶猛，4 人隊也要有人防禦。",
 
   "enemy": {
-    "name": "Polis 追擊隊",
-    "hp": 1100,
+    "name": "士兵",
+    "hp": 1500,
     "sanity": 55,
-    "power": 55,
+    "power": 62,
     "intellect": 36,
-    "resilience": 48,
-    "base_damage": 38,
-    "description": "律法主義與社會達爾文主義的具象。血厚、打得重。通常靠「撐過回合」而非秒殺。"
+    "resilience": 58,
+    "base_damage": 48,
+    "avatar": "solider.png",
+    "description": "Polis 追擊隊的前線士兵。血厚、打得重。通常靠「撐過回合」而非秒殺。"
   },
 
   "combat_settings": {
     "phase_time_limit_seconds": 180,
-    "allow_zoo": true,
+    "allow_zoo": false,
     "zoo_sanity_threshold": 70,
     "max_phases": 5,
     "win_condition": "survive"
@@ -53,6 +54,6 @@
 
   "notes_for_gm": {
     "purpose": "正式戰鬥 1：生存 5 回合（4 人隊難度）",
-    "difficulty": "base_damage 38 · res 48 · 需防禦輪轉"
+    "difficulty": "base_damage 48 · res 58 · 需防禦輪轉"
   }
 }

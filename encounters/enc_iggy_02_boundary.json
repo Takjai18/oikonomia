@@ -18,12 +18,13 @@
 
   "enemy": {
     "name": "界線共生影",
-    "hp": 680,
+    "hp": 920,
     "sanity": 42,
-    "power": 52,
+    "power": 58,
     "intellect": 35,
-    "resilience": 42,
-    "base_damage": 36,
+    "resilience": 50,
+    "base_damage": 44,
+    "avatar": "parasite_shadow.svg",
     "description": "一個與裂痕融為一體的人形影子，表面溫柔卻不斷吸收他人的界線。它代表 Iggy 最深的恐懼——若不再為他人承擔一切，就會被視為自私。"
   },
 

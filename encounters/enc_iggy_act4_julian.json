@@ -1,28 +1,29 @@
 {
   "encounter_id": "enc_iggy_act4_julian",
-  "title": "Act 5：彩虹月台——Julian 變色龍",
+  "title": "Act 5：彩虹月台——迎戰 Julian",
   "route": "iggy",
   "story_stage": 2,
   "trigger_type": "story",
   "location_hint": "彩虹站月台",
-  "description": "面具撕下。Julian 使出 Simon 的「蜜獾·狂化重擊」，並坦言 Zoo「變色龍」——要 Iggy 甘願交出鳳凰之力。挺身迎戰！血厚且打得重，4 人隊需多回合集火。",
+  "description": "面具撕下。Julian 使出 Simon 的狂化重擊，並坦言要 Iggy 甘願交出鳳凰之力。挺身迎戰！血厚且打得重，4 人隊需多回合集火，稍有疏忽便可能全隊潰敗。",
 
   "enemy": {
-    "name": "Julian · 變色龍／蜜獾",
-    "hp": 980,
+    "name": "Julian",
+    "hp": 1650,
     "sanity": 45,
-    "power": 58,
+    "power": 70,
     "intellect": 50,
-    "resilience": 50,
-    "base_damage": 42,
-    "description": "情緒勒索與道德綁架的高手。借用 Simon 狂化重擊，每回合威脅全隊。4 人全攻仍需約 5–7 回合。"
+    "resilience": 62,
+    "base_damage": 58,
+    "avatar": "julian.png",
+    "description": "情緒勒索與道德綁架的高手。每回合反擊足以重創一人；4 人全攻仍需約 6–9 回合，務必輪防與集火。"
   },
 
   "combat_settings": {
     "phase_time_limit_seconds": 200,
-    "allow_zoo": true,
+    "allow_zoo": false,
     "zoo_sanity_threshold": 70,
-    "max_phases": 12,
+    "max_phases": 14,
     "win_condition": "defeat_enemy"
   },
 
@@ -58,7 +59,7 @@
   },
 
   "notes_for_gm": {
-    "purpose": "Act 5 BOSS：擊敗 Julian（4 人隊長戰）",
-    "difficulty": "HP 980 · dmg 42 · 需防禦與輸出平衡"
+    "purpose": "Act 5 BOSS：擊敗 Julian（4 人隊高壓長戰）",
+    "difficulty": "HP 1650 · dmg 58 · res 62 · 有勝有敗；需防禦與輸出平衡"
   }
 }
