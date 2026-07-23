@@ -78,7 +78,8 @@
            data-testid="combat-v2-team-status"
            aria-label="隊友與主角狀態"></section>
 
-  <div id="combat-v2-zoo-tip" class="hidden shrink-0 mx-3 mt-1"></div>
+  {# Zoo tip/button removed from player UI (Zoo locked for camp) — keep hidden stubs for JS ids #}
+  <div id="combat-v2-zoo-tip" class="hidden" aria-hidden="true"></div>
 
   {# Middle band: only this region scrolls as the fight log grows #}
   <section id="combat-v2-log"
@@ -95,7 +96,7 @@
     <button type="button" id="combat-v2-defend-btn" data-testid="defend-btn"
             class="min-h-11 rounded-lg bg-blue-600 text-white font-medium active:scale-95 transition-transform">🛡 防禦</button>
     <button type="button" id="combat-v2-zoo-btn" data-testid="zoo-btn"
-            class="min-h-11 rounded-lg bg-purple-700 text-white font-medium text-sm active:scale-95 transition-transform">🦄 Zoo</button>
+            class="hidden" aria-hidden="true" tabindex="-1">🦄 Zoo</button>
     <button type="button" id="combat-v2-item-btn"
             class="min-h-11 rounded-lg bg-amber-600 text-white font-medium text-sm active:scale-95 transition-transform">🎒 物品</button>
     <button type="button" id="combat-v2-escape-btn"

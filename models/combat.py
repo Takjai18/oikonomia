@@ -444,30 +444,15 @@ def is_zoo_unlocked_for_team(team_id, story_stage=None):
 
 
 def effective_allow_zoo(team_id, encounter=None, story_stage=None, combat_settings=None):
-    """
-    SSOT Zoo availability:
-    stage unlocked AND encounter combat_settings.allow_zoo (default True).
-    """
-    settings = combat_settings
-    if settings is None:
-        settings = (encounter or {}).get("combat_settings") or {}
-    if not settings.get("allow_zoo", True):
-        return False
-    return is_zoo_unlocked_for_team(team_id, story_stage=story_stage)
+    """Zoo disabled for player camp (no Zoo UI / actions)."""
+    return False
 
 
 def apply_effective_combat_settings(team_id, encounter=None, story_stage=None, combat_settings=None):
-    """Copy combat_settings with allow_zoo rewritten to effective value."""
+    """Copy combat_settings; Zoo always off for players during camp."""
     base = dict(combat_settings or (encounter or {}).get("combat_settings") or {})
-    stage = story_stage
-    if stage is None and team_id:
-        stage = get_team_story_stage(team_id)
-    elif stage is None:
-        stage = 0
-    unlocked = is_zoo_unlocked_for_team(team_id, story_stage=stage)
-    encounter_allows = base.get("allow_zoo", True)
-    base["allow_zoo"] = bool(unlocked and encounter_allows)
-    base["zoo_unlocked"] = bool(unlocked)
+    base["allow_zoo"] = False
+    base["zoo_unlocked"] = False
     base["zoo_unlock_story_stage"] = zoo_unlock_story_stage()
     return base
 

@@ -845,43 +845,32 @@
                     </div>
                 </div>
 
-                <!-- 持有物品 -->
-                <div class="cartoon-box p-5 mb-8">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="font-bold text-lg flex items-center gap-x-2 theme-card-title">
-                            <i class="fa-solid fa-box-open theme-accent-text"></i>
-                            <span>持有物品</span>
-                            <span id="items-slot-label" class="text-xs font-normal theme-muted-text">(0/5)</span>
-                        </h3>
-                        <div class="flex items-center gap-2">
-                            <button onclick="startQRScanner()"
+                <!-- 持有物品（預設收合 — 主線較少再用物品） -->
+                <div class="cartoon-box p-5 mb-8" id="inventory-panel">
+                    <div class="flex items-center justify-between gap-2 mb-0">
+                        <button type="button" onclick="toggleInventoryPanel()"
+                                class="flex items-center gap-x-2 min-w-0 text-left flex-1 group"
+                                aria-expanded="false" id="inventory-toggle-btn">
+                            <i class="fa-solid fa-box-open theme-accent-text shrink-0"></i>
+                            <h3 class="font-bold text-lg theme-card-title truncate">持有物品</h3>
+                            <span id="items-slot-label" class="text-xs font-normal theme-muted-text shrink-0">(0/5)</span>
+                            <i id="inventory-chevron" class="fa-solid fa-chevron-down text-xs text-zinc-500 ml-auto shrink-0 transition-transform"></i>
+                        </button>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button type="button" onclick="startQRScanner()"
                                     class="text-xs px-3 py-1.5 theme-btn-primary rounded-xl flex items-center gap-x-1 font-medium">
                                 <i class="fa-solid fa-qrcode"></i>
                                 <span>掃描 QR</span>
                             </button>
-                            <button onclick="loadMyItems()"
+                        </div>
+                    </div>
+                    <div id="inventory-body" class="hidden mt-4">
+                        <div class="flex justify-end mb-2">
+                            <button type="button" onclick="loadMyItems()"
                                     class="text-xs px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-xl">刷新</button>
                         </div>
-                    </div>
-                    <div id="my-items-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div class="text-sm text-zinc-400 col-span-full text-center py-4">載入中...</div>
-                    </div>
-                </div>
-
-                <!-- Zoo Skills（故事階段未解鎖時隱藏；與戰鬥 Zoo 同一 gate） -->
-                <div id="zoo-skills-panel" class="hidden">
-                    <div class="font-medium mb-3 flex items-center gap-x-2">
-                        <i class="fa-solid fa-magic theme-accent-text"></i>
-                        <span>Zoo 能力</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3" id="zoo-list">
-                        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-sm">
-                            <div class="text-amber-400 font-medium">溫柔之焰</div>
-                            <div class="text-xs text-zinc-400 mt-1">幫助 Iggy 冷靜</div>
-                        </div>
-                        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-sm">
-                            <div class="text-amber-400 font-medium">界線共鳴</div>
-                            <div class="text-xs text-zinc-400 mt-1">感受他人痛楚</div>
+                        <div id="my-items-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="text-sm text-zinc-400 col-span-full text-center py-4">展開後載入…</div>
                         </div>
                     </div>
                 </div>
@@ -3383,12 +3372,6 @@
             updateDashboardAttackHint(squad);
             renderMainlineTasks(data.mainline_tasks || squad.mainline_tasks);
 
-            const zooPanel = document.getElementById('zoo-skills-panel');
-            if (zooPanel) {
-                const zooOn = !!(data.zoo_unlocked || squad.zoo_unlocked);
-                setVisible(zooPanel, zooOn);
-            }
-
             const routePicker = document.getElementById('route-picker');
             const routeBadge = document.getElementById('route-badge');
             const isLeader = squad.is_team_leader === 1;
@@ -5328,23 +5311,53 @@
             pendingAppliedEffect = null;
         }
 
+        let inventoryPanelOpen = false;
+
+        function toggleInventoryPanel(forceOpen) {
+            const body = document.getElementById('inventory-body');
+            const chevron = document.getElementById('inventory-chevron');
+            const btn = document.getElementById('inventory-toggle-btn');
+            if (!body) return;
+            if (typeof forceOpen === 'boolean') {
+                inventoryPanelOpen = forceOpen;
+            } else {
+                inventoryPanelOpen = !inventoryPanelOpen;
+            }
+            if (inventoryPanelOpen) {
+                body.classList.remove('hidden');
+                if (chevron) chevron.classList.add('rotate-180');
+                if (btn) btn.setAttribute('aria-expanded', 'true');
+                loadMyItems();
+            } else {
+                body.classList.add('hidden');
+                if (chevron) chevron.classList.remove('rotate-180');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        }
+
         async function loadMyItems() {
             const container = document.getElementById('my-items-list');
             const slotLabel = document.getElementById('items-slot-label');
             if (!container) return;
+            // Keep slot count updated even when collapsed; only full render when open.
+            const body = document.getElementById('inventory-body');
+            const isOpen = body && !body.classList.contains('hidden');
 
             try {
                 const res = await fetch('/my_items', { credentials: 'same-origin' });
                 const data = await res.json();
 
                 if (!res.ok || !data.success) {
-                    container.innerHTML = '<div class="text-red-400 text-sm col-span-full text-center py-4">載入失敗</div>';
+                    if (isOpen) {
+                        container.innerHTML = '<div class="text-red-400 text-sm col-span-full text-center py-4">載入失敗</div>';
+                    }
                     return;
                 }
 
                 if (slotLabel) {
                     slotLabel.textContent = `(${data.current_count || 0}/${data.max_slots || 5})`;
                 }
+                if (!isOpen) return;
 
                 const items = data.items || [];
                 if (items.length === 0) {

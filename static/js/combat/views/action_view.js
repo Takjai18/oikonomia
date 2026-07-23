@@ -60,36 +60,12 @@ export function createActionView(rootEl, handlers = {}) {
     setDisabled(tutorialLocked);
   }
 
-  function updateZooTip(ctx) {
+  function updateZooTip(_ctx) {
+    // Player Zoo UI disabled for camp — never show tip.
     if (!zooTip) return;
-    const me = ctx.hud?.me;
-    if (!me || TERMINAL_PHASES.includes(ctx.phase)) {
-      zooTip.className = 'hidden';
-      zooTip.innerHTML = '';
-      return;
-    }
-
-    const sanity = parseInt(me.sanity ?? 0, 10);
-    const allowZoo = ctx.hud?.allow_zoo !== false;
-    const zooMult = zooBonusMultiplier(sanity);
-    const bChance = berserkChancePct(sanity);
-
-    if (!allowZoo) {
-      zooTip.className = 'hidden';
-      zooTip.innerHTML = '';
-      return;
-    }
-
-    if (bChance > 0) {
-      zooTip.className = 'text-[10px] text-red-400 font-mono animate-pulse bg-red-950/20 border border-red-900/30 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `⚠️ 神智偏低 (${sanity})：發動行動有 <b>${bChance}%</b> 暴走機率，可能無法對敵造成傷害！`;
-    } else if (zooMult > 1.0) {
-      zooTip.className = 'text-[10px] text-purple-400 font-mono bg-purple-950/20 border border-purple-900/30 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `✨ Zoo 就緒：神智 ${sanity}，發動 Zoo 可獲 <b>×${zooMult}</b> 算力增益`;
-    } else {
-      zooTip.className = 'text-[10px] text-zinc-500 font-mono bg-zinc-900/40 border border-zinc-800 p-1.5 rounded-xl mx-3';
-      zooTip.innerHTML = `Zoo 可發動（神智 ${sanity}）；神智 ≥70 才有加成（目前 ×1.0）`;
-    }
+    zooTip.className = 'hidden';
+    zooTip.innerHTML = '';
+    zooTip.setAttribute('aria-hidden', 'true');
   }
 
   function updateProtagonistBar(ctx) {
@@ -114,20 +90,13 @@ export function createActionView(rootEl, handlers = {}) {
       const absorbing = TERMINAL_PHASES.includes(ctx.phase);
       const busy = BUSY_PHASES.includes(ctx.phase);
       const submitted = !!ctx.hud?.me?.submitted;
-      const allowZoo = ctx.hud?.allow_zoo !== false;
-
       setDisabled(absorbing || busy || submitted || tutorialLocked);
+      // Always hide Zoo control for players (camp: no Zoo usage).
       if (zooBtn) {
-        // Stage-locked / encounter-disabled: hide entirely (not greyed out).
-        if (!allowZoo) {
-          zooBtn.classList.add('hidden');
-          zooBtn.disabled = true;
-          zooBtn.title = '';
-        } else {
-          zooBtn.classList.remove('hidden');
-          zooBtn.disabled = absorbing || busy || submitted || tutorialLocked;
-          zooBtn.title = '';
-        }
+        zooBtn.classList.add('hidden');
+        zooBtn.disabled = true;
+        zooBtn.setAttribute('aria-hidden', 'true');
+        zooBtn.tabIndex = -1;
       }
 
       updateZooTip(ctx);
