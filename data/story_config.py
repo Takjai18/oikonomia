@@ -6,9 +6,9 @@
 #   stage 2 → Act 3–4
 #   stage 3 → Act 5–6
 STORY_STAGE_THRESHOLDS = {
-    1: 4,   # Act 1：木材 + 水 + 山羊徵章 + 鐵片（4 個 QR 任務）
-    2: 7,   # Act 2：小遊戲／Polis 戰等
-    3: 11,  # Act 3 City Hunt + Julian 後進入最終
+    1: 4,   # Act 1：木＋水＋兩件隨身物
+    2: 6,   # Act 2：潛行／Polis 等
+    3: 12,  # Act 3：村莊＋Albert Ching 鏈
 }
 
 # Optional hard gates by location id (uncomment when task IDs are locked in).
@@ -21,25 +21,22 @@ STORY_STAGE_REQUIRED_TASKS = {
 STORY_CONTENT = {
     "iggy": {
         0: {
-            "title": "🔥 Act 1：飛狐雪山",
+            "title": "🔥 第一章 · 飛狐雪山",
             "content": (
-                "風雪中你們本想救助狐狸，卻遇見重傷的年輕男子。"
-                "到場地掃描 QR：木材（掃完即開戰「布布」教學戰）、水，"
-                "以及山羊徵章與刻著 Iggy 的鐵片。"
+                "風雪中遇見重傷失憶的男子。掃描 QR 取水與木材（木材觸發布布教學戰）；"
+                "再搜集隨身物品，揭開名字「Iggy」，逃離 Polis 追捕。"
             ),
         },
         1: {
-            "title": "🔥 Act 2：虛妄的羔羊與引路人",
+            "title": "🔥 第二章 · 抉擇與邊界",
             "content": (
-                "逃亡中目擊 Polis 的殘暴。Iggy 的討好者模式被觸發，想用自我犧牲換取「和平」。"
-                "Julian 出現……他是救星，還是另一條鎖鏈？"
+                "Iggy 吐血仍推拒善意。選擇離開將迎戰 Polis；選擇照顧則潛行下山。"
             ),
         },
         2: {
-            "title": "🔥 Act 3–4：溫室裂痕與血田",
+            "title": "🔥 第三章 · 記憶之路",
             "content": (
-                "記憶重組逼你看清：無底線的「愛」只會製造巨嬰。"
-                "當 Iggy 首次說出「不」、點燃涅槃之火，血田的獠牙也同時露出。"
+                "村莊庇護、Julian 登場，City Hunt 尋找 Albert Ching（1→5），集合彩虹站。"
             ),
         },
         3: {

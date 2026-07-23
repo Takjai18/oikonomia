@@ -87,6 +87,21 @@ def resolve_combat_outcome(winner, team_id, encounter, starter_id, combat_id=Non
         elif starter_id and not _outcome_already_recorded_solo(starter_id, encounter_id):
             apply_encounter_success_solo(starter_id, encounter)
             result["applied_success"] = True
+
+        # Queue post-combat story for all team members (e.g. Act1 after 布布).
+        unlock = (encounter or {}).get("success", {}).get("next_story_unlock")
+        if unlock:
+            result["next_story_unlock"] = unlock
+            try:
+                from models.squad import get_team_members
+                from services.story import grant_story_unlock
+                if team_id:
+                    for m in get_team_members(team_id) or []:
+                        grant_story_unlock(m.get("squad_id"), unlock)
+                elif starter_id:
+                    grant_story_unlock(starter_id, unlock)
+            except Exception:
+                pass
         return result
 
     if winner == "enemy":
@@ -126,6 +141,7 @@ def build_victory_outcome_payload(
         "settlement_id": f"{safe_combat_id}:{settled_round_index}",
         "narrative": (encounter or {}).get("success", {}).get("narrative"),
         "reflection_prompt": (encounter or {}).get("reflection_prompt"),
+        "next_story_unlock": (encounter or {}).get("success", {}).get("next_story_unlock"),
         "ending_condition": ending.get("ending_condition"),
         "protagonist_trauma_total": ending.get("protagonist_trauma_total", 0),
         "trauma_level": ending.get("trauma_level", "safe"),

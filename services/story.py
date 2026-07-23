@@ -127,7 +127,24 @@ def get_pending_story_id(squad):
     if not squad.get("stats_allocated"):
         return None
 
-    # 3) Route / stage mainline (Iggy Act 1 = iggy_stage0, …)
+    # 3) Act 1+ requires a team (create/join) before mainline stories.
+    if not squad.get("team_id"):
+        return None
+
+    # 4) Explicit unlock stories (post-combat / post-item) take priority over stage SSOT.
+    for unlock_id in (
+        "iggy_act1_post_bubo",
+        "iggy_act1_identity",
+        "iggy_act2_branch_leave",
+        "iggy_act2_branch_care",
+    ):
+        if is_story_viewed(squad_id, unlock_id):
+            continue
+        # Only surface unlocks that were marked pending for this squad.
+        if _squad_has_story_unlock(squad_id, unlock_id):
+            return unlock_id
+
+    # 5) Route / stage mainline (Iggy Act 1 = iggy_stage0, …)
     route = (squad.get("route") or "").strip().lower()
     if not route:
         from data.route_config import FORCED_ROUTE
@@ -151,6 +168,73 @@ def get_pending_story_id(squad):
     return story_id
 
 
+def _story_unlocks_path():
+    """Optional JSON side-file under data_dir for pending unlocks (no migration)."""
+    import os
+    base = os.path.dirname(settings.db_path or "") or "."
+    return os.path.join(base, "story_unlocks.json")
+
+
+def grant_story_unlock(squad_id, story_id):
+    """Queue a story to auto-show (e.g. after Bubuo win or personal items)."""
+    import json
+    import os
+    if not squad_id or not story_id:
+        return False
+    path = _story_unlocks_path()
+    data = {}
+    try:
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f) or {}
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    bag = set(data.get(squad_id) or [])
+    bag.add(story_id)
+    data[squad_id] = sorted(bag)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=0)
+        return True
+    except OSError:
+        return False
+
+
+def _squad_has_story_unlock(squad_id, story_id):
+    import json
+    import os
+    path = _story_unlocks_path()
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f) or {}
+        return story_id in (data.get(squad_id) or [])
+    except (OSError, json.JSONDecodeError):
+        return False
+
+
+def clear_story_unlock(squad_id, story_id):
+    import json
+    import os
+    path = _story_unlocks_path()
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f) or {}
+        bag = set(data.get(squad_id) or [])
+        bag.discard(story_id)
+        if bag:
+            data[squad_id] = sorted(bag)
+        else:
+            data.pop(squad_id, None)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=0)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+
 def get_viewed_story_ids(squad_id):
     conn = sqlite3.connect(settings.db_path)
     try:
@@ -164,6 +248,7 @@ def get_viewed_story_ids(squad_id):
 
 
 def mark_story_viewed(squad_id, story_id):
+    clear_story_unlock(squad_id, story_id)
     conn = sqlite3.connect(settings.db_path)
     try:
         conn.execute(

@@ -885,9 +885,19 @@ export class CombatApp {
   }
 
   exitToLobby() {
+    const nextStory =
+      this.ctx?._lastPollSnapshot?.next_story_unlock
+      || this.ctx?.hud?.next_story_unlock
+      || null;
+    if (nextStory) {
+      try {
+        sessionStorage.setItem('OIKONOMIA_PENDING_STORY', nextStory);
+      } catch (_) { /* noop */ }
+    }
+
     if (typeof window.exitCombatScreen === 'function') {
       showToast('已安全退出戰場', 'info');
-      window.exitCombatScreen({ fromV2: true });
+      window.exitCombatScreen({ fromV2: true, nextStoryId: nextStory });
       return;
     }
 
@@ -903,6 +913,9 @@ export class CombatApp {
     }
 
     showToast('已安全退出戰場', 'info');
+    if (typeof window.checkPendingStory === 'function') {
+      setTimeout(() => window.checkPendingStory(), 500);
+    }
   }
 
   async summonGm() {

@@ -1727,9 +1727,20 @@
             if (typeof loadEncounters === 'function') {
                 await loadEncounters();
             }
-        }, 150);
+            let nextStory = options.nextStoryId || null;
+            try {
+                nextStory = nextStory || sessionStorage.getItem('OIKONOMIA_PENDING_STORY');
+                sessionStorage.removeItem('OIKONOMIA_PENDING_STORY');
+            } catch (_) { /* noop */ }
+            if (nextStory && typeof playStoryPromise === 'function') {
+                await playStoryPromise(nextStory);
+            } else if (typeof checkPendingStory === 'function') {
+                await checkPendingStory();
+            }
+        }, 200);
     }
     window.exitCombatScreen = exitCombatScreen;
+    window.checkPendingStory = checkPendingStory;
 
     async function loadCombatPage(combatId) {
         if (combatId) {
@@ -3779,6 +3790,31 @@
             }
         }
 
+        async function maybePlayAct1AfterTeam() {
+            try {
+                const statusRes = await fetchNoCache('/status');
+                if (statusRes.ok) {
+                    const status = await statusRes.json();
+                    if (status?.squad_id && status.success !== false) {
+                        currentSquad = status;
+                        saveLocalSession(status);
+                        updateDashboard(currentSquad);
+                    }
+                }
+                const pendRes = await fetch('/api/story/pending', { credentials: 'same-origin' });
+                const pend = await pendRes.json();
+                if (pend.pending_story_id && pend.pending_story_id !== 'welcome'
+                    && typeof shouldAutoShowStory === 'function'
+                    && shouldAutoShowStory(pend.pending_story_id, pend.story)) {
+                    if (typeof playStoryPromise === 'function') {
+                        await playStoryPromise(pend.pending_story_id);
+                    } else if (typeof fetchStoryAndShow === 'function') {
+                        fetchStoryAndShow(pend.pending_story_id);
+                    }
+                }
+            } catch (_) { /* ignore */ }
+        }
+
         async function joinTeamDirectly(teamId) {
             const res = await fetch('/team/join', {
                 method: 'POST',
@@ -3795,6 +3831,7 @@
                     updateDashboard(currentSquad);
                 }
                 loadMyTeam();
+                await maybePlayAct1AfterTeam();
             } else {
                 showToast(data.error || '加入失敗', 'error');
             }
@@ -3823,6 +3860,7 @@
                         updateDashboard(currentSquad);
                     }).catch(() => {});
                 }
+                await maybePlayAct1AfterTeam();
             } else {
                 showToast(data.error || '建立失敗', 'error');
             }
@@ -4029,16 +4067,7 @@
                 persistRestoreToken(data);
                 currentSquad = data;
                 saveLocalSession(data);
-                // After character creation: Act 1 (or next pending) before free play
-                try {
-                    const pendRes = await fetch('/api/story/pending', { credentials: 'same-origin' });
-                    const pend = await pendRes.json();
-                    if (pend.pending_story_id && pend.pending_story_id !== 'welcome') {
-                        setVisible(document.getElementById('stats-allocation-screen'), false);
-                        setVisible(document.getElementById('game-content'), false);
-                        await playStoryPromise(pend.pending_story_id);
-                    }
-                } catch (_) {}
+                // Act 1 waits until player joins/creates a team (see get_pending_story_id).
                 await enterDashboardAfterOnboarding({ skip_team_prompt: false });
             } catch (e) {
                 console.error('allocate_stats failed', e);
@@ -5356,6 +5385,10 @@
                                 if (typeof showSection === 'function') showSection('combat');
                             }
                         }, 900);
+                    } else if (result.pending_story_id && typeof playStoryPromise === 'function') {
+                        setTimeout(() => {
+                            playStoryPromise(result.pending_story_id);
+                        }, 600);
                     }
                     return true;
                 }

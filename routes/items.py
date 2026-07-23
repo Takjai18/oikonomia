@@ -176,6 +176,30 @@ def add_item():
             f"{response.get('message') or message}"
             " — 你們撿起木材的一刻，樹林傳來咆哮！雪山熊「布布」撲出——進入戰鬥教學。"
         )
+
+    # Act 1 personal items: after both QR tasks done, unlock identity story for team.
+    if linked_task_id in ("act1_goat_badge", "act1_iron_plate"):
+        try:
+            from services.story import (
+                count_team_distinct_tasks,
+                grant_story_unlock,
+            )
+            squad = _get_squad(session["squad_id"]) or {}
+            team_id = squad.get("team_id")
+            _, done = count_team_distinct_tasks(session["squad_id"], team_id)
+            if "act1_goat_badge" in done and "act1_iron_plate" in done:
+                from models.squad import get_team_members
+                members = get_team_members(team_id) if team_id else [squad]
+                for m in members or []:
+                    sid = m.get("squad_id") if isinstance(m, dict) else session["squad_id"]
+                    grant_story_unlock(sid, "iggy_act1_identity")
+                response["pending_story_id"] = "iggy_act1_identity"
+                response["message"] = (
+                    f"{response.get('message') or message}"
+                    " — 隨身物品已齊，解鎖身分劇情。"
+                )
+        except Exception:
+            pass
     return jsonify(response)
 
 

@@ -3,9 +3,10 @@
 # Shared camp-area coords for non-GPS / pending-GPS tasks.
 _CAMP = {"lat": 22.3845, "lng": 114.2695, "radius": 80}
 
-# Placeholder HK MTR-ish coords for City Hunt (replace with precise pins when locked).
+# Placeholder HK coords for City Hunt (replace with precise pins when locked).
+_TSUEN_WAN = {"lat": 22.3736, "lng": 114.1178, "radius": 120}  # 荃灣站外牆一帶
+_KWAI_FONG = {"lat": 22.3570, "lng": 114.1278, "radius": 120}
 _MEI_FOO = {"lat": 22.3370, "lng": 114.1390, "radius": 120}
-_SSP = {"lat": 22.3307, "lng": 114.1622, "radius": 100}
 _KOWLOON_TONG = {"lat": 22.3370, "lng": 114.1760, "radius": 100}
 _CHOI_HUNG = {"lat": 22.3347, "lng": 114.2090, "radius": 100}
 
@@ -39,134 +40,160 @@ LOCATIONS = {
         ),
     },
     "act1_goat_badge": {
-        "name": "殘缺的山羊徵章",
-        "hint": "Iggy 個人物品 · 掃描 QR",
+        "name": "傷者隨身物 · 徽章",
+        "hint": "個人物品 · 掃描 QR",
         **_CAMP,
         "task_type": "qr",
         "story_act": 1,
         "qr_code_value": "act1-goat-badge",
         "description": (
-            "【Act 1 · II 個人物品】找出殘缺的山羊徵章，"
-            "掃描 QR 完成。這可能與他的過去與 Zoo 有關……"
+            "【Act 1 · II】在雪地／傷者附近找出一件隨身物品（徽章），"
+            "掃描 QR。兩件隨身物都掃完後會解鎖身分劇情。"
         ),
     },
     "act1_iron_plate": {
-        "name": "刻著 Iggy 的鐵片",
-        "hint": "Iggy 個人物品 · 掃描 QR",
+        "name": "傷者隨身物 · 鐵片",
+        "hint": "個人物品 · 掃描 QR",
         **_CAMP,
         "task_type": "qr",
         "story_act": 1,
         "qr_code_value": "act1-iron-plate",
         "description": (
-            "【Act 1 · II 個人物品】找出一塊鐵片——上面刻住「Iggy」。"
-            "掃描 QR 完成，確認這名重傷男子的身份。"
+            "【Act 1 · II】找出一塊金屬鐵片／名牌，掃描 QR。"
+            "（內容在掃描與劇情中揭曉——請勿劇透隊友。）"
         ),
     },
-    # ========== ACT 2 — 逃亡 / Polis ==========
-    "act2_find_iggy": {
-        "name": "找出隱藏的 Iggy",
-        "hint": "Where’s Iggy · 小遊戲（圖片後補）",
+    # ========== ACT 2 — 逃亡 ==========
+    "act2_stealth": {
+        "name": "潛行下山",
+        "hint": "分支 B · 避開哨塔",
         **_CAMP,
         "task_type": "minigame",
         "minigame_id": "spot_the_difference",
         "minigame_config": {"diffCount": 5, "timeLimitSec": 120},
         "story_act": 2,
         "description": (
-            "【Act 2】在混亂場景中找出隱藏的 Iggy（類似 Where’s Wally；"
-            "正式圖片後補——暫用找不同小遊戲代替）。"
+            "【Act 2 · 分支 B】Stealth：避開 Polis 哨塔與雷達封鎖線，帶 Iggy 下山。"
+            "（暫以找不同小遊戲代表潛行；正式圖後補。）"
         ),
     },
-    "act2_maze": {
-        "name": "逃亡迷宮",
-        "hint": "迷宮 · 小遊戲",
+    "act2_polis_fight": {
+        "name": "Polis 追兵",
+        "hint": "分支 A · 正式戰鬥",
+        **_CAMP,
+        "task_type": "photo",
+        "story_act": 2,
+        "description": (
+            "【Act 2 · 分支 A】第一場正式戰鬥：enc_iggy_act2_polis"
+            "（5 回合內存活或擊敗追兵）。可先影合照再開戰。"
+        ),
+    },
+    # ========== ACT 3 — 村莊 + Albert City Hunt ==========
+    "act3_village_intel": {
+        "name": "村莊情報",
+        "hint": "打探 Oikos · 小遊戲",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "sudoku",
-        "minigame_config": {"maxHints": 3},
-        "story_act": 2,
-        "description": (
-            "【Act 2】迷宮小遊戲（正式迷宮圖後補——暫以秩序方陣／數獨代表「找到出路」）。"
-            "完成即視為帶隊脫出封鎖。"
-        ),
+        "minigame_id": "wordle_custom",
+        "minigame_config": {
+            "maxGuesses": 6,
+            "answers": ["OIKOS", "IGGY", "POLIS", "家", "山羊"],
+        },
+        "story_act": 3,
+        "description": "【Act 3】在村莊打探 Oikos 線索（密碼／關鍵詞小遊戲）。",
     },
-    "act2_polis_prep": {
-        "name": "Polis 對峙前哨",
-        "hint": "戰鬥前準備 · 影相",
+    "act3_search_iggy": {
+        "name": "搜尋 Iggy",
+        "hint": "村莊巷弄 · 小遊戲",
         **_CAMP,
-        "task_type": "photo",
-        "story_act": 2,
-        "description": (
-            "【Act 2】與 Polis 開戰前，全組影一張「準備守住 5 回合」的合照，"
-            "然後進入遭遇戰：enc_iggy_act2_polis（5 回合內存活即勝）。"
-        ),
+        "task_type": "minigame",
+        "minigame_id": "spot_the_difference",
+        "minigame_config": {"diffCount": 6, "timeLimitSec": 150},
+        "story_act": 3,
+        "description": "【Act 3】在村莊巷弄與廢墟中搜尋偷偷離開的 Iggy，避開搜捕。",
     },
-    # ========== ACT 3 — City Hunt ==========
-    "act3_hk_girl_pose": {
-        "name": "餐廳港女 Pose",
-        "hint": "City Hunt · 影相",
+    "act3_village_battle": {
+        "name": "村莊包圍戰",
+        "hint": "戰鬥 · Polis",
         **_CAMP,
         "task_type": "photo",
         "story_act": 3,
         "description": (
-            "【Act 3 · City Hunt】餐廳全組經典港女 Pose："
-            "雙手比心／托腮＋嘟嘴＋微微側頭。即場傳相／提交。"
+            "【Act 3】被逼進入戰鬥——挑戰 enc_iggy_act2_polis 或後續村莊戰。"
+            "勝利後 Julian 登場救場。"
         ),
     },
-    "act3_meifoo_worldle": {
-        "name": "美孚站 Worldle",
-        "hint": "City Hunt · 美孚站",
+    "albert_ching_1": {
+        "name": "尋找 Albert Ching 1",
+        "hint": "紅牆定位 · 荃灣",
+        **_TSUEN_WAN,
+        "task_type": "gps",
+        "story_act": 3,
+        "description": (
+            "【City Hunt 1】前往村莊邊緣的紅牆（荃灣站外牆一帶），"
+            "開啟 GPS 點擊驗證＝「施展定位術」。成功後解鎖 Ching 2。"
+        ),
+    },
+    "albert_ching_2": {
+        "name": "尋找 Albert Ching 2",
+        "hint": "地圖輪廓 · 葵芳",
+        **_KWAI_FONG,
+        "task_type": "minigame",
+        "minigame_id": "mapdle_hk",
+        "minigame_config": {"maxGuesses": 5, "winRadiusKm": 1.0},
+        "story_act": 3,
+        "description": (
+            "【City Hunt 2】Worldle 式：從輪廓推斷社區（目標葵芳）。"
+            "答對後到葵芳進行 Ching 3。"
+        ),
+    },
+    "albert_ching_3": {
+        "name": "尋找 Albert Ching 3",
+        "hint": "語音密碼 · 葵芳",
+        **_KWAI_FONG,
+        "task_type": "minigame",
+        "minigame_id": "voice_record",
+        "minigame_config": {
+            "prompt": "全隊輪流說出密碼（可每人一字／詞），限時內連貫完成。",
+            "script": "我叫做 Franchesca，今年係 19 歲半",
+            "minSeconds": 3,
+            "maxSeconds": 15,
+        },
+        "story_act": 3,
+        "description": (
+            "【City Hunt 3】葵芳結界：錄音全隊輪流讀出"
+            "「我叫做 Franchesca，今年係 19 歲半」。通過後解鎖 Ching 4。"
+        ),
+    },
+    "albert_ching_4": {
+        "name": "尋找 Albert Ching 4",
+        "hint": "美孚站壁畫",
         **_MEI_FOO,
         "task_type": "photo",
         "story_act": 3,
         "description": (
-            "【Act 3】到達美孚站後，用手機玩 Worldle（或類似），"
-            "限時約 3 分鐘估出「Mei Foo」。完成後影站內標誌＋隊員提交。"
+            "【City Hunt 4】前往美孚站轉車隧道壁畫，影下指定細節並提交。"
+            "（具體題目可由 GM 當日宣佈。）"
         ),
     },
-    "act3_meifoo_murals": {
-        "name": "美孚今昔壁畫",
-        "hint": "City Hunt · 轉車隧道壁畫",
-        **_MEI_FOO,
-        "task_type": "photo",
-        "story_act": 3,
-        "description": (
-            "【Act 3】在美孚轉車隧道壁畫中，找出並影低其中 3 類："
-            "① 中秋 ② 海灘／海景 ③ 現代居民生活。可簡短口述分別。"
-        ),
-    },
-    "act3_ssp_find": {
-        "name": "深水埗站尋物",
-        "hint": "City Hunt · 深水埗站",
-        **_SSP,
-        "task_type": "photo",
-        "story_act": 3,
-        "description": (
-            "【Act 3】在深水埗站完成 2–3 項（影相）："
-            "城市的特性藝術品；月台綠色／特定色支柱數量；"
-            "有「深水埗」字樣的舊款指示牌。（精確目標可由 GM 當日宣佈。）"
-        ),
-    },
-    "act3_kowloontong_bagua": {
-        "name": "九龍塘八乘八",
-        "hint": "City Hunt · 藝術品解迷",
+    "albert_ching_5": {
+        "name": "尋找 Albert Ching 5",
+        "hint": "九龍塘 · 八乘八",
         **_KOWLOON_TONG,
         "task_type": "photo",
         "story_act": 3,
         "description": (
-            "【Act 3】九龍塘「八乘八」藝術品：影最少 2 組「最有故事」的符號組合；"
-            "全組 1 分鐘為其中一組編 20 字內短故事（寫在紙上或備註影相）。"
+            "【City Hunt 5】「天行健，君子以自強不息」——"
+            "九龍塘「八乘八」：影符號組合＋全組 20 字內短故事。完成後集合彩虹站。"
         ),
     },
-    "act3_choihung_art": {
-        "name": "彩虹站芭蕾舞者",
-        "hint": "City Hunt · 站內藝術",
+    "act3_choihung_rally": {
+        "name": "彩虹站集合",
+        "hint": "City Hunt 終點",
         **_CHOI_HUNG,
-        "task_type": "photo",
+        "task_type": "gps",
         "story_act": 3,
-        "description": (
-            "【Act 3】優先站內：影「陶醉的芭蕾舞者」銅像＋彩虹條紋牆合照。"
-            "（時間緊不建議出站彩虹邨。）"
-        ),
+        "description": "【City Hunt 終】全體小隊立刻前往彩虹站完成最終集合任務。",
     },
     # ========== ACT 4–6 戰鬥相關提示任務 ==========
     "act4_julian_gate": {

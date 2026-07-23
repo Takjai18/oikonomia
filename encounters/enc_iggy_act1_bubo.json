@@ -62,8 +62,8 @@
   "success": {
     "insight_fragment": 0,
     "rewards": [],
-    "narrative": "布布被擊退，吼聲遠去。你們總算守住了重傷男子身邊的空地——可以繼續搜集水、生火與烤醬板鴨了。記住：攻擊靠擲骰倍率；防禦可減傷；隊友一齊行動更安全。",
-    "next_story_unlock": null
+    "narrative": "布布被擊退，吼聲遠去。篝火可以升起了——離開戰鬥後將繼續劇情。",
+    "next_story_unlock": "iggy_act1_post_bubo"
   },
 
   "failure": {

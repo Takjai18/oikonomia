@@ -87,6 +87,12 @@ export function createVictoryView(rootEl) {
       panel = ensureBodyHost(panel || rootEl.querySelector(`#${DOM_IDS.VICTORY_PANEL}`));
       if (!panel) return;
       const narrative = data?.narrative || '你們成功看穿了這場衝突背後的情緒勒索與邊界扭曲。';
+      const nextStory = data?.next_story_unlock || null;
+      if (nextStory) {
+        try {
+          sessionStorage.setItem('OIKONOMIA_PENDING_STORY', nextStory);
+        } catch (_) { /* noop */ }
+      }
 
       panel.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-zinc-950/90 p-4 backdrop-blur-sm';
       panel.innerHTML = `
