@@ -177,12 +177,19 @@ def submit_task():
             except Exception:
                 pass
             pending_story_id = None
+            next_step = None
             if squad:
                 pending_story_id = get_pending_story_id(squad) or unlock_story
+                try:
+                    from services.progression import get_next_mainline_step
+                    next_step = get_next_mainline_step(squad, prefer_story=True)
+                except Exception:
+                    next_step = None
             return jsonify({
                 "success": True,
                 "message": "任務提交成功！+6 神智 +1 Resource，全隊回復 10% 生命值",
                 "pending_story_id": pending_story_id,
+                "next_step": next_step,
                 "stage": new_stage,
                 "stage_advanced": new_stage > old_stage,
             })

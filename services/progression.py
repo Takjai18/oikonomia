@@ -400,3 +400,129 @@ def list_mainline_tasks_for_squad(squad):
         rows.append(entry)
     rows.sort(key=lambda r: (r.get("mainline_order") or 999, r.get("task_id") or ""))
     return rows
+
+
+# Mainline combats in story order (after related gate/task when required).
+MAINLINE_ENCOUNTERS = (
+    "enc_iggy_act1_bubo",
+    "enc_iggy_act2_polis",
+    "enc_iggy_act4_julian",
+    "enc_iggy_act6_savio",
+)
+
+# Photo / gate tasks that immediately lead into a specific encounter.
+TASK_FOLLOWUP_ENCOUNTER = {
+    "act2_polis_fight": "enc_iggy_act2_polis",
+    "act3_village_battle": "enc_iggy_act2_polis",
+    "act4_julian_gate": "enc_iggy_act4_julian",
+    "act6_savio_gate": "enc_iggy_act6_savio",
+}
+
+
+def _task_is_complete(squad, task_id, done=None):
+    done = done if done is not None else _done_tasks(squad)
+    if task_id == "act1_supplies":
+        return act1_supplies_progress(squad).get("complete") or task_id in done
+    return task_id in done
+
+
+def get_next_mainline_step(squad, *, prefer_story=True):
+    """Resolve the next player-facing mainline beat: story / task / encounter.
+
+    Priority:
+      1) Pending narrative story (if prefer_story)
+      2) Unlocked incomplete mainline task (mainline_order)
+      3) Unlocked incomplete mainline encounter
+    """
+    if not squad or not squad.get("squad_id"):
+        return None
+
+    if prefer_story:
+        try:
+            from services.story import get_pending_story_id
+            from data.narrative_stories import NARRATIVE_STORIES
+
+            sid = get_pending_story_id(squad)
+            if sid:
+                st = (NARRATIVE_STORIES or {}).get(sid) or {}
+                return {
+                    "type": "story",
+                    "story_id": sid,
+                    "title": st.get("title") or sid,
+                    "hint": "觀看下一段劇情",
+                }
+        except Exception:
+            pass
+
+    locations = settings.locations or {}
+    done = _done_tasks(squad)
+    candidates = []
+    for tid, loc in locations.items():
+        if not loc.get("mainline"):
+            continue
+        if not is_task_unlocked(squad, tid):
+            continue
+        if _task_is_complete(squad, tid, done=done):
+            # Gate tasks completed → offer linked encounter if still open
+            eid = TASK_FOLLOWUP_ENCOUNTER.get(tid)
+            if eid and is_encounter_unlocked(squad, eid):
+                team_id = squad.get("team_id")
+                if team_id and not encounter_already_completed(team_id, eid):
+                    from models.encounter import load_encounter
+                    enc = load_encounter(eid) or {}
+                    candidates.append({
+                        "type": "encounter",
+                        "encounter_id": eid,
+                        "title": enc.get("title") or eid,
+                        "hint": "進入主線戰鬥",
+                        "mainline_order": (loc.get("mainline_order") or 999) + 0.5,
+                    })
+            continue
+        entry = {
+            "type": "task",
+            "task_id": tid,
+            "title": loc.get("name") or tid,
+            "hint": loc.get("hint") or "繼續主線任務",
+            "task_type": loc.get("task_type"),
+            "mainline_order": loc.get("mainline_order") or 999,
+        }
+        if tid == "act1_supplies":
+            prog = act1_supplies_progress(squad)
+            entry["progress_label"] = f"{prog['done']}/{prog['total']}"
+            entry["hint"] = f"雪山物資 {prog['done']}/{prog['total']} · 掃描 QR"
+        candidates.append(entry)
+
+    # Standalone encounters not tied to incomplete tasks
+    team_id = squad.get("team_id")
+    for i, eid in enumerate(MAINLINE_ENCOUNTERS):
+        if not is_encounter_unlocked(squad, eid):
+            continue
+        if team_id and encounter_already_completed(team_id, eid):
+            continue
+        # Skip if already added via task follow-up
+        if any(c.get("encounter_id") == eid for c in candidates):
+            continue
+        # Bubuo is QR-triggered; only surface if wood already scanned or supplies mid-progress
+        if eid == "enc_iggy_act1_bubo":
+            prog = act1_supplies_progress(squad)
+            if "act1_wood" not in (prog.get("completed_keys") or []) and "act1_wood" not in done:
+                # Wood not yet scanned — task prompt is enough
+                continue
+            if team_id and encounter_already_completed(team_id, eid):
+                continue
+        from models.encounter import load_encounter
+        enc = load_encounter(eid) or {}
+        candidates.append({
+            "type": "encounter",
+            "encounter_id": eid,
+            "title": enc.get("title") or eid,
+            "hint": "進入主線戰鬥",
+            "mainline_order": 15 + i * 40,
+        })
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: (c.get("mainline_order") or 999, c.get("type") or ""))
+    step = dict(candidates[0])
+    step.pop("mainline_order", None)
+    return step

@@ -1740,9 +1740,16 @@
                 sessionStorage.removeItem('OIKONOMIA_PENDING_STORY');
             } catch (_) { /* noop */ }
             if (nextStory && typeof playStoryPromise === 'function') {
+                // Story finish handler will auto-open the next task (e.g. 雪山物資).
                 await playStoryPromise(nextStory);
             } else if (typeof checkPendingStory === 'function') {
                 await checkPendingStory();
+                // If no pending story, open next mainline task / fight.
+                if (typeof guideNextMainlineStep === 'function') {
+                    await guideNextMainlineStep();
+                }
+            } else if (typeof guideNextMainlineStep === 'function') {
+                await guideNextMainlineStep();
             }
         }, 200);
     }
@@ -2372,17 +2379,26 @@
             const onComplete = currentStory?.onComplete;
             if (currentStory) currentStory.onComplete = null;
             closeStoryModal(false);
+            let nextStep = null;
             if (storyId) {
                 markStoryAsRead(storyId);
                 storyAutoShown.add(storyId);
                 try {
-                    await fetch(`/api/story/${encodeURIComponent(storyId)}/complete`, {
+                    const res = await fetch(`/api/story/${encodeURIComponent(storyId)}/complete`, {
                         method: 'POST',
                         credentials: 'same-origin',
                     });
+                    const data = await res.json().catch(() => ({}));
+                    nextStep = data.next_step || null;
                 } catch (_) {}
             }
             if (typeof onComplete === 'function') onComplete();
+            // Auto-guide next mainline task / combat (player may dismiss the task modal).
+            setTimeout(() => {
+                if (typeof guideNextMainlineStep === 'function') {
+                    guideNextMainlineStep({ nextStep });
+                }
+            }, 280);
         }
 
         function closeStoryModal(markComplete = true) {
@@ -2410,11 +2426,92 @@
                 fetch(`/api/story/${encodeURIComponent(storyId)}/complete`, {
                     method: 'POST',
                     credentials: 'same-origin',
-                }).catch(() => {});
+                })
+                    .then((r) => r.json().catch(() => ({})))
+                    .then((data) => {
+                        setTimeout(() => {
+                            if (typeof guideNextMainlineStep === 'function') {
+                                guideNextMainlineStep({ nextStep: data.next_step || null });
+                            }
+                        }, 280);
+                    })
+                    .catch(() => {});
             }
             currentStory = null;
             if (typeof onComplete === 'function') onComplete();
         }
+
+        /**
+         * After story / task / combat: auto open next mainline beat.
+         * Player can close the task modal; combat still asks confirm.
+         */
+        async function guideNextMainlineStep(options = {}) {
+            const opts = options || {};
+            const storyModal = document.getElementById('story-modal');
+            if (storyModal && !storyModal.classList.contains('hidden') && storyModal.classList.contains('flex')) {
+                return;
+            }
+            let step = opts.nextStep || null;
+            if (!step) {
+                try {
+                    const res = await fetch('/api/mainline/next', { credentials: 'same-origin' });
+                    const data = await res.json().catch(() => ({}));
+                    step = data.next_step || null;
+                } catch (_) {
+                    return;
+                }
+            }
+            if (!step || !step.type) return;
+
+            if (step.type === 'story' && step.story_id) {
+                if (typeof shouldAutoShowStory === 'function' && !shouldAutoShowStory(step.story_id)) {
+                    return;
+                }
+                if (typeof playStoryPromise === 'function') {
+                    await playStoryPromise(step.story_id);
+                } else if (typeof fetchStoryAndShow === 'function') {
+                    fetchStoryAndShow(step.story_id);
+                }
+                return;
+            }
+
+            if (step.type === 'task' && step.task_id) {
+                const label = step.title || step.task_id;
+                if (typeof showToast === 'function') {
+                    showToast(`下一步：${label}${step.hint ? ' — ' + step.hint : ''}`, 'info');
+                }
+                if (typeof showSection === 'function') showSection('explore');
+                try {
+                    const res = await fetch('/locations', { credentials: 'same-origin' });
+                    const locs = await res.json();
+                    const loc = locs && locs[step.task_id];
+                    if (loc && typeof openLocation === 'function') {
+                        setTimeout(() => openLocation(step.task_id, loc), 320);
+                    } else if (typeof loadLocations === 'function') {
+                        await loadLocations();
+                    }
+                } catch (_) {
+                    if (typeof loadLocations === 'function') loadLocations();
+                }
+                return;
+            }
+
+            if (step.type === 'encounter' && step.encounter_id) {
+                const label = step.title || '主線戰鬥';
+                if (typeof showToast === 'function') {
+                    showToast(`下一步：${label}`, 'info');
+                }
+                const starter = typeof startEncounter === 'function'
+                    ? startEncounter
+                    : window.startEncounter;
+                if (typeof starter === 'function') {
+                    setTimeout(() => starter(step.encounter_id, { skipConfirm: false }), 350);
+                } else if (typeof showSection === 'function') {
+                    showSection('combat');
+                }
+            }
+        }
+        window.guideNextMainlineStep = guideNextMainlineStep;
 
         /** Play a story and resolve when player finishes / skips. */
         function playStoryPromise(storyId) {
@@ -2964,8 +3061,10 @@
                             document.querySelectorAll('.modal-overlay').forEach((m) => m.remove());
                             if (data.pending_story_id && typeof shouldAutoShowStory === 'function'
                                 && shouldAutoShowStory(data.pending_story_id)
-                                && typeof fetchStoryAndShow === 'function') {
-                                fetchStoryAndShow(data.pending_story_id);
+                                && typeof playStoryPromise === 'function') {
+                                await playStoryPromise(data.pending_story_id);
+                            } else if (typeof guideNextMainlineStep === 'function') {
+                                await guideNextMainlineStep({ nextStep: data.next_step || null });
                             }
                             try {
                                 const statusRes = await fetchNoCache('/status');
@@ -5167,8 +5266,13 @@
             const data = await res.json();
             showToast(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'), data.success ? 'success' : 'error');
             if (modal) modal.remove();
-            if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)) {
-                fetchStoryAndShow(data.pending_story_id);
+            if (data.success) {
+                if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)
+                    && typeof playStoryPromise === 'function') {
+                    await playStoryPromise(data.pending_story_id);
+                } else if (typeof guideNextMainlineStep === 'function') {
+                    await guideNextMainlineStep({ nextStep: data.next_step || null });
+                }
             }
         }
 
@@ -5183,8 +5287,13 @@
             const data = await res.json();
             showToast(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'), data.success ? 'success' : 'error');
             closeModal(btn);
-            if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)) {
-                fetchStoryAndShow(data.pending_story_id);
+            if (data.success) {
+                if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)
+                    && typeof playStoryPromise === 'function') {
+                    await playStoryPromise(data.pending_story_id);
+                } else if (typeof guideNextMainlineStep === 'function') {
+                    await guideNextMainlineStep({ nextStep: data.next_step || null });
+                }
             }
         }
 
@@ -5491,9 +5600,14 @@
                             }
                         }, 900);
                     } else if (result.pending_story_id && typeof playStoryPromise === 'function') {
-                        setTimeout(() => {
-                            playStoryPromise(result.pending_story_id);
+                        setTimeout(async () => {
+                            await playStoryPromise(result.pending_story_id);
                         }, 600);
+                    } else if (typeof guideNextMainlineStep === 'function') {
+                        // e.g. badge/iron scanned mid-supplies, or task chain continues
+                        setTimeout(() => {
+                            guideNextMainlineStep();
+                        }, 700);
                     }
                     return true;
                 }

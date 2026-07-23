@@ -18,6 +18,7 @@ from services.story import (
     is_story_viewed,
     mark_story_viewed,
     resolve_story_stage,
+    clear_story_unlock,
 )
 
 story_bp = Blueprint("story", __name__)
@@ -89,7 +90,28 @@ def api_complete_story(story_id):
         return jsonify({"error": "劇情不存在"}), 404
 
     mark_story_viewed(session["squad_id"], story_id)
-    return jsonify({"success": True, "story_id": story_id})
+    try:
+        clear_story_unlock(session["squad_id"], story_id)
+    except Exception:
+        pass
+
+    next_step = None
+    squad = get_squad(session["squad_id"])
+    if squad:
+        try:
+            from services.progression import get_next_mainline_step
+            next_step = get_next_mainline_step(squad, prefer_story=True)
+        except Exception:
+            next_step = None
+
+    return jsonify({
+        "success": True,
+        "story_id": story_id,
+        "next_step": next_step,
+        "pending_story_id": (next_step or {}).get("story_id")
+        if (next_step or {}).get("type") == "story"
+        else None,
+    })
 
 
 @story_bp.route("/api/story/views")
@@ -113,12 +135,37 @@ def api_pending_story():
         return jsonify({"error": "玩家不存在"}), 404
 
     pending_id = get_pending_story_id(squad)
+    next_step = None
+    try:
+        from services.progression import get_next_mainline_step
+        next_step = get_next_mainline_step(squad, prefer_story=True)
+    except Exception:
+        next_step = None
+
     if not pending_id:
-        return jsonify({"success": True, "pending_story_id": None})
+        return jsonify({
+            "success": True,
+            "pending_story_id": None,
+            "next_step": next_step,
+        })
 
     story = enrich_story_lines(NARRATIVE_STORIES[pending_id])
     return jsonify({
         "success": True,
         "pending_story_id": pending_id,
         "story": story,
+        "next_step": next_step,
     })
+
+
+@story_bp.route("/api/mainline/next")
+def api_mainline_next():
+    """Next mainline beat after story/task/combat — for auto-guide UI."""
+    if "squad_id" not in session:
+        return jsonify({"error": "未登入"}), 401
+    squad = get_squad(session["squad_id"])
+    if not squad:
+        return jsonify({"error": "玩家不存在"}), 404
+    from services.progression import get_next_mainline_step
+    step = get_next_mainline_step(squad, prefer_story=True)
+    return jsonify({"success": True, "next_step": step})
