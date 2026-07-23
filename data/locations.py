@@ -29,35 +29,48 @@ LOCATIONS = {
         ),
     },
     "act1_escape": {
-        "name": "後有追兵",
-        "hint": "逃離雪山 · 解難",
+        "name": "風雪中的口令",
+        "hint": "反直覺 · 雷達口令",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "bilateral_brain",
-        "minigame_config": {"targetStreak": 5, "roundMs": 3200},
+        "minigame_id": "reverse_contrarian",
+        "minigame_config": {"lives": 2, "clearStreak": 8},
         "story_act": 1,
         "mainline": True,
         "mainline_order": 20,
         "description": (
-            "【主線 1.3 · 後有追兵】Polis 治安局搜捕隊逼近！"
-            "帶著虛弱失憶的 Iggy 逃離雪山——"
-            "保持冷靜與專注，闖過封鎖（解難小遊戲）。"
+            "【主線 1.3】Polis 雷達封鎖線逼近——通訊頻道被干擾，"
+            "指令會顛倒對錯。你必須「聽反指令」連續過關，"
+            "才能帶著失憶的 Iggy 衝出雪山封鎖。"
         ),
     },
     # ========== ACT 2 — 逃亡 ==========
     "act2_stealth": {
         "name": "潛行下山",
-        "hint": "分支 B · 避開哨塔",
+        "hint": "分支 B · 高難度找不同",
         **_CAMP,
         "task_type": "minigame",
         "minigame_id": "spot_the_difference",
-        "minigame_config": {"diffCount": 5, "timeLimitSec": 120},
+        "minigame_config": {
+            "diffCount": 8,
+            "timeLimitSec": 55,
+            "hotspots": [
+                {"x": 18, "y": 38, "w": 22, "h": 22, "found": False},
+                {"x": 142, "y": 18, "w": 18, "h": 18, "found": False},
+                {"x": 78, "y": 8, "w": 28, "h": 24, "found": False},
+                {"x": 148, "y": 58, "w": 16, "h": 16, "found": False},
+                {"x": 8, "y": 2, "w": 28, "h": 12, "found": False},
+                {"x": 55, "y": 62, "w": 20, "h": 18, "found": False},
+                {"x": 110, "y": 45, "w": 14, "h": 14, "found": False},
+                {"x": 175, "y": 75, "w": 18, "h": 16, "found": False},
+            ],
+        },
         "story_act": 2,
         "mainline": True,
         "mainline_order": 30,
         "description": (
-            "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與雷達封鎖線，帶 Iggy 下山。"
-            "（暫以找不同小遊戲代表潛行。）"
+            "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與雷達——"
+            "兩幅地圖僅有細微差異。限時短、差異多、點錯扣時。"
         ),
     },
     "act2_polis_fight": {
@@ -94,17 +107,22 @@ LOCATIONS = {
     },
     "act3_search_iggy": {
         "name": "搜尋 Iggy",
-        "hint": "村莊巷弄 · 小遊戲",
+        "hint": "村莊巷弄 · 記憶配對",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "spot_the_difference",
-        "minigame_config": {"diffCount": 6, "timeLimitSec": 150},
+        "minigame_id": "memory_match",
+        "minigame_config": {
+            "pairs": 8,
+            "timeLimitSec": 70,
+            "previewSec": 2,
+        },
         "story_act": 3,
         "mainline": True,
         "mainline_order": 50,
         "description": (
             "【主線 3】Iggy 又怕連累大家偷偷跑掉——"
-            "在村莊巷弄與廢墟中搜尋他，避開搜捕。"
+            "在巷弄與廢墟中靠「記憶配對」追蹤他留下的符號痕跡。"
+            "限時內翻開相同符號；配錯會扣時間。"
         ),
     },
     "act3_village_battle": {

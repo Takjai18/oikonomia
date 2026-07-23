@@ -158,6 +158,13 @@ def submit_task():
             new_stage = resolve_story_stage(new_count, new_tasks)
             # Progressive: task completion may queue the next story beat (not whole act).
             unlock_story = grant_task_story_unlocks(squad, task_id)
+            # Iggy grows with mainline completions
+            try:
+                from models.protagonist import sync_protagonist_growth
+                if team_id:
+                    sync_protagonist_growth(team_id)
+            except Exception:
+                pass
             pending_story_id = None
             if squad:
                 pending_story_id = get_pending_story_id(squad) or unlock_story

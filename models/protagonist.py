@@ -26,16 +26,17 @@ PROTAGONIST_PROFILES = {
     "iggy": {
         "display_name": "Iggy",
         "avatar": "iggy.jpg",
-        "power": 100,
-        "intellect": 85,
-        "resilience": 90,
+        # Base values — combat uses growth-aware stats (see data/protagonist_growth.py).
+        "power": 6,
+        "intellect": 10,
+        "resilience": 6,
     },
     "marah": {
         "display_name": "Marah",
-        "avatar": "healer_female_01.png",
-        "power": 75,
-        "intellect": 100,
-        "resilience": 95,
+        "avatar": "marah.png",
+        "power": 5,
+        "intellect": 12,
+        "resilience": 8,
     },
 }
 
@@ -81,12 +82,19 @@ def initialize_protagonist_for_team(team_id, protagonist_key):
         return None
     existing = get_protagonist_state(clean_team, protagonist_key, create=False)
     if existing:
-        return existing
-    base = default_protagonist_template()
+        # Re-sync growth (e.g. after deploy of growth system).
+        try:
+            sync_protagonist_growth(clean_team, protagonist_key)
+        except Exception:
+            pass
+        return get_protagonist_state(clean_team, protagonist_key, create=False)
+    from data.protagonist_growth import compute_protagonist_growth_stats
+
+    growth = compute_protagonist_growth_stats(protagonist_key, set())
     now = datetime.now().isoformat()
-    hp = int(base.get("hp", 100))
-    max_hp = int(base.get("hp", DEFAULT_MAX_HP))
-    sanity = int(base.get("sanity", 100))
+    hp = int(growth["max_hp"])
+    max_hp = int(growth["max_hp"])
+    sanity = int(growth["sanity"])
     conn = sqlite3.connect(_db())
     try:
         conn.execute(
@@ -99,6 +107,53 @@ def initialize_protagonist_for_team(team_id, protagonist_key):
     finally:
         conn.close()
     return get_protagonist_state(clean_team, protagonist_key, create=False)
+
+
+def _team_completed_task_ids(team_id):
+    members = get_team_members(team_id)
+    if not members:
+        return set()
+    leader = next((m for m in members if m.get("is_team_leader")), members[0])
+    _count, tasks = count_team_distinct_tasks(leader["squad_id"], team_id)
+    return set(tasks or set())
+
+
+def sync_protagonist_growth(team_id, protagonist_key=None):
+    """Apply mainline-based growth to protagonist_states (HP/max/sanity).
+
+    Power/resilience are applied at combat time via growth stats; HP is stored.
+    When max_hp rises, current hp gains the same delta (heal on growth).
+    """
+    from data.protagonist_growth import compute_protagonist_growth_stats
+
+    clean_team = (team_id or "").strip().upper()
+    if not clean_team:
+        return None
+    keys = [protagonist_key] if protagonist_key in ("iggy", "marah") else ("iggy", "marah")
+    done = _team_completed_task_ids(clean_team)
+    last = None
+    for key in keys:
+        growth = compute_protagonist_growth_stats(key, done)
+        state = get_protagonist_state(clean_team, key, create=True)
+        if not state:
+            continue
+        old_max = int(state.get("max_hp") or 10)
+        old_hp = int(state.get("hp") or 0)
+        new_max = int(growth["max_hp"])
+        delta = max(0, new_max - old_max)
+        new_hp = min(new_max, old_hp + delta) if delta else min(new_max, old_hp)
+        # First-time clamp if someone still has 100 from old defaults
+        if old_max >= 100 and new_max < 50 and old_hp >= 50:
+            new_hp = new_max
+        update_protagonist_state(
+            clean_team,
+            key,
+            max_hp=new_max,
+            hp=max(0, new_hp),
+            sanity=int(growth["sanity"]),
+        )
+        last = get_protagonist_state(clean_team, key, create=False)
+    return last
 
 
 def get_active_protagonists(team_id):
@@ -270,11 +325,12 @@ def get_protagonist_state(team_id, protagonist_key, create=True):
         if not create:
             return None
 
-        base = default_protagonist_template()
+        from data.protagonist_growth import compute_protagonist_growth_stats
+        growth = compute_protagonist_growth_stats(protagonist_key, set())
         now = datetime.now().isoformat()
-        hp = int(base.get("hp", 100))
-        max_hp = int(base.get("hp", DEFAULT_MAX_HP))
-        sanity = int(base.get("sanity", 100))
+        hp = int(growth["max_hp"])
+        max_hp = int(growth["max_hp"])
+        sanity = int(growth["sanity"])
         conn.execute(
             """INSERT OR IGNORE INTO protagonist_states
                (team_id, protagonist, hp, max_hp, sanity, trauma_count, is_active, last_updated)
@@ -428,19 +484,29 @@ def get_controllable_protagonist_squad_id(team_id, route, encounter, story_stage
 
 
 def _protagonist_base_stats(team_id, protagonist_key):
-    protagonists = get_team_protagonists(team_id)
-    template = protagonists.get(protagonist_key) or default_protagonist_template()
+    """Combat power/resilience from mainline growth (not static 100)."""
+    from data.protagonist_growth import compute_protagonist_growth_stats
+
     profile = PROTAGONIST_PROFILES.get(protagonist_key, {})
+    done = _team_completed_task_ids(team_id) if team_id else set()
+    growth = compute_protagonist_growth_stats(protagonist_key, done)
     return {
-        "display_name": template.get("name") or profile.get("display_name") or protagonist_key.title(),
+        "display_name": profile.get("display_name") or protagonist_key.title(),
         "avatar": profile.get("avatar", "default.png"),
-        "power": int(template.get("power") or profile.get("power") or 100),
-        "intellect": int(template.get("intellect") or profile.get("intellect") or 100),
-        "resilience": int(template.get("resilience") or profile.get("resilience") or 100),
+        "power": int(growth["power"]),
+        "intellect": int(profile.get("intellect") or 10),
+        "resilience": int(growth["resilience"]),
+        "max_hp": int(growth["max_hp"]),
+        "sanity": int(growth["sanity"]),
     }
 
 
 def build_protagonist_participant(team_id, protagonist_key):
+    # Ensure HP/max track growth before building combat row.
+    try:
+        sync_protagonist_growth(team_id, protagonist_key)
+    except Exception:
+        pass
     state = get_protagonist_state(team_id, protagonist_key, create=True)
     if not state:
         return None
@@ -454,8 +520,8 @@ def build_protagonist_participant(team_id, protagonist_key):
         "is_protagonist": True,
         "protagonist_key": protagonist_key,
         "hp": int(state.get("hp") or 0),
-        "max_hp": int(state.get("max_hp") or DEFAULT_MAX_HP),
-        "sanity": int(state.get("sanity") or 0),
+        "max_hp": int(state.get("max_hp") or base.get("max_hp") or 10),
+        "sanity": int(state.get("sanity") or base.get("sanity") or 35),
         "power": base["power"],
         "intellect": base["intellect"],
         "resilience": base["resilience"],

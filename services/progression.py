@@ -157,15 +157,19 @@ def is_task_unlocked(squad, task_id):
     """Whether explore task should be visible / submittable."""
     if not task_id:
         return False
-    if is_gm_unlock_mode(squad.get("squad_id")):
-        return True
+    # Side camp minigames hidden for players (mainline-only camp); GM unlock shows all.
     if is_side_task(task_id):
+        return is_gm_unlock_mode(squad.get("squad_id"))
+    if is_gm_unlock_mode(squad.get("squad_id")):
         return True
     gate = TASK_GATES.get(task_id)
     if gate is None:
-        # Mainline task without gate → require at least team+prologue (show after welcome)
-        # Non-gated mainline still visible; prefer explicit gates for story tasks.
-        return True
+        # Mainline without explicit gate still visible once unlocked by story flow defaults
+        locations = settings.locations or {}
+        loc = locations.get(task_id) or {}
+        if loc.get("mainline"):
+            return True
+        return False
     ok, _ = evaluate_gate(gate, squad)
     return ok
 
@@ -181,13 +185,16 @@ def task_lock_reason(squad, task_id):
 def is_encounter_unlocked(squad, encounter_id, encounter=None):
     if is_gm_unlock_mode(squad.get("squad_id")):
         return True
-    from models.encounter import encounter_is_practice
+    from models.encounter import encounter_is_practice, encounter_is_test
 
-    if encounter and encounter_is_practice(encounter):
-        return True
+    # Practice / test fights hidden from normal players during camp.
+    if encounter and (encounter_is_practice(encounter) or encounter_is_test(encounter)):
+        return False
+    if str(encounter_id or "").startswith(("practice_", "test_")):
+        return False
     gate = ENCOUNTER_GATES.get(encounter_id)
     if not gate:
-        # Default: allow if story_stage check in route passes (caller still applies stage)
+        # Default story encounters: stage gate applied in list route
         return True
     ok, _ = evaluate_gate(gate, squad)
     return ok

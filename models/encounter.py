@@ -103,9 +103,16 @@ def encounter_skips_progression(encounter):
 
 
 def encounter_visible_to_player(encounter, show_test=False):
+    """Players only see mainline story fights unless show_test (GM / env)."""
     if not encounter:
         return False
     if encounter_is_test(encounter) and not show_test:
+        return False
+    # Camp: hide practice drills from the encounter list (use GM unlock / env to re-show).
+    if encounter_is_practice(encounter) and not show_test:
+        return False
+    eid = str(encounter.get("encounter_id") or "")
+    if eid.startswith(("practice_", "test_", "cache_")) and not show_test:
         return False
     return True
 

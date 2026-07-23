@@ -9,6 +9,7 @@ export const MINIGAMES = {
     wordle_custom: () => import('./wordle_custom.js'),
     mapdle_hk: () => import('./mapdle_hk.js'),
     voice_record: () => import('./voice_record.js'),
+    memory_match: () => import('./memory_match.js'),
 };
 
 let currentUnmount = null;

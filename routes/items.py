@@ -230,6 +230,12 @@ def add_item():
                     response["pending_story_id"] = unlock_story
             except Exception:
                 pass
+            try:
+                from models.protagonist import sync_protagonist_growth
+                if squad_now.get("team_id"):
+                    sync_protagonist_growth(squad_now["team_id"])
+            except Exception:
+                pass
 
         # Identity story after both personal items
         if sub_key in ACT1_IDENTITY_SUB_KEYS:

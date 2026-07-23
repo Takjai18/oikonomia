@@ -257,22 +257,37 @@ def get_team_protagonists(team_id):
     route = team_row["route"]
     result = _protagonist_pair_payload(default_base, active_route=route)
 
+    try:
+        from models.protagonist import sync_protagonist_growth
+        sync_protagonist_growth(clean_team_id)
+    except Exception:
+        pass
+
+    from data.protagonist_growth import compute_protagonist_growth_stats
+    from models.protagonist import _team_completed_task_ids
+
+    done = _team_completed_task_ids(clean_team_id)
+
     for key in ("iggy", "marah"):
         profile = PROTAGONIST_PROFILES.get(key, {})
+        growth = compute_protagonist_growth_stats(key, done)
         state = get_protagonist_state(clean_team_id, key, create=True)
         entry = {
             **default_base,
             "name": profile.get("display_name", key.title()),
             "avatar": profile.get("avatar"),
-            "power": int(profile.get("power", default_base.get("power", 100))),
-            "intellect": int(profile.get("intellect", default_base.get("intellect", 100))),
-            "resilience": int(profile.get("resilience", default_base.get("resilience", 100))),
+            "power": int(growth["power"]),
+            "intellect": int(profile.get("intellect", 10)),
+            "resilience": int(growth["resilience"]),
+            "hp": int(growth["max_hp"]),
+            "max_hp": int(growth["max_hp"]),
+            "sanity": int(growth["sanity"]),
         }
         if state:
             entry.update({
-                "hp": int(state.get("hp", 100)),
-                "max_hp": int(state.get("max_hp", 100)),
-                "sanity": int(state.get("sanity", 100)),
+                "hp": int(state.get("hp", growth["max_hp"])),
+                "max_hp": int(state.get("max_hp", growth["max_hp"])),
+                "sanity": int(state.get("sanity", growth["sanity"])),
                 "trauma_count": int(state.get("trauma_count", 0)),
                 "near_death_until": state.get("near_death_until"),
             })
