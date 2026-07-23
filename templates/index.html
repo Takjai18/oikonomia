@@ -885,6 +885,26 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- 主線任務一覽（Dashboard 最下方） -->
+                <div class="cartoon-box p-5 mt-8" id="mainline-tasks-panel">
+                    <div class="flex items-center justify-between mb-3 gap-2">
+                        <div class="font-medium flex items-center gap-x-2 min-w-0">
+                            <i class="fa-solid fa-map-signs text-amber-400"></i>
+                            <span>主線任務</span>
+                        </div>
+                        <button type="button" onclick="showSection('explore')"
+                                class="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-xl shrink-0">
+                            去探索
+                        </button>
+                    </div>
+                    <p class="text-xs text-zinc-500 mb-3 leading-relaxed">
+                        只顯示已解鎖的主線。完成劇情後會解鎖下一項——唔使一次做晒。
+                    </p>
+                    <div id="mainline-tasks-list" class="space-y-2">
+                        <div class="text-sm text-zinc-500 text-center py-4">載入中…</div>
+                    </div>
+                </div>
             </div>
 
             <!-- ==================== 日誌頁面 ==================== -->
@@ -1509,7 +1529,12 @@
             document.querySelectorAll('.section').forEach(s => setVisible(s, false));
             setVisible(document.getElementById(id), true);
             if (id === 'explore') loadLocations();
-            if (id === 'dashboard') loadMyItems();
+            if (id === 'dashboard') {
+                loadMyItems();
+                if (typeof renderMainlineTasks === 'function' && currentSquad) {
+                    renderMainlineTasks(currentSquad.mainline_tasks);
+                }
+            }
             if (id === 'combat' && !options.skipCombatLobbyLoad) loadCombatPage();
             if (id === 'team') {
                 loadMyTeam();
@@ -3039,6 +3064,48 @@
             if (bar) bar.style.width = `${pct}%`;
         }
 
+        function renderMainlineTasks(tasks) {
+            const list = document.getElementById('mainline-tasks-list');
+            if (!list) return;
+            const rows = Array.isArray(tasks) ? tasks : [];
+            if (!rows.length) {
+                list.innerHTML = '<div class="text-sm text-zinc-500 text-center py-4">完成序章與組隊後，主線任務會出現喺度。</div>';
+                return;
+            }
+            list.innerHTML = rows.map((t) => {
+                const done = !!t.completed;
+                const badge = done
+                    ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">已完成</span>'
+                    : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-300 border border-amber-700/40">進行中</span>';
+                const progress = t.progress_label
+                    ? `<span class="text-xs text-zinc-400 font-mono">${t.progress_label}</span>`
+                    : '';
+                const act = t.story_act != null ? `Act ${t.story_act}` : '';
+                const checkHtml = (t.checklist && t.checklist.length)
+                    ? `<div class="mt-2 space-y-1 pl-1 border-l border-zinc-700">${t.checklist.map((c) =>
+                        `<div class="text-[11px] ${c.done ? 'text-emerald-400/90' : (c.locked ? 'text-zinc-600' : 'text-zinc-400')}">${c.done ? '✓' : (c.locked ? '🔒' : '○')} ${c.label}</div>`
+                      ).join('')}</div>`
+                    : '';
+                return `
+                    <button type="button"
+                            class="w-full text-left rounded-2xl border ${done ? 'border-zinc-800 bg-zinc-900/40' : 'border-amber-800/40 bg-zinc-900/80'} px-4 py-3 hover:bg-zinc-800/80 transition-colors"
+                            onclick="showSection('explore')">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="font-medium text-sm text-zinc-100 truncate">${t.name || t.task_id}</div>
+                                <div class="text-[11px] text-zinc-500 mt-0.5">${act}${t.hint ? ' · ' + t.hint : ''}</div>
+                            </div>
+                            <div class="flex flex-col items-end gap-1 shrink-0">
+                                ${badge}
+                                ${progress}
+                            </div>
+                        </div>
+                        ${checkHtml}
+                    </button>
+                `;
+            }).join('');
+        }
+
         function updateDashboardAttackHint(squad) {
             const hint = document.getElementById('dashboard-attack-hint');
             if (!hint) return;
@@ -3314,6 +3381,7 @@
             const displayName = squad.display_name || squad.squad_id;
             document.getElementById('squad-name').textContent = displayName;
             updateDashboardAttackHint(squad);
+            renderMainlineTasks(data.mainline_tasks || squad.mainline_tasks);
 
             const zooPanel = document.getElementById('zoo-skills-panel');
             if (zooPanel) {
@@ -4742,7 +4810,11 @@
                     const loc = locs[key];
                     const el = document.createElement('div');
                     el.className = 'section-card rounded-3xl p-5 location-card';
-                    el.innerHTML = `<div class="font-semibold">${loc.name}</div><div class="text-xs text-amber-400">${loc.hint}</div>`;
+                    const progress = loc.checklist_label
+                        ? `<span class="text-[10px] text-zinc-400 font-mono ml-1">${loc.checklist_label}</span>`
+                        : '';
+                    const doneMark = loc.completed ? ' ✓' : '';
+                    el.innerHTML = `<div class="font-semibold">${loc.name}${doneMark}</div><div class="text-xs text-amber-400">${loc.hint || ''}${progress}</div>`;
                     el.addEventListener('click', () => openLocation(key, loc));
                     container.appendChild(el);
                 });
@@ -4827,13 +4899,29 @@
                         ${loc.task_type === 'qr' ? `
                             <div class="space-y-3">
                                 <div class="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-3 py-2.5 leading-relaxed">
-                                    在現場找到對應<strong>實體道具</strong>，用 App 掃描道具上的 QR Code。
-                                    掃描成功即完成任務${loc.start_encounter ? '；此道具掃描後會<strong>立刻開戰</strong>（戰鬥教學）' : ''}。
+                                    在現場找到<strong>實體道具</strong>，用 App 掃描 QR。
+                                    ${loc.qr_checklist ? '此任務共 4 樣：水、木材（開戰）、徽章、鐵片——掃齊即完成。' : '掃描成功即完成任務。'}
+                                    ${loc.start_encounter ? '；掃描木材後會<strong>立刻開戰</strong>。' : ''}
                                 </div>
+                                ${loc.checklist && loc.checklist.length ? `
+                                <div class="rounded-2xl border border-zinc-700 bg-zinc-950/50 p-3 space-y-2" id="qr-checklist-box">
+                                    <div class="text-xs text-zinc-400 mb-1">進度 ${loc.checklist_label || ''}</div>
+                                    ${loc.checklist.map((row) => `
+                                        <div class="flex items-start gap-2 text-sm ${row.done ? 'text-emerald-400' : (row.locked ? 'text-zinc-500' : 'text-zinc-200')}">
+                                            <span class="shrink-0 w-5 text-center">${row.done ? '✓' : (row.locked ? '🔒' : '○')}</span>
+                                            <span class="min-w-0">
+                                                <span class="font-medium">${row.label}</span>
+                                                ${row.note && !row.done ? `<span class="text-xs text-amber-400/90 block">${row.note}</span>` : ''}
+                                                ${row.locked && row.lock_hint ? `<span class="text-xs text-zinc-500 block">${row.lock_hint}</span>` : ''}
+                                            </span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ` : ''}
                                 <button type="button" onclick="closeModal(this); startQRScanner();"
                                         class="w-full py-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl flex items-center justify-center gap-x-3">
                                     <i class="fa-solid fa-qrcode"></i>
-                                    <span>掃描 QR 完成任務</span>
+                                    <span>掃描 QR</span>
                                 </button>
                             </div>
                         ` : ''}
@@ -5358,11 +5446,22 @@
                 const result = await res.json();
                 if (result.success && result.item) {
                     showItemReveal(result.item, result.applied_effect);
-                    if (result.task_completed) {
+                    if (result.task_completed || result.checklist_done != null) {
                         showToast(result.message || '任務已完成', 'success');
                         if (typeof loadLocations === 'function') {
                             try { loadLocations(); } catch (_) {}
                         }
+                        // Refresh dashboard mainline progress
+                        try {
+                            fetchNoCache('/status').then((r) => r.json()).then((st) => {
+                                if (st && st.squad_id) {
+                                    currentSquad = { ...currentSquad, ...st };
+                                    if (typeof renderMainlineTasks === 'function') {
+                                        renderMainlineTasks(st.mainline_tasks);
+                                    }
+                                }
+                            });
+                        } catch (_) {}
                     }
                     // Act 1 wood etc.: start tutorial combat after claim UI settles.
                     if (result.start_encounter) {

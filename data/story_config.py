@@ -6,14 +6,14 @@
 #   stage 2 → Act 3–4
 #   stage 3 → Act 5–6
 STORY_STAGE_THRESHOLDS = {
-    1: 5,   # Act 1：木＋水＋徽章＋鐵片＋逃離
-    2: 7,   # Act 2：分支任務（潛行或 Polis）＋村莊情報起
-    3: 14,  # Act 3–4：村莊＋CHing 鏈＋彩虹
+    1: 2,   # Act 1：supplies parent + 逃離（sub-keys also count）
+    2: 4,   # Act 2：分支 + 村莊起
+    3: 10,  # Act 3–4：村莊＋CHing 鏈＋彩虹
 }
 
 # Soft gates (any listed task → stage at least N). Primary progression is unlock stories.
 STORY_STAGE_REQUIRED_TASKS = {
-    1: ["act1_escape"],
+    1: ["act1_escape", "act1_supplies"],
     2: ["act2_stealth", "act2_polis_fight"],
     3: ["act3_choihung_rally"],
 }

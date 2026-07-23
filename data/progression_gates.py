@@ -19,19 +19,9 @@ Design:
 # hide_until_unlocked: if True and no requires_* met → hidden (default True for mainline)
 
 TASK_GATES = {
-    # —— Act 1.1：取火與物資（看完飛狐雪山序幕後）——
-    "act1_wood": {
+    # —— Act 1 統一物資任務（看完飛狐雪山序幕後出現；checklist 內再分階段）——
+    "act1_supplies": {
         "requires_stories": ["iggy_stage0"],
-    },
-    "act1_water": {
-        "requires_stories": ["iggy_stage0"],
-    },
-    # —— Act 1.2：隨身物品（布布勝 + 篝火劇情後）——
-    "act1_goat_badge": {
-        "requires_stories": ["iggy_act1_post_bubo"],
-    },
-    "act1_iron_plate": {
-        "requires_stories": ["iggy_act1_post_bubo"],
     },
     # —— Act 1.3：後有追兵（身分揭曉後）——
     "act1_escape": {
@@ -97,9 +87,8 @@ SIDE_TASK_PREFIXES = ("loc_",)
 ENCOUNTER_GATES = {
     "enc_iggy_act1_bubo": {
         "requires_stories": ["iggy_stage0"],
-        # Prefer QR wood path; still listable after wood task started/completed or unlock.
-        "requires_any_tasks": ["act1_wood"],
-        "list_after_tasks": ["act1_wood"],
+        # Prefer QR wood path; list after wood sub-scan or parent supplies unlocked.
+        "requires_any_tasks": ["act1_wood", "act1_supplies"],
     },
     "enc_iggy_act2_polis": {
         "requires_any_stories": ["iggy_act2_branch_leave", "iggy_act3_found_iggy"],
@@ -122,6 +111,7 @@ ENCOUNTER_GATES = {
 
 # After a task is newly completed → grant these story unlocks to the team.
 TASK_STORY_UNLOCKS = {
+    "act1_supplies": [],  # identity story granted when badge+iron done (items route)
     "act1_escape": ["iggy_stage1"],  # Act 2 dilemma after fleeing the mountain
     "act2_stealth": ["iggy_stage2"],  # arrive village
     "act2_polis_fight": ["iggy_stage2"],

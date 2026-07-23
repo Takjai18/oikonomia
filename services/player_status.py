@@ -22,6 +22,13 @@ def build_player_status(squad):
     if FORCED_ROUTE:
         squad = _ensure_forced_route_persisted(squad)
 
+    def _mainline(s):
+        try:
+            from services.progression import list_mainline_tasks_for_squad
+            return list_mainline_tasks_for_squad(s)
+        except Exception:
+            return []
+
     if not squad.get("team_id"):
         return {
             "success": True,
@@ -33,6 +40,7 @@ def build_player_status(squad):
             "zoo_unlocked": False,
             "zoo_unlock_story_stage": zoo_unlock_story_stage(),
             "is_team_leader": 0,
+            "mainline_tasks": _mainline(squad),
         }
 
     team_id = squad["team_id"]
@@ -64,6 +72,7 @@ def build_player_status(squad):
         "zoo_unlocked": zoo_unlocked,
         "zoo_unlock_story_stage": zoo_unlock_story_stage(),
         "is_team_leader": squad.get("is_team_leader", 0),
+        "mainline_tasks": _mainline(squad),
     }
 
 

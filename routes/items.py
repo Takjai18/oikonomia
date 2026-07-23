@@ -121,27 +121,33 @@ def add_item():
         if not item:
             return jsonify({"success": False, "error": "物品不存在或已停用"}), 400
 
-    from data.act1_qr_hooks import hooks_for_qr_code
+    from data.act1_qr_hooks import (
+        ACT1_IDENTITY_SUB_KEYS,
+        ACT1_SUPPLIES_TASK_ID,
+        hooks_for_qr_code,
+    )
     from models.encounter_outcomes import encounter_already_completed
     from models.squad import get_squad as _get_squad
-    from services.story import record_task_completion_from_qr
-    from services.progression import is_task_unlocked, task_lock_reason, grant_task_story_unlocks
+    from services.story import record_task_completion_from_qr, grant_story_unlock
+    from services.progression import (
+        act1_supplies_progress,
+        can_claim_act1_qr,
+        grant_task_story_unlocks,
+    )
 
-    hooks = hooks_for_qr_code(item.get("qr_code_value"))
-    linked_task_id = hooks.get("linked_task_id")
+    qr_value = item.get("qr_code_value")
+    hooks = hooks_for_qr_code(qr_value)
     squad_for_gate = _get_squad(session["squad_id"]) or {"squad_id": session["squad_id"]}
-    if linked_task_id and not is_task_unlocked(squad_for_gate, linked_task_id):
-        reason = task_lock_reason(squad_for_gate, linked_task_id) or "請先完成前置劇情"
-        return jsonify({
-            "success": False,
-            "error": (
-                f"此 QR 任務尚未解鎖（{reason}）。"
-                "請先看完當前劇情再掃；例如木材／水要先完成「飛狐雪山」開場，"
-                "徽章／鐵片要等布布戰後篝火劇情。"
-            ),
-            "locked": True,
-            "linked_task_id": linked_task_id,
-        }), 403
+
+    # Act1 checklist gates (per-item story requirements under unified task).
+    if hooks.get("parent_task_id") or hooks.get("sub_key"):
+        ok_claim, claim_reason = can_claim_act1_qr(squad_for_gate, qr_value)
+        if not ok_claim:
+            return jsonify({
+                "success": False,
+                "error": claim_reason or "此 QR 任務尚未解鎖",
+                "locked": True,
+            }), 403
 
     success, message, applied_effect = grant_item_to_squad(session["squad_id"], item_id, source)
     start_encounter = hooks.get("start_encounter")
@@ -186,25 +192,64 @@ def add_item():
     if applied_effect:
         response["applied_effect"] = applied_effect
 
-    # Act 1+ QR hooks: auto-complete linked explore task; optional combat start.
-    if linked_task_id:
-        newly = record_task_completion_from_qr(
+    # Act 1 unified supplies: record sub-key + complete parent when all 4 scanned.
+    sub_key = hooks.get("sub_key")
+    parent_task_id = hooks.get("parent_task_id") or ACT1_SUPPLIES_TASK_ID
+    if sub_key:
+        newly_sub = record_task_completion_from_qr(
             session["squad_id"],
-            linked_task_id,
+            sub_key,
             note=f"QR 獲得物品：{item.get('name')}",
         )
-        response["linked_task_id"] = linked_task_id
+        response["sub_key"] = sub_key
+        response["sub_newly_completed"] = bool(newly_sub)
+        response["linked_task_id"] = parent_task_id
         response["task_completed"] = True
-        response["task_newly_completed"] = bool(newly)
-        if newly:
-            response["message"] = f"{message}（任務已完成）"
+        response["message"] = f"{message}（物資進度 +1）"
+
+        squad_now = _get_squad(session["squad_id"]) or squad_for_gate
+        progress = act1_supplies_progress(squad_now)
+        response["checklist_done"] = progress["done"]
+        response["checklist_total"] = progress["total"]
+        response["message"] = (
+            f"{message}（雪山物資 {progress['done']}/{progress['total']}）"
+        )
+
+        if progress["complete"]:
+            newly_parent = record_task_completion_from_qr(
+                session["squad_id"],
+                parent_task_id,
+                note="雪山四樣物資／身分物已齊",
+            )
+            response["task_newly_completed"] = bool(newly_parent)
+            response["parent_completed"] = True
+            response["message"] = f"{message}（雪山物資與身分任務完成！）"
             try:
-                squad_now = _get_squad(session["squad_id"]) or squad_for_gate
-                unlock_story = grant_task_story_unlocks(squad_now, linked_task_id)
+                unlock_story = grant_task_story_unlocks(squad_now, parent_task_id)
                 if unlock_story and not response.get("pending_story_id"):
                     response["pending_story_id"] = unlock_story
             except Exception:
                 pass
+
+        # Identity story after both personal items
+        if sub_key in ACT1_IDENTITY_SUB_KEYS:
+            completed_keys = set(progress.get("completed_keys") or [])
+            if all(k in completed_keys for k in ACT1_IDENTITY_SUB_KEYS):
+                try:
+                    from models.squad import get_team_members
+                    team_id = squad_now.get("team_id")
+                    members = get_team_members(team_id) if team_id else [squad_now]
+                    for m in members or []:
+                        sid = m.get("squad_id") if isinstance(m, dict) else session["squad_id"]
+                        grant_story_unlock(sid, "iggy_act1_identity")
+                    response["pending_story_id"] = "iggy_act1_identity"
+                    response["message"] = (
+                        f"{response.get('message') or message}"
+                        " — 隨身物品已齊，解鎖身分劇情。"
+                    )
+                except Exception:
+                    pass
+
     if start_encounter:
         response["start_encounter"] = start_encounter
         response["message"] = (
@@ -212,29 +257,6 @@ def add_item():
             " — 你們撿起木材的一刻，樹林傳來咆哮！雪山熊「布布」撲出——進入戰鬥教學。"
         )
 
-    # Act 1 personal items: after both QR tasks done, unlock identity story for team.
-    if linked_task_id in ("act1_goat_badge", "act1_iron_plate"):
-        try:
-            from services.story import (
-                count_team_distinct_tasks,
-                grant_story_unlock,
-            )
-            squad = _get_squad(session["squad_id"]) or {}
-            team_id = squad.get("team_id")
-            _, done = count_team_distinct_tasks(session["squad_id"], team_id)
-            if "act1_goat_badge" in done and "act1_iron_plate" in done:
-                from models.squad import get_team_members
-                members = get_team_members(team_id) if team_id else [squad]
-                for m in members or []:
-                    sid = m.get("squad_id") if isinstance(m, dict) else session["squad_id"]
-                    grant_story_unlock(sid, "iggy_act1_identity")
-                response["pending_story_id"] = "iggy_act1_identity"
-                response["message"] = (
-                    f"{response.get('message') or message}"
-                    " — 隨身物品已齊，解鎖身分劇情。"
-                )
-        except Exception:
-            pass
     return jsonify(response)
 
 

@@ -11,56 +11,21 @@ _KOWLOON_TONG = {"lat": 22.3370, "lng": 114.1760, "radius": 100}
 _CHOI_HUNG = {"lat": 22.3347, "lng": 114.2090, "radius": 100}
 
 LOCATIONS = {
-    # ========== ACT 1 — 飛狐雪山（QR 掃描完成） ==========
-    "act1_wood": {
-        "name": "木材",
-        "hint": "搜集 · 掃描 QR → 布布戰",
+    # ========== ACT 1 — 飛狐雪山（單一 QR 任務 + checklist） ==========
+    "act1_supplies": {
+        "name": "雪山物資與身分",
+        "hint": "掃描 4 樣 QR · 水／木／徽章／鐵片",
         **_CAMP,
         "task_type": "qr",
         "story_act": 1,
-        "qr_code_value": "act1-wood",
-        "start_encounter": "enc_iggy_act1_bubo",
+        "mainline": True,
+        "mainline_order": 10,
+        "qr_checklist": True,
         "description": (
-            "【主線 1.1 · 希望你能熬過這個冬天】找出「木材」並掃描 QR。"
-            "掃描成功後立刻進入雪山熊「布布」教學戰"
-            "（攻擊、防禦、擲骰；可全隊一起行動）。"
-            "擊敗後再繼續生火、烤醬板鴨。"
-        ),
-    },
-    "act1_water": {
-        "name": "水",
-        "hint": "搜集 · 掃描 QR",
-        **_CAMP,
-        "task_type": "qr",
-        "story_act": 1,
-        "qr_code_value": "act1-water",
-        "description": (
-            "【主線 1.1】找出「水」實體道具並掃描 QR。"
-            "與木材一齊用於生火取暖、照顧傷者。"
-        ),
-    },
-    "act1_goat_badge": {
-        "name": "傷者隨身物 · 徽章",
-        "hint": "個人物品 · 掃描 QR",
-        **_CAMP,
-        "task_type": "qr",
-        "story_act": 1,
-        "qr_code_value": "act1-goat-badge",
-        "description": (
-            "【主線 1.2 · 不明來歷】篝火劇情後才解鎖。"
-            "找出殘缺山羊徽章並掃描 QR；與鐵片齊全後揭開身分。"
-        ),
-    },
-    "act1_iron_plate": {
-        "name": "傷者隨身物 · 鐵片",
-        "hint": "個人物品 · 掃描 QR",
-        **_CAMP,
-        "task_type": "qr",
-        "story_act": 1,
-        "qr_code_value": "act1-iron-plate",
-        "description": (
-            "【主線 1.2 · 不明來歷】找出一塊金屬鐵片／名牌，掃描 QR。"
-            "（內容在掃描與劇情中揭曉——請勿劇透隊友。）"
+            "【主線 1 · 希望你能熬過這個冬天】在場地掃描四樣實體道具 QR：\n"
+            "① 水　② 木材（會觸發布布教學戰）　③ 山羊徽章　④ Iggy 鐵片。\n"
+            "先掃水與木材；布布戰＋篝火劇情後再掃徽章與鐵片。"
+            "四樣齊全即完成本任務。"
         ),
     },
     "act1_escape": {
@@ -71,6 +36,8 @@ LOCATIONS = {
         "minigame_id": "bilateral_brain",
         "minigame_config": {"targetStreak": 5, "roundMs": 3200},
         "story_act": 1,
+        "mainline": True,
+        "mainline_order": 20,
         "description": (
             "【主線 1.3 · 後有追兵】Polis 治安局搜捕隊逼近！"
             "帶著虛弱失憶的 Iggy 逃離雪山——"
@@ -86,6 +53,8 @@ LOCATIONS = {
         "minigame_id": "spot_the_difference",
         "minigame_config": {"diffCount": 5, "timeLimitSec": 120},
         "story_act": 2,
+        "mainline": True,
+        "mainline_order": 30,
         "description": (
             "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與雷達封鎖線，帶 Iggy 下山。"
             "（暫以找不同小遊戲代表潛行。）"
@@ -97,6 +66,8 @@ LOCATIONS = {
         **_CAMP,
         "task_type": "photo",
         "story_act": 2,
+        "mainline": True,
+        "mainline_order": 30,
         "description": (
             "【主線 2.1 · 分支 A】正式戰鬥：遭遇列表「Act 2：Polis 追擊」"
             "（5 回合內存活或擊敗追兵）。可先影合照再開戰。"
@@ -114,6 +85,8 @@ LOCATIONS = {
             "answers": ["OIKOS", "IGGY", "POLIS", "家", "山羊"],
         },
         "story_act": 3,
+        "mainline": True,
+        "mainline_order": 40,
         "description": (
             "【主線 3 · 村莊避難】在村子裡打探 Oikos 線索。"
             "成功後會遇到了解內情的婦人。"
@@ -127,6 +100,8 @@ LOCATIONS = {
         "minigame_id": "spot_the_difference",
         "minigame_config": {"diffCount": 6, "timeLimitSec": 150},
         "story_act": 3,
+        "mainline": True,
+        "mainline_order": 50,
         "description": (
             "【主線 3】Iggy 又怕連累大家偷偷跑掉——"
             "在村莊巷弄與廢墟中搜尋他，避開搜捕。"
@@ -138,6 +113,8 @@ LOCATIONS = {
         **_CAMP,
         "task_type": "photo",
         "story_act": 3,
+        "mainline": True,
+        "mainline_order": 60,
         "description": (
             "【主線 3】後山被 Polis 包圍——挑戰遭遇戰「Polis 追擊」。"
             "危急時會有人出手……"
@@ -149,6 +126,8 @@ LOCATIONS = {
         **_TSUEN_WAN,
         "task_type": "gps",
         "story_act": 4,
+        "mainline": True,
+        "mainline_order": 70,
         "description": (
             "【主線 4.1】前往荃灣站外牆（印有景色的紅牆），"
             "開啟 GPS 驗證＝「施展定位術」。成功後解鎖下一提示。"
@@ -167,6 +146,8 @@ LOCATIONS = {
             "targetImage": "/static/mission_hints/albert_ching_2_kwaifong.svg",
         },
         "story_act": 4,
+        "mainline": True,
+        "mainline_order": 80,
         "description": (
             "【主線 4.2】App 顯示社區邊界輪廓，猜出地點「葵芳」（最多 5 次）。"
             "答對後前往葵芳做結界任務。"
@@ -190,6 +171,8 @@ LOCATIONS = {
             "hintVideo": "/static/mission_hints/albert_ching_3_password_hint.mp4",
         },
         "story_act": 4,
+        "mainline": True,
+        "mainline_order": 90,
         "description": (
             "【主線 4.3】語音密碼：「我叫做 Franchesca，今年係 19 歲半」。"
             "通過後解鎖美孚站。"
@@ -202,6 +185,8 @@ LOCATIONS = {
         **_MEI_FOO,
         "task_type": "photo",
         "story_act": 4,
+        "mainline": True,
+        "mainline_order": 100,
         "description": (
             "【主線 4.4】美孚站轉車隧道壁畫——解封第一道記憶（棄兒創傷）。"
             "影下對應細節並提交。"
@@ -214,6 +199,8 @@ LOCATIONS = {
         **_KOWLOON_TONG,
         "task_type": "photo",
         "story_act": 4,
+        "mainline": True,
+        "mainline_order": 110,
         "description": (
             "【主線 4.5】九龍塘「八乘八」藝術品——第三道記憶與再生火種。"
             "影符號組合；之後 Iggy 將重執 Phoenix Fire，並前往彩虹站。"
@@ -225,6 +212,8 @@ LOCATIONS = {
         **_CHOI_HUNG,
         "task_type": "gps",
         "story_act": 5,
+        "mainline": True,
+        "mainline_order": 120,
         "description": (
             "【主線 5】全體小隊立刻前往彩虹站，與 Julian 會合。"
             "（記憶任務完成後解鎖。）"
@@ -237,6 +226,8 @@ LOCATIONS = {
         **_CHOI_HUNG,
         "task_type": "photo",
         "story_act": 5,
+        "mainline": True,
+        "mainline_order": 130,
         "description": (
             "【Act 5】面具撕下之後——全組影一張準備迎戰的合照，"
             "然後挑戰遭遇戰 enc_iggy_act4_julian。"
@@ -248,6 +239,8 @@ LOCATIONS = {
         **_CAMP,
         "task_type": "gps",
         "story_act": 6,
+        "mainline": True,
+        "mainline_order": 140,
         "description": (
             "【Act 6 · Necessary Pain】Julian 敗亡引發連鎖反應。"
             "全隊前往 Oikos 總部——西貢戶外康樂中心（SKORC）集合。"
@@ -259,6 +252,8 @@ LOCATIONS = {
         **_CAMP,
         "task_type": "photo",
         "story_act": 6,
+        "mainline": True,
+        "mainline_order": 150,
         "description": (
             "【Act 6】與 Iggy 並肩——全組影一張「我們選擇必要的痛」的合照，"
             "然後挑戰最終遭遇戰 enc_iggy_act6_savio。"

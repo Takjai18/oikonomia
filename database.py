@@ -582,56 +582,8 @@ def migrate_db():
         except sqlite3.Error:
             pass
 
-    # Upsert catalog items (insert new QR codes on deploy; refresh copy on known codes).
-    now = datetime.now().isoformat()
-    for entry in SAMPLE_ITEMS:
-        is_one_time = 0 if entry["item_type"] == "story" else 1
-        existing = c.execute(
-            "SELECT id FROM items WHERE qr_code_value = ?",
-            (entry["qr_code_value"],),
-        ).fetchone()
-        if existing:
-            c.execute(
-                """UPDATE items
-                   SET name = ?, description = ?, icon = ?, item_type = ?,
-                       has_ability = ?, effect_type = ?, effect_value = ?,
-                       image_path = COALESCE(NULLIF(image_path, ''), ?),
-                       is_one_time_use = ?, is_active = 1
-                   WHERE qr_code_value = ?""",
-                (
-                    entry["name"],
-                    entry["description"],
-                    entry["icon"],
-                    entry["item_type"],
-                    entry.get("has_ability", 0),
-                    entry.get("effect_type"),
-                    entry.get("effect_value", 0),
-                    entry.get("image_path"),
-                    is_one_time,
-                    entry["qr_code_value"],
-                ),
-            )
-        else:
-            c.execute(
-                """INSERT INTO items
-                   (name, description, icon, item_type, qr_code_value, is_active,
-                    is_one_time_use, has_ability, effect_type, effect_value,
-                    image_path, created_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
-                (
-                    entry["name"],
-                    entry["description"],
-                    entry["icon"],
-                    entry["item_type"],
-                    entry["qr_code_value"],
-                    is_one_time,
-                    entry.get("has_ability", 0),
-                    entry.get("effect_type"),
-                    entry.get("effect_value", 0),
-                    entry.get("image_path"),
-                    now,
-                ),
-            )
+    # Catalog items (also callable alone via ensure_item_catalog for production workers).
+    _upsert_sample_items(c)
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='protagonist_trauma_log'")
     if not c.fetchone():
@@ -655,12 +607,131 @@ def migrate_db():
         print(f"[oikonomia] backfill_team_routes_from_members failed: {e}", flush=True)
 
 
+def _upsert_sample_items(c):
+    """Insert/refresh catalog rows from SAMPLE_ITEMS (idempotent)."""
+    if not SAMPLE_ITEMS:
+        return 0
+    now = datetime.now().isoformat()
+    n = 0
+    for entry in SAMPLE_ITEMS:
+        qr = entry.get("qr_code_value")
+        if not qr:
+            continue
+        is_one_time = 0 if entry.get("item_type") == "story" else 1
+        existing = c.execute(
+            "SELECT id FROM items WHERE qr_code_value = ?",
+            (qr,),
+        ).fetchone()
+        if existing:
+            c.execute(
+                """UPDATE items
+                   SET name = ?, description = ?, icon = ?, item_type = ?,
+                       has_ability = ?, effect_type = ?, effect_value = ?,
+                       image_path = COALESCE(NULLIF(image_path, ''), ?),
+                       is_one_time_use = ?, is_active = 1
+                   WHERE qr_code_value = ?""",
+                (
+                    entry["name"],
+                    entry["description"],
+                    entry["icon"],
+                    entry["item_type"],
+                    entry.get("has_ability", 0),
+                    entry.get("effect_type"),
+                    entry.get("effect_value", 0),
+                    entry.get("image_path"),
+                    is_one_time,
+                    qr,
+                ),
+            )
+        else:
+            c.execute(
+                """INSERT INTO items
+                   (name, description, icon, item_type, qr_code_value, is_active,
+                    is_one_time_use, has_ability, effect_type, effect_value,
+                    image_path, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
+                (
+                    entry["name"],
+                    entry["description"],
+                    entry["icon"],
+                    entry["item_type"],
+                    qr,
+                    is_one_time,
+                    entry.get("has_ability", 0),
+                    entry.get("effect_type"),
+                    entry.get("effect_value", 0),
+                    entry.get("image_path"),
+                    now,
+                ),
+            )
+        n += 1
+    return n
+
+
+def ensure_item_catalog():
+    """Always safe on every worker start — upserts Act1 QR items even in production.
+
+    Full bootstrap (schema migrate) is still skipped on Render workers; catalog
+    sync must run so printed act1-water / act1-wood codes resolve.
+    """
+    if not SAMPLE_ITEMS:
+        print("[oikonomia] ensure_item_catalog: SAMPLE_ITEMS empty, skip", flush=True)
+        return 0
+    path = _db_path()
+    if not path:
+        return 0
+    conn = get_db_connection(path)
+    try:
+        c = conn.cursor()
+        # Ensure items table exists (fresh volume edge case).
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                item_type TEXT,
+                qr_code_value TEXT UNIQUE,
+                is_active INTEGER DEFAULT 1,
+                is_one_time_use INTEGER DEFAULT 1,
+                has_ability INTEGER DEFAULT 0,
+                effect_type TEXT,
+                effect_value INTEGER DEFAULT 0,
+                image_path TEXT,
+                created_at TEXT
+            )"""
+        )
+        n = _upsert_sample_items(c)
+        conn.commit()
+        # Log Act1 presence for deploy diagnostics
+        rows = c.execute(
+            "SELECT qr_code_value FROM items WHERE qr_code_value LIKE 'act1%' ORDER BY 1"
+        ).fetchall()
+        codes = [r[0] if not hasattr(r, "keys") else r["qr_code_value"] for r in rows]
+        print(f"[oikonomia] item catalog upserted ({n} entries); act1={codes}", flush=True)
+        return n
+    except Exception as e:
+        print(f"[oikonomia] ensure_item_catalog failed: {e}", flush=True)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return 0
+    finally:
+        conn.close()
+
+
 def safe_init_db():
     import utils.app_state as app_state
-    if not should_auto_bootstrap_db():
-        return
+    if should_auto_bootstrap_db():
+        try:
+            bootstrap_app_data()
+        except Exception as e:
+            app_state.DB_INIT_ERROR = str(e)
+            print(f"[oikonomia] init_db failed: {e}", flush=True)
+    # Production workers skip full bootstrap but MUST refresh item catalog
+    # so physical QR codes (act1-water, …) always resolve after deploy.
     try:
-        bootstrap_app_data()
+        ensure_item_catalog()
     except Exception as e:
-        app_state.DB_INIT_ERROR = str(e)
-        print(f"[oikonomia] init_db failed: {e}", flush=True)
+        print(f"[oikonomia] ensure_item_catalog error: {e}", flush=True)

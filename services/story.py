@@ -72,13 +72,21 @@ def record_task_completion_from_qr(squad_id, task_id, note=None):
     """Mark a location task complete after a successful QR claim (idempotent per squad).
 
     Returns True if a new submission row was inserted.
+    Accepts main locations OR Act1 checklist sub-keys (act1_water, …).
     """
     if not squad_id or not task_id:
         return False
     locations = settings.locations or {}
-    if task_id not in locations:
+    allowed_sub = set()
+    try:
+        from data.act1_qr_hooks import ACT1_ALL_SUB_KEYS
+        allowed_sub = set(ACT1_ALL_SUB_KEYS)
+    except Exception:
+        pass
+    if task_id not in locations and task_id not in allowed_sub:
         return False
-    content = note or f"QR 掃描完成：{locations[task_id].get('name') or task_id}"
+    loc_name = (locations.get(task_id) or {}).get("name") or task_id
+    content = note or f"QR 掃描完成：{loc_name}"
     conn = sqlite3.connect(settings.db_path)
     try:
         existing = conn.execute(
