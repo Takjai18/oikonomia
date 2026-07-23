@@ -4787,7 +4787,19 @@
                         <button type="button" class="text-3xl leading-none text-zinc-400 hover:text-white" onclick="closeModal(this)">×</button>
                     </div>
 
-                    <div class="text-zinc-300 mb-6">${loc.description || ''}</div>
+                    <div class="text-zinc-300 mb-4 leading-relaxed text-sm">${loc.description || ''}</div>
+                    ${loc.hint_media ? (() => {
+                        const m = String(loc.hint_media);
+                        const isVid = /\\.(mp4|webm|mov)(\\?|$)/i.test(m);
+                        if (isVid) {
+                            return `<div class="mb-4 rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-950">
+                                <video src="${m}" controls playsinline preload="metadata" class="w-full max-h-56 object-contain"></video>
+                            </div>`;
+                        }
+                        return `<div class="mb-4 rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-950 p-2">
+                            <img src="${m}" alt="任務提示" class="w-full max-h-56 object-contain mx-auto" />
+                        </div>`;
+                    })() : ''}
 
                     <div id="action-area" class="${loc.task_type === 'minigame' ? 'max-h-[70vh] overflow-y-auto overflow-x-hidden' : ''}">
                         ${loc.task_type === 'gps' ? `

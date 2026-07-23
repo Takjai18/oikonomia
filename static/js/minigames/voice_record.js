@@ -56,6 +56,8 @@ export function mount(rootEl, options) {
         script: "界線不會自己守住。",
         minSeconds: 3,
         maxSeconds: 60,
+        hintVideo: null,
+        hintImage: null,
         ...((options && options.config) || {}),
     };
 
@@ -73,6 +75,13 @@ export function mount(rootEl, options) {
             .vr-box { font-family: system-ui, -apple-system, sans-serif; max-width: 420px; margin: 0 auto; padding: 14px; color: #e4e4e7; text-align: center; }
             .vr-title { font-size: 18px; font-weight: 700; margin: 0 0 8px; color: #fafafa; }
             .vr-prompt { font-size: 13px; color: #a1a1aa; margin-bottom: 12px; line-height: 1.45; }
+            .vr-hint-media {
+                margin: 0 auto 12px; max-width: 100%; border-radius: 12px; overflow: hidden;
+                border: 1px solid #3f3f46; background: #18181b;
+            }
+            .vr-hint-media video, .vr-hint-media img {
+                display: block; width: 100%; max-height: 220px; object-fit: contain; margin: 0 auto;
+            }
             .vr-script {
                 background: #27272a; border: 1px solid #3f3f46; border-radius: 12px;
                 padding: 14px 12px; font-size: 18px; font-weight: 700; color: #fbbf24;
@@ -103,6 +112,8 @@ export function mount(rootEl, options) {
         <div class="vr-box">
             <h3 class="vr-title">錄音任務</h3>
             <p class="vr-prompt">${escapeHtml(config.prompt)}</p>
+            ${config.hintVideo ? `<div class="vr-hint-media"><video src="${escapeHtml(config.hintVideo)}" controls playsinline preload="metadata"></video></div>` : ""}
+            ${!config.hintVideo && config.hintImage ? `<div class="vr-hint-media"><img src="${escapeHtml(config.hintImage)}" alt="任務提示" /></div>` : ""}
             <div class="vr-script">${escapeHtml(config.script)}</div>
             <div class="vr-status" id="vr-status"><span class="vr-dot" id="vr-dot"></span>準備就緒</div>
             <div class="vr-timer" id="vr-timer">0:00</div>

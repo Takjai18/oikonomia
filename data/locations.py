@@ -140,12 +140,18 @@ LOCATIONS = {
         **_KWAI_FONG,
         "task_type": "minigame",
         "minigame_id": "mapdle_hk",
-        "minigame_config": {"maxGuesses": 5, "winRadiusKm": 1.0},
+        "minigame_config": {
+            "maxGuesses": 5,
+            "winRadiusKm": 1.0,
+            "targetName": "葵芳",
+            "targetImage": "/static/mission_hints/albert_ching_2_kwaifong.svg",
+        },
         "story_act": 3,
         "description": (
-            "【City Hunt 2】Worldle 式：從輪廓推斷社區（目標葵芳）。"
-            "答對後到葵芳進行 Ching 3。"
+            "【City Hunt 2】Worldle 式：睇社區輪廓（素材：mission_hints/kwaifong）推斷藏身地。"
+            "答對「葵芳」後前往葵芳做 Ching 3。"
         ),
+        "hint_media": "/static/mission_hints/albert_ching_2_kwaifong.svg",
     },
     "albert_ching_3": {
         "name": "尋找 Albert Ching 3",
@@ -154,16 +160,21 @@ LOCATIONS = {
         "task_type": "minigame",
         "minigame_id": "voice_record",
         "minigame_config": {
-            "prompt": "全隊輪流說出密碼（可每人一字／詞），限時內連貫完成。",
+            "prompt": (
+                "先睇提示短片，再全隊輪流說出密碼（可每人一字／詞），"
+                "限時內連貫完成並錄音提交。"
+            ),
             "script": "我叫做 Franchesca，今年係 19 歲半",
             "minSeconds": 3,
             "maxSeconds": 15,
+            "hintVideo": "/static/mission_hints/albert_ching_3_password_hint.mp4",
         },
         "story_act": 3,
         "description": (
-            "【City Hunt 3】葵芳結界：錄音全隊輪流讀出"
+            "【City Hunt 3】葵芳結界：先睇提示短片，再錄音全隊輪流讀出"
             "「我叫做 Franchesca，今年係 19 歲半」。通過後解鎖 Ching 4。"
         ),
+        "hint_media": "/static/mission_hints/albert_ching_3_password_hint.mp4",
     },
     "albert_ching_4": {
         "name": "尋找 Albert Ching 4",
@@ -172,9 +183,10 @@ LOCATIONS = {
         "task_type": "photo",
         "story_act": 3,
         "description": (
-            "【City Hunt 4】前往美孚站轉車隧道壁畫，影下指定細節並提交。"
-            "（具體題目可由 GM 當日宣佈。）"
+            "【City Hunt 4】對照提示圖，前往美孚站轉車隧道壁畫，"
+            "影下對應細節並提交。（提示圖見任務內嵌媒體。）"
         ),
+        "hint_media": "/static/mission_hints/albert_ching_4_meifoo_hint.jpg",
     },
     "albert_ching_5": {
         "name": "尋找 Albert Ching 5",

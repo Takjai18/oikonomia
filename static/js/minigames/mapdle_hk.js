@@ -51,6 +51,10 @@ const DEFAULT_PLACES = [
     { name: "銅鑼灣", lat: 22.2800, lng: 114.1850 },
     { name: "觀塘", lat: 22.3120, lng: 114.2250 },
     { name: "荃灣", lat: 22.3710, lng: 114.1140 },
+    { name: "葵芳", lat: 22.3570, lng: 114.1278 },
+    { name: "美孚", lat: 22.3370, lng: 114.1390 },
+    { name: "九龍塘", lat: 22.3370, lng: 114.1760 },
+    { name: "彩虹", lat: 22.3347, lng: 114.2090 },
     { name: "元朗", lat: 22.4445, lng: 114.0222 },
     { name: "西貢", lat: 22.3810, lng: 114.2700 },
 ];
@@ -132,7 +136,11 @@ export function mount(rootEl, options) {
     };
 
     let targetIndex = 0;
-    if (options.taskId) {
+    const forcedName = config.targetName || config.target || null;
+    if (forcedName) {
+        const idx = places.findIndex((p) => p.name === forcedName);
+        targetIndex = idx >= 0 ? idx : 0;
+    } else if (options.taskId) {
         let hash = 0;
         for (let i = 0; i < options.taskId.length; i++) {
             hash = options.taskId.charCodeAt(i) + ((hash << 5) - hash);
@@ -141,7 +149,14 @@ export function mount(rootEl, options) {
     } else {
         targetIndex = Math.floor(Math.random() * places.length);
     }
-    const targetPlace = places[targetIndex];
+    let targetPlace = places[targetIndex];
+    // Optional custom silhouette image (e.g. /static/mission_hints/….svg)
+    if (config.targetImage || config.image) {
+        targetPlace = {
+            ...targetPlace,
+            image: config.targetImage || config.image,
+        };
+    }
 
     let guesses = [];
     let isGameOver = false;
