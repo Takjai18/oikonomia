@@ -76,7 +76,7 @@ export function mount(rootEl, options) {
     </style>
     <div class="fm-wrap">
       <div class="fm-title">潛行下山 · 記憶閃光</div>
-      <p class="fm-hint">全隊必須同時參與。螢幕會短暫顯示一串數字／英數，記住後輸入。共 10 輪，每輪至少 2 人答對；字串會越來越長。</p>
+      <p class="fm-hint">全隊必須同時參與。螢幕會短暫顯示一串數字／英數（每輪至少 0.5 秒），記住後輸入。共 5 輪，每輪至少 2 人答對；字串會越來越長。</p>
       <div id="fm-body"></div>
     </div>
   `;
@@ -234,7 +234,7 @@ export function mount(rootEl, options) {
         <div class="fm-card" style="text-align:center">
           <div style="font-size:2rem">🎉</div>
           <h2 style="color:#34d399">全隊通過潛行路線！</h2>
-          <p class="fm-status">10 輪記憶挑戰完成</p>
+          <p class="fm-status">5 輪記憶挑戰完成</p>
         </div>`;
       if (options.onComplete && !completedFired) {
         completedFired = true;

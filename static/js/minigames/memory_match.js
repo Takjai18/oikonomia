@@ -60,7 +60,7 @@ export function mount(rootEl, options) {
   const taskId = options.taskId;
   const config = {
     pairs: 8,
-    previewSec: 1,
+    previewSec: 2,
     waveTimesSec: DEFAULT_WAVES,
     ...(options.config || {}),
   };
@@ -103,7 +103,7 @@ export function mount(rootEl, options) {
     </style>
     <div class="mm-wrap">
       <div class="mm-title">搜尋 Iggy · 記憶配對</div>
-      <p class="mm-hint">共 3 輪：60 秒 → 50 秒 → 45 秒。你需連續過三關；全隊至少一半人完成三輪才算任務成功。</p>
+      <p class="mm-hint">共 3 輪：60 秒 → 50 秒 → 45 秒。每輪開始有 2 秒預覽牌面。你需連續過三關；全隊至少一半人完成三輪才算任務成功。</p>
       <div id="mm-root"></div>
     </div>
   `;

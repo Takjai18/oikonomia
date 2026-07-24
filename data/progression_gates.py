@@ -112,16 +112,19 @@ ENCOUNTER_GATES = {
 # After a task is newly completed → grant these story unlocks to the team.
 TASK_STORY_UNLOCKS = {
     "act1_supplies": [],  # identity story granted when badge+iron done (items route)
-    "act1_escape": ["iggy_stage1"],  # Act 2 dilemma after fleeing the mountain
-    "act2_stealth": ["iggy_stage2"],  # arrive village
+    "act1_escape": ["iggy_stage1"],
+    "act2_stealth": ["iggy_stage2"],
     "act2_polis_fight": ["iggy_stage2"],
     "act3_village_intel": ["iggy_act3_shelter"],
     "act3_search_iggy": ["iggy_act3_found_iggy"],
     "act3_village_battle": ["iggy_act3_julian"],
-    "albert_ching_1": [],  # chain via task requires only
-    "albert_ching_3": ["iggy_act4_albert_test"],  # optional mid story
+    # After each City Hunt step: full narrative beat (auto-play via pending story)
+    "albert_ching_1": ["iggy_act4_redwall"],
+    "albert_ching_2": ["iggy_act4_map_clear"],
+    "albert_ching_3": ["iggy_act4_albert_test"],
     "albert_ching_4": ["iggy_act4_meifoo"],
-    "albert_ching_5": ["iggy_act4_phoenix"],
+    # After Mission 5: plumber memory then phoenix (order in PROGRESSIVE_UNLOCK_ORDER)
+    "albert_ching_5": ["iggy_act4_plumber", "iggy_act4_phoenix"],
     "act3_choihung_rally": ["iggy_act5_betrayal"],
     "act4_julian_gate": [],
     "act6_savio_gate": [],

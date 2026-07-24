@@ -185,8 +185,9 @@ def _start_flash_round(sess: dict, round_num: int) -> None:
         sess["code"] = None
         return
     length = _flash_code_length(round_num)
-    # Flash duration 0.5–1.0s, shorter as rounds progress slightly
-    show = max(0.5, min(1.0, 1.05 - round_num * 0.04))
+    # At least min_show (default 0.5s) every round so players can read the code
+    min_show = float(sess.get("min_show_seconds") or 0.5)
+    show = max(min_show, min(1.0, 1.05 - round_num * 0.04))
     sess["round"] = round_num
     sess["phase"] = "show"
     sess["code"] = _gen_flash_code(length)
@@ -241,7 +242,10 @@ def _new_session_blob(team_id: str, task_id: str, game_id: str, config: Optional
         "created_at": _iso(),
         "config": cfg,
         "min_correct": int(cfg.get("minCorrect") or cfg.get("min_correct") or 2),
-        "total_rounds": int(cfg.get("totalRounds") or cfg.get("total_rounds") or 10),
+        "total_rounds": int(cfg.get("totalRounds") or cfg.get("total_rounds") or 5),
+        "min_show_seconds": float(
+            cfg.get("minShowSeconds") or cfg.get("min_show_seconds") or 0.5
+        ),
         "max_guesses": int(cfg.get("maxGuesses") or cfg.get("max_guesses") or 10),
         "code_length": int(cfg.get("codeLength") or cfg.get("code_length") or 4),
     }
