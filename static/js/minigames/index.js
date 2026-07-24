@@ -11,6 +11,7 @@ export const MINIGAMES = {
     voice_record: () => import('./voice_record.js'),
     memory_match: () => import('./memory_match.js'),
     mastermind: () => import('./mastermind.js'),
+    flash_memory: () => import('./flash_memory.js'),
 };
 
 let currentUnmount = null;

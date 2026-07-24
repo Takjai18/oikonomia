@@ -463,6 +463,7 @@ def register_blueprints():
     from routes.story import story_bp
     from routes.encounters import encounters_bp
     from routes.items import items_bp
+    from routes.team_minigame import team_minigame_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(player_bp)
@@ -473,6 +474,7 @@ def register_blueprints():
     app.register_blueprint(story_bp)
     app.register_blueprint(encounters_bp)
     app.register_blueprint(items_bp)
+    app.register_blueprint(team_minigame_bp)
 
 
 from services.session_auth import (

@@ -88,6 +88,20 @@ def submit_task():
             expected_game and minigame_payload.get("gameId") != expected_game
         ):
             return jsonify({"success": False, "error": "小遊戲尚未過關"}), 400
+        # Team-synced games must finish as a squad session win.
+        if expected_game in ("flash_memory", "mastermind"):
+            try:
+                from services.team_minigame import is_session_won
+                if not is_session_won(team_id, task_id):
+                    return jsonify({
+                        "success": False,
+                        "error": "全隊尚未完成此同步遊戲（請全隊一起通關）",
+                    }), 400
+            except Exception:
+                return jsonify({
+                    "success": False,
+                    "error": "無法驗證全隊遊戲狀態，請重試",
+                }), 400
 
     requires_team_photo = task_type == "gps"
     requires_audio = (

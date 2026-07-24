@@ -47,20 +47,21 @@ LOCATIONS = {
     # ========== ACT 2 — 逃亡 ==========
     "act2_stealth": {
         "name": "潛行下山",
-        "hint": "分支 B · 一心二用閃避巡邏",
+        "hint": "分支 B · 全隊記憶閃光",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "bilateral_brain",
+        "minigame_id": "flash_memory",
         "minigame_config": {
-            "targetStreak": 6,
-            "roundMs": 3200,
+            "totalRounds": 10,
+            "minCorrect": 2,
         },
         "story_act": 2,
         "mainline": True,
         "mainline_order": 30,
         "description": (
-            "【主線 2.1 · 分支 B】Stealth：避開 Polis 哨塔與巡邏——"
-            "必須同時處理顏色與方向兩項干擾訊號，連續過關才能潛行下山。"
+            "【主線 2.1 · 分支 B】Stealth：全隊必須同時在手機上進行「記憶閃光」。"
+            "螢幕會短暫顯示一串數字／英數（約 0.5–1 秒），記住後輸入。"
+            "共 10 輪，每輪至少 2 人答對；字串會越來越長。"
         ),
     },
     "act2_polis_fight": {
@@ -79,7 +80,7 @@ LOCATIONS = {
     # ========== ACT 3 — 村莊 + Albert City Hunt ==========
     "act3_village_intel": {
         "name": "村莊情報",
-        "hint": "打探 Oikos · Mastermind 解碼",
+        "hint": "打探 Oikos · 全隊 Mastermind",
         **_CAMP,
         "task_type": "minigame",
         "minigame_id": "mastermind",
@@ -88,8 +89,8 @@ LOCATIONS = {
             "maxGuesses": 10,
             "themeTitle": "村莊情報 · 解碼",
             "themeHint": (
-                "婦人留下一組顏色密碼。黑釘＝顏色與位置正確；"
-                "白釘＝顏色正確但位置不對。破解後才知道 Oikos 的下落。"
+                "全隊必須一起進入。綠釘＝位置正確；白釘＝顏色對但位置錯；"
+                "紅釘＝錯誤。每人最多 10 次，全隊都破解才算完成。"
             ),
         },
         "story_act": 3,
@@ -97,7 +98,8 @@ LOCATIONS = {
         "mainline_order": 40,
         "description": (
             "【主線 3 · 村莊避難】在村子裡打探 Oikos 線索——"
-            "以 Mastermind 破解線人密碼。成功後會遇到了解內情的婦人。"
+            "全隊同時以 Mastermind 破解線人密碼（綠／白／紅釘）。"
+            "每人 10 次內都要破解，才算任務完成。"
         ),
     },
     "act3_search_iggy": {
