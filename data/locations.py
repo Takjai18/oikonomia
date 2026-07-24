@@ -363,13 +363,21 @@ LOCATIONS = {
         "description": "找回絕對的數字規律才能解開鎖鏈。",
     },
     "loc_2048_01": {
-        "name": "資源聚合站",
+        "name": "支線 · 2048",
         "hint": "2048 · 合併至 256",
         **_CAMP,
         "task_type": "minigame",
         "minigame_id": "g2048",
         "minigame_config": {"winTile": 256},
-        "description": "系統能量嚴重分散，請將基礎能量方塊疊加合併至 256 以上。",
+        "story_act": 1,
+        "mainline": False,
+        "side_quest": True,
+        "always_open": True,
+        "mainline_order": 15,
+        "description": (
+            "【自由支線】2048 小遊戲：將方塊合併至 256 或以上即可通關。"
+            "完成後可提交任務。"
+        ),
     },
     "loc_password_01": {
         "name": "記憶金庫",

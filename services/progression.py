@@ -148,8 +148,14 @@ def evaluate_gate(gate, squad, *, viewed=None, done=None):
     return True, None
 
 
+# Player-visible loc_* exceptions (otherwise all loc_* stay GM-only).
+PLAYER_VISIBLE_LOC_TASKS = frozenset({"loc_2048_01"})
+
+
 def is_side_task(task_id):
     tid = str(task_id or "")
+    if tid in PLAYER_VISIBLE_LOC_TASKS:
+        return False
     return any(tid.startswith(p) for p in SIDE_TASK_PREFIXES)
 
 
@@ -167,8 +173,12 @@ def is_task_unlocked(squad, task_id):
     gate = TASK_GATES.get(task_id)
     if gate is None:
         # Mainline without explicit gate still visible; side_quest needs a gate.
-        if loc.get("mainline"):
-            return True
+        if loc.get("mainline") or loc.get("side_quest"):
+            # side_quest without gate: allow if flagged open
+            if loc.get("side_quest") and loc.get("always_open"):
+                return True
+            if loc.get("mainline"):
+                return True
         return False
     ok, _ = evaluate_gate(gate, squad)
     return ok

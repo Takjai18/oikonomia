@@ -58,6 +58,10 @@ TASK_GATES = {
         "requires_tasks": ["albert_ching_3"],
     },
     # —— 支線（隨主線開啟）——
+    "loc_2048_01": {
+        # Free side 2048 — available after prologue / Act1 start
+        "requires_stories": ["iggy_stage0"],
+    },
     "act3_side_kong_pose": {
         "requires_stories": ["iggy_stage2"],
     },

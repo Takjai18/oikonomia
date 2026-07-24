@@ -11,12 +11,12 @@ from models.settings import settings
 from models.squad import get_squad, get_team_members, update_squad
 from utils.helpers import normalize_team_id
 
-STAT_KEYS = ("power", "resilience", "sanity", "max_hp")
+# Player-pickable + Iggy random pool: power / resilience only
+# (resilience already raises HP via formula — no separate max_hp/sanity pick)
+STAT_KEYS = ("power", "resilience")
 STAT_LABELS = {
     "power": "力量",
     "resilience": "韌性",
-    "sanity": "神智",
-    "max_hp": "生命上限",
 }
 
 
@@ -77,13 +77,8 @@ def _apply_player_stats(squad_id: str, alloc: Dict[str, int]) -> Optional[dict]:
         n = int(alloc.get(key) or 0)
         if n <= 0:
             continue
-        if key == "max_hp":
-            new_max = int(squad.get("max_hp") or 100) + n
-            new_hp = int(squad.get("hp") or 0) + n
-            updates["max_hp"] = new_max
-            updates["hp"] = new_hp
-        else:
-            updates[key] = int(squad.get(key) or 0) + n
+        updates[key] = int(squad.get(key) or 0) + n
+    # resilience change also bumps HP via update_squad hooks
     if updates:
         update_squad(squad_id, **updates)
     return get_squad(squad_id)
@@ -149,7 +144,7 @@ def add_protagonist_bonus(team_id: str, protagonist_key: str, alloc: Dict[str, i
 
 
 def apply_protagonist_random(team_id: str, points: int, route: str = "iggy") -> Optional[dict]:
-    """Randomly distribute points into protagonist combat bonus (+ HP/sanity on state)."""
+    """Randomly distribute points into protagonist power/resilience combat bonus."""
     team_id = normalize_team_id(team_id)
     key = (route or "iggy").strip().lower()
     if key not in ("iggy", "marah"):
@@ -159,17 +154,13 @@ def apply_protagonist_random(team_id: str, points: int, route: str = "iggy") -> 
         return None
     alloc = _random_alloc(pts)
     bonus = add_protagonist_bonus(team_id, key, alloc)
+    # Optional: small HP pad when resilience is chosen (mirrors player resilience→HP)
     state = get_protagonist_state(team_id, key, create=True)
-    if state and (alloc.get("max_hp") or alloc.get("sanity")):
-        updates = {}
-        if alloc.get("max_hp"):
-            new_max = int(state.get("max_hp") or 10) + int(alloc["max_hp"])
-            updates["max_hp"] = new_max
-            updates["hp"] = min(new_max, int(state.get("hp") or 0) + int(alloc["max_hp"]))
-        if alloc.get("sanity"):
-            updates["sanity"] = min(100, int(state.get("sanity") or 0) + int(alloc["sanity"]))
-        if updates:
-            state = update_protagonist_state(team_id, key, **updates)
+    if state and alloc.get("resilience"):
+        n = int(alloc["resilience"])
+        new_max = int(state.get("max_hp") or 10) + n
+        new_hp = min(new_max, int(state.get("hp") or 0) + n)
+        state = update_protagonist_state(team_id, key, max_hp=new_max, hp=new_hp)
     return {"bonus": bonus, "alloc": alloc, "state": state}
 
 

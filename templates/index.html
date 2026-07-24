@@ -5409,10 +5409,10 @@
             if (pending <= 0) return;
             const raw = await (typeof showInputModal === 'function'
                 ? showInputModal({
-                    title: `分配 ${pending} 點能力（格式：力量,韌性,神智,生命上限）`,
-                    placeholder: `例如 2,1,1,1 合計須 = ${pending}`,
-                    defaultValue: `${pending},0,0,0`,
-                    maxLength: 32,
+                    title: `分配 ${pending} 點能力（格式：力量,韌性）`,
+                    placeholder: `例如 ${Math.ceil(pending / 2)},${Math.floor(pending / 2)} 合計須 = ${pending}`,
+                    defaultValue: `${pending},0`,
+                    maxLength: 16,
                 })
                 : null);
             if (raw == null) {
@@ -5420,15 +5420,14 @@
                 return;
             }
             const parts = String(raw).split(/[,，\s]+/).map((x) => parseInt(x, 10) || 0);
+            // Only power / resilience (resilience already covers HP)
             const body = {
                 power: parts[0] || 0,
                 resilience: parts[1] || 0,
-                sanity: parts[2] || 0,
-                max_hp: parts[3] || 0,
             };
-            const sum = body.power + body.resilience + body.sanity + body.max_hp;
+            const sum = body.power + body.resilience;
             if (sum <= 0 || sum > pending) {
-                showToast(`合計須為 1–${pending} 點`, 'error');
+                showToast(`合計須為 1–${pending} 點（只可分配力量與韌性）`, 'error');
                 return;
             }
             try {

@@ -336,15 +336,13 @@ def submit_task():
 
 @player_bp.route("/allocate_stats", methods=["POST"])
 def allocate_stats():
-    """Spend pending mission stat points (power / resilience / sanity / max_hp)."""
+    """Spend pending mission stat points (power / resilience only)."""
     if "squad_id" not in session:
         return jsonify({"success": False, "error": "未登入"}), 401
     body = request.json if request.is_json else request.form
     alloc = {
         "power": body.get("power") or 0,
         "resilience": body.get("resilience") or 0,
-        "sanity": body.get("sanity") or 0,
-        "max_hp": body.get("max_hp") or 0,
     }
     from services.stat_rewards import spend_pending_points
     result = spend_pending_points(session["squad_id"], alloc)
