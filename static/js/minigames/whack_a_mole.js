@@ -226,17 +226,26 @@ export function mount(rootEl, options) {
     scheduleMole();
   }
 
+  /** Last 30s: speed ramps up to ~2× (shorter spawn delay + uptime). */
+  function speedFactor() {
+    if (timeLeft > 30) return 1;
+    // timeLeft 30 → 1.0x, timeLeft 0 → 2.0x
+    const t = Math.max(0, Math.min(30, timeLeft));
+    return 1 + (30 - t) / 30; // 1.0 … 2.0
+  }
+
   function scheduleMole() {
     if (!playing || unmounted) return;
     // Hide current
     setActive(-1);
-    const delay = 180 + Math.random() * 220;
+    const sp = speedFactor();
+    const delay = (180 + Math.random() * 220) / sp;
     spawnTimer = setTimeout(() => {
       if (!playing || unmounted) return;
       let next = Math.floor(Math.random() * 9);
       if (next === activeHole) next = (next + 1 + Math.floor(Math.random() * 8)) % 9;
       setActive(next);
-      const upMs = 480 + Math.random() * 320;
+      const upMs = (480 + Math.random() * 320) / sp;
       const token = ++moleToken;
       spawnTimer = setTimeout(() => {
         if (token !== moleToken || !playing) return;

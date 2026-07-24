@@ -4973,6 +4973,22 @@
                             </button>
                         ` : ''}
 
+                        ${loc.task_type === 'quiz' ? `
+                            <div class="space-y-3">
+                                ${loc.one_team_attempt ? `
+                                <div class="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-3 py-2.5 leading-relaxed">
+                                    ⚠ 全組只有 <strong>1 次</strong>作答機會，答錯不能重試（請勿亂估）。
+                                </div>` : ''}
+                                <input type="text" id="quiz-answer-input" autocomplete="off"
+                                       placeholder="輸入答案"
+                                       class="w-full px-4 py-3 rounded-2xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-center font-mono text-lg" />
+                                <button type="button" onclick="submitQuizTask('${id}', this)"
+                                        class="w-full py-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold rounded-2xl">
+                                    提交答案
+                                </button>
+                            </div>
+                        ` : ''}
+
                         ${loc.task_type === 'minigame' ? `
                             <div id="minigame-root" class="rounded-2xl bg-zinc-950/40 border border-zinc-800 p-2 min-h-[280px]"></div>
                             <p class="text-xs text-zinc-500 mt-2 text-center">過關後會自動提交任務（+神智／Resource）</p>
@@ -5267,6 +5283,9 @@
             showToast(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'), data.success ? 'success' : 'error');
             if (modal) modal.remove();
             if (data.success) {
+                if (typeof offerStatPointAllocation === 'function') {
+                    await offerStatPointAllocation(data.pending_stat_points || data.stat_points_reward || 0);
+                }
                 if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)
                     && typeof playStoryPromise === 'function') {
                     await playStoryPromise(data.pending_story_id);
@@ -5288,6 +5307,9 @@
             showToast(data.message || (data.error ? '錯誤：' + data.error : '提交失敗'), data.success ? 'success' : 'error');
             closeModal(btn);
             if (data.success) {
+                if (typeof offerStatPointAllocation === 'function') {
+                    await offerStatPointAllocation(data.pending_stat_points || data.stat_points_reward || 0);
+                }
                 if (data.pending_story_id && shouldAutoShowStory(data.pending_story_id)
                     && typeof playStoryPromise === 'function') {
                     await playStoryPromise(data.pending_story_id);
@@ -5309,6 +5331,128 @@
                 showToast('唔正確', 'error');
             }
         }
+
+        async function submitQuizTask(locId, btn) {
+            const input = document.getElementById('quiz-answer-input');
+            const answer = (input?.value || '').trim();
+            if (!answer) {
+                showToast('請輸入答案', 'error');
+                return;
+            }
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '提交中…';
+            }
+            try {
+                const formData = new FormData();
+                formData.append('task_id', locId);
+                formData.append('content', answer);
+                const res = await fetch('/submit_task', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: formData,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || data.success === false) {
+                    showToast(data.error || '答案不正確', 'error');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '提交答案';
+                    }
+                    return;
+                }
+                showToast(data.message || '答對了！', 'success');
+                document.querySelectorAll('.modal-overlay').forEach((m) => m.remove());
+                if (typeof offerStatPointAllocation === 'function') {
+                    await offerStatPointAllocation(data.pending_stat_points || data.stat_points_reward || 0);
+                }
+                if (data.pending_story_id && typeof playStoryPromise === 'function') {
+                    await playStoryPromise(data.pending_story_id);
+                } else if (typeof guideNextMainlineStep === 'function') {
+                    await guideNextMainlineStep({ nextStep: data.next_step || null });
+                }
+                try {
+                    const statusRes = await fetchNoCache('/status');
+                    if (statusRes.ok) {
+                        const st = await statusRes.json();
+                        if (st && st.squad_id) {
+                            currentSquad = st;
+                            updateDashboard(st);
+                        }
+                    }
+                } catch (_) {}
+            } catch (e) {
+                showToast('網絡錯誤', 'error');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '提交答案';
+                }
+            }
+        }
+        window.submitQuizTask = submitQuizTask;
+
+        async function offerStatPointAllocation(pendingHint) {
+            let pending = Number(pendingHint) || 0;
+            if (!pending && currentSquad) {
+                pending = Number(currentSquad.pending_stat_points) || 0;
+            }
+            if (!pending) {
+                try {
+                    const r = await fetchNoCache('/status');
+                    const st = await r.json();
+                    pending = Number(st.pending_stat_points) || 0;
+                    if (st.squad_id) {
+                        currentSquad = { ...currentSquad, ...st };
+                    }
+                } catch (_) {}
+            }
+            if (pending <= 0) return;
+            const raw = await (typeof showInputModal === 'function'
+                ? showInputModal({
+                    title: `分配 ${pending} 點能力（格式：力量,韌性,神智,生命上限）`,
+                    placeholder: `例如 2,1,1,1 合計須 = ${pending}`,
+                    defaultValue: `${pending},0,0,0`,
+                    maxLength: 32,
+                })
+                : null);
+            if (raw == null) {
+                showToast(`你有 ${pending} 點能力未分配（可稍後在狀態更新後再交任務觸發）`, 'info');
+                return;
+            }
+            const parts = String(raw).split(/[,，\s]+/).map((x) => parseInt(x, 10) || 0);
+            const body = {
+                power: parts[0] || 0,
+                resilience: parts[1] || 0,
+                sanity: parts[2] || 0,
+                max_hp: parts[3] || 0,
+            };
+            const sum = body.power + body.resilience + body.sanity + body.max_hp;
+            if (sum <= 0 || sum > pending) {
+                showToast(`合計須為 1–${pending} 點`, 'error');
+                return;
+            }
+            try {
+                const res = await fetch('/allocate_stats', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message || '能力已分配', 'success');
+                    if (data.squad) {
+                        currentSquad = { ...currentSquad, ...data.squad, pending_stat_points: data.pending };
+                        updateDashboard(currentSquad);
+                    }
+                } else {
+                    showToast(data.error || '分配失敗', 'error');
+                }
+            } catch (_) {
+                showToast('分配失敗', 'error');
+            }
+        }
+        window.offerStatPointAllocation = offerStatPointAllocation;
 
         // 自動更新公告
         setInterval(() => {

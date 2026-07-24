@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <rect width="640" height="400" fill="#18181b"/>
+  <text x="20" y="36" fill="#fbbf24" font-size="22" font-weight="bold">港 Pose 食飯相</text>
+  <text x="20" y="60" fill="#e4e4e7" font-size="16">全組以港 Pose 影食飯相</text><text x="20" y="88" fill="#e4e4e7" font-size="16">可參考 kong_lui_pose</text>
+  <text x="20" y="380" fill="#71717a" font-size="12">請替換為正式任務提示圖</text>
+</svg>

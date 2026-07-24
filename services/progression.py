@@ -157,16 +157,16 @@ def is_task_unlocked(squad, task_id):
     """Whether explore task should be visible / submittable."""
     if not task_id:
         return False
-    # Side camp minigames hidden for players (mainline-only camp); GM unlock shows all.
+    # Optional camp loc_* minigames hidden for players; GM unlock shows all.
     if is_side_task(task_id):
         return is_gm_unlock_mode(squad.get("squad_id"))
     if is_gm_unlock_mode(squad.get("squad_id")):
         return True
+    locations = settings.locations or {}
+    loc = locations.get(task_id) or {}
     gate = TASK_GATES.get(task_id)
     if gate is None:
-        # Mainline without explicit gate still visible once unlocked by story flow defaults
-        locations = settings.locations or {}
-        loc = locations.get(task_id) or {}
+        # Mainline without explicit gate still visible; side_quest needs a gate.
         if loc.get("mainline"):
             return True
         return False
@@ -214,6 +214,9 @@ def filter_locations_for_squad(locations_dict, squad):
     done = _done_tasks(squad)
     for tid, loc in (locations_dict or {}).items():
         if not is_task_unlocked(squad, tid):
+            continue
+        # Hide retired legacy slots
+        if loc.get("mainline") is False and not loc.get("side_quest"):
             continue
         entry = dict(loc)
         entry["completed"] = tid in done

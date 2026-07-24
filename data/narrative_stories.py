@@ -613,7 +613,7 @@ NARRATIVE_STORIES = {
             )},
             {"character": "旁白", "text": "【第一道記憶碎片，重組完成】"},
             {"character": "旁白", "text": (
-                "🎮 請完成 Act 4 Mission 5——故事會繼續帶你們重組下一道記憶。"
+                "原來 Iggy 小時候被父母拋棄——那是誰湊大他呢？他隱隱約約說了聲「通渠佬」……請完成 Act 4 Mission 2。"
             )},
         ],
     },
@@ -677,6 +677,10 @@ NARRATIVE_STORIES = {
                 "轟然塌陷了一角。"
             )},
             {"character": "旁白", "text": "【第二道記憶碎片，重組完成】"},
+            {"character": "旁白", "text": (
+                "通渠佬說 Iggy 常把「天行健，君子以自強不息」掛在口邊——"
+                "哪個車站與這句有關？請完成 Act 4 Mission 3（GPS 定位）。"
+            )},
         ],
     },
     "iggy_act4_phoenix": {

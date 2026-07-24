@@ -74,6 +74,87 @@ def submit_task():
     loc = LOCATIONS[task_id]
     task_type = loc.get("task_type") or ""
 
+    def _normalize_answer(raw, mode=None, aliases=None):
+        s = str(raw or "").strip()
+        if mode == "digits":
+            return "".join(ch for ch in s if ch.isdigit())
+        s_low = s.lower().replace(" ", "")
+        if aliases:
+            for a in aliases:
+                if s_low == str(a).lower().replace(" ", ""):
+                    return str(aliases[0]).lower().replace(" ", "") if aliases else s_low
+        return s_low
+
+    # Quiz: verify answer; optional one team-wide attempt.
+    if task_type == "quiz":
+        expected = _normalize_answer(
+            loc.get("answer"),
+            mode=loc.get("answer_normalize"),
+            aliases=loc.get("answer_aliases"),
+        )
+        given = _normalize_answer(
+            content,
+            mode=loc.get("answer_normalize"),
+            aliases=loc.get("answer_aliases"),
+        )
+        # Treat aliases as match if equal to expected after normalize via aliases
+        aliases = loc.get("answer_aliases") or [loc.get("answer")]
+        alias_norms = {
+            _normalize_answer(a, mode=loc.get("answer_normalize"))
+            for a in aliases
+        }
+        correct = given == expected or given in alias_norms
+
+        conn_chk = sqlite3.connect(settings.db_path)
+        try:
+            rows = conn_chk.execute(
+                """SELECT content FROM submissions
+                   WHERE task_id = ? AND squad_id IN (
+                       SELECT squad_id FROM squads WHERE team_id = ?
+                   )""",
+                (task_id, team_id),
+            ).fetchall()
+        finally:
+            conn_chk.close()
+        prior = [str(r[0] or "") for r in rows]
+        if any(p.startswith("CORRECT:") or p == "CORRECT" for p in prior):
+            return jsonify({
+                "success": True,
+                "message": "此題目已答對過，無需再交",
+            })
+        if loc.get("one_team_attempt", True) and any(
+            p.startswith("WRONG:") for p in prior
+        ):
+            return jsonify({
+                "success": False,
+                "error": "全組已用盡唯一作答機會（答案錯誤）。請聯絡 GM。",
+            }), 403
+        if not correct:
+            # Record failed attempt (counts as team submission for one-shot)
+            conn_w = sqlite3.connect(settings.db_path)
+            try:
+                conn_w.execute(
+                    """INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
+                       VALUES (?, ?, ?, NULL, ?)""",
+                    (
+                        session["squad_id"],
+                        task_id,
+                        f"WRONG:{content}",
+                        datetime.now().isoformat(),
+                    ),
+                )
+                conn_w.commit()
+            finally:
+                conn_w.close()
+            return jsonify({
+                "success": False,
+                "error": "答案不正確" + (
+                    "——全組機會已用盡" if loc.get("one_team_attempt", True) else ""
+                ),
+            }), 400
+        # Force content marker for correct completion
+        content = f"CORRECT:{content}"
+
     # Minigame: client must report a win for the expected gameId.
     minigame_payload = None
     if task_type == "minigame":
@@ -147,12 +228,24 @@ def submit_task():
     try:
         c = conn.cursor()
         c.execute("""
-            SELECT id FROM submissions
+            SELECT id, content FROM submissions
             WHERE task_id = ? AND squad_id IN (
                 SELECT squad_id FROM squads WHERE team_id = ?
             )
         """, (task_id, team_id))
-        already_submitted = c.fetchone()
+        prior_rows = c.fetchall()
+        if task_type == "quiz":
+            already_submitted = any(
+                str(r[1] or "").startswith("CORRECT") for r in prior_rows
+            )
+        else:
+            already_submitted = bool(prior_rows)
+
+        if already_submitted and task_type == "quiz":
+            return jsonify({
+                "success": True,
+                "message": "此題目已答對過，無需再交",
+            })
 
         c.execute(
             """INSERT INTO submissions (squad_id, task_id, content, photo_path, timestamp)
@@ -177,6 +270,17 @@ def submit_task():
                 )
             except Exception:
                 pass
+            # Mission stat rewards: player pending points + Iggy random
+            stat_reward = int(loc.get("stat_points_reward") or 0)
+            reward_meta = None
+            if stat_reward > 0 and team_id:
+                try:
+                    from services.stat_rewards import grant_mission_stat_rewards
+                    reward_meta = grant_mission_stat_rewards(
+                        team_id, stat_reward, protagonist_key="iggy",
+                    )
+                except Exception:
+                    reward_meta = None
             squad = get_squad(session["squad_id"])
             new_count, new_tasks = count_team_distinct_tasks(session["squad_id"], team_id)
             old_stage = resolve_story_stage(old_count, old_tasks)
@@ -192,6 +296,7 @@ def submit_task():
                 pass
             pending_story_id = None
             next_step = None
+            pending_stat_points = 0
             if squad:
                 pending_story_id = get_pending_story_id(squad) or unlock_story
                 try:
@@ -199,13 +304,27 @@ def submit_task():
                     next_step = get_next_mainline_step(squad, prefer_story=True)
                 except Exception:
                     next_step = None
+                try:
+                    from services.stat_rewards import get_pending_points
+                    pending_stat_points = get_pending_points(session["squad_id"])
+                except Exception:
+                    pending_stat_points = 0
+            msg = "任務提交成功！+6 神智 +1 Resource，全隊回復 10% 生命值"
+            if stat_reward > 0:
+                msg += f"；全隊獲得 {stat_reward} 點可分配能力（Iggy 已隨機提升）"
+            if loc.get("reward_hint"):
+                msg += f"。提示：{loc['reward_hint']}"
             return jsonify({
                 "success": True,
-                "message": "任務提交成功！+6 神智 +1 Resource，全隊回復 10% 生命值",
+                "message": msg,
                 "pending_story_id": pending_story_id,
                 "next_step": next_step,
                 "stage": new_stage,
                 "stage_advanced": new_stage > old_stage,
+                "stat_points_reward": stat_reward,
+                "pending_stat_points": pending_stat_points,
+                "reward_hint": loc.get("reward_hint"),
+                "stat_reward_meta": reward_meta,
             })
         return jsonify({
             "success": True,
@@ -213,6 +332,24 @@ def submit_task():
         })
     finally:
         conn.close()
+
+
+@player_bp.route("/allocate_stats", methods=["POST"])
+def allocate_stats():
+    """Spend pending mission stat points (power / resilience / sanity / max_hp)."""
+    if "squad_id" not in session:
+        return jsonify({"success": False, "error": "未登入"}), 401
+    body = request.json if request.is_json else request.form
+    alloc = {
+        "power": body.get("power") or 0,
+        "resilience": body.get("resilience") or 0,
+        "sanity": body.get("sanity") or 0,
+        "max_hp": body.get("max_hp") or 0,
+    }
+    from services.stat_rewards import spend_pending_points
+    result = spend_pending_points(session["squad_id"], alloc)
+    code = 200 if result.get("success") else 400
+    return jsonify(result), code
 
 
 @player_bp.route("/status")
@@ -226,6 +363,11 @@ def get_status():
         return jsonify({"success": False, "error": "未登入"}), 401
 
     status = build_player_status(squad)
+    try:
+        from services.stat_rewards import get_pending_points
+        status["pending_stat_points"] = get_pending_points(session["squad_id"])
+    except Exception:
+        status["pending_stat_points"] = 0
     combat_id, combat_status = reconcile_status_combat_fields(squad)
     if combat_id:
         status["current_combat_id"] = combat_id

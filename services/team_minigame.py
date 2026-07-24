@@ -19,7 +19,10 @@ from utils.helpers import normalize_team_id
 
 _LOCK = threading.RLock()
 
-ALPHANUM = string.digits + string.ascii_uppercase
+# Avoid lookalikes: 0/O, 1/I/L
+FLASH_DIGITS = "23456789"
+FLASH_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ"  # no I, L, O
+FLASH_ALPHANUM = FLASH_DIGITS + FLASH_LETTERS
 MASTERMIND_COLORS = ["R", "B", "G", "Y", "P", "O"]
 
 
@@ -103,13 +106,13 @@ def _flash_code_length(round_num: int) -> int:
 
 
 def _gen_flash_code(length: int) -> str:
-    # Mix digits + letters; early rounds prefer digits-heavy
+    # Mix digits + letters; never use 0/O/1/I/L (mobile/readability).
     if length <= 2:
-        pool = string.digits
+        pool = FLASH_DIGITS
     elif length <= 4:
-        pool = string.digits + string.ascii_uppercase[:10]
+        pool = FLASH_DIGITS + FLASH_LETTERS[:12]
     else:
-        pool = ALPHANUM
+        pool = FLASH_ALPHANUM
     return "".join(random.choice(pool) for _ in range(length))
 
 

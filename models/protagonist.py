@@ -490,14 +490,20 @@ def _protagonist_base_stats(team_id, protagonist_key):
     profile = PROTAGONIST_PROFILES.get(protagonist_key, {})
     done = _team_completed_task_ids(team_id) if team_id else set()
     growth = compute_protagonist_growth_stats(protagonist_key, done)
+    bonus = {}
+    try:
+        from services.stat_rewards import get_protagonist_bonus
+        bonus = get_protagonist_bonus(team_id, protagonist_key) or {}
+    except Exception:
+        bonus = {}
     return {
         "display_name": profile.get("display_name") or protagonist_key.title(),
         "avatar": profile.get("avatar", "default.png"),
-        "power": int(growth["power"]),
+        "power": int(growth["power"]) + int(bonus.get("power") or 0),
         "intellect": int(profile.get("intellect") or 10),
-        "resilience": int(growth["resilience"]),
-        "max_hp": int(growth["max_hp"]),
-        "sanity": int(growth["sanity"]),
+        "resilience": int(growth["resilience"]) + int(bonus.get("resilience") or 0),
+        "max_hp": int(growth["max_hp"]) + int(bonus.get("max_hp") or 0),
+        "sanity": int(growth["sanity"]) + int(bonus.get("sanity") or 0),
     }
 
 

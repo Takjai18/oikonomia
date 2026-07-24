@@ -136,91 +136,140 @@ LOCATIONS = {
             "【Act 3 Mission 3】後山危機——影合照後挑戰遭遇列表中的追擊戰。"
         ),
     },
+    # —— Act 4：記憶主線（3 個任務）——
     "albert_ching_1": {
         "name": "Act 4 Mission 1",
-        "hint": "GPS 驗證",
-        **_TSUEN_WAN,
-        "task_type": "gps",
+        "hint": "美孚壁畫 · 答題（全組一次機會）",
+        **_MEI_FOO,
+        "task_type": "quiz",
         "story_act": 4,
         "mainline": True,
         "mainline_order": 70,
+        "answer": "6",
+        "answer_aliases": ["6", "六", "六枝", "6枝", "6 枝"],
+        "one_team_attempt": True,
+        "stat_points_reward": 5,
         "description": (
-            "【Act 4 Mission 1】前往指定外牆位置，開啟 GPS 驗證定位。"
-            "成功後解鎖下一任務。"
+            "【Act 4 Mission 1】童年對 Iggy 是不能磨滅的創傷——"
+            "或許帶他到童年生活的地方，有助找回記憶、面對過去。\n\n"
+            "提示：美孚相片（見提示圖）\n"
+            "問題：在畫中，蛋糕上共有多少蠟燭？\n"
+            "⚠ 全組只有 1 次作答機會，請勿亂估。"
         ),
+        "hint_media": "/static/mission_hints/albert_ching_4_meifoo_hint.jpg",
+        "reward_hint": "原來 Iggy 小時候被父母拋棄——那是誰湊大他呢？他隱隱約約說了聲「通渠佬」……",
     },
     "albert_ching_2": {
         "name": "Act 4 Mission 2",
-        "hint": "地圖輪廓",
-        **_KWAI_FONG,
-        "task_type": "minigame",
-        "minigame_id": "mapdle_hk",
-        "minigame_config": {
-            "maxGuesses": 5,
-            "winRadiusKm": 1.0,
-            "targetName": "葵芳",
-            "targetImage": "/static/mission_hints/albert_ching_2_kwaifong.svg",
-        },
+        "hint": "通渠佬電話 · 答題（全組一次機會）",
+        **_CAMP,
+        "task_type": "quiz",
         "story_act": 4,
         "mainline": True,
         "mainline_order": 80,
+        "answer": "6562275",
+        "answer_normalize": "digits",
+        "one_team_attempt": True,
+        "stat_points_reward": 5,
         "description": (
-            "【Act 4 Mission 2】App 顯示社區邊界輪廓，猜出正確地點（最多 5 次）。"
-            "答對後前往該站做下一任務。"
+            "【Act 4 Mission 2】Iggy 說出了通渠佬——"
+            "或許找到他會有助恢復記憶。要怎樣聯絡？難道在車站附近可以找到電話嗎？\n\n"
+            "任務：找出通渠佬的電話號碼。\n"
+            "⚠ 全組只有 1 次作答機會。"
         ),
-        "hint_media": "/static/mission_hints/albert_ching_2_kwaifong.svg",
+        "reward_hint": (
+            "原來 Iggy 一直是這樣長大……通渠佬說 Iggy 常把"
+            "「天行健，君子以自強不息」掛在口邊——哪個車站與這句有關？"
+        ),
     },
     "albert_ching_3": {
         "name": "Act 4 Mission 3",
-        "hint": "語音密碼",
-        **_KWAI_FONG,
-        "task_type": "minigame",
-        "minigame_id": "voice_record",
-        "minigame_config": {
-            "prompt": (
-                "先睇提示短片，再全隊輪流說出密碼（可每人一字／詞），"
-                "限時內連貫完成並錄音提交。"
-            ),
-            "script": "我叫做 Franchesca，今年係 19 歲半",
-            "minSeconds": 3,
-            "maxSeconds": 15,
-            "hintVideo": "/static/mission_hints/albert_ching_3_password_hint.mp4",
-        },
+        "hint": "自強不息 · GPS",
+        **_KOWLOON_TONG,
+        "task_type": "gps",
         "story_act": 4,
         "mainline": True,
         "mainline_order": 90,
+        "stat_points_reward": 5,
         "description": (
-            "【Act 4 Mission 3】依提示完成語音密碼錄音。"
-            "通過後解鎖下一站記憶任務。"
+            "【Act 4 Mission 3】找出與「天行健，君子以自強不息」有關的車站，"
+            "到達該站並展開定位術（GPS 驗證 + 全組影相）。"
         ),
-        "hint_media": "/static/mission_hints/albert_ching_3_password_hint.mp4",
     },
+    # Legacy slots kept non-mainline so old progress data does not break gates
     "albert_ching_4": {
-        "name": "Act 4 Mission 4",
-        "hint": "壁畫 · 影相",
+        "name": "Act 4 Legacy 4",
+        "hint": "（已停用）",
         **_MEI_FOO,
         "task_type": "photo",
         "story_act": 4,
-        "mainline": True,
-        "mainline_order": 100,
-        "description": (
-            "【Act 4 Mission 4】到指定轉車隧道壁畫前，"
-            "影下對應細節並提交。完成後會播放完整記憶劇情。"
-        ),
-        "hint_media": "/static/mission_hints/albert_ching_4_meifoo_hint.jpg",
+        "mainline": False,
+        "description": "舊任務欄位，已由 Act 4 Mission 1–3 取代。",
     },
     "albert_ching_5": {
-        "name": "Act 4 Mission 5",
-        "hint": "藝術品 · 影相",
+        "name": "Act 4 Legacy 5",
+        "hint": "（已停用）",
         **_KOWLOON_TONG,
         "task_type": "photo",
         "story_act": 4,
-        "mainline": True,
-        "mainline_order": 110,
+        "mainline": False,
+        "description": "舊任務欄位，已由 Act 4 Mission 1–3 取代。",
+    },
+    # —— Act 3 支線（隨主線開啟）——
+    "act3_side_kong_pose": {
+        "name": "Act 3 Side 1",
+        "hint": "港 Pose 食飯相",
+        **_CAMP,
+        "task_type": "photo",
+        "story_act": 3,
+        "mainline": False,
+        "side_quest": True,
+        "mainline_order": 45,
+        "stat_points_reward": 10,
         "description": (
-            "【Act 4 Mission 5】到指定藝術展品前影相提交。"
-            "完成後會播放後續記憶與覺醒劇情。"
+            "【Act 3 支線 1】全組組員均以港 Pose 影食飯相"
+            "（可參考提示圖 kong_lui_pose）。"
         ),
+        "hint_media": "/static/mission_hints/act3_kong_pose_hint.svg",
+    },
+    "act3_side_squares": {
+        "name": "Act 3 Side 2",
+        "hint": "數正方型（綠楊坊）",
+        **_CAMP,
+        "task_type": "quiz",
+        "story_act": 3,
+        "mainline": False,
+        "side_quest": True,
+        "mainline_order": 46,
+        "answer": "27",
+        "answer_aliases": ["27", "二十七"],
+        "one_team_attempt": True,
+        "stat_points_reward": 10,
+        "description": (
+            "【Act 3 支線 2】提示：綠楊坊。\n"
+            "找出圖中共有多少正方型？\n"
+            "⚠ 全組只有 1 次作答機會。"
+        ),
+        "hint_media": "/static/mission_hints/act3_squares_hint.svg",
+    },
+    "act4_side_shirt": {
+        "name": "Act 4 Side 1",
+        "hint": "紅圈女子 · 衫色",
+        **_KOWLOON_TONG,
+        "task_type": "quiz",
+        "story_act": 4,
+        "mainline": False,
+        "side_quest": True,
+        "mainline_order": 95,
+        "answer": "紫色",
+        "answer_aliases": ["紫色", "紫", "purple", "violet"],
+        "one_team_attempt": True,
+        "stat_points_reward": 10,
+        "description": (
+            "【Act 4 Mission 3 支線】找出圖中紅圈女子所著的衫是什麼顏色？\n"
+            "⚠ 全組只有 1 次作答機會。"
+        ),
+        "hint_media": "/static/mission_hints/act4_kowloon_tong_hint.svg",
     },
     "act3_choihung_rally": {
         "name": "Act 5 Mission 1",

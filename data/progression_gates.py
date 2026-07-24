@@ -44,7 +44,7 @@ TASK_GATES = {
     "act3_village_battle": {
         "requires_stories": ["iggy_act3_found_iggy"],
     },
-    # —— Act 4 City Hunt 鏈 ——
+    # —— Act 4 記憶主線（3 任務）——
     "albert_ching_1": {
         "requires_stories": ["iggy_act3_julian"],
     },
@@ -54,14 +54,19 @@ TASK_GATES = {
     "albert_ching_3": {
         "requires_tasks": ["albert_ching_2"],
     },
-    "albert_ching_4": {
+    "act3_choihung_rally": {
         "requires_tasks": ["albert_ching_3"],
     },
-    "albert_ching_5": {
-        "requires_tasks": ["albert_ching_4"],
+    # —— 支線（隨主線開啟）——
+    "act3_side_kong_pose": {
+        "requires_stories": ["iggy_stage2"],
     },
-    "act3_choihung_rally": {
-        "requires_tasks": ["albert_ching_5"],
+    "act3_side_squares": {
+        "requires_stories": ["iggy_stage2"],
+    },
+    "act4_side_shirt": {
+        # Available once Act 4 Mission 3 unlocks (after Mission 2 done)
+        "requires_tasks": ["albert_ching_2"],
     },
     # —— Act 5–6 ——
     "act4_julian_gate": {
@@ -118,13 +123,10 @@ TASK_STORY_UNLOCKS = {
     "act3_village_intel": ["iggy_act3_shelter"],
     "act3_search_iggy": ["iggy_act3_found_iggy"],
     "act3_village_battle": ["iggy_act3_julian"],
-    # After each City Hunt step: full narrative beat (auto-play via pending story)
-    "albert_ching_1": ["iggy_act4_redwall"],
-    "albert_ching_2": ["iggy_act4_map_clear"],
-    "albert_ching_3": ["iggy_act4_albert_test"],
-    "albert_ching_4": ["iggy_act4_meifoo"],
-    # After Mission 5: plumber memory then phoenix (order in PROGRESSIVE_UNLOCK_ORDER)
-    "albert_ching_5": ["iggy_act4_plumber", "iggy_act4_phoenix"],
+    # Act 4 memory missions → full story beats
+    "albert_ching_1": ["iggy_act4_meifoo"],
+    "albert_ching_2": ["iggy_act4_plumber"],
+    "albert_ching_3": ["iggy_act4_phoenix"],
     "act3_choihung_rally": ["iggy_act5_betrayal"],
     "act4_julian_gate": [],
     "act6_savio_gate": [],
