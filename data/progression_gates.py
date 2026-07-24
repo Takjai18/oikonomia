@@ -44,7 +44,7 @@ TASK_GATES = {
     "act3_village_battle": {
         "requires_stories": ["iggy_act3_found_iggy"],
     },
-    # —— Act 4 記憶主線（3 任務）——
+    # —— Act 4：荃灣／葵芳 City Hunt → 記憶三關 ——
     "albert_ching_1": {
         "requires_stories": ["iggy_act3_julian"],
     },
@@ -54,8 +54,17 @@ TASK_GATES = {
     "albert_ching_3": {
         "requires_tasks": ["albert_ching_2"],
     },
-    "act3_choihung_rally": {
+    "albert_ching_4": {
         "requires_tasks": ["albert_ching_3"],
+    },
+    "albert_ching_5": {
+        "requires_tasks": ["albert_ching_4"],
+    },
+    "act4_kt_gps": {
+        "requires_tasks": ["albert_ching_5"],
+    },
+    "act3_choihung_rally": {
+        "requires_tasks": ["act4_kt_gps"],
     },
     # —— 支線（隨主線開啟）——
     "loc_2048_01": {
@@ -69,8 +78,8 @@ TASK_GATES = {
         "requires_stories": ["iggy_stage2"],
     },
     "act4_side_shirt": {
-        # Available once Act 4 Mission 3 unlocks (after Mission 2 done)
-        "requires_tasks": ["albert_ching_2"],
+        # After Kowloon Tong memory arc (or when Mission 6 unlocks)
+        "requires_tasks": ["albert_ching_5"],
     },
     # —— Act 5–6 ——
     "act4_julian_gate": {
@@ -127,10 +136,13 @@ TASK_STORY_UNLOCKS = {
     "act3_village_intel": ["iggy_act3_shelter"],
     "act3_search_iggy": ["iggy_act3_found_iggy"],
     "act3_village_battle": ["iggy_act3_julian"],
-    # Act 4 memory missions → full story beats
-    "albert_ching_1": ["iggy_act4_meifoo"],
-    "albert_ching_2": ["iggy_act4_plumber"],
-    "albert_ching_3": ["iggy_act4_phoenix"],
+    # Act 4 City Hunt + memory
+    "albert_ching_1": ["iggy_act4_redwall"],
+    "albert_ching_2": ["iggy_act4_map_clear"],
+    "albert_ching_3": ["iggy_act4_albert_test"],
+    "albert_ching_4": ["iggy_act4_meifoo"],
+    "albert_ching_5": ["iggy_act4_plumber"],
+    "act4_kt_gps": ["iggy_act4_phoenix"],
     "act3_choihung_rally": ["iggy_act5_betrayal"],
     "act4_julian_gate": [],
     "act6_savio_gate": [],

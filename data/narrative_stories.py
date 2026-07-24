@@ -500,7 +500,7 @@ NARRATIVE_STORIES = {
                 "一幅社區邊界的輪廓，以及一串尚未說出口的語音密碼。"
             )},
             {"character": "旁白", "text": (
-                "🎮 請依序完成 Act 4 Mission 2 與 Mission 3。"
+                "🎮 請完成 Act 4 Mission 2（輪廓猜地點）。"
                 "通過後，那位一直在等你們的人會現身。"
             )},
         ],
@@ -522,7 +522,7 @@ NARRATIVE_STORIES = {
             )},
             {"character": "旁白", "text": (
                 "語音密碼在空氣中串起——下一扇門即將打開。"
-                "請完成 Act 4 Mission 3（若尚未完成）。"
+                "請完成 Act 4 Mission 3（語音密碼）。"
             )},
         ],
     },
@@ -613,7 +613,7 @@ NARRATIVE_STORIES = {
             )},
             {"character": "旁白", "text": "【第一道記憶碎片，重組完成】"},
             {"character": "旁白", "text": (
-                "原來 Iggy 小時候被父母拋棄——那是誰湊大他呢？他隱隱約約說了聲「通渠佬」……請完成 Act 4 Mission 2。"
+                "原來 Iggy 小時候被父母拋棄——那是誰湊大他呢？他隱隱約約說了聲「通渠佬」……請完成 Act 4 Mission 5。"
             )},
         ],
     },
@@ -679,7 +679,7 @@ NARRATIVE_STORIES = {
             {"character": "旁白", "text": "【第二道記憶碎片，重組完成】"},
             {"character": "旁白", "text": (
                 "通渠佬說 Iggy 常把「天行健，君子以自強不息」掛在口邊——"
-                "哪個車站與這句有關？請完成 Act 4 Mission 3（GPS 定位）。"
+                "哪個車站與這句有關？請完成 Act 4 Mission 6（GPS 定位）。"
             )},
         ],
     },
