@@ -234,42 +234,43 @@ LOCATIONS = {
     },
     "act3_side_squares": {
         "name": "Act 3 Side 2",
-        "hint": "數正方型（綠楊坊）",
-        **_CAMP,
+        "hint": "荃灣打卡地標 · 紅圈是甚麼",
+        **_TSUEN_WAN,
         "task_type": "quiz",
         "story_act": 3,
         "mainline": False,
         "side_quest": True,
         "mainline_order": 46,
-        "answer": "27",
-        "answer_aliases": ["27", "二十七"],
+        "answer": "紅van",
+        "answer_aliases": [
+            "紅van", "紅Van", "紅VAN", "紅 van",
+            "紅van", "紅色van", "紅色Van", "紅色VAN",
+            "red van", "redvan", "van", "紅Van",
+        ],
         "one_team_attempt": True,
         "stat_points_reward": 10,
         "description": (
-            "【Act 3 支線 2】提示：綠楊坊。\n"
-            "找出圖中共有多少正方型？\n"
-            "⚠ 全組只有 1 次作答機會。"
+            "【Act 3 支線 2】提示：荃灣打卡地標。\n"
+            "找出被紅圈圈住的是甚麼？\n"
+            "⚠ 全組只有 1 次作答機會，請勿亂估。"
         ),
-        "hint_media": "/static/mission_hints/act3_squares_hint.svg",
+        "hint_media": "/static/mission_hints/act3_tsuenwan_redvan.jpg",
     },
     "act4_side_shirt": {
         "name": "Act 4 Side 1",
-        "hint": "紅圈女子 · 衫色",
-        **_KOWLOON_TONG,
-        "task_type": "quiz",
+        "hint": "彩虹站 · 模仿藝術品影相",
+        **_CHOI_HUNG,
+        "task_type": "photo",
         "story_act": 4,
         "mainline": False,
         "side_quest": True,
         "mainline_order": 95,
-        "answer": "紫色",
-        "answer_aliases": ["紫色", "紫", "purple", "violet"],
-        "one_team_attempt": True,
         "stat_points_reward": 10,
         "description": (
-            "【Act 4 Mission 3 支線】找出圖中紅圈女子所著的衫是什麼顏色？\n"
-            "⚠ 全組只有 1 次作答機會。"
+            "【Act 4 Mission 3 支線】請到達彩虹站，"
+            "請 3 位組員分別模仿提示圖中 3 件藝術品的動作，然後影相提交。"
         ),
-        "hint_media": "/static/mission_hints/act4_kowloon_tong_hint.svg",
+        "hint_media": "/static/mission_hints/act4_choihung_statues.jpg",
     },
     "act3_choihung_rally": {
         "name": "Act 5 Mission 1",
