@@ -151,9 +151,32 @@ def add_item():
 
     success, message, applied_effect = grant_item_to_squad(session["squad_id"], item_id, source)
     start_encounter = hooks.get("start_encounter")
+    sub_key = hooks.get("sub_key")
+
+    def _ensure_wood_progress_and_bubo_gate(squad_row):
+        """Record act1_wood for the team so multi-member combat unlock does not fail."""
+        if sub_key:
+            try:
+                record_task_completion_from_qr(
+                    session["squad_id"],
+                    sub_key,
+                    note=f"QR 獲得物品：{item.get('name')}",
+                )
+            except Exception:
+                pass
+        # Also stamp parent supplies progress key used by encounter gates
+        if start_encounter == "enc_iggy_act1_bubo":
+            try:
+                record_task_completion_from_qr(
+                    session["squad_id"],
+                    "act1_wood",
+                    note="木材掃描（開戰進度）",
+                )
+            except Exception:
+                pass
 
     # If player already owns wood (or QR already used) after a partial GM reset,
-    # still allow re-triggering tutorial combat when encounter is not completed.
+    # still allow re-triggering / joining tutorial combat when encounter is not completed.
     already_owned_messages = (
         "你已經擁有此物品",
         "你已經使用過此 QR Code",
@@ -168,9 +191,11 @@ def add_item():
                 encounter_already_completed(team_id, start_encounter) if team_id else False
             )
             if not completed:
+                _ensure_wood_progress_and_bubo_gate(squad)
+                # If team already fighting this encounter, still return start so client rejoins
                 response = {
                     "success": True,
-                    "message": f"{message} — 再次觸發教學戰。",
+                    "message": f"{message} — 進入／再次觸發教學戰。",
                     "item": serialize_item_for_client(item),
                     "item_id": item_id,
                     "item_name": item.get("name"),
@@ -193,7 +218,7 @@ def add_item():
         response["applied_effect"] = applied_effect
 
     # Act 1 unified supplies: record sub-key + complete parent when all 4 scanned.
-    sub_key = hooks.get("sub_key")
+    # (sub_key already defined above for wood gate helper)
     parent_task_id = hooks.get("parent_task_id") or ACT1_SUPPLIES_TASK_ID
     if sub_key:
         newly_sub = record_task_completion_from_qr(

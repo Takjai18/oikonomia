@@ -14,6 +14,7 @@ from models.combat import (
     build_enemy_combat_stats,
     build_single_player_preview,
     clear_team_combat_id,
+    set_team_combat_id,
     combat_action_already_submitted,
     combat_phase_deadline,
     create_combat_record,
@@ -170,8 +171,23 @@ def combat_start_api(encounter_id=None):
         combat = create_combat_record(squad_id, encounter_id, encounter, initial_status=status)
     except ActiveCombatExistsError as exc:
         existing = get_combat(exc.combat_id)
-        if existing and existing.get("status") == "precheck":
-            combat = existing
+        # Multi-player: second+ members rejoin the team's active combat room
+        # (e.g. wood QR starts bubuo for leader — teammates must enter same fight).
+        if existing and existing.get("status") not in ("ended", None):
+            same_enc = (existing.get("encounter_id") or "") == (encounter_id or "")
+            if same_enc or existing.get("status") == "precheck":
+                combat = existing
+                try:
+                    set_team_combat_id(team_id, combat["id"])
+                except Exception:
+                    pass
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "隊伍已有其他進行中的戰鬥，請先完成或請 GM 重置",
+                    "combat_id": exc.combat_id,
+                    "existing_encounter_id": existing.get("encounter_id"),
+                }), 409
         else:
             return jsonify({
                 "success": False,

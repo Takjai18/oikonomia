@@ -1882,7 +1882,29 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ encounter_id: encounterId }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        // Multi-player: server may rejoin existing room (success) or return combat_id on 409
+        if (!data.success && data.combat_id) {
+            try {
+                const stRes = await fetch(`/combat/status?combat_id=${encodeURIComponent(data.combat_id)}`, {
+                    credentials: 'same-origin',
+                });
+                const st = await stRes.json().catch(() => ({}));
+                if (stRes.ok && (st.success !== false) && (st.combat_id || data.combat_id)) {
+                    const joined = { ...st, success: true, combat_id: st.combat_id || data.combat_id };
+                    setActiveCombatBridge(joined.combat_id);
+                    showSection('combat', { skipCombatLobbyLoad: true });
+                    if (window.combatV2?.isEnabled?.()) {
+                        revealCombatV2Surface();
+                        await window.combatV2.onCombatStarted(joined);
+                        showToast('已加入隊伍進行中的戰鬥', 'info');
+                        return;
+                    }
+                }
+            } catch (_) { /* fall through */ }
+            showToast(data.error || '無法開始', 'error');
+            return;
+        }
         if (!data.success) {
             showToast(data.error || '無法開始', 'error');
             return;

@@ -207,7 +207,32 @@ def is_encounter_unlocked(squad, encounter_id, encounter=None):
         # Default story encounters: stage gate applied in list route
         return True
     ok, _ = evaluate_gate(gate, squad)
-    return ok
+    if ok:
+        return True
+    # Bubo tutorial: allow if team already claimed wood item (multi-player QR race)
+    if encounter_id == "enc_iggy_act1_bubo":
+        team_id = squad.get("team_id")
+        if team_id:
+            try:
+                from models.item import team_has_item_by_name
+                if team_has_item_by_name(team_id, "木材") or team_has_item_by_name(team_id, "木"):
+                    return True
+            except Exception:
+                pass
+            # act1_wood progress recorded by any member
+            done = _done_tasks(squad)
+            if "act1_wood" in done or "act1_supplies" in done:
+                return True
+            try:
+                from models.item import team_has_item
+                # Prefer catalog match by qr if names differ
+                from models.item import get_item_by_qr_code_value
+                wood = get_item_by_qr_code_value("act1-wood")
+                if wood and team_has_item(team_id, wood.get("id")):
+                    return True
+            except Exception:
+                pass
+    return False
 
 
 def encounter_lock_reason(squad, encounter_id):

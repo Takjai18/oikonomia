@@ -95,9 +95,9 @@ SIDE_TASK_PREFIXES = ("loc_",)
 
 ENCOUNTER_GATES = {
     "enc_iggy_act1_bubo": {
+        # Wood QR is the real trigger (start_encounter). Do not hard-block combat/start
+        # on act1_wood submission timing — multi-member teams often race claim vs start.
         "requires_stories": ["iggy_stage0"],
-        # Prefer QR wood path; list after wood sub-scan or parent supplies unlocked.
-        "requires_any_tasks": ["act1_wood", "act1_supplies"],
     },
     "enc_iggy_act2_polis": {
         "requires_any_stories": ["iggy_act2_branch_leave", "iggy_act3_found_iggy"],
