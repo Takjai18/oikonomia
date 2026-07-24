@@ -89,7 +89,7 @@ def submit_task():
         ):
             return jsonify({"success": False, "error": "小遊戲尚未過關"}), 400
         # Team-synced games must finish as a squad session win.
-        if expected_game in ("flash_memory", "mastermind"):
+        if expected_game in ("flash_memory", "mastermind", "memory_match"):
             try:
                 from services.team_minigame import is_session_won
                 if not is_session_won(team_id, task_id):

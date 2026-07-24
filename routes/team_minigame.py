@@ -40,7 +40,7 @@ def api_join():
             "error": task_lock_reason(squad, task_id) or "任務未解鎖",
         }), 403
     game_id, config, _loc = _task_game(task_id)
-    if game_id not in ("flash_memory", "mastermind"):
+    if game_id not in ("flash_memory", "mastermind", "memory_match"):
         return jsonify({"success": False, "error": "此任務不支援全隊同步"}), 400
     try:
         status = tmg.join_session(
@@ -118,6 +118,25 @@ def api_mastermind_guess():
         return jsonify({"success": False, "error": str(exc)}), 400
 
 
+@team_minigame_bp.route("/api/team_minigame/memory_wave", methods=["POST"])
+def api_memory_wave():
+    """Report completion (or fail) of one memory-match wave (1–3)."""
+    squad, err = _require_player()
+    if err:
+        return err
+    body = request.json if request.is_json else {}
+    task_id = (body.get("task_id") or "").strip()
+    wave = body.get("wave")
+    success = bool(body.get("success"))
+    try:
+        status = tmg.report_memory_wave(
+            squad["team_id"], task_id, session["squad_id"], wave, success,
+        )
+        return jsonify(status)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
 @team_minigame_bp.route("/api/team_minigame/reset", methods=["POST"])
 def api_reset():
     squad, err = _require_player()
@@ -126,7 +145,7 @@ def api_reset():
     body = request.json if request.is_json else request.form
     task_id = (body.get("task_id") or "").strip()
     game_id, config, _ = _task_game(task_id)
-    if game_id not in ("flash_memory", "mastermind"):
+    if game_id not in ("flash_memory", "mastermind", "memory_match"):
         return jsonify({"success": False, "error": "無效遊戲"}), 400
     tmg.reset_session(squad["team_id"], task_id, game_id, config)
     status = tmg.join_session(

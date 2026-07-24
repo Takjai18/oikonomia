@@ -248,6 +248,18 @@ def _new_session_blob(team_id: str, task_id: str, game_id: str, config: Optional
     if game_id == "mastermind":
         sess["secret"] = _gen_mastermind_secret(sess["code_length"])
         sess["player_history"] = {}
+    if game_id == "memory_match":
+        # Wave time limits (seconds): round1, round2, round3
+        waves = cfg.get("waveTimesSec") or cfg.get("wave_times_sec") or [60, 50, 45]
+        try:
+            sess["wave_times"] = [int(x) for x in waves][:3]
+        except (TypeError, ValueError):
+            sess["wave_times"] = [60, 50, 45]
+        while len(sess["wave_times"]) < 3:
+            sess["wave_times"].append(45)
+        # Half of team (ceil) must fully clear all 3 waves
+        sess["half_mode"] = True
+        sess["phase"] = "lobby"
     return sess
 
 
@@ -320,27 +332,48 @@ def start_session(team_id: str, task_id: str, squad_id: str) -> dict:
             sid for sid, meta in joined.items()
             if (_now() - float((meta or {}).get("last_seen") or 0)) < 25
         ]
-        # Full team must be in the room (or at least every expected member online).
-        if expected:
-            missing = [s for s in expected if s not in online]
-            if missing:
-                names = _member_names(team_id)
-                label = "、".join(names.get(s, s) for s in missing[:5])
-                raise ValueError(f"請全隊都打開此任務再開始。尚未進入：{label}")
-        elif len(online) < 1:
-            raise ValueError("沒有在線隊員")
+        game_id = sess.get("game_id")
+
+        if game_id == "memory_match":
+            need_start = max(1, (len(expected) + 1) // 2) if expected else 1
+            if len(online) < need_start:
+                raise ValueError(
+                    f"至少需要 {need_start} 名隊員同時進入再開始（半隊）"
+                )
+        else:
+            # flash_memory / mastermind: full team must be online
+            if expected:
+                missing = [s for s in expected if s not in online]
+                if missing:
+                    names = _member_names(team_id)
+                    label = "、".join(names.get(s, s) for s in missing[:5])
+                    raise ValueError(f"請全隊都打開此任務再開始。尚未進入：{label}")
+            elif len(online) < 1:
+                raise ValueError("沒有在線隊員")
 
         sess["status"] = "playing"
         sess["started_at"] = _iso()
-        if sess.get("game_id") == "flash_memory":
+        if game_id == "flash_memory":
             _start_flash_round(sess, 1)
-        elif sess.get("game_id") == "mastermind":
+        elif game_id == "mastermind":
             sess["phase"] = "play"
             sess["secret"] = _gen_mastermind_secret(int(sess.get("code_length") or 4))
             sess["player_history"] = {}
             for sid in joined:
                 joined[sid] = {**joined[sid], "won": False, "lost": False, "guesses": 0}
             sess["joined"] = joined
+        elif game_id == "memory_match":
+            sess["phase"] = "play"
+            for sid in joined:
+                joined[sid] = {
+                    **joined[sid],
+                    "won": False,
+                    "lost": False,
+                    "wave": 0,
+                }
+            sess["joined"] = joined
+            sess["need_winners"] = _half_need(sess)
+            sess["winners_count"] = 0
         data[key] = sess
         _save(data)
         return _public_status(sess, squad_id)
@@ -382,6 +415,75 @@ def submit_flash_answer(team_id: str, task_id: str, squad_id: str, answer: str) 
         sess["answers"] = answers
         # Early resolve if all online answered
         _ensure_flash_phase(sess)
+        data[key] = sess
+        _save(data)
+        return _public_status(sess, squad_id)
+
+
+def _half_need(sess: dict) -> int:
+    expected = list(sess.get("expected") or [])
+    n = len(expected) or len(sess.get("joined") or {}) or 1
+    return max(1, (n + 1) // 2)  # ceil(n/2)
+
+
+def report_memory_wave(
+    team_id: str, task_id: str, squad_id: str, wave: int, success: bool,
+) -> dict:
+    """Player finished one memory-match wave (1–3). Success advances their wave count."""
+    team_id = normalize_team_id(team_id)
+    key = _session_key(team_id, task_id)
+    with _LOCK:
+        data = _load()
+        sess = data.get(key)
+        if not sess or sess.get("game_id") != "memory_match":
+            raise ValueError("遊戲不存在")
+        if sess.get("status") not in ("playing", "lobby"):
+            if sess.get("status") == "won":
+                return _public_status(sess, squad_id)
+            raise ValueError("遊戲尚未開始或已結束")
+        # Auto-start if still lobby (first report) — allow play without host button for small teams
+        if sess.get("status") == "lobby":
+            sess["status"] = "playing"
+            sess["phase"] = "play"
+            sess["started_at"] = _iso()
+
+        joined = dict(sess.get("joined") or {})
+        if squad_id not in joined:
+            raise ValueError("請先加入遊戲")
+        meta = dict(joined[squad_id])
+        if meta.get("won"):
+            return _public_status(sess, squad_id)
+
+        try:
+            w = int(wave)
+        except (TypeError, ValueError):
+            raise ValueError("無效波次")
+        if w < 1 or w > 3:
+            raise ValueError("波次必須是 1–3")
+
+        cur = int(meta.get("wave") or 0)
+        if success:
+            # Must complete in order
+            if w != cur + 1:
+                raise ValueError(f"請先完成第 {cur + 1} 輪")
+            meta["wave"] = w
+            if w >= 3:
+                meta["won"] = True
+        else:
+            # Failed a wave — stay on same wave for retry (no team fail)
+            meta["last_fail_wave"] = w
+
+        joined[squad_id] = meta
+        sess["joined"] = joined
+
+        need = _half_need(sess)
+        winners = sum(1 for s, m in joined.items() if (m or {}).get("won"))
+        sess["winners_count"] = winners
+        sess["need_winners"] = need
+        if winners >= need:
+            sess["status"] = "won"
+            sess["phase"] = "done"
+
         data[key] = sess
         _save(data)
         return _public_status(sess, squad_id)
@@ -492,6 +594,11 @@ def _public_status(sess: dict, squad_id: str) -> dict:
     if sess.get("game_id") == "mastermind":
         my_history = list((sess.get("player_history") or {}).get(squad_id) or [])
 
+    need_winners = int(sess.get("need_winners") or _half_need(sess))
+    winners_count = int(sess.get("winners_count") or sum(
+        1 for r in joined_pub if r.get("won")
+    ))
+
     return {
         "success": True,
         "task_id": sess.get("task_id"),
@@ -518,8 +625,12 @@ def _public_status(sess: dict, squad_id: str) -> dict:
         "my_won": bool(my.get("won")),
         "my_lost": bool(my.get("lost")),
         "my_guesses": int(my.get("guesses") or 0),
+        "my_wave": int(my.get("wave") or 0),
         "my_history": my_history,
         "my_answered": squad_id in (sess.get("answers") or {}),
         "can_submit_task": sess.get("status") == "won",
         "colors": MASTERMIND_COLORS if sess.get("game_id") == "mastermind" else None,
+        "wave_times": sess.get("wave_times") or [60, 50, 45],
+        "need_winners": need_winners,
+        "winners_count": winners_count,
     }

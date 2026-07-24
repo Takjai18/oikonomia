@@ -1,7 +1,6 @@
 /**
  * Team flash memory — all members play together.
- * Server shows a short code 0.5–1s; each player types it.
- * 10 rounds; each round needs ≥2 correct (or all if team < 2).
+ * Mobile: never destroy #fm-ans during input phase (poll must not dismiss keyboard).
  */
 let pollTimer = null;
 let unmounted = true;
@@ -34,9 +33,9 @@ export function mount(rootEl, options) {
   unmounted = false;
   completedFired = false;
   const taskId = options.taskId;
-  const config = options.config || {};
-  let lastPhase = null;
+  let lastKey = '';
   let submitting = false;
+  let inputBound = false;
 
   rootEl.innerHTML = `
     <style>
@@ -57,10 +56,9 @@ export function mount(rootEl, options) {
       }
       .fm-chip.on { border-color:#34d399; color:#6ee7b7; }
       .fm-chip.off { opacity:0.5; }
-      .fm-chip.ok { border-color:#34d399; background:#052e1a; color:#6ee7b7; }
       .fm-btn {
         width:100%; min-height:48px; border:none; border-radius:14px; font-weight:800;
-        font-size:15px; cursor:pointer; margin-top:8px;
+        font-size:15px; cursor:pointer; margin-top:8px; -webkit-tap-highlight-color: transparent;
       }
       .fm-btn.primary { background:#d97706; color:#18181b; }
       .fm-btn.ghost { background:#3f3f46; color:#e4e4e7; }
@@ -70,6 +68,8 @@ export function mount(rootEl, options) {
         border:2px solid #52525b; background:#09090b; color:#fafafa;
         font-size:1.4rem; font-weight:700; letter-spacing:0.2em; text-align:center;
         font-family: ui-monospace, monospace; text-transform:uppercase;
+        /* Keep mobile keyboard stable */
+        -webkit-user-select: text; user-select: text;
       }
       .fm-status { text-align:center; font-size:13px; color:#a1a1aa; margin:8px 0; }
       .fm-toast { text-align:center; font-weight:700; margin:8px 0; }
@@ -86,18 +86,124 @@ export function mount(rootEl, options) {
   function membersHtml(st) {
     const list = st.members || [];
     if (!list.length) return '<div class="fm-status">等待隊員加入…</div>';
-    return `<div class="fm-members">${list.map((m) => {
+    return `<div class="fm-members" id="fm-members">${list.map((m) => {
       const cls = m.online ? 'on' : 'off';
       return `<span class="fm-chip ${cls}">${m.online ? '●' : '○'} ${m.display_name || m.squad_id}${m.answered ? ' ✓' : ''}</span>`;
     }).join('')}</div>
-    <div class="fm-status">在線 ${st.online_count || 0} / 應到 ${st.expected_count || '?'}</div>`;
+    <div class="fm-status" id="fm-online">在線 ${st.online_count || 0} / 應到 ${st.expected_count || '?'}</div>`;
+  }
+
+  function stateKey(st) {
+    return [
+      st.status,
+      st.phase,
+      st.round,
+      st.my_answered ? 1 : 0,
+      st.status === 'won' ? 1 : 0,
+      st.status === 'lost' ? 1 : 0,
+      (st.last_round_result && st.last_round_result.passed) ? 1 : 0,
+    ].join('|');
+  }
+
+  function patchInputPhase(st) {
+    // Update only non-input widgets so mobile keyboard stays up.
+    const roundEl = body.querySelector('#fm-round-label');
+    if (roundEl) {
+      roundEl.textContent = `第 ${st.round || 1} / ${st.total_rounds || 10} 輪 · 輸入你記住的內容`;
+    }
+    const timerEl = body.querySelector('#fm-input-timer');
+    if (timerEl) {
+      timerEl.textContent = `剩餘 ${st.input_remaining ?? '—'}s`;
+    }
+    const memHost = body.querySelector('#fm-members-host');
+    if (memHost) {
+      memHost.innerHTML = membersHtml(st);
+    }
+    const submit = body.querySelector('#fm-submit');
+    const input = body.querySelector('#fm-ans');
+    if (st.my_answered) {
+      if (input) {
+        input.disabled = true;
+        input.blur();
+      }
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = '已提交，等待隊友…';
+      }
+    }
+  }
+
+  function bindInputHandlers() {
+    if (inputBound) return;
+    const input = body.querySelector('#fm-ans');
+    const submit = body.querySelector('#fm-submit');
+    if (!input || !submit) return;
+    inputBound = true;
+
+    const send = async () => {
+      if (submitting || input.disabled) return;
+      const val = (input.value || '').trim();
+      if (!val) {
+        input.focus();
+        return;
+      }
+      submitting = true;
+      submit.disabled = true;
+      try {
+        const next = await api('/api/team_minigame/flash_answer', {
+          method: 'POST',
+          body: JSON.stringify({ task_id: taskId, answer: val }),
+        });
+        render(next);
+      } catch (e) {
+        alert(e.message || '提交失敗');
+        submit.disabled = false;
+        input.focus();
+      } finally {
+        submitting = false;
+      }
+    };
+
+    submit.onclick = (ev) => {
+      ev.preventDefault();
+      send();
+    };
+    // Use form submit for better mobile keyboard "go" behavior
+    const form = body.querySelector('#fm-form');
+    if (form) {
+      form.onsubmit = (ev) => {
+        ev.preventDefault();
+        send();
+      };
+    }
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        send();
+      }
+    });
   }
 
   function render(st) {
     if (unmounted || !body) return;
     const status = st.status;
+    const key = stateKey(st);
+
+    // Soft-patch during stable input phase (preserve keyboard)
+    if (
+      status === 'playing'
+      && st.phase === 'input'
+      && lastKey.startsWith('playing|input|')
+      && key.split('|').slice(0, 3).join('|') === lastKey.split('|').slice(0, 3).join('|')
+      && body.querySelector('#fm-ans')
+    ) {
+      patchInputPhase(st);
+      lastKey = key;
+      return;
+    }
 
     if (status === 'lobby') {
+      inputBound = false;
       body.innerHTML = `
         <div class="fm-card">
           <div class="fm-status">大廳 — 請全隊打開此任務</div>
@@ -109,20 +215,21 @@ export function mount(rootEl, options) {
         </div>`;
       body.querySelector('#fm-start')?.addEventListener('click', async () => {
         try {
-          const next = await api('/api/team_minigame/start', {
+          render(await api('/api/team_minigame/start', {
             method: 'POST',
             body: JSON.stringify({ task_id: taskId }),
-          });
-          render(next);
+          }));
         } catch (e) {
           alert(e.message || '無法開始');
         }
       });
       body.querySelector('#fm-refresh')?.addEventListener('click', () => tick());
+      lastKey = key;
       return;
     }
 
     if (status === 'won') {
+      inputBound = false;
       body.innerHTML = `
         <div class="fm-card" style="text-align:center">
           <div style="font-size:2rem">🎉</div>
@@ -139,10 +246,12 @@ export function mount(rootEl, options) {
         });
       }
       stopPoll();
+      lastKey = key;
       return;
     }
 
     if (status === 'lost') {
+      inputBound = false;
       const lr = st.last_round_result || {};
       body.innerHTML = `
         <div class="fm-card" style="text-align:center">
@@ -156,8 +265,10 @@ export function mount(rootEl, options) {
           method: 'POST',
           body: JSON.stringify({ task_id: taskId }),
         });
+        lastKey = '';
         await join();
       });
+      lastKey = key;
       return;
     }
 
@@ -165,66 +276,83 @@ export function mount(rootEl, options) {
     const phase = st.phase;
     const round = st.round || 1;
     const total = st.total_rounds || 10;
-    let phaseUi = '';
 
     if (phase === 'show') {
-      phaseUi = `
-        <div class="fm-status">第 ${round} / ${total} 輪 · 記住這串！</div>
-        <div class="fm-code">${st.show_code || '····'}</div>
-        <div class="fm-status">顯示剩餘 ${st.show_remaining ?? '—'}s</div>`;
+      inputBound = false;
+      body.innerHTML = `
+        <div class="fm-card">
+          <div class="fm-status">第 ${round} / ${total} 輪 · 記住這串！</div>
+          <div class="fm-code">${st.show_code || '····'}</div>
+          <div class="fm-status">顯示剩餘 ${st.show_remaining ?? '—'}s</div>
+          <div id="fm-members-host">${membersHtml(st)}</div>
+        </div>`;
     } else if (phase === 'input') {
-      phaseUi = `
-        <div class="fm-status">第 ${round} / ${total} 輪 · 輸入你記住的內容</div>
-        <div class="fm-code hidden-code">••••</div>
-        <input class="fm-input" id="fm-ans" autocomplete="off" autocapitalize="characters" placeholder="輸入" ${st.my_answered ? 'disabled' : ''} />
-        <button type="button" class="fm-btn primary" id="fm-submit" ${st.my_answered || submitting ? 'disabled' : ''}>
-          ${st.my_answered ? '已提交，等待隊友…' : '提交答案'}
-        </button>
-        <div class="fm-status">剩餘 ${st.input_remaining ?? '—'}s</div>`;
-    } else if (phase === 'result') {
-      const lr = st.last_round_result || {};
-      phaseUi = `
-        <div class="fm-toast" style="color:${lr.passed ? '#34d399' : '#f87171'}">
-          ${lr.passed ? '✓ 本輪通過' : '✗ 本輪失敗'}
-        </div>
-        <div class="fm-status">正確：${lr.code || '—'} · 答對 ${lr.correct_count ?? 0} 人（需 ${lr.need ?? 2}）</div>`;
-    } else {
-      phaseUi = `<div class="fm-status">同步中…</div>`;
-    }
-
-    body.innerHTML = `
-      <div class="fm-card">
-        ${phaseUi}
-        ${membersHtml(st)}
-      </div>`;
-
-    const input = body.querySelector('#fm-ans');
-    const submit = body.querySelector('#fm-submit');
-    if (submit && input && !st.my_answered) {
-      const send = async () => {
-        if (submitting) return;
-        submitting = true;
-        try {
-          const next = await api('/api/team_minigame/flash_answer', {
-            method: 'POST',
-            body: JSON.stringify({ task_id: taskId, answer: input.value }),
-          });
-          render(next);
-        } catch (e) {
-          alert(e.message || '提交失敗');
-        } finally {
-          submitting = false;
+      const enteringFresh = !(
+        lastKey.startsWith(`playing|input|${round}|`)
+        && body.querySelector('#fm-ans')
+      );
+      if (enteringFresh) {
+        inputBound = false;
+        body.innerHTML = `
+          <div class="fm-card">
+            <div class="fm-status" id="fm-round-label">第 ${round} / ${total} 輪 · 輸入你記住的內容</div>
+            <div class="fm-code hidden-code">••••</div>
+            <form id="fm-form" action="javascript:void(0)" autocomplete="off">
+              <input
+                class="fm-input"
+                id="fm-ans"
+                name="answer"
+                type="text"
+                inputmode="text"
+                enterkeyhint="done"
+                autocomplete="off"
+                autocapitalize="characters"
+                autocorrect="off"
+                spellcheck="false"
+                placeholder="輸入"
+                ${st.my_answered ? 'disabled' : ''}
+              />
+              <button type="submit" class="fm-btn primary" id="fm-submit" ${st.my_answered || submitting ? 'disabled' : ''}>
+                ${st.my_answered ? '已提交，等待隊友…' : '提交答案'}
+              </button>
+            </form>
+            <div class="fm-status" id="fm-input-timer">剩餘 ${st.input_remaining ?? '—'}s</div>
+            <div id="fm-members-host">${membersHtml(st)}</div>
+          </div>`;
+        bindInputHandlers();
+        if (!st.my_answered) {
+          // Focus once when entering input phase — keep keyboard open
+          const input = body.querySelector('#fm-ans');
+          setTimeout(() => {
+            try {
+              input?.focus({ preventScroll: false });
+              // iOS: click focus trick
+              input?.click?.();
+            } catch (_) {
+              input?.focus();
+            }
+          }, 80);
         }
-      };
-      submit.onclick = send;
-      input.onkeydown = (ev) => {
-        if (ev.key === 'Enter') send();
-      };
-      if (phase === 'input' && lastPhase !== 'input') {
-        setTimeout(() => input.focus(), 50);
+      } else {
+        patchInputPhase(st);
       }
+    } else if (phase === 'result') {
+      inputBound = false;
+      const lr = st.last_round_result || {};
+      body.innerHTML = `
+        <div class="fm-card">
+          <div class="fm-toast" style="color:${lr.passed ? '#34d399' : '#f87171'}">
+            ${lr.passed ? '✓ 本輪通過' : '✗ 本輪失敗'}
+          </div>
+          <div class="fm-status">正確：${lr.code || '—'} · 答對 ${lr.correct_count ?? 0} 人（需 ${lr.need ?? 2}）</div>
+          <div id="fm-members-host">${membersHtml(st)}</div>
+        </div>`;
+    } else {
+      inputBound = false;
+      body.innerHTML = `<div class="fm-card"><div class="fm-status">同步中…</div></div>`;
     }
-    lastPhase = phase;
+
+    lastKey = key;
   }
 
   async function tick() {
@@ -232,7 +360,7 @@ export function mount(rootEl, options) {
     try {
       const st = await api(`/api/team_minigame/status?task_id=${encodeURIComponent(taskId)}`);
       render(st);
-    } catch (_) { /* ignore transient */ }
+    } catch (_) { /* ignore */ }
   }
 
   async function join() {
@@ -242,7 +370,8 @@ export function mount(rootEl, options) {
     });
     render(st);
     stopPoll();
-    pollTimer = setInterval(tick, 700);
+    // Slightly slower poll while typing is fine; soft-patch protects keyboard
+    pollTimer = setInterval(tick, 900);
   }
 
   body.innerHTML = `<div class="fm-status">連接全隊房間…</div>`;

@@ -104,22 +104,22 @@ LOCATIONS = {
     },
     "act3_search_iggy": {
         "name": "搜尋 Iggy",
-        "hint": "村莊巷弄 · 記憶配對",
+        "hint": "村莊巷弄 · 三輪記憶配對",
         **_CAMP,
         "task_type": "minigame",
         "minigame_id": "memory_match",
         "minigame_config": {
             "pairs": 8,
-            "timeLimitSec": 70,
-            "previewSec": 2,
+            "previewSec": 1,
+            "waveTimesSec": [60, 50, 45],
         },
         "story_act": 3,
         "mainline": True,
         "mainline_order": 50,
         "description": (
             "【主線 3】Iggy 又怕連累大家偷偷跑掉——"
-            "在巷弄與廢墟中靠「記憶配對」追蹤他留下的符號痕跡。"
-            "限時內翻開相同符號；配錯會扣時間。"
+            "全隊進行「記憶配對」三輪：60 秒 → 50 秒 → 45 秒。"
+            "每人需連續過三關；至少半隊完成才算任務成功。"
         ),
     },
     "act3_village_battle": {
