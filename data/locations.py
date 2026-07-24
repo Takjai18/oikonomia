@@ -161,21 +161,23 @@ LOCATIONS = {
     },
     "albert_ching_2": {
         "name": "Act 4 Mission 2",
-        "hint": "通渠佬電話 · 答題（全組一次機會）",
+        "hint": "通渠佬電話 · 後七位（全組一次機會）",
         **_CAMP,
         "task_type": "quiz",
         "story_act": 4,
         "mainline": True,
         "mainline_order": 80,
-        "answer": "6562275",
+        "answer": "6562227",
         "answer_normalize": "digits",
+        "answer_aliases": ["6562227"],
         "one_team_attempt": True,
         "stat_points_reward": 5,
         "description": (
             "【Act 4 Mission 2】Iggy 說出了通渠佬——"
             "或許找到他會有助恢復記憶。要怎樣聯絡？難道在車站附近可以找到電話嗎？\n\n"
             "任務：找出通渠佬的電話號碼。\n"
-            "⚠ 全組只有 1 次作答機會。"
+            "⚠ 只需輸入電話號碼的「後七位數字」。\n"
+            "⚠ 全組只有 1 次作答機會，請勿亂估。"
         ),
         "reward_hint": (
             "原來 Iggy 一直是這樣長大……通渠佬說 Iggy 常把"
