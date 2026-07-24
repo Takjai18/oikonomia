@@ -264,6 +264,19 @@ def _new_session_blob(team_id: str, task_id: str, game_id: str, config: Optional
         # Half of team (ceil) must fully clear all 3 waves
         sess["half_mode"] = True
         sess["phase"] = "lobby"
+    if game_id == "whack_a_mole":
+        sess["time_limit_sec"] = int(
+            cfg.get("timeLimitSec") or cfg.get("time_limit_sec") or 60
+        )
+        sess["target_hits"] = int(
+            cfg.get("targetHits") or cfg.get("target_hits") or 45
+        )
+        # At least 2 winners (or entire team if smaller)
+        raw_need = int(cfg.get("minWinners") or cfg.get("min_winners") or 2)
+        n_team = max(1, len(sess["expected"]) or 1)
+        sess["need_winners"] = min(raw_need, n_team)
+        sess["winners_count"] = 0
+        sess["phase"] = "lobby"
     return sess
 
 
@@ -344,6 +357,15 @@ def start_session(team_id: str, task_id: str, squad_id: str) -> dict:
                 raise ValueError(
                     f"至少需要 {need_start} 名隊員同時進入再開始（半隊）"
                 )
+        elif game_id == "whack_a_mole":
+            need_start = min(
+                int(sess.get("need_winners") or 2),
+                max(1, len(expected) or len(online) or 1),
+            )
+            if len(online) < need_start:
+                raise ValueError(
+                    f"至少需要 {need_start} 名隊員同時進入再開始"
+                )
         else:
             # flash_memory / mastermind: full team must be online
             if expected:
@@ -377,6 +399,19 @@ def start_session(team_id: str, task_id: str, squad_id: str) -> dict:
                 }
             sess["joined"] = joined
             sess["need_winners"] = _half_need(sess)
+            sess["winners_count"] = 0
+        elif game_id == "whack_a_mole":
+            sess["phase"] = "play"
+            for sid in joined:
+                joined[sid] = {
+                    **joined[sid],
+                    "won": False,
+                    "lost": False,
+                    "hits": 0,
+                }
+            sess["joined"] = joined
+            n_team = max(1, len(expected) or len(joined) or 1)
+            sess["need_winners"] = min(int(sess.get("need_winners") or 2), n_team)
             sess["winners_count"] = 0
         data[key] = sess
         _save(data)
@@ -428,6 +463,60 @@ def _half_need(sess: dict) -> int:
     expected = list(sess.get("expected") or [])
     n = len(expected) or len(sess.get("joined") or {}) or 1
     return max(1, (n + 1) // 2)  # ceil(n/2)
+
+
+def report_whack_result(
+    team_id: str, task_id: str, squad_id: str, hits: int, success: bool,
+) -> dict:
+    """Player finished a whack-a-mole run (60s). Success if hits >= target."""
+    team_id = normalize_team_id(team_id)
+    key = _session_key(team_id, task_id)
+    with _LOCK:
+        data = _load()
+        sess = data.get(key)
+        if not sess or sess.get("game_id") != "whack_a_mole":
+            raise ValueError("遊戲不存在")
+        if sess.get("status") == "won":
+            return _public_status(sess, squad_id)
+        if sess.get("status") == "lobby":
+            sess["status"] = "playing"
+            sess["phase"] = "play"
+            sess["started_at"] = _iso()
+
+        joined = dict(sess.get("joined") or {})
+        if squad_id not in joined:
+            raise ValueError("請先加入遊戲")
+        meta = dict(joined[squad_id])
+        try:
+            hit_n = max(0, int(hits))
+        except (TypeError, ValueError):
+            hit_n = 0
+        target = int(sess.get("target_hits") or 45)
+        meta["hits"] = hit_n
+        if success or hit_n >= target:
+            meta["won"] = True
+            meta["lost"] = False
+        else:
+            # Allow retry — don't mark permanent loss for team
+            meta["lost"] = False
+            meta["won"] = False
+            meta["last_hits"] = hit_n
+        joined[squad_id] = meta
+        sess["joined"] = joined
+
+        need = int(sess.get("need_winners") or 2)
+        n_team = max(1, len(sess.get("expected") or []) or len(joined) or 1)
+        need = min(need, n_team)
+        winners = sum(1 for s, m in joined.items() if (m or {}).get("won"))
+        sess["winners_count"] = winners
+        sess["need_winners"] = need
+        if winners >= need:
+            sess["status"] = "won"
+            sess["phase"] = "done"
+
+        data[key] = sess
+        _save(data)
+        return _public_status(sess, squad_id)
 
 
 def report_memory_wave(
@@ -637,4 +726,7 @@ def _public_status(sess: dict, squad_id: str) -> dict:
         "wave_times": sess.get("wave_times") or [60, 50, 45],
         "need_winners": need_winners,
         "winners_count": winners_count,
+        "time_limit_sec": int(sess.get("time_limit_sec") or 60),
+        "target_hits": int(sess.get("target_hits") or 45),
+        "my_hits": int(my.get("hits") or my.get("last_hits") or 0),
     }

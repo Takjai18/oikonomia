@@ -12,6 +12,7 @@ export const MINIGAMES = {
     memory_match: () => import('./memory_match.js'),
     mastermind: () => import('./mastermind.js'),
     flash_memory: () => import('./flash_memory.js'),
+    whack_a_mole: () => import('./whack_a_mole.js'),
 };
 
 let currentUnmount = null;

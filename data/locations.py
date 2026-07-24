@@ -29,17 +29,22 @@ LOCATIONS = {
     },
     "act1_escape": {
         "name": "Act 1 Mission 2",
-        "hint": "反直覺小遊戲",
+        "hint": "全隊 · 打地鼠",
         **_CAMP,
         "task_type": "minigame",
-        "minigame_id": "reverse_contrarian",
-        "minigame_config": {"lives": 2, "clearStreak": 8},
+        "minigame_id": "whack_a_mole",
+        "minigame_config": {
+            "timeLimitSec": 60,
+            "targetHits": 45,
+            "minWinners": 2,
+        },
         "story_act": 1,
         "mainline": True,
         "mainline_order": 20,
         "description": (
-            "【Act 1 Mission 2】通訊被干擾，指令會顛倒對錯。"
-            "「聽反指令」連續過關，帶著傷者衝出封鎖。"
+            "【Act 1 Mission 2】封鎖線上的干擾信號如地鼠般冒出——"
+            "全隊一起打地鼠：60 秒內打中 45 隻。"
+            "至少 2 人通關即可完成任務（失敗可重試）。"
         ),
     },
     # ========== ACT 2 ==========
